@@ -1,0 +1,26 @@
+#pragma once
+#include <cstdint>
+
+namespace smk {
+
+
+
+
+class SynthEngine {
+public:
+    virtual ~SynthEngine() = default;
+    virtual bool begin(uint32_t sample_rate_hz) = 0;
+    virtual void noteOn(uint8_t channel, uint8_t note, uint8_t velocity) = 0;
+    virtual void noteOff(uint8_t channel, uint8_t note) = 0;
+    virtual void pitchBend(uint8_t channel, int16_t value) = 0;
+    virtual void controlChange(uint8_t channel, uint8_t controller, uint8_t value) = 0;
+    virtual void allNotesOff() = 0;
+    virtual void panic() = 0;
+    virtual int16_t* render() = 0;
+    virtual uint16_t blockSize() const = 0;
+    virtual float renderLoad() const = 0;
+    virtual uint32_t activeVoices() const = 0;
+};
+
+
+} // namespace smk

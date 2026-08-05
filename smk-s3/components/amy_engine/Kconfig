@@ -1,0 +1,20 @@
+menu "AMY Synthesizer Configuration"
+    config SMKS3_AMY_MAX_OSCS
+        int "Maximum number of oscillators"
+        default 120
+        range 32 250
+        help
+            Maximum number of concurrent oscillators in AMY engine.
+
+    choice SMKS3_AMY_BLOCK_SIZE
+        prompt "AMY Block Size"
+        default SMKS3_AMY_BLOCK_SIZE_256
+        help
+            Audio block size for AMY engine.
+
+        config SMKS3_AMY_BLOCK_SIZE_128
+            bool "128 samples"
+        config SMKS3_AMY_BLOCK_SIZE_256
+            bool "256 samples"
+    endchoice
+endmenu
