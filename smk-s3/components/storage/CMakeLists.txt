@@ -1,0 +1,14 @@
+idf_component_register(
+    SRCS
+        "src/storage_manager.cpp"
+        "src/nvs_storage.cpp"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        "system"
+        "synth"
+        "nvs_flash"
+        "spiffs"
+        "vfs"
+        "freertos"
+)

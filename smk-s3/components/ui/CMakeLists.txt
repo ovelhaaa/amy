@@ -1,0 +1,26 @@
+idf_component_register(
+    SRCS
+        "display_driver.cpp"
+        "dummy_display_driver.cpp"
+        "st7789_display_driver.cpp"
+        "font_renderer.cpp"
+        "widgets.cpp"
+        "ui_manager.cpp"
+        "screens/home_screen.cpp"
+        "screens/parameter_screen.cpp"
+        "screens/system_screen.cpp"
+        "screens/midi_monitor_screen.cpp"
+        "screens/sequencer_screen.cpp"
+        "screens/pad_screen.cpp"
+    INCLUDE_DIRS
+        "include"
+        "include/screens"
+    REQUIRES
+        system
+        midi
+        audio
+        freertos
+        esp_timer
+        driver
+        esp_lcd
+)

@@ -3,9 +3,6 @@
 
 namespace smk {
 
-
-
-
 class AmyAdapter : public SynthEngine {
 public:
     AmyAdapter();
@@ -22,7 +19,17 @@ public:
     uint16_t blockSize() const override;
     float renderLoad() const override;
     uint32_t activeVoices() const override;
-};
 
+    // Direct AMY sound parameter controls
+    void setFilter(uint8_t osc_id, float cutoff_hz, float resonance);
+    void setOscillatorWaveform(uint8_t osc_id, uint8_t wave_type);
+    void setEnvelope(uint8_t osc_id, float attack_ms, float decay_ms, float sustain_level, float release_ms);
+
+    // Built-in AMY Effects Controls
+    void setChorus(float depth, float rate, float level);
+    void setReverb(float room_size, float damp, float mix);
+    void setDelay(float delay_ms, float feedback, float mix);
+    void setSendLevels(uint8_t osc_id, float reverb_send, float chorus_send, float echo_send);
+};
 
 } // namespace smk

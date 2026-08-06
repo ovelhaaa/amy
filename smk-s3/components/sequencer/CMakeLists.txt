@@ -1,0 +1,15 @@
+idf_component_register(
+    SRCS
+        "src/clock_manager.cpp"
+        "src/arpeggiator.cpp"
+        "src/step_sequencer.cpp"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        "system"
+        "audio"
+        "ui"
+        "synth"
+        "freertos"
+        "esp_timer"
+)

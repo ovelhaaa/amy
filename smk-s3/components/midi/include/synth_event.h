@@ -12,8 +12,8 @@ enum class EventType : uint8_t {
     ProgramChange,
     AllNotesOff,
     Panic,
-    // Future:
     PadHit,
+    ButtonPress,
     TransportPlay,
     TransportStop,
     TransportRecord,
@@ -21,6 +21,17 @@ enum class EventType : uint8_t {
     ParameterChange,
     PatchChange,
     SceneChange,
+};
+
+enum class ButtonId : uint8_t {
+    KnobBank = 0,
+    PadBank = 1,
+    Play = 2,
+    Stop = 3,
+    Record = 4,
+    OctavePlus = 5,
+    OctaveMinus = 6,
+    Arp = 7
 };
 
 enum class EventSource : uint8_t {

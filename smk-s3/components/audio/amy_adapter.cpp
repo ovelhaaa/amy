@@ -1,8 +1,7 @@
 #include "amy_adapter.h"
 #include <esp_log.h>
 #include <esp_heap_caps.h>
-
-
+#include <cstdio>
 
 extern "C" {
 #include "amy.h"
@@ -93,5 +92,46 @@ uint32_t AmyAdapter::activeVoices() const {
     return 0; // Not strictly tracked in simple API
 }
 
+void AmyAdapter::setFilter(uint8_t osc_id, float cutoff_hz, float resonance) {
+    char msg[64];
+    snprintf(msg, sizeof(msg), "v%dF%.2f,0Q%.2f", osc_id, cutoff_hz, resonance);
+    amy_play_message(msg);
+}
+
+void AmyAdapter::setOscillatorWaveform(uint8_t osc_id, uint8_t wave_type) {
+    char msg[32];
+    snprintf(msg, sizeof(msg), "v%dw%d", osc_id, wave_type);
+    amy_play_message(msg);
+}
+
+void AmyAdapter::setEnvelope(uint8_t osc_id, float attack_ms, float decay_ms, float sustain_level, float release_ms) {
+    char msg[128];
+    snprintf(msg, sizeof(msg), "v%dA%.0f,1,%.0f,%.2f,%.0f,0", osc_id, attack_ms, decay_ms, sustain_level, release_ms);
+    amy_play_message(msg);
+}
+
+void AmyAdapter::setChorus(float depth, float rate, float level) {
+    char msg[64];
+    snprintf(msg, sizeof(msg), "k0k%.2f,%.2f,%.2f", level, depth, rate);
+    amy_play_message(msg);
+}
+
+void AmyAdapter::setReverb(float room_size, float damp, float mix) {
+    char msg[64];
+    snprintf(msg, sizeof(msg), "H0H%.2f,%.2f,%.2f", mix, room_size, damp);
+    amy_play_message(msg);
+}
+
+void AmyAdapter::setDelay(float delay_ms, float feedback, float mix) {
+    char msg[64];
+    snprintf(msg, sizeof(msg), "M0M%.2f,%.0f,%.2f", mix, delay_ms, feedback);
+    amy_play_message(msg);
+}
+
+void AmyAdapter::setSendLevels(uint8_t osc_id, float reverb_send, float chorus_send, float echo_send) {
+    char msg[64];
+    snprintf(msg, sizeof(msg), "v%dR%.2f,%.2f,%.2f", osc_id, reverb_send, chorus_send, echo_send);
+    amy_play_message(msg);
+}
 
 } // namespace smk

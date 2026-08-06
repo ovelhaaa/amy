@@ -1,0 +1,14 @@
+idf_component_register(
+    SRCS
+        "src/soft_takeover.cpp"
+        "src/factory_patches.cpp"
+        "src/patch_manager.cpp"
+        "src/pad_bank.cpp"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        "system"
+        "audio"
+        "ui"
+        "freertos"
+)
