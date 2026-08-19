@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include <cmath>
+
 namespace smk {
 
 HomeScreen::HomeScreen()
@@ -54,6 +56,15 @@ void HomeScreen::setKnobBankLabel(const char* bank_name) {
     if (bank_name) snprintf(knob_bank_, sizeof(knob_bank_), "%s", bank_name);
 }
 
+void HomeScreen::setActiveVoices(uint8_t active_count, uint8_t max_voices) {
+    active_voices_ = active_count;
+    max_voices_ = max_voices;
+}
+
+void HomeScreen::setCpuLoad(float load_percent) {
+    cpu_load_ = load_percent;
+}
+
 void HomeScreen::update() {
     // Refresh animation states if any
 }
@@ -61,20 +72,41 @@ void HomeScreen::update() {
 void HomeScreen::render(DisplayDriver& display) {
     display.fillScreen(DisplayDriver::kColorBlack);
 
-    // Header Line 1: Patch info, Mode, BPM, USB & MIDI status
-    char header_str[64];
-    snprintf(header_str, sizeof(header_str), "%03u %-14.14s [%s] %.1fBPM", 
+    // Header Line 1: Patch info, Mode, BPM
+    char header_str[48];
+    snprintf(header_str, sizeof(header_str), "%03u %-12.12s [%s] %.0fBPM", 
              patch_number_, patch_name_, synth_mode_, bpm_);
     FontRenderer::drawString(display, 2, 2, header_str, DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
 
-    // USB Status indicator
-    uint16_t usb_col = usb_connected_ ? DisplayDriver::kColorGreen : DisplayDriver::kColorRed;
-    display.fillRect(245, 3, 5, 5, usb_col);
-    FontRenderer::drawString(display, 252, 2, "USB", DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
+    // Live Oscilloscope Box (Center Header: x=140, y=2, w=50, h=18)
+    display.drawRect(140, 2, 50, 18, DisplayDriver::kColorMidGray);
+    int center_y = 11;
+    int prev_y = center_y;
+    for (int x = 0; x < 48; ++x) {
+        int wave_y = center_y;
+        if (active_voices_ > 0 || midi_active_) {
+            float angle = (scope_phase_ * 0.3f) + (x * 0.35f);
+            float amp = (active_voices_ > 0) ? 6.0f : 2.0f;
+            wave_y = center_y + static_cast<int>(sinf(angle) * amp);
+        }
+        display.drawLine(141 + x, prev_y, 141 + x + 1, wave_y, DisplayDriver::kColorGreen);
+        prev_y = wave_y;
+    }
+    scope_phase_++;
 
-    // MIDI Activity dot
+    // Voice Activity Meter (x=195..235)
+    for (uint8_t v = 0; v < max_voices_ && v < 8; ++v) {
+        uint16_t voice_col = (v < active_voices_) ? DisplayDriver::kColorCyan : DisplayDriver::kColorDarkGray;
+        display.fillRect(195 + v * 5, 4, 4, 14, voice_col);
+    }
+
+    // USB & MIDI Indicators (x=242..280)
+    uint16_t usb_col = usb_connected_ ? DisplayDriver::kColorGreen : DisplayDriver::kColorRed;
+    display.fillRect(242, 3, 5, 5, usb_col);
+    FontRenderer::drawString(display, 249, 2, "USB", DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
+
     if (midi_active_) {
-        display.fillRect(275, 3, 5, 5, DisplayDriver::kColorYellow);
+        display.fillRect(272, 3, 5, 5, DisplayDriver::kColorYellow);
     }
 
     // Header Line 2: Active Knob Bank

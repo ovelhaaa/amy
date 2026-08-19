@@ -51,6 +51,24 @@ void UIManager::switchScreen(ScreenId screen_id) {
     }
 }
 
+void UIManager::nextPage() {
+    uint8_t id = static_cast<uint8_t>(current_screen_id_);
+    id = (id + 1) % 5;
+    switchScreen(static_cast<ScreenId>(id));
+}
+
+void UIManager::previousPage() {
+    uint8_t id = static_cast<uint8_t>(current_screen_id_);
+    id = (id == 0) ? 4 : (id - 1);
+    switchScreen(static_cast<ScreenId>(id));
+}
+
+void UIManager::setPage(uint8_t page_idx) {
+    if (page_idx <= 4) {
+        switchScreen(static_cast<ScreenId>(page_idx));
+    }
+}
+
 void UIManager::triggerParameterOverlay(const char* name, const char* target_layer,
                                         float current_val, float saved_val, 
                                         const char* unit_str, TakeoverStatus takeover) {

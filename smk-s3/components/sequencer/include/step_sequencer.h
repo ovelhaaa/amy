@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <array>
+#include <algorithm>
 #include "event_bus.h"
 
 namespace smk {
@@ -25,6 +26,7 @@ class StepSequencer {
 public:
     static constexpr size_t kMaxTracks = 4;
     static constexpr size_t kMaxSteps = 16;
+    static constexpr size_t kMaxPatterns = 8;
 
     StepSequencer();
 
@@ -44,15 +46,23 @@ public:
 
     uint8_t currentStep() const { return current_step_; }
 
+    void selectPattern(uint8_t pattern_idx);
+    uint8_t currentPattern() const { return current_pattern_; }
+
+    void setSwing(float swing_pct) { swing_percent_ = std::clamp(swing_pct, 0.0f, 75.0f); }
+    float swing() const { return swing_percent_; }
+
     void processTick(uint32_t tick_count, EventBus& event_bus);
     void reset();
 
 private:
-    std::array<std::array<StepData, kMaxSteps>, kMaxTracks> tracks_;
-    SequencerState                                          state_ = SequencerState::Stopped;
-    uint8_t                                                 current_step_ = 0;
-    std::array<int16_t, kMaxTracks>                         last_played_notes_;
-    std::array<uint32_t, kMaxTracks>                        note_off_ticks_;
+    std::array<std::array<std::array<StepData, kMaxSteps>, kMaxTracks>, kMaxPatterns> patterns_;
+    SequencerState                                                                     state_ = SequencerState::Stopped;
+    uint8_t                                                                            current_step_ = 0;
+    uint8_t                                                                            current_pattern_ = 0;
+    float                                                                              swing_percent_ = 0.0f;
+    std::array<int16_t, kMaxTracks>                                                    last_played_notes_;
+    std::array<uint32_t, kMaxTracks>                                                   note_off_ticks_;
 };
 
 } // namespace smk

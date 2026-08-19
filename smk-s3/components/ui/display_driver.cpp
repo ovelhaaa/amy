@@ -21,6 +21,28 @@ void DisplayDriver::drawVLine(int16_t x, int16_t y, int16_t h, uint16_t color) {
     }
 }
 
+void DisplayDriver::drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) {
+    int16_t dx = abs(x1 - x0);
+    int16_t dy = abs(y1 - y0);
+    int16_t sx = (x0 < x1) ? 1 : -1;
+    int16_t sy = (y0 < y1) ? 1 : -1;
+    int16_t err = dx - dy;
+
+    while (true) {
+        drawPixel(x0, y0, color);
+        if (x0 == x1 && y0 == y1) break;
+        int16_t e2 = 2 * err;
+        if (e2 > -dy) {
+            err -= dy;
+            x0 += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
 void DisplayDriver::drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
     if (w <= 0 || h <= 0) return;
     drawHLine(x, y, w, color);

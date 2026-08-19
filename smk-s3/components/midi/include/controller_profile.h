@@ -12,32 +12,45 @@ enum class TargetAction : uint16_t {
     Note         = 1,
     PitchBend    = 2,
     Modulation   = 3,
-    Macro1       = 4,
-    Macro2       = 5,
-    Macro3       = 6,
-    Macro4       = 7,
-    Macro5       = 8,
-    Macro6       = 9,
-    Macro7       = 10,
-    Macro8       = 11,
-    Pad1         = 12,
-    Pad2         = 13,
-    Pad3         = 14,
-    Pad4         = 15,
-    Pad5         = 16,
-    Pad6         = 17,
-    Pad7         = 18,
-    Pad8         = 19,
-    OctaveUp     = 20,
-    OctaveDown   = 21,
-    Play         = 22,
-    Stop         = 23,
-    Rec          = 24,
-    Bt           = 25,
-    Arp          = 26,
-    ScCh         = 27,
-    KnobB        = 28,
-    PadB         = 29
+    // Knobs 1..8 (Bank A) and 9..16 (Bank B)
+    Knob1        = 4,
+    Knob2        = 5,
+    Knob3        = 6,
+    Knob4        = 7,
+    Knob5        = 8,
+    Knob6        = 9,
+    Knob7        = 10,
+    Knob8        = 11,
+    Knob9        = 12,
+    Knob10       = 13,
+    Knob11       = 14,
+    Knob12       = 15,
+    Knob13       = 16,
+    Knob14       = 17,
+    Knob15       = 18,
+    Knob16       = 19,
+    // Pads 1..8 (Bank A) and 9..16 (Bank B)
+    Pad1         = 20,
+    Pad2         = 21,
+    Pad3         = 22,
+    Pad4         = 23,
+    Pad5         = 24,
+    Pad6         = 25,
+    Pad7         = 26,
+    Pad8         = 27,
+    Pad9         = 28,
+    Pad10        = 29,
+    Pad11        = 30,
+    Pad12        = 31,
+    Pad13        = 32,
+    Pad14        = 33,
+    Pad15        = 34,
+    Pad16        = 35,
+    // Transport Buttons
+    Play         = 36,
+    Stop         = 37,
+    Rec          = 38,
+    Bt           = 39
 };
 
 struct ProfileHeader {
@@ -62,9 +75,9 @@ struct ControllerProfile {
     MidiBinding keys;
     MidiBinding pitch;
     MidiBinding modulation;
-    MidiBinding knobs[8];
-    MidiBinding pads[8];
-    MidiBinding buttons[10]; // OctUp, OctDown, Play, Stop, Rec, Bt, Arp, ScCh, KnobB, PadB
+    MidiBinding knobs[16];  // 16 knobs (1..8 Bank A, 9..16 Bank B)
+    MidiBinding pads[16];   // 16 pads (1..8 Bank A, 9..16 Bank B)
+    MidiBinding buttons[4]; // Play, Stop, Rec, BT
     uint32_t    crc32;
 };
 

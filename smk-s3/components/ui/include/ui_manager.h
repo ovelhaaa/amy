@@ -33,6 +33,9 @@ public:
     void stopTask();
 
     void switchScreen(ScreenId screen_id);
+    void nextPage();
+    void previousPage();
+    void setPage(uint8_t page_idx);
     ScreenId activeScreenId() const { return current_screen_id_; }
 
     void triggerParameterOverlay(const char* name, const char* target_layer,

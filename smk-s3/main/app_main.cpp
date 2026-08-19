@@ -163,6 +163,8 @@ static void app_init_task(void* arg) {
     smk::MidiLearn* midi_learn = new smk::MidiLearn();
     smk::PadManager* pad_manager = new smk::PadManager();
 
+    smk::ControllerProfile active_profile = smk::ProfileManager::createDefaultSmk25Profile();
+
     // 13. Create Console and start it
     smk::Console* console = new smk::Console();
     console->setUiManager(ui_manager);
@@ -174,6 +176,7 @@ static void app_init_task(void* arg) {
     console->setNvsStorage(nvs_storage);
     console->setMidiLearn(midi_learn);
     console->setPadManager(pad_manager);
+    console->setActiveProfilePointer(&active_profile);
     if (!console->begin()) {
         ESP_LOGE(TAG, "Failed to initialize Console");
     }
@@ -181,7 +184,6 @@ static void app_init_task(void* arg) {
     ESP_LOGI(TAG, "Initialization complete");
 
     // 14. Enter main control loop
-    smk::ControllerProfile active_profile = smk::ProfileManager::createDefaultSmk25Profile();
     TickType_t last_status_time = xTaskGetTickCount();
     const TickType_t status_interval = pdMS_TO_TICKS(5000);
 
@@ -189,17 +191,20 @@ static void app_init_task(void* arg) {
         smk::SynthEvent event;
         if (event_bus->receive(event, 10)) {
             // 1. Intercept incoming MIDI if MIDI Learn Wizard is active
-            if (midi_learn && midi_learn->isLearning() && event.source == smk::EventSource::UsbMidi) {
-                uint8_t msg_type = 0; // 0=Note, 1=CC, 2=PitchBend
-                if (event.type == smk::EventType::ControlChange) msg_type = 1;
-                else if (event.type == smk::EventType::PitchBend) msg_type = 2;
+            if (midi_learn && midi_learn->isLearning()) {
+                if (event.source == smk::EventSource::UsbMidi) {
+                    uint8_t msg_type = 0; // 0=Note, 1=CC, 2=PitchBend
+                    if (event.type == smk::EventType::ControlChange) msg_type = 1;
+                    else if (event.type == smk::EventType::PitchBend) msg_type = 2;
 
-                if (midi_learn->processIncomingMidi(msg_type, event.channel, event.id, event.value)) {
-                    if (ui_manager) {
-                        ui_manager->triggerParameterOverlay("MIDI LEARN", midi_learn->currentStepName(), 0.0f, 0.0f, "", smk::TakeoverStatus::Captured);
+                    if (midi_learn->processIncomingMidi(msg_type, event.channel, event.id, event.value)) {
+                        if (ui_manager) {
+                            ui_manager->triggerParameterOverlay("MIDI LEARN", midi_learn->currentStepName(), 0.0f, 0.0f, "", smk::TakeoverStatus::Captured);
+                        }
                     }
-                    continue;
                 }
+                // Bypass normal synth actions, profile matching, knob logs, and scene saves while learning!
+                continue;
             }
 
             // 2. Process incoming USB MIDI CCs and Notes through active ControllerProfile
@@ -207,13 +212,81 @@ static void app_init_task(void* arg) {
                 uint8_t msg_type = (event.type == smk::EventType::ControlChange) ? 1 : 0;
                 smk::TargetAction action = smk::ProfileManager::matchBinding(active_profile, msg_type, event.channel, event.id);
 
+                if (action >= smk::TargetAction::Knob1 && action <= smk::TargetAction::Knob16) {
+                    uint8_t knob_idx = static_cast<uint8_t>(action) - static_cast<uint8_t>(smk::TargetAction::Knob1);
+                    if (knob_idx < 8) {
+                        patch_manager->setKnobBank(smk::KnobBank::BankA_Macros);
+                        patch_manager->handleKnobInput(knob_idx, (float)event.value);
+                    } else {
+                        patch_manager->setKnobBank(smk::KnobBank::BankB_Oscillator);
+                        patch_manager->handleKnobInput(knob_idx - 8, (float)event.value);
+                    }
+                    continue;
+                }
+
+                if (action >= smk::TargetAction::Pad1 && action <= smk::TargetAction::Pad16) {
+                    uint8_t pad_idx = static_cast<uint8_t>(action) - static_cast<uint8_t>(smk::TargetAction::Pad1);
+                    if ((event.type == smk::EventType::NoteOn && event.value > 0) || (event.type == smk::EventType::ControlChange && event.value > 64)) {
+                        if (pad_idx < 8) {
+                            if (pad_manager) {
+                                pad_manager->setBank(smk::PadBank::BankA_Drums);
+                                pad_manager->handlePadPress(pad_idx, (uint8_t)event.value, amy_adapter, ui_manager);
+                            }
+                        } else {
+                            // Pad Bank B Navigation Shortcuts
+                            uint8_t b_idx = pad_idx - 8;
+                            switch (b_idx) {
+                                case 0: // Pad 1 (B): Previous Patch
+                                    if (patch_manager) patch_manager->previousPatch();
+                                    break;
+                                case 1: // Pad 2 (B): Next Patch
+                                    if (patch_manager) patch_manager->nextPatch();
+                                    break;
+                                case 2: // Pad 3 (B): Previous Scene
+                                    ESP_LOGI(TAG, "Shortcut: Scene Previous");
+                                    break;
+                                case 3: // Pad 4 (B): Next Scene
+                                    ESP_LOGI(TAG, "Shortcut: Scene Next");
+                                    break;
+                                case 4: // Pad 5 (B): Previous UI Page
+                                    if (ui_manager) ui_manager->previousPage();
+                                    break;
+                                case 5: // Pad 6 (B): Next UI Page
+                                    if (ui_manager) ui_manager->nextPage();
+                                    break;
+                                case 6: // Pad 7 (B): Quick Save Patch
+                                    if (storage_manager && patch_manager) {
+                                        if (storage_manager->savePatch(patch_manager->activePatchId(), patch_manager->activePatch())) {
+                                            ESP_LOGI(TAG, "Quick Saved Patch #%d to Flash", patch_manager->activePatchId());
+                                            if (ui_manager) ui_manager->triggerParameterOverlay("PATCH SAVED", "SPIFFS", (float)patch_manager->activePatchId(), 0.0f, patch_manager->activePatch().name, smk::TakeoverStatus::Captured);
+                                        }
+                                    }
+                                    break;
+                                case 7: // Pad 8 (B): Quick Save Scene
+                                    if (storage_manager && patch_manager && clock_manager) {
+                                        smk::Scene sc = {};
+                                        strncpy(sc.name, "quick_scene", sizeof(sc.name) - 1);
+                                        sc.patch_id = patch_manager->activePatchId();
+                                        sc.bpm = clock_manager->bpm();
+                                        if (storage_manager->saveScene("quick_scene", sc)) {
+                                            ESP_LOGI(TAG, "Quick Saved Scene [quick_scene] to Flash");
+                                            if (ui_manager) ui_manager->triggerParameterOverlay("SCENE SAVED", "SPIFFS", 1.0f, 0.0f, "quick_scene", smk::TakeoverStatus::Captured);
+                                        }
+                                    }
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+                    } else {
+                        if (pad_idx < 8 && pad_manager) {
+                            pad_manager->handlePadRelease(pad_idx, amy_adapter);
+                        }
+                    }
+                    continue;
+                }
+
                 switch (action) {
-                    case smk::TargetAction::KnobB:
-                        if (event.type == smk::EventType::ControlChange && event.value > 0) patch_manager->nextKnobBank();
-                        continue;
-                    case smk::TargetAction::PadB:
-                        if (event.type == smk::EventType::ControlChange && event.value > 0 && pad_manager) pad_manager->nextBank();
-                        continue;
                     case smk::TargetAction::Play:
                         if (event.value > 0) {
                             if (step_sequencer->isPlaying()) step_sequencer->stop();
@@ -225,26 +298,6 @@ static void app_init_task(void* arg) {
                         continue;
                     case smk::TargetAction::Rec:
                         if (event.value > 0) step_sequencer->record();
-                        continue;
-                    case smk::TargetAction::Arp:
-                        if (event.value > 0) arpeggiator->setEnabled(!arpeggiator->isEnabled());
-                        continue;
-                    case smk::TargetAction::Pad1:
-                    case smk::TargetAction::Pad2:
-                    case smk::TargetAction::Pad3:
-                    case smk::TargetAction::Pad4:
-                    case smk::TargetAction::Pad5:
-                    case smk::TargetAction::Pad6:
-                    case smk::TargetAction::Pad7:
-                    case smk::TargetAction::Pad8:
-                        if (pad_manager) {
-                            uint8_t pad_idx = static_cast<uint8_t>(action) - static_cast<uint8_t>(smk::TargetAction::Pad1);
-                            if (event.type == smk::EventType::NoteOn && event.value > 0) {
-                                pad_manager->handlePadPress(pad_idx, (uint8_t)event.value, amy_adapter, ui_manager);
-                            } else {
-                                pad_manager->handlePadRelease(pad_idx, amy_adapter);
-                            }
-                        }
                         continue;
                     default:
                         break;
@@ -329,6 +382,40 @@ static void app_init_task(void* arg) {
                     step_sequencer->stop();
                     amy_adapter->panic();
                     break;
+                case smk::EventType::UsbConnect: {
+                    uint16_t vid = event.id;
+                    uint16_t pid = (uint16_t)event.value;
+                    ESP_LOGI(TAG, "USB MIDI Device Connected! VID: 0x%04X, PID: 0x%04X", vid, pid);
+
+                    char prof_filename[32];
+                    snprintf(prof_filename, sizeof(prof_filename), "prof_%04X_%04X", vid, pid);
+
+                    smk::ControllerProfile loaded_prof = {};
+                    if (storage_manager && storage_manager->loadProfile(prof_filename, loaded_prof)) {
+                        active_profile = loaded_prof;
+                        ESP_LOGI(TAG, "Auto-loaded controller profile [%s] from Flash", prof_filename);
+                    } else if (storage_manager && storage_manager->loadProfile("smk25_custom", loaded_prof)) {
+                        active_profile = loaded_prof;
+                        ESP_LOGI(TAG, "Auto-loaded default profile [smk25_custom] from Flash");
+                    } else {
+                        active_profile = smk::ProfileManager::createDefaultSmk25Profile();
+                        ESP_LOGI(TAG, "Applied default SMK25 profile for VID: 0x%04X PID: 0x%04X", vid, pid);
+                    }
+
+                    if (ui_manager) {
+                        ui_manager->triggerParameterOverlay("USB CONNECTED", active_profile.name, 0.0f, 0.0f, "", smk::TakeoverStatus::Captured);
+                    }
+                    break;
+                }
+                case smk::EventType::UsbDisconnect: {
+                    uint16_t vid = event.id;
+                    uint16_t pid = (uint16_t)event.value;
+                    ESP_LOGW(TAG, "USB MIDI Device Disconnected! (VID: 0x%04X, PID: 0x%04X)", vid, pid);
+                    if (ui_manager) {
+                        ui_manager->triggerParameterOverlay("USB DISCONNECTED", "PANIC", 0.0f, 0.0f, "", smk::TakeoverStatus::Captured);
+                    }
+                    break;
+                }
                 default:
                     break;
             }
@@ -337,6 +424,10 @@ static void app_init_task(void* arg) {
         TickType_t now = xTaskGetTickCount();
         if (now - last_status_time >= status_interval) {
             last_status_time = now;
+            if (midi_learn && midi_learn->isLearning()) {
+                // Suppress periodic status log during MIDI Learn wizard
+                continue;
+            }
             auto snapshot = smk::Diagnostics::instance().takeSnapshot();
             ESP_LOGI(TAG, "Status: Patch=[%s], BPM=%.1f, Arp=%s, Seq=%s, StorageUsed=%zuKB, Voices=%lu",
                      patch_manager ? patch_manager->activePatch().name : "NONE",

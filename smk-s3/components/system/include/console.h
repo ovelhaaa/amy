@@ -15,6 +15,7 @@ class StorageManager; // Forward declaration
 class NvsStorage;     // Forward declaration
 class MidiLearn;      // Forward declaration
 class PadManager;     // Forward declaration
+struct ControllerProfile; // Forward declaration
 
 class Console {
 public:
@@ -30,6 +31,7 @@ public:
     void setNvsStorage(NvsStorage* nvs_storage);
     void setMidiLearn(MidiLearn* midi_learn);
     void setPadManager(PadManager* pad_mgr);
+    void setActiveProfilePointer(ControllerProfile* prof_ptr);
     
     // Register additional commands
     void registerCommand(const char* name, const char* help, esp_console_cmd_func_t func);
@@ -49,9 +51,12 @@ private:
     static int cmdBpmSet(int argc, char** argv);
     static int cmdArpEnable(int argc, char** argv);
     static int cmdArpMode(int argc, char** argv);
+    static int cmdArpSwing(int argc, char** argv);
     static int cmdSeqStep(int argc, char** argv);
     static int cmdSeqPlay(int argc, char** argv);
     static int cmdSeqStop(int argc, char** argv);
+    static int cmdSeqPattern(int argc, char** argv);
+    static int cmdSeqSwing(int argc, char** argv);
     static int cmdStorageInfo(int argc, char** argv);
     static int cmdPatchSave(int argc, char** argv);
     static int cmdPatchLoad(int argc, char** argv);
@@ -64,6 +69,11 @@ private:
     static int cmdPadBank(int argc, char** argv);
     static int cmdSceneSave(int argc, char** argv);
     static int cmdSceneLoad(int argc, char** argv);
+    static int cmdPageNext(int argc, char** argv);
+    static int cmdPagePrev(int argc, char** argv);
+    static int cmdPageSet(int argc, char** argv);
+    static int cmdPatchNext(int argc, char** argv);
+    static int cmdPatchPrev(int argc, char** argv);
     static int cmdSysSave(int argc, char** argv);
     static int cmdSysLoad(int argc, char** argv);
     static int cmdHelp(int argc, char** argv);
@@ -76,7 +86,8 @@ private:
     static StorageManager* s_storage_manager;
     static NvsStorage*     s_nvs_storage;
     static MidiLearn*      s_midi_learn;
-    static PadManager*     s_pad_manager;
+    static PadManager*         s_pad_manager;
+    static ControllerProfile*   s_active_profile_ptr;
 
     // Task for console REPL
     static void consoleTask(void* arg);

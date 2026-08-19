@@ -24,6 +24,14 @@ public:
     void setFilter(uint8_t osc_id, float cutoff_hz, float resonance);
     void setOscillatorWaveform(uint8_t osc_id, uint8_t wave_type);
     void setEnvelope(uint8_t osc_id, float attack_ms, float decay_ms, float sustain_level, float release_ms);
+    void loadPreset(uint8_t osc_id, uint16_t preset_id);
+    void sendAmyMessage(const char* message);
+
+    // FM Synthesis Controls
+    void setFmModIndex(uint8_t osc_id, float mod_index);
+    void setFmFeedback(uint8_t osc_id, float feedback);
+    void setFmRatio(uint8_t osc_id, float ratio);
+    void setFmAlgorithm(uint8_t osc_id, uint8_t algo_id);
 
     // Built-in AMY Effects Controls
     void setChorus(float depth, float rate, float level);

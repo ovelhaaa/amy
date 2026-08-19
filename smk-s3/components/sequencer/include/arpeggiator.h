@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 #include <array>
+#include <algorithm>
 #include "event_bus.h"
 
 namespace smk {
@@ -11,7 +12,8 @@ enum class ArpMode : uint8_t {
     Down     = 1,
     UpDown   = 2,
     Random   = 3,
-    AsPlayed = 4
+    AsPlayed = 4,
+    Chord    = 5
 };
 
 enum class ArpDivision : uint8_t {
@@ -52,6 +54,9 @@ public:
     void setGatePercent(float gate) { gate_percent_ = gate; }
     float gatePercent() const { return gate_percent_; }
 
+    void setSwing(float swing_pct) { swing_percent_ = std::clamp(swing_pct, 0.0f, 75.0f); }
+    float swing() const { return swing_percent_; }
+
     void setLatch(bool enable);
     bool latch() const { return latch_; }
 
@@ -66,6 +71,7 @@ private:
     ArpDivision             division_ = ArpDivision::Div1_16;
     uint8_t                 octaves_ = 1;
     float                   gate_percent_ = 50.0f;
+    float                   swing_percent_ = 0.0f;
     bool                    latch_ = false;
 
     std::vector<HeldNote>   held_notes_;

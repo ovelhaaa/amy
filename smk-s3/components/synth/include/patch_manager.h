@@ -23,6 +23,8 @@ public:
 
     bool selectPatch(uint8_t patch_id);
     bool selectPatchByIndex(size_t index);
+    void nextPatch();
+    void previousPatch();
 
     KnobBank activeKnobBank() const { return active_bank_; }
     void nextKnobBank();

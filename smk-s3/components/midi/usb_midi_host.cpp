@@ -151,6 +151,15 @@ void UsbMidiHost::handleDeviceConnection(uint8_t dev_addr) {
             device_connected_ = true;
             reconnect_count_.fetch_add(1, std::memory_order_relaxed);
             startMidiIn();
+
+            SynthEvent connect_evt;
+            connect_evt.type = EventType::UsbConnect;
+            connect_evt.source = EventSource::UsbMidi;
+            connect_evt.channel = 0;
+            connect_evt.id = device_vid_;
+            connect_evt.value = device_pid_;
+            connect_evt.timestamp_us = (uint32_t)esp_timer_get_time();
+            event_bus_.send(connect_evt);
         } else {
             ESP_LOGE(TAG, "Failed to claim MIDI interface");
             usb_host_device_close(client_handle_, device_handle_);
@@ -255,6 +264,15 @@ void UsbMidiHost::handleDeviceDisconnection() {
     device_connected_ = false;
     disconnect_count_.fetch_add(1, std::memory_order_relaxed);
     
+    SynthEvent disconnect_evt;
+    disconnect_evt.type = EventType::UsbDisconnect;
+    disconnect_evt.source = EventSource::UsbMidi;
+    disconnect_evt.channel = 0;
+    disconnect_evt.id = device_vid_;
+    disconnect_evt.value = device_pid_;
+    disconnect_evt.timestamp_us = (uint32_t)esp_timer_get_time();
+    event_bus_.send(disconnect_evt);
+
     SynthEvent panic_event;
     panic_event.type = EventType::Panic;
     panic_event.source = EventSource::UsbMidi;

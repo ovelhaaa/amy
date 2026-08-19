@@ -32,8 +32,9 @@ StorageManager* Console::s_storage_manager = nullptr;
 NvsStorage*     Console::s_nvs_storage     = nullptr;
 MidiLearn*      Console::s_midi_learn      = nullptr;
 PadManager*     Console::s_pad_manager     = nullptr;
+ControllerProfile* Console::s_active_profile_ptr = nullptr;
 
-static ControllerProfile s_active_profile = ProfileManager::createDefaultSmk25Profile();
+static ControllerProfile s_fallback_profile = ProfileManager::createDefaultSmk25Profile();
 
 Console::Console() {}
 
@@ -46,6 +47,7 @@ void Console::setStorageManager(StorageManager* storage_mgr) { s_storage_manager
 void Console::setNvsStorage(NvsStorage* nvs_storage) { s_nvs_storage = nvs_storage; }
 void Console::setMidiLearn(MidiLearn* midi_learn) { s_midi_learn = midi_learn; }
 void Console::setPadManager(PadManager* pad_mgr) { s_pad_manager = pad_mgr; }
+void Console::setActiveProfilePointer(ControllerProfile* prof_ptr) { s_active_profile_ptr = prof_ptr; }
 
 bool Console::begin() {
     uart_config_t uart_config = {
@@ -84,10 +86,13 @@ bool Console::begin() {
     registerCommand("macro_set", "Set macro value <id 0..7> <val 0..127>", cmdMacroSet);
     registerCommand("bpm_set", "Set global BPM <30..300>", cmdBpmSet);
     registerCommand("arp_enable", "Enable/disable arpeggiator <0|1>", cmdArpEnable);
-    registerCommand("arp_mode", "Set arpeggiator mode <up|down|updown|random>", cmdArpMode);
+    registerCommand("arp_mode", "Set arpeggiator mode <up|down|updown|random|asplayed|chord>", cmdArpMode);
+    registerCommand("arp_swing", "Set arpeggiator swing percent <0..75>", cmdArpSwing);
     registerCommand("seq_step", "Set sequencer step <step 0..15> <note> <vel> <active>", cmdSeqStep);
     registerCommand("seq_play", "Start step sequencer", cmdSeqPlay);
     registerCommand("seq_stop", "Start step sequencer", cmdSeqStop);
+    registerCommand("seq_pattern", "Select sequencer pattern slot <0..7>", cmdSeqPattern);
+    registerCommand("seq_swing", "Set sequencer swing percent <0..75>", cmdSeqSwing);
     registerCommand("storage_info", "Show SPIFFS Flash storage status", cmdStorageInfo);
     registerCommand("patch_save", "Save active patch to Flash slot <slot 0..127>", cmdPatchSave);
     registerCommand("patch_load", "Load patch from Flash slot <slot 0..127>", cmdPatchLoad);
@@ -100,6 +105,11 @@ bool Console::begin() {
     registerCommand("pad_bank", "Switch pad bank <a|b|c|d>", cmdPadBank);
     registerCommand("scene_save", "Save live scene <name>", cmdSceneSave);
     registerCommand("scene_load", "Load live scene <name>", cmdSceneLoad);
+    registerCommand("page_next", "Switch to next UI display page", cmdPageNext);
+    registerCommand("page_prev", "Switch to previous UI display page", cmdPagePrev);
+    registerCommand("page_set", "Set UI display page <0..4>", cmdPageSet);
+    registerCommand("patch_next", "Switch to next patch", cmdPatchNext);
+    registerCommand("patch_prev", "Switch to previous patch", cmdPatchPrev);
     registerCommand("sys_save", "Save current system state to NVS", cmdSysSave);
     registerCommand("sys_load", "Load system state from NVS", cmdSysLoad);
     registerCommand("help", "List available commands", cmdHelp);
@@ -232,7 +242,18 @@ int Console::cmdArpMode(int argc, char** argv) {
     else if (strcmp(argv[1], "down") == 0) s_arpeggiator->setMode(ArpMode::Down);
     else if (strcmp(argv[1], "updown") == 0) s_arpeggiator->setMode(ArpMode::UpDown);
     else if (strcmp(argv[1], "random") == 0) s_arpeggiator->setMode(ArpMode::Random);
+    else if (strcmp(argv[1], "asplayed") == 0) s_arpeggiator->setMode(ArpMode::AsPlayed);
+    else if (strcmp(argv[1], "chord") == 0) s_arpeggiator->setMode(ArpMode::Chord);
     ESP_LOGI(TAG, "Arp Mode set to %s", argv[1]);
+    return 0;
+}
+
+int Console::cmdArpSwing(int argc, char** argv) {
+    if (!s_arpeggiator) return 1;
+    if (argc < 2) return 1;
+    float swing = (float)atof(argv[1]);
+    s_arpeggiator->setSwing(swing);
+    ESP_LOGI(TAG, "Arpeggiator Swing set to %.1f%%", s_arpeggiator->swing());
     return 0;
 }
 
@@ -261,6 +282,24 @@ int Console::cmdSeqStop(int argc, char** argv) {
     if (!s_sequencer) return 1;
     s_sequencer->stop();
     ESP_LOGI(TAG, "Sequencer STOP");
+    return 0;
+}
+
+int Console::cmdSeqPattern(int argc, char** argv) {
+    if (!s_sequencer) return 1;
+    if (argc < 2) return 1;
+    uint8_t pat = (uint8_t)atoi(argv[1]);
+    s_sequencer->selectPattern(pat);
+    ESP_LOGI(TAG, "Sequencer Pattern set to #%d", s_sequencer->currentPattern());
+    return 0;
+}
+
+int Console::cmdSeqSwing(int argc, char** argv) {
+    if (!s_sequencer) return 1;
+    if (argc < 2) return 1;
+    float swing = (float)atof(argv[1]);
+    s_sequencer->setSwing(swing);
+    ESP_LOGI(TAG, "Sequencer Swing set to %.1f%%", s_sequencer->swing());
     return 0;
 }
 
@@ -303,7 +342,8 @@ int Console::cmdPatchLoad(int argc, char** argv) {
 int Console::cmdProfileSave(int argc, char** argv) {
     if (!s_storage_manager) return 1;
     const char* profile_name = (argc >= 2) ? argv[1] : "smk25_custom";
-    if (s_storage_manager->saveProfile(profile_name, s_active_profile)) {
+    ControllerProfile& prof = s_active_profile_ptr ? *s_active_profile_ptr : s_fallback_profile;
+    if (s_storage_manager->saveProfile(profile_name, prof)) {
         ESP_LOGI(TAG, "Saved profile [%s] (.s3m) to Flash", profile_name);
     } else {
         ESP_LOGE(TAG, "Failed to save profile [%s]", profile_name);
@@ -316,7 +356,8 @@ int Console::cmdProfileLoad(int argc, char** argv) {
     const char* profile_name = (argc >= 2) ? argv[1] : "smk25_custom";
     ControllerProfile loaded = {};
     if (s_storage_manager->loadProfile(profile_name, loaded)) {
-        s_active_profile = loaded;
+        if (s_active_profile_ptr) *s_active_profile_ptr = loaded;
+        s_fallback_profile = loaded;
         ESP_LOGI(TAG, "Loaded profile [%s] (.s3m) from Flash", profile_name);
     } else {
         ESP_LOGE(TAG, "Failed to load profile [%s]", profile_name);
@@ -325,20 +366,22 @@ int Console::cmdProfileLoad(int argc, char** argv) {
 }
 
 int Console::cmdProfileShow(int argc, char** argv) {
-    ESP_LOGI(TAG, "--- Active Controller Profile: %s ---", s_active_profile.name);
-    ESP_LOGI(TAG, "  Modulation: CC #%d", s_active_profile.modulation.number);
+    ControllerProfile& prof = s_active_profile_ptr ? *s_active_profile_ptr : s_fallback_profile;
+    ESP_LOGI(TAG, "--- Active Controller Profile: %s ---", prof.name);
+    ESP_LOGI(TAG, "  Modulation: CC #%d", prof.modulation.number);
     for (uint8_t i = 0; i < 8; ++i) {
-        ESP_LOGI(TAG, "  Macro #%d: CC #%d", i + 1, s_active_profile.knobs[i].number);
+        ESP_LOGI(TAG, "  Macro #%d: CC #%d", i + 1, prof.knobs[i].number);
     }
     for (uint8_t i = 0; i < 8; ++i) {
-        ESP_LOGI(TAG, "  Pad #%d: Note #%d", i + 1, s_active_profile.pads[i].number);
+        ESP_LOGI(TAG, "  Pad #%d: Note #%d", i + 1, prof.pads[i].number);
     }
     return 0;
 }
 
 int Console::cmdLearnStart(int argc, char** argv) {
     if (!s_midi_learn) return 1;
-    s_midi_learn->begin(&s_active_profile);
+    ControllerProfile* prof_ptr = s_active_profile_ptr ? s_active_profile_ptr : &s_fallback_profile;
+    s_midi_learn->begin(prof_ptr);
     s_midi_learn->startWizard();
     ESP_LOGI(TAG, "MIDI Learn Started: %s", s_midi_learn->currentStepName());
     return 0;
@@ -427,6 +470,47 @@ int Console::cmdSceneLoad(int argc, char** argv) {
             s_arpeggiator->setLatch(scene.arp_latch);
         }
         ESP_LOGI(TAG, "Successfully loaded Scene [%s] (.s3s) from Flash", scene_name);
+    }
+    return 0;
+}
+
+int Console::cmdPageNext(int argc, char** argv) {
+    if (s_ui_manager) {
+        s_ui_manager->nextPage();
+        ESP_LOGI(TAG, "UI Page -> Next");
+    }
+    return 0;
+}
+
+int Console::cmdPagePrev(int argc, char** argv) {
+    if (s_ui_manager) {
+        s_ui_manager->previousPage();
+        ESP_LOGI(TAG, "UI Page -> Previous");
+    }
+    return 0;
+}
+
+int Console::cmdPageSet(int argc, char** argv) {
+    if (s_ui_manager && argc >= 2) {
+        uint8_t p = (uint8_t)atoi(argv[1]);
+        s_ui_manager->setPage(p);
+        ESP_LOGI(TAG, "UI Page set to %d", p);
+    }
+    return 0;
+}
+
+int Console::cmdPatchNext(int argc, char** argv) {
+    if (s_patch_manager) {
+        s_patch_manager->nextPatch();
+        ESP_LOGI(TAG, "Patch -> Next [%s]", s_patch_manager->activePatch().name);
+    }
+    return 0;
+}
+
+int Console::cmdPatchPrev(int argc, char** argv) {
+    if (s_patch_manager) {
+        s_patch_manager->previousPatch();
+        ESP_LOGI(TAG, "Patch -> Previous [%s]", s_patch_manager->activePatch().name);
     }
     return 0;
 }

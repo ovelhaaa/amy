@@ -22,6 +22,8 @@ public:
     void setMidiActivity(bool active);
     void setMacroValues(const uint8_t values[8]);
     void setKnobBankLabel(const char* bank_name);
+    void setActiveVoices(uint8_t active_count, uint8_t max_voices = 8);
+    void setCpuLoad(float load_percent);
 
 private:
     uint16_t patch_number_{42};
@@ -32,6 +34,10 @@ private:
     bool midi_active_{false};
     char knob_bank_[16]{"BANK A: MACROS"};
     uint8_t macro_values_[8]{62, 78, 31, 45, 8, 67, 34, 22};
+    uint8_t active_voices_{0};
+    uint8_t max_voices_{8};
+    float cpu_load_{12.5f};
+    uint32_t scope_phase_{0};
     
     BarGauge gauges_[8];
 };

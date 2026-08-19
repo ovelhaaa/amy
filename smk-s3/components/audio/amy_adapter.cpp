@@ -110,6 +110,40 @@ void AmyAdapter::setEnvelope(uint8_t osc_id, float attack_ms, float decay_ms, fl
     amy_play_message(msg);
 }
 
+void AmyAdapter::loadPreset(uint8_t osc_id, uint16_t preset_id) {
+    char msg[32];
+    snprintf(msg, sizeof(msg), "v%dp%d", osc_id, preset_id);
+    amy_play_message(msg);
+}
+
+void AmyAdapter::sendAmyMessage(const char* message) {
+    if (message) amy_play_message((char*)message);
+}
+
+void AmyAdapter::setFmModIndex(uint8_t osc_id, float mod_index) {
+    char msg[32];
+    snprintf(msg, sizeof(msg), "v%dI%.2f", osc_id, mod_index);
+    amy_play_message(msg);
+}
+
+void AmyAdapter::setFmFeedback(uint8_t osc_id, float feedback) {
+    char msg[32];
+    snprintf(msg, sizeof(msg), "v%db%.2f", osc_id, feedback);
+    amy_play_message(msg);
+}
+
+void AmyAdapter::setFmRatio(uint8_t osc_id, float ratio) {
+    char msg[32];
+    snprintf(msg, sizeof(msg), "v%dQ%.2f", osc_id, ratio);
+    amy_play_message(msg);
+}
+
+void AmyAdapter::setFmAlgorithm(uint8_t osc_id, uint8_t algo_id) {
+    char msg[32];
+    snprintf(msg, sizeof(msg), "v%dO%d", osc_id, algo_id);
+    amy_play_message(msg);
+}
+
 void AmyAdapter::setChorus(float depth, float rate, float level) {
     char msg[64];
     snprintf(msg, sizeof(msg), "k0k%.2f,%.2f,%.2f", level, depth, rate);

@@ -21,6 +21,8 @@ enum class EventType : uint8_t {
     ParameterChange,
     PatchChange,
     SceneChange,
+    UsbConnect,
+    UsbDisconnect,
 };
 
 enum class ButtonId : uint8_t {

@@ -72,38 +72,103 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
 
     switch (active_bank_) {
         case KnobBank::BankB_Oscillator:
-            bank_label = "BANK B: OSC";
-            switch (knob_idx) {
-                case 0: // Osc Mix
-                    param_name = "OSC MIX";
-                    break;
-                case 1: // Waveform
-                    param_name = "WAVEFORM";
-                    active_patch_.wave_type = static_cast<uint8_t>(norm_val * 8.0f);
-                    if (amy_adapter_) {
-                        for (uint8_t v = 0; v < active_patch_.voice_count; ++v) {
-                            amy_adapter_->setOscillatorWaveform(v, active_patch_.wave_type);
+            if (active_patch_.wave_type == 8) {
+                bank_label = "BANK B: FM OPERATORS";
+                switch (knob_idx) {
+                    case 0: { // FM Mod Index
+                        param_name = "FM MOD INDEX";
+                        float mod_index = norm_val * 10.0f;
+                        if (amy_adapter_) {
+                            for (uint8_t v = 0; v < active_patch_.voice_count; ++v) {
+                                amy_adapter_->setFmModIndex(v, mod_index);
+                            }
                         }
+                        break;
                     }
-                    break;
-                case 2: // Detune
-                    param_name = "DETUNE";
-                    break;
-                case 3: // Octave
-                    param_name = "OCTAVE";
-                    break;
-                case 4: // Sub Osc Level
-                    param_name = "SUB OSC";
-                    break;
-                case 5: // Noise Level
-                    param_name = "NOISE LEVEL";
-                    break;
-                case 6: // FM Amount
-                    param_name = "FM AMOUNT";
-                    break;
-                case 7: // Osc Mod Depth
-                    param_name = "OSC MOD";
-                    break;
+                    case 1: { // FM Operator Ratio
+                        param_name = "FM OP RATIO";
+                        float ratio = 0.5f + norm_val * 7.5f;
+                        if (amy_adapter_) {
+                            for (uint8_t v = 0; v < active_patch_.voice_count; ++v) {
+                                amy_adapter_->setFmRatio(v, ratio);
+                            }
+                        }
+                        break;
+                    }
+                    case 2: // Detune
+                        param_name = "FM DETUNE";
+                        break;
+                    case 3: // Freq Multiplier
+                        param_name = "FM FREQ MULT";
+                        break;
+                    case 4: // Mod Envelope Decay
+                        param_name = "FM MOD DECAY";
+                        break;
+                    case 5: { // FM Feedback
+                        param_name = "FM FEEDBACK";
+                        float feedback = norm_val * 7.0f;
+                        if (amy_adapter_) {
+                            for (uint8_t v = 0; v < active_patch_.voice_count; ++v) {
+                                amy_adapter_->setFmFeedback(v, feedback);
+                            }
+                        }
+                        break;
+                    }
+                    case 6: { // FM Vibrato
+                        param_name = "FM VIBRATO";
+                        float vibrato = norm_val * 3.0f;
+                        if (amy_adapter_) {
+                            for (uint8_t v = 0; v < active_patch_.voice_count; ++v) {
+                                amy_adapter_->setFmModIndex(v, vibrato);
+                            }
+                        }
+                        break;
+                    }
+                    case 7: { // DX7 Algorithm
+                        param_name = "DX7 ALGO";
+                        uint8_t algo = static_cast<uint8_t>(norm_val * 31.0f);
+                        if (amy_adapter_) {
+                            for (uint8_t v = 0; v < active_patch_.voice_count; ++v) {
+                                amy_adapter_->setFmAlgorithm(v, algo);
+                            }
+                        }
+                        break;
+                    }
+                }
+            } else {
+                bank_label = "BANK B: OSC";
+                switch (knob_idx) {
+                    case 0: // Osc Mix
+                        param_name = "OSC MIX";
+                        break;
+                    case 1: // Waveform
+                        param_name = "WAVEFORM";
+                        active_patch_.wave_type = static_cast<uint8_t>(norm_val * 8.0f);
+                        if (amy_adapter_) {
+                            for (uint8_t v = 0; v < active_patch_.voice_count; ++v) {
+                                amy_adapter_->setOscillatorWaveform(v, active_patch_.wave_type);
+                            }
+                        }
+                        break;
+                    case 2: // Detune
+                        param_name = "DETUNE";
+                        break;
+                    case 3: // Octave
+                        param_name = "OCTAVE";
+                        break;
+                    case 4: // Sub Osc Level
+                        param_name = "SUB OSC";
+                        break;
+                    case 5: // Noise Level
+                        param_name = "NOISE LEVEL";
+                        break;
+                    case 6: // FM Amount
+                        param_name = "FM AMOUNT";
+                        break;
+                    case 7: // Osc Mod Depth
+                        param_name = "OSC MOD";
+                        break;
+                }
             }
             break;
 
@@ -253,6 +318,35 @@ bool PatchManager::selectPatchByIndex(size_t index) {
     return selectPatch(p->id);
 }
 
+void PatchManager::nextPatch() {
+    size_t count = FactoryPatches::count();
+    if (count == 0) return;
+    size_t current_idx = 0;
+    for (size_t i = 0; i < count; ++i) {
+        const SynthPatch* p = FactoryPatches::getPatchByIndex(i);
+        if (p && p->id == active_patch_.id) {
+            current_idx = i;
+            break;
+        }
+    }
+    selectPatchByIndex((current_idx + 1) % count);
+}
+
+void PatchManager::previousPatch() {
+    size_t count = FactoryPatches::count();
+    if (count == 0) return;
+    size_t current_idx = 0;
+    for (size_t i = 0; i < count; ++i) {
+        const SynthPatch* p = FactoryPatches::getPatchByIndex(i);
+        if (p && p->id == active_patch_.id) {
+            current_idx = i;
+            break;
+        }
+    }
+    size_t prev_idx = (current_idx == 0) ? (count - 1) : (current_idx - 1);
+    selectPatchByIndex(prev_idx);
+}
+
 void PatchManager::setMacro(uint8_t macro_idx, float physical_val, bool from_physical_knob) {
     if (macro_idx >= 8) return;
 
@@ -282,11 +376,18 @@ void PatchManager::setMacro(uint8_t macro_idx, float physical_val, bool from_phy
 void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     if (!amy_adapter_) return;
 
-    // Configure voices and parameters in AMY engine
-    for (uint8_t v = 0; v < patch.voice_count; ++v) {
-        amy_adapter_->setOscillatorWaveform(v, patch.wave_type);
-        amy_adapter_->setFilter(v, patch.filter_cutoff, patch.filter_res);
-        amy_adapter_->setEnvelope(v, patch.amp_attack, patch.amp_decay, patch.amp_sustain, patch.amp_release);
+    if (patch.layer_a.engine_patch > 0) {
+        // Load built-in AMY preset (DX7 FM presets 128..255, Juno presets 0..127, PCM presets 256+)
+        for (uint8_t v = 0; v < patch.voice_count; ++v) {
+            amy_adapter_->loadPreset(v, patch.layer_a.engine_patch);
+        }
+    } else {
+        // Configure voices and parameters in AMY engine directly for Subtractive / Custom DSP
+        for (uint8_t v = 0; v < patch.voice_count; ++v) {
+            amy_adapter_->setOscillatorWaveform(v, patch.wave_type);
+            amy_adapter_->setFilter(v, patch.filter_cutoff, patch.filter_res);
+            amy_adapter_->setEnvelope(v, patch.amp_attack, patch.amp_decay, patch.amp_sustain, patch.amp_release);
+        }
     }
 
     // Apply all 8 macros
@@ -335,6 +436,19 @@ void PatchManager::applyMacroToEngine(uint8_t macro_idx, float effective_val) {
                 active_patch_.amp_release = target_val;
                 for (uint8_t v = 0; v < active_patch_.voice_count; ++v) {
                     amy_adapter_->setEnvelope(v, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, target_val);
+                }
+                break;
+            case 5: // FM Mod Index
+                for (uint8_t v = 0; v < active_patch_.voice_count; ++v) {
+                    amy_adapter_->setFmModIndex(v, target_val);
+                }
+                break;
+            case 6: // Reverb / Space Send Level
+                amy_adapter_->setReverb(0.7f, 0.5f, norm_val);
+                break;
+            case 7: // FM Feedback
+                for (uint8_t v = 0; v < active_patch_.voice_count; ++v) {
+                    amy_adapter_->setFmFeedback(v, target_val);
                 }
                 break;
             default:

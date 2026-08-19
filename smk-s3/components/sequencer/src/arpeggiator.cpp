@@ -166,19 +166,37 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
             case ArpMode::Random:
                 current_step_idx_ = rand() % pattern.size();
                 break;
+            case ArpMode::Chord:
+                current_step_idx_ = 0;
+                break;
         }
 
-        // Emit NoteOn
-        SynthEvent on_ev;
-        on_ev.type = EventType::NoteOn;
-        on_ev.source = EventSource::Arpeggiator;
-        on_ev.channel = 0;
-        on_ev.id = current_hn.note;
-        on_ev.value = current_hn.velocity;
-        on_ev.timestamp_us = (uint32_t)esp_timer_get_time();
-        event_bus.send(on_ev);
+        if (mode_ == ArpMode::Chord) {
+            // Emit NoteOn for all notes in pattern simultaneously
+            for (const auto& hn : pattern) {
+                SynthEvent on_ev;
+                on_ev.type = EventType::NoteOn;
+                on_ev.source = EventSource::Arpeggiator;
+                on_ev.channel = 0;
+                on_ev.id = hn.note;
+                on_ev.value = hn.velocity;
+                on_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+                event_bus.send(on_ev);
+            }
+            last_played_note_ = pattern[0].note;
+        } else {
+            // Emit NoteOn for single arpeggiated note
+            SynthEvent on_ev;
+            on_ev.type = EventType::NoteOn;
+            on_ev.source = EventSource::Arpeggiator;
+            on_ev.channel = 0;
+            on_ev.id = current_hn.note;
+            on_ev.value = current_hn.velocity;
+            on_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+            event_bus.send(on_ev);
+            last_played_note_ = current_hn.note;
+        }
 
-        last_played_note_ = current_hn.note;
         uint32_t gate_ticks = static_cast<uint32_t>((ticks_per_step * gate_percent_) / 100.0f);
         if (gate_ticks < 1) gate_ticks = 1;
         note_off_tick_ = tick_count + gate_ticks;

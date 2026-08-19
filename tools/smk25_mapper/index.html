@@ -1,0 +1,2621 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>M-VAVE SMK25 V2 - AMY ESP32-S3 Synth Simulator & MIDI Mapper</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+  <script type="text/javascript" src="../../docs/enable-threads.js"></script>
+  <script type="text/javascript" src="../../docs/amy.js"></script>
+  <style>
+    :root {
+      --bg-dark: #06080d;
+      --panel-bg: #11141e;
+      --panel-card: #161a27;
+      --panel-border: #23293c;
+      --accent-cyan: #00f3ff;
+      --accent-gold: #ffaa00;
+      --accent-red: #ff2a5f;
+      --accent-green: #00ff88;
+      --accent-purple: #b366ff;
+      --text-main: #e2e8f0;
+      --text-muted: #64748b;
+      --key-white: #f8fafc;
+      --key-black: #0f172a;
+      --display-bg: #020705;
+      --display-pixel: #00ffaa;
+      --display-dim: #04291b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px;
+    }
+
+    /* Main Container */
+    .app-container {
+      width: 100%;
+      max-width: 1300px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* Header Bar */
+    header {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 12px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-logo {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--accent-cyan), #0055ff);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 900;
+      font-size: 20px;
+      color: #000;
+      box-shadow: 0 0 16px rgba(0, 243, 255, 0.4);
+    }
+
+    .brand-title h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .brand-title p {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .midi-selector {
+      background: var(--panel-card);
+      border: 1px solid var(--panel-border);
+      color: var(--text-main);
+      padding: 7px 10px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .btn {
+      background: var(--panel-card);
+      border: 1px solid var(--panel-border);
+      color: var(--text-main);
+      padding: 7px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      background: #23283b;
+      border-color: #38415e;
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-cyan), #0077ff);
+      color: #000;
+      border: none;
+      font-weight: 700;
+      box-shadow: 0 4px 14px rgba(0, 243, 255, 0.3);
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #33f6ff, #1a85ff);
+      box-shadow: 0 6px 20px rgba(0, 243, 255, 0.5);
+    }
+
+    .btn-gold {
+      background: linear-gradient(135deg, var(--accent-gold), #e67e00);
+      color: #000;
+      border: none;
+      font-weight: 700;
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, var(--accent-red), #b3003b);
+      color: #fff;
+      border: none;
+      font-weight: 700;
+    }
+
+    .badge-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--panel-border);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+
+    .status-dot.active {
+      background: var(--accent-green);
+      box-shadow: 0 0 8px var(--accent-green);
+    }
+
+    .status-dot.learning {
+      background: var(--accent-gold);
+      animation: pulse 0.8s infinite alternate;
+    }
+
+    @keyframes pulse {
+      from { opacity: 0.4; }
+      to { opacity: 1; }
+    }
+
+    /* Main Grid Layout */
+    .main-layout {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 14px;
+    }
+
+    /* SMK25 Hardware Chassis */
+    .chassis {
+      background: linear-gradient(180deg, #161924 0%, #0e1119 100%);
+      border: 2px solid #242a3e;
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .chassis-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    /* Synth Display Section (Exact 284 x 76 ESP32 Display Simulation) */
+    .display-section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .display-tabs {
+      display: flex;
+      gap: 4px;
+      justify-content: space-between;
+    }
+
+    .tab-btn {
+      background: #141926;
+      border: 1px solid #283044;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.1s ease;
+    }
+
+    .tab-btn:hover {
+      color: #fff;
+      border-color: var(--accent-cyan);
+    }
+
+    .tab-btn.active {
+      background: var(--accent-cyan);
+      color: #000;
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 8px var(--accent-cyan);
+    }
+
+    .display-frame {
+      background: #000000;
+      border: 3px solid #141926;
+      border-radius: 8px;
+      padding: 4px;
+      box-shadow: inset 0 0 16px rgba(0,0,0,0.95), 0 0 12px rgba(0, 255, 170, 0.15);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* 284 x 76 actual aspect ratio canvas */
+    canvas#synthDisplay {
+      width: 568px; /* 284 * 2 */
+      height: 152px; /* 76 * 2 */
+      max-width: 100%;
+      image-rendering: pixelated;
+      border-radius: 2px;
+      background-color: #000000;
+    }
+
+    /* Top Controls Row (Knobs & Pads) */
+    .top-controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .control-group-box {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .box-title {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Encoders / Knobs Grid */
+    .knobs-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .knob-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 8px;
+      transition: background 0.15s ease;
+    }
+
+    .knob-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .knob-item.learning {
+      outline: 2px dashed var(--accent-gold);
+      background: rgba(255, 170, 0, 0.12);
+      animation: pulse 0.8s infinite alternate;
+    }
+
+    .knob-dial {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #30374a, #141720);
+      border: 2px solid #414b66;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.5), inset 0 2px 3px rgba(255,255,255,0.15);
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .knob-indicator {
+      position: absolute;
+      width: 3px;
+      height: 15px;
+      background: var(--accent-cyan);
+      top: 4px;
+      border-radius: 2px;
+      transform-origin: 50% 17px;
+      transform: rotate(-135deg);
+      box-shadow: 0 0 6px var(--accent-cyan);
+      transition: transform 0.05s ease-out;
+    }
+
+    .knob-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--text-main);
+      text-align: center;
+    }
+
+    .knob-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      color: var(--accent-cyan);
+    }
+
+    .mapping-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 8px;
+      background: rgba(0, 243, 255, 0.15);
+      color: var(--accent-cyan);
+      padding: 1px 4px;
+      border-radius: 4px;
+      border: 1px solid rgba(0, 243, 255, 0.3);
+    }
+
+    .internal-badge {
+      font-size: 8px;
+      background: rgba(255, 170, 0, 0.2);
+      color: var(--accent-gold);
+      padding: 1px 4px;
+      border-radius: 3px;
+      border: 1px solid rgba(255, 170, 0, 0.4);
+    }
+
+    /* Pads Grid */
+    .pads-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .pad-item {
+      aspect-ratio: 1;
+      background: linear-gradient(135deg, #222736, #151822);
+      border: 2px solid #343e57;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 6px;
+      cursor: pointer;
+      transition: all 0.1s ease;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+
+    .pad-item:hover {
+      border-color: var(--accent-cyan);
+    }
+
+    .pad-item:active, .pad-item.pressed {
+      background: linear-gradient(135deg, #00f3ff, #0077ff);
+      border-color: #ffffff;
+      box-shadow: 0 0 16px rgba(0, 243, 255, 0.8);
+      transform: scale(0.96);
+    }
+
+    .pad-item.pressed .pad-label, .pad-item.pressed .pad-sub {
+      color: #000;
+    }
+
+    .pad-item.learning {
+      outline: 2px dashed var(--accent-gold);
+      animation: pulse 0.8s infinite alternate;
+    }
+
+    .pad-label {
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .pad-sub {
+      font-size: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-muted);
+    }
+
+    /* Touch Strips & Buttons */
+    .middle-section {
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      gap: 14px;
+    }
+
+    .touch-strips {
+      display: flex;
+      gap: 10px;
+    }
+
+    .strip-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+
+    .strip-container.learning .strip-bar {
+      outline: 2px dashed var(--accent-gold);
+      animation: pulse 0.8s infinite alternate;
+    }
+
+    .strip-bar {
+      width: 34px;
+      height: 125px;
+      background: #0d1017;
+      border: 2px solid #242b3d;
+      border-radius: 6px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.8);
+    }
+
+    .strip-fill {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      height: 50%;
+      background: linear-gradient(0deg, rgba(0, 243, 255, 0.4), var(--accent-cyan));
+      box-shadow: 0 0 10px var(--accent-cyan);
+      transition: height 0.05s ease-out;
+    }
+
+    .strip-center-line {
+      position: absolute;
+      top: 50%;
+      width: 100%;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .strip-title {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+
+    /* Hardware Action Buttons */
+    .action-buttons-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+    }
+
+    .btn-hw {
+      background: linear-gradient(180deg, #222838 0%, #161a25 100%);
+      border: 1px solid #333d54;
+      border-radius: 6px;
+      color: var(--text-main);
+      padding: 8px 2px;
+      font-size: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.1s ease;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+    }
+
+    .btn-hw:hover {
+      border-color: var(--accent-cyan);
+      background: #2a3348;
+    }
+
+    .btn-hw:active, .btn-hw.pressed {
+      background: var(--accent-cyan);
+      color: #000;
+      box-shadow: 0 0 10px var(--accent-cyan);
+    }
+
+    .btn-hw.learning {
+      outline: 2px dashed var(--accent-gold);
+      animation: pulse 0.8s infinite alternate;
+    }
+
+    .btn-led {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #333;
+    }
+
+    .btn-hw.pressed .btn-led, .btn-led.active {
+      background: var(--accent-green);
+      box-shadow: 0 0 6px var(--accent-green);
+    }
+
+    /* Piano Keyboard (25 Keys) */
+    .keyboard-wrapper {
+      background: #090c13;
+      border: 2px solid #1c2230;
+      border-radius: 12px;
+      padding: 12px 10px 10px 10px;
+      position: relative;
+    }
+
+    .keyboard-wrapper.learning {
+      outline: 2px dashed var(--accent-gold);
+      animation: pulse 0.8s infinite alternate;
+    }
+
+    .piano-keys {
+      display: flex;
+      height: 120px;
+      position: relative;
+      width: 100%;
+    }
+
+    .key {
+      cursor: pointer;
+      border-radius: 0 0 4px 4px;
+      transition: background 0.05s ease, transform 0.05s ease;
+      position: relative;
+    }
+
+    .key.white {
+      flex: 1;
+      background: linear-gradient(180deg, #ffffff 0%, #cbd5e1 100%);
+      border: 1px solid #94a3b8;
+      border-top: none;
+      z-index: 1;
+      box-shadow: inset 0 -4px 0 #94a3b8, 0 4px 6px rgba(0,0,0,0.3);
+    }
+
+    .key.white:hover {
+      background: #f1f5f9;
+    }
+
+    .key.white:active, .key.white.active {
+      background: var(--accent-cyan);
+      box-shadow: inset 0 -2px 0 #00b3cc;
+      transform: translateY(2px);
+    }
+
+    .key.black {
+      width: 3.5%;
+      height: 60%;
+      background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+      border: 1px solid #000;
+      z-index: 2;
+      position: absolute;
+      box-shadow: inset 0 -2px 0 #334155, 0 3px 6px rgba(0,0,0,0.6);
+    }
+
+    .key.black:hover {
+      background: #334155;
+    }
+
+    .key.black:active, .key.black.active {
+      background: var(--accent-cyan);
+      box-shadow: inset 0 -1px 0 #00b3cc;
+      transform: translateY(2px);
+    }
+
+    .key-note-label {
+      position: absolute;
+      bottom: 4px;
+      width: 100%;
+      text-align: center;
+      font-size: 8px;
+      font-weight: 700;
+      color: #64748b;
+      pointer-events: none;
+    }
+
+    /* Sidebar Inspector & Terminal */
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .card {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .card-title {
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--panel-border);
+      padding-bottom: 5px;
+    }
+
+    .wizard-card {
+      background: linear-gradient(135deg, rgba(255, 170, 0, 0.15), rgba(255, 42, 95, 0.1));
+      border: 1px solid rgba(255, 170, 0, 0.4);
+    }
+
+    .midi-log-box {
+      background: #05070c;
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      height: 120px;
+      overflow-y: auto;
+      padding: 6px 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .log-line {
+      display: flex;
+      gap: 6px;
+      color: #94a3b8;
+    }
+    .log-line.note-on { color: var(--accent-green); }
+    .log-line.cc { color: var(--accent-cyan); }
+    .log-line.pb { color: var(--accent-gold); }
+    .log-line.cmd { color: var(--accent-purple); }
+
+    /* Serial Console Shell */
+    .terminal-box {
+      background: #020408;
+      border: 1px solid #1e2638;
+      border-radius: 6px;
+      padding: 6px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .terminal-output {
+      height: 100px;
+      overflow-y: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: #a5b4fc;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .terminal-input-row {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      border-top: 1px solid #1e2638;
+      padding-top: 4px;
+    }
+
+    .terminal-prompt {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--accent-cyan);
+      font-weight: 700;
+    }
+
+    .terminal-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #fff;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .form-group label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .form-control {
+      background: var(--panel-card);
+      border: 1px solid var(--panel-border);
+      color: var(--text-main);
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+    }
+
+    .bank-badge-btn {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 9px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      cursor: pointer;
+      background: #1e2538;
+      border: 1px solid #333e5c;
+      color: #94a3b8;
+    }
+
+    .bank-badge-btn.active {
+      background: var(--accent-cyan);
+      color: #000;
+      border-color: var(--accent-cyan);
+    }
+
+    footer {
+      margin-top: 6px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <!-- Header Bar -->
+    <header>
+      <div class="brand">
+        <div class="brand-logo">AMY</div>
+        <div class="brand-title">
+          <h1>SMK25 Synth Simulator & MIDI Mapper</h1>
+          <p>Sintetizador Autônomo AMY ESP32-S3 (WASM / Web Audio Engine)</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="badge-status">
+          <div class="status-dot" id="midiStatusDot"></div>
+          <span id="midiStatusText">Sem Conexão</span>
+        </div>
+
+        <select id="midiInputSelect" class="midi-selector">
+          <option value="">Detectando MIDI...</option>
+        </select>
+
+        <button class="btn btn-gold" id="btnStartWizard">
+          <span>⚡ Wizard Learn</span>
+        </button>
+
+        <button class="btn btn-danger" id="btnPanic">
+          <span>🚨 Panic / Reset</span>
+        </button>
+
+        <button class="btn btn-primary" id="btnExportJson">
+          <span>💾 Salvar JSON</span>
+        </button>
+
+        <button class="btn" id="btnImportJson">
+          <span>📂 Abrir JSON</span>
+        </button>
+        <input type="file" id="jsonFileInput" accept=".json" style="display: none;">
+      </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="main-layout">
+      <!-- SMK25 Hardware Panel Chassis -->
+      <div class="chassis">
+
+        <!-- Header of Chassis (Logo + Widescreen Synth Display + Preset Select) -->
+        <div class="chassis-header">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <span style="font-family: 'Orbitron', sans-serif; font-size: 16px; font-weight: 900; color: #fff; letter-spacing: 2px;">M-VAVE</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent-cyan); font-weight: 700;">SMK25 V2</span>
+            
+            <div style="margin-top: 6px; display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-size: 9px; color: var(--text-muted); font-weight: 700;">FACTORY PATCH (14 EMBEDDED)</span>
+              <select id="patchSelect" class="midi-selector" style="font-size: 11px; width: 170px; padding: 4px;">
+                <!-- 14 Factory Patches loaded dynamically from C++ factory_patches.cpp -->
+              </select>
+            </div>
+          </div>
+
+          <!-- Synth OLED Display Simulation (Exact 284 x 76 ESP32 Firmware Screen) -->
+          <div class="display-section">
+            <div class="display-tabs">
+              <div class="tab-btn active" id="tabHome" onclick="switchOledScreen('Home')">HOME</div>
+              <div class="tab-btn" id="tabSystem" onclick="switchOledScreen('System')">SYSTEM</div>
+              <div class="tab-btn" id="tabMidi" onclick="switchOledScreen('MidiMonitor')">MIDI MON</div>
+              <div class="tab-btn" id="tabSeq" onclick="switchOledScreen('Sequencer')">SEQ</div>
+              <div class="tab-btn" id="tabPads" onclick="switchOledScreen('Pads')">PADS</div>
+            </div>
+            <div class="display-frame">
+              <canvas id="synthDisplay" width="568" height="152"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Middle Controls (Knobs & Pads) -->
+        <div class="top-controls-grid">
+          <!-- Encoders / Knobs (1..8) with 5 Knob Banks -->
+          <div class="control-group-box">
+            <div class="box-title">
+              <span id="knobBankTitle">Encoders (Bank A: Macros)</span>
+              <div style="display: flex; gap: 3px;" id="knobBankButtons">
+                <span class="bank-badge-btn active" onclick="setKnobBankDirect('A')">A</span>
+                <span class="bank-badge-btn" onclick="setKnobBankDirect('B')">B</span>
+                <span class="bank-badge-btn" onclick="setKnobBankDirect('C')">C</span>
+                <span class="bank-badge-btn" onclick="setKnobBankDirect('D')">D</span>
+                <span class="bank-badge-btn" onclick="setKnobBankDirect('E')">E</span>
+              </div>
+            </div>
+            <div class="knobs-grid" id="knobsContainer">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+
+          <!-- Pads (1..8) with 4 Pad Banks (Bank B = Navigation Shortcuts) -->
+          <div class="control-group-box">
+            <div class="box-title">
+              <span id="padBankTitle">Pads (Bank A: Drums)</span>
+              <div style="display: flex; gap: 3px;" id="padBankButtons">
+                <span class="bank-badge-btn active" onclick="setPadBankDirect(0)">A [DRUM]</span>
+                <span class="bank-badge-btn" onclick="setPadBankDirect(1)">B [NAV]</span>
+                <span class="bank-badge-btn" onclick="setPadBankDirect(2)">C [CHORD]</span>
+                <span class="bank-badge-btn" onclick="setPadBankDirect(3)">D [FX]</span>
+              </div>
+            </div>
+            <div class="pads-grid" id="padsContainer">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Strips & Action Buttons -->
+        <div class="middle-section">
+          <!-- Touch Strips -->
+          <div class="touch-strips">
+            <!-- Pitch Strip -->
+            <div class="strip-container" id="stripPitch" data-control="pitch">
+              <div class="strip-title">PITCH</div>
+              <div class="strip-bar">
+                <div class="strip-center-line"></div>
+                <div class="strip-fill" id="pitchFill" style="height: 50%;"></div>
+              </div>
+              <div class="mapping-tag" id="tagPitch">PB</div>
+            </div>
+
+            <!-- Modulation Strip -->
+            <div class="strip-container" id="stripMod" data-control="modulation">
+              <div class="strip-title">MOD</div>
+              <div class="strip-bar">
+                <div class="strip-fill" id="modFill" style="height: 0%;"></div>
+              </div>
+              <div class="mapping-tag" id="tagMod">CC #1</div>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="control-group-box" style="flex:1;">
+            <div class="box-title">Botões de Ação e Navegação no Synth</div>
+            <div class="action-buttons-grid" id="buttonsContainer">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Piano Keyboard (25 Keys) -->
+        <div class="keyboard-wrapper" id="keyboardContainer" data-control="keys">
+          <div class="box-title" style="margin-bottom: 8px;">
+            <span>Teclado Polifônico (25 Teclas C3-C5 AMY DSP)</span>
+            <span style="color: var(--accent-cyan); font-size: 9px;" id="engineModeTag">Engine: AMY Synth</span>
+          </div>
+          <div class="piano-keys" id="pianoKeys">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Sidebar Inspector & Terminal -->
+      <div class="sidebar">
+
+        <!-- Wizard Status Card (when active) -->
+        <div class="card wizard-card" id="wizardCard" style="display: none;">
+          <div class="card-title" style="color: var(--accent-gold);">
+            <span>⚡ Assistente MIDI Learn</span>
+            <button class="btn" style="padding:2px 6px; font-size:9px;" id="btnCancelWizard">Cancelar</button>
+          </div>
+          <div class="wizard-step-info">
+            <div style="font-size: 13px; font-weight: 700; color: var(--accent-gold);" id="wizardStepTitle">Passo 1: Teclas</div>
+            <div style="font-size: 11px; color: var(--text-muted);" id="wizardStepSub">Acione o controle no teclado físico.</div>
+            <button class="btn btn-gold" id="btnWizardNextPrompt" style="display: none; margin-top: 8px; font-size: 11px;">
+              <span>Avançar para Próximo Passo ➔</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Simulated ESP32-S3 Serial Console -->
+        <div class="card">
+          <div class="card-title">
+            <span>Terminal Serial ESP32-S3</span>
+            <span style="font-size: 9px; color: var(--accent-green);">115200 BAUD</span>
+          </div>
+          <div class="terminal-box">
+            <div class="terminal-output" id="terminalOutput">
+              <div>[ESP32-S3] System booted. AMY audio ready.</div>
+              <div>Type 'help' for available console commands.</div>
+            </div>
+            <div class="terminal-input-row">
+              <span class="terminal-prompt">smk&gt;</span>
+              <input type="text" id="terminalInput" class="terminal-input" placeholder="help, status, patch_list, panic...">
+            </div>
+          </div>
+        </div>
+
+        <!-- Inspector Panel -->
+        <div class="card">
+          <div class="card-title">
+            <span>Inspector do Controle</span>
+            <span class="mapping-tag" id="inspectorControlName">Selecione um item</span>
+          </div>
+
+          <div id="inspectorForm">
+            <div class="form-group">
+              <label>Tipo de Mensagem MIDI</label>
+              <select id="editMsgType" class="form-control">
+                <option value="0">0 - Note On / Note Off</option>
+                <option value="1">1 - Control Change (CC)</option>
+                <option value="2">2 - Pitch Bend</option>
+                <option value="3">3 - Program Change</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Canal MIDI (0-15 ou 255 = Qualquer)</label>
+              <input type="number" id="editChannel" class="form-control" min="0" max="255" value="255">
+            </div>
+
+            <div class="form-group">
+              <label>Número do Controle (CC# ou Note#)</label>
+              <input type="number" id="editNumber" class="form-control" min="0" max="127" value="0">
+            </div>
+
+            <div style="display: flex; gap: 6px; margin-top: 6px;">
+              <button class="btn btn-primary" id="btnSaveBinding" style="flex: 1;">Aplicar</button>
+              <button class="btn" id="btnLearnSelected" style="flex: 1;">⚡ Learn</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Monitor -->
+        <div class="card" style="flex: 1;">
+          <div class="card-title">
+            <span>Monitor MIDI em Tempo Real</span>
+            <button class="btn" style="padding:2px 6px; font-size:10px;" id="btnClearLog">Limpar</button>
+          </div>
+
+          <div class="midi-log-box" id="midiLogBox">
+            <div class="log-line">// AMY Synthesizer inicializado. Conecte um teclado ou clique nos controles.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <footer>
+      SMK-S3 Synth Project &bull; AMY Engine Web Integration &bull; 14 Factory Patches &bull; 5 Knob Banks &bull; Pad Shortcuts
+    </footer>
+  </div>
+
+  <!-- JS Logic -->
+  <script>
+    // =========================================================================
+    // 1. DATA MODELS & 14 OFFICIAL FACTORY PATCHES (1:1 with factory_patches.cpp)
+    // =========================================================================
+
+    const TargetAction = {
+      Unmapped: 0, Note: 1, PitchBend: 2, Modulation: 3,
+      Knob1: 4, Knob2: 5, Knob3: 6, Knob4: 7, Knob5: 8, Knob6: 9, Knob7: 10, Knob8: 11,
+      Knob9: 12, Knob10: 13, Knob11: 14, Knob12: 15, Knob13: 16, Knob14: 17, Knob15: 18, Knob16: 19,
+      Pad1: 20, Pad2: 21, Pad3: 22, Pad4: 23, Pad5: 24, Pad6: 25, Pad7: 26, Pad8: 27,
+      Pad9: 28, Pad10: 29, Pad11: 30, Pad12: 31, Pad13: 32, Pad14: 33, Pad15: 34, Pad16: 35,
+      Play: 36, Stop: 37, Rec: 38, Bt: 39
+    };
+
+    let currentProfile = {
+      magic: "0x53334D31",
+      format_version: 1,
+      name: "M-VAVE SMK25 V2 Profile",
+      keys: { msg_type: 0, channel: 255, number: 0, target_action: TargetAction.Note, min_val: 0, max_val: 127, flags: 0 },
+      pitch: { msg_type: 2, channel: 255, number: 0, target_action: TargetAction.PitchBend, min_val: -8192, max_val: 8191, flags: 0 },
+      modulation: { msg_type: 1, channel: 255, number: 1, target_action: TargetAction.Modulation, min_val: 0, max_val: 127, flags: 0 },
+      knobs: [
+        ...Array.from({ length: 8 }, (_, i) => ({ msg_type: 1, channel: 255, number: 1 + i, target_action: TargetAction.Knob1 + i, min_val: 0, max_val: 127, flags: 0 })),
+        ...Array.from({ length: 8 }, (_, i) => ({ msg_type: 1, channel: 255, number: 9 + i, target_action: TargetAction.Knob9 + i, min_val: 0, max_val: 127, flags: 0 }))
+      ],
+      pads: [
+        ...Array.from({ length: 8 }, (_, i) => ({ msg_type: 0, channel: 255, number: 36 + i, target_action: TargetAction.Pad1 + i, min_val: 0, max_val: 127, flags: 0 })),
+        ...Array.from({ length: 8 }, (_, i) => ({ msg_type: 0, channel: 255, number: 44 + i, target_action: TargetAction.Pad9 + i, min_val: 0, max_val: 127, flags: 0 }))
+      ],
+      buttons: [
+        { msg_type: 1, channel: 255, number: 114, target_action: TargetAction.Play, min_val: 0, max_val: 127, flags: 0 },
+        { msg_type: 1, channel: 255, number: 115, target_action: TargetAction.Stop, min_val: 0, max_val: 127, flags: 0 },
+        { msg_type: 1, channel: 255, number: 117, target_action: TargetAction.Rec, min_val: 0, max_val: 127, flags: 0 },
+        { msg_type: 1, channel: 255, number: 118, target_action: TargetAction.Bt, min_val: 0, max_val: 127, flags: 0 }
+      ]
+    };
+
+    // 14 Embedded Factory Patches from factory_patches.cpp
+    const factoryPatches = [
+      { id: 0,   name: "000 DEFAULT SAW",     category: "SYNTH LEAD", wave: 1, type: "subtractive", cutoff: 3200, res: 1.2, atk: 10,  dec: 200,  sus: 0.8,  rel: 150 },
+      { id: 1,   name: "001 WARM PAD",        category: "PAD",        wave: 3, type: "subtractive", cutoff: 1800, res: 0.8, atk: 350, dec: 800,  sus: 0.9,  rel: 1200 },
+      { id: 2,   name: "002 MONO BASS",       category: "BASS",       wave: 4, type: "subtractive", cutoff: 950,  res: 3.5, atk: 2,   dec: 180,  sus: 0.2,  rel: 80 },
+      { id: 42,  name: "042 GLASS HORIZON",   category: "AMBIENT",    wave: 0, type: "additive",    cutoff: 2400, res: 2.1, atk: 120, dec: 600,  sus: 0.7,  rel: 850 },
+      { id: 80,  name: "080 VINTAGE 808",     category: "DRUMS",      wave: 7, type: "pcm",         cutoff: 4000, res: 1.0, atk: 1,   dec: 250,  sus: 0.0,  rel: 100 },
+      { id: 128, name: "128 DX7 BRASS 1",     category: "FM BRASS",   wave: 8, type: "fm",          cutoff: 10000,res: 1.0, atk: 5,   dec: 400,  sus: 0.7,  rel: 250 },
+      { id: 131, name: "131 DX7 STRINGS 1",   category: "FM STRINGS", wave: 8, type: "fm",          cutoff: 8500, res: 0.9, atk: 180, dec: 800,  sus: 0.85, rel: 600 },
+      { id: 135, name: "135 DX7 PIANO 1",     category: "FM PIANO",   wave: 8, type: "fm",          cutoff: 14000,res: 1.0, atk: 1,   dec: 1500, sus: 0.3,  rel: 300 },
+      { id: 138, name: "138 DX7 E.PIANO 1",   category: "FM E.PIANO", wave: 8, type: "fm",          cutoff: 12000,res: 1.0, atk: 1,   dec: 1200, sus: 0.4,  rel: 350 },
+      { id: 142, name: "142 DX7 BASS 1",      category: "FM BASS",    wave: 8, type: "fm",          cutoff: 3500, res: 2.0, atk: 1,   dec: 300,  sus: 0.1,  rel: 150 },
+      { id: 147, name: "147 DX7 CLAV 1",      category: "FM CLAV",    wave: 8, type: "fm",          cutoff: 9000, res: 1.5, atk: 1,   dec: 250,  sus: 0.0,  rel: 120 },
+      { id: 149, name: "149 DX7 MARIMBA",     category: "FM PERC",    wave: 8, type: "fm",          cutoff: 10000,res: 0.8, atk: 1,   dec: 450,  sus: 0.0,  rel: 200 },
+      { id: 151, name: "151 DX7 FLUTE 1",     category: "FM WIND",    wave: 8, type: "fm",          cutoff: 6000, res: 0.8, atk: 45,  dec: 600,  sus: 0.8,  rel: 250 },
+      { id: 153, name: "153 DX7 TUB BELLS",   category: "FM BELL",    wave: 8, type: "fm",          cutoff: 15000,res: 1.2, atk: 1,   dec: 2500, sus: 0.0,  rel: 1200 }
+    ];
+
+    let selectedPatchIndex = 0;
+
+    // Knob Banks (Bank A through Bank E) from patch_manager.cpp
+    const knobBankConfigs = {
+      'A': { name: 'Bank A: Macros',       labels: ['CHAR', 'BRTE', 'MOTN', 'SHAP', 'ATK', 'REL', 'SPCE', 'DRV'], values: [75, 40, 15, 45, 50, 0, 40, 100] },
+      'B': { name: 'Bank B: OSC Param',    labels: ['OSC MIX', 'WAVEFORM', 'DETUNE', 'OCTAVE', 'SUB OSC', 'NOISE', 'FM AMT', 'OSC MOD'], values: [50, 10, 20, 64, 40, 0, 25, 15] },
+      'C': { name: 'Bank C: Filter/Env',   labels: ['CUTOFF', 'RESONANCE', 'ENV AMT', 'AMP ATK', 'AMP DEC', 'AMP SUS', 'AMP REL', 'KEY TRK'], values: [80, 40, 60, 10, 50, 80, 30, 50] },
+      'D': { name: 'Bank D: Effects',      labels: ['CHORUS', 'DLY TIME', 'DLY FB', 'DLY MIX', 'RVB SIZE', 'RVB MIX', 'DRIVE', 'TONE'], values: [20, 40, 50, 30, 60, 40, 25, 64] },
+      'E': { name: 'Bank E: SEQ/ARP',      labels: ['GLOBAL BPM', 'SWING', 'GATE', 'PROB', 'RATCHET', 'LENGTH', 'TRANSPOSE', 'PATTERN'], values: [64, 50, 64, 100, 0, 16, 64, 1] }
+    };
+    let currentKnobBankKey = 'A';
+
+    // Pad Banks from pad_bank.cpp and app_main.cpp
+    const padBankNames = ['BANK A: DRUMS', 'BANK B: NAV SHORTCUTS', 'BANK C: CHORDS', 'BANK D: PERF FX'];
+    const padBankConfigs = [
+      // Bank A: Drums (PCM / 808 kit)
+      [
+        { name: 'KICK', note: 36, is_fx: false },
+        { name: 'RIMS', note: 37, is_fx: false },
+        { name: 'SNARE', note: 38, is_fx: false },
+        { name: 'CLAP', note: 39, is_fx: false },
+        { name: 'E-SNARE', note: 40, is_fx: false },
+        { name: 'LOW-TOM', note: 41, is_fx: false },
+        { name: 'CLOSED-HH', note: 42, is_fx: false },
+        { name: 'HIGH-TOM', note: 43, is_fx: false }
+      ],
+      // Bank B: Navigation Shortcuts (Matching app_main.cpp!)
+      [
+        { name: 'PREV PATCH', action: 'prev_patch', is_fx: false },
+        { name: 'NEXT PATCH', action: 'next_patch', is_fx: false },
+        { name: 'PREV SCENE', action: 'prev_scene', is_fx: false },
+        { name: 'NEXT SCENE', action: 'next_scene', is_fx: false },
+        { name: 'PREV PAGE',  action: 'prev_page',  is_fx: false },
+        { name: 'NEXT PAGE',  action: 'next_page',  is_fx: false },
+        { name: 'SAVE PATCH', action: 'save_patch', is_fx: false },
+        { name: 'SAVE SCENE', action: 'save_scene', is_fx: false }
+      ],
+      // Bank C: Chords (Multi-note chord triggers)
+      [
+        { name: 'C MAJ',  notes: [60, 64, 67], is_fx: false },
+        { name: 'A MIN',  notes: [57, 60, 64], is_fx: false },
+        { name: 'F MAJ7', notes: [53, 57, 60, 64], is_fx: false },
+        { name: 'G 7TH',  notes: [55, 59, 62, 65], is_fx: false },
+        { name: 'D MIN',  notes: [62, 65, 69], is_fx: false },
+        { name: 'E MIN7', notes: [52, 55, 59, 62], is_fx: false },
+        { name: 'C SUS4', notes: [60, 65, 67], is_fx: false },
+        { name: 'B DIM',  notes: [59, 62, 65], is_fx: false }
+      ],
+      // Bank D: Performance FX
+      [
+        { name: 'STUTTER 16', is_fx: true },
+        { name: 'STUTTER 32', is_fx: true },
+        { name: 'LPF SWEEP',  is_fx: true },
+        { name: 'HPF SWEEP',  is_fx: true },
+        { name: 'PITCH DROP', is_fx: true },
+        { name: 'REVERB WASH',is_fx: true },
+        { name: 'DELAY ROLL', is_fx: true },
+        { name: 'MUTE CUT',   is_fx: true }
+      ]
+    ];
+    let currentPadBankIndex = 0;
+
+    // Hardware Buttons Definition
+    const buttonDefs = [
+      { id: 'octDown', label: 'OCT -', index: 0, isInternal: true },
+      { id: 'octUp',   label: 'OCT +', index: 1, isInternal: true },
+      { id: 'play',    label: 'PLAY',  index: 2, isInternal: false },
+      { id: 'stop',    label: 'STOP',  index: 3, isInternal: false },
+      { id: 'rec',     label: 'REC',   index: 4, isInternal: false },
+      { id: 'bt',      label: 'BT',    index: 5, isInternal: false },
+      { id: 'arp',     label: 'ARP',   index: 6, isInternal: true },
+      { id: 'scCh',    label: 'SC/CH', index: 7, isInternal: true },
+      { id: 'knobB',   label: 'KNOB B',index: 8, isInternal: true },
+      { id: 'padB',    label: 'PAD B', index: 9, isInternal: true }
+    ];
+
+    let selectedTarget = null;
+    let isWizardActive = false;
+    let wizardStepIndex = 0;
+
+    // Wizard Steps with prompts
+    const wizardSteps = [
+      { category: 'keys', index: 0, name: 'Pressione qualquer TECLA' },
+      { category: 'pitch', index: 0, name: 'Mova o Pitch Bend (Touch Strip)' },
+      { category: 'modulation', index: 0, name: 'Mova a Modulação (Touch Strip)' },
+      ...Array.from({length: 8}, (_, i) => ({ category: 'knobs', index: i, name: `Gire o Knob ${i+1} no MODO A` })),
+      { category: 'prompt', index: 0, name: '📢 Pressione o botão KNOB-B no SMK25 para alternar para o Modo B!' },
+      ...Array.from({length: 8}, (_, i) => ({ category: 'knobs', index: 8 + i, name: `Gire o Knob ${i+1} no MODO B` })),
+      ...Array.from({length: 8}, (_, i) => ({ category: 'pads', index: i, name: `Pressione o Pad ${i+1} no MODO A` })),
+      { category: 'prompt', index: 1, name: '📢 Pressione o botão PAD-B no SMK25 para alternar para o Modo B!' },
+      ...Array.from({length: 8}, (_, i) => ({ category: 'pads', index: 8 + i, name: `Pressione o Pad ${i+1} no MODO B` })),
+      { category: 'buttons', index: 0, name: 'Pressione o botão PLAY (Transport CC)' },
+      { category: 'buttons', index: 1, name: 'Pressione o botão STOP (Transport CC)' },
+      { category: 'buttons', index: 2, name: 'Pressione o botão REC (Transport CC)' },
+      { category: 'buttons', index: 3, name: 'Pressione o botão BT (Transport CC)' }
+    ];
+
+    // =========================================================================
+    // 2. DOM INITIALIZATION & UI RENDERING
+    // =========================================================================
+
+    document.addEventListener('DOMContentLoaded', () => {
+      initPatchDropdown();
+      renderKnobs();
+      renderPads();
+      renderButtons();
+      renderKeyboard();
+      setupEventListeners();
+      initWebMidi();
+      initAmyAndAudioEngine();
+      initDisplayEngine();
+      updateMappingTags();
+      initTerminal();
+    });
+
+    function initPatchDropdown() {
+      const select = document.getElementById('patchSelect');
+      select.innerHTML = '';
+      factoryPatches.forEach((p, idx) => {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.innerText = `${p.name} [${p.category}]`;
+        select.appendChild(opt);
+      });
+      select.selectedIndex = 0;
+    }
+
+    function setKnobBankDirect(key) {
+      if (!knobBankConfigs[key]) return;
+      currentKnobBankKey = key;
+      document.querySelectorAll('#knobBankButtons .bank-badge-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.innerText === key);
+      });
+      renderKnobs();
+      triggerDisplayPopup(`KNOB BANK ${key}`, knobBankConfigs[key].name);
+      logTerminal(`Switched Knob Bank to ${knobBankConfigs[key].name}`);
+    }
+
+    function setPadBankDirect(index) {
+      currentPadBankIndex = index % padBankConfigs.length;
+      document.querySelectorAll('#padBankButtons .bank-badge-btn').forEach((btn, i) => {
+        btn.classList.toggle('active', i === currentPadBankIndex);
+      });
+      renderPads();
+      triggerDisplayPopup(`PAD BANK`, padBankNames[currentPadBankIndex]);
+      logTerminal(`Switched Pad Bank to ${padBankNames[currentPadBankIndex]}`);
+    }
+
+    function renderKnobs() {
+      const container = document.getElementById('knobsContainer');
+      container.innerHTML = '';
+      const bank = knobBankConfigs[currentKnobBankKey];
+      document.getElementById('knobBankTitle').innerText = `Encoders (${bank.name})`;
+
+      const offset = (currentKnobBankKey === 'A') ? 0 : 8;
+
+      for (let i = 0; i < 8; i++) {
+        const profileIdx = offset + i;
+        const val = bank.values[i];
+        const angle = -135 + (val / 127) * 270;
+        const knob = document.createElement('div');
+        knob.className = 'knob-item';
+        knob.id = `knobItem_${profileIdx}`;
+        knob.dataset.category = 'knobs';
+        knob.dataset.index = profileIdx;
+        knob.innerHTML = `
+          <div class="knob-dial">
+            <div class="knob-indicator" id="knobInd_${i}" style="transform: rotate(${angle}deg);"></div>
+          </div>
+          <span class="knob-label">K${i+1} ${bank.labels[i]}</span>
+          <span class="knob-value" id="knobVal_${i}">${val}</span>
+          <span class="mapping-tag" id="tagKnob_${profileIdx}">CC #${currentProfile.knobs[profileIdx].number}</span>
+        `;
+        knob.addEventListener('click', () => selectTarget('knobs', profileIdx));
+        setupKnobDragging(knob, i);
+        container.appendChild(knob);
+      }
+    }
+
+    function renderPads() {
+      const container = document.getElementById('padsContainer');
+      container.innerHTML = '';
+      const currentList = padBankConfigs[currentPadBankIndex];
+      document.getElementById('padBankTitle').innerText = `Pads (${padBankNames[currentPadBankIndex]})`;
+
+      const offset = (currentPadBankIndex === 1 || currentPadBankIndex === 3) ? 8 : 0;
+
+      for (let i = 0; i < 8; i++) {
+        const profileIdx = offset + i;
+        const padDef = currentList[i];
+        const pad = document.createElement('div');
+        pad.className = 'pad-item';
+        pad.id = `padItem_${profileIdx}`;
+        pad.dataset.category = 'pads';
+        pad.dataset.index = profileIdx;
+
+        let subText = `Note #${currentProfile.pads[profileIdx].number}`;
+        if (currentPadBankIndex === 1) subText = `NAV #${i+1}`;
+        if (currentPadBankIndex === 3) subText = `FX #${i+1}`;
+
+        pad.innerHTML = `
+          <span class="pad-label">${padDef.name}</span>
+          <span class="pad-sub" id="tagPad_${profileIdx}">${subText}</span>
+        `;
+        pad.addEventListener('mousedown', () => {
+          pad.classList.add('pressed');
+          handlePadInteraction(i, 127);
+          triggerOledPadHit(i, 127);
+          selectTarget('pads', profileIdx);
+        });
+        pad.addEventListener('mouseup', () => pad.classList.remove('pressed'));
+        container.appendChild(pad);
+      }
+    }
+
+    function handlePadInteraction(padIdx, velocity = 127) {
+      if (currentPadBankIndex === 0) {
+        // Bank A: Drums
+        triggerPadAudio(padIdx, velocity);
+        triggerDisplayPopup(`Drum Hit: ${padBankConfigs[0][padIdx].name}`, `Vel: ${velocity}`);
+      } else if (currentPadBankIndex === 1) {
+        // Bank B: Navigation Shortcuts (Matching app_main.cpp!)
+        switch (padIdx) {
+          case 0: // Pad 1 (B): Prev Patch
+            changePatchByIndex(-1);
+            break;
+          case 1: // Pad 2 (B): Next Patch
+            changePatchByIndex(1);
+            break;
+          case 2: // Pad 3 (B): Prev Scene
+            triggerDisplayPopup("SCENE PREV", "SCENE 01");
+            logTerminal("[SHORTCUT] Previous Scene");
+            break;
+          case 3: // Pad 4 (B): Next Scene
+            triggerDisplayPopup("SCENE NEXT", "SCENE 02");
+            logTerminal("[SHORTCUT] Next Scene");
+            break;
+          case 4: // Pad 5 (B): Prev UI Page
+            previousOledScreen();
+            break;
+          case 5: // Pad 6 (B): Next UI Page
+            cycleOledScreen();
+            break;
+          case 6: // Pad 7 (B): Quick Save Patch to Flash
+            savePatchToVirtualFlash();
+            break;
+          case 7: // Pad 8 (B): Quick Save Scene to Flash
+            saveSceneToVirtualFlash();
+            break;
+        }
+      } else if (currentPadBankIndex === 2) {
+        // Bank C: Chords
+        const chordNotes = padBankConfigs[2][padIdx].notes || [60, 64, 67];
+        chordNotes.forEach(n => playSynthNote(n, velocity));
+        triggerDisplayPopup(`Chord: ${padBankConfigs[2][padIdx].name}`, `Notes: ${chordNotes.join(',')}`);
+        setTimeout(() => chordNotes.forEach(n => stopSynthNote(n)), 400);
+      } else if (currentPadBankIndex === 3) {
+        // Bank D: Perf FX
+        triggerDisplayPopup(`PERF FX`, padBankConfigs[3][padIdx].name);
+        playClickTone(1100);
+      }
+    }
+
+    function savePatchToVirtualFlash() {
+      const p = factoryPatches[selectedPatchIndex];
+      localStorage.setItem(`smk_patch_${p.id}`, JSON.stringify(p));
+      triggerParameterOverlay("PATCH SAVED", "SPIFFS", p.id, 0.0, p.name, "Captured");
+      logTerminal(`[FLASH] Quick Saved Patch #${p.id} [${p.name}] to SPIFFS`);
+    }
+
+    function saveSceneToVirtualFlash() {
+      const sc = { name: "quick_scene", patch_id: factoryPatches[selectedPatchIndex].id, bpm: seqBpm };
+      localStorage.setItem("smk_scene_quick", JSON.stringify(sc));
+      triggerParameterOverlay("SCENE SAVED", "SPIFFS", 1.0, 0.0, "quick_scene", "Captured");
+      logTerminal(`[FLASH] Quick Saved Scene [quick_scene] (BPM: ${seqBpm}) to SPIFFS`);
+    }
+
+    function renderButtons() {
+      const container = document.getElementById('buttonsContainer');
+      container.innerHTML = '';
+      buttonDefs.forEach((b) => {
+        const btn = document.createElement('div');
+        btn.className = 'btn-hw';
+        btn.id = `btnHw_${b.id}`;
+        btn.dataset.category = 'buttons';
+        btn.dataset.index = b.index;
+        
+        let tagHtml = '';
+        if (b.isInternal) {
+          tagHtml = `<span class="internal-badge">INTERNO</span>`;
+        } else {
+          const transIdx = b.index === 2 ? 0 : b.index === 3 ? 1 : b.index === 4 ? 2 : 3;
+          tagHtml = `<span class="mapping-tag" id="tagBtn_${transIdx}">CC #${currentProfile.buttons[transIdx].number}</span>`;
+        }
+
+        btn.innerHTML = `
+          <div class="btn-led"></div>
+          <span>${b.label}</span>
+          ${tagHtml}
+        `;
+        btn.addEventListener('click', () => {
+          btn.classList.toggle('pressed');
+          handleHardwareButtonAction(b.index, btn.classList.contains('pressed'));
+          playClickTone();
+          if (!b.isInternal) {
+            const transIdx = b.index === 2 ? 0 : b.index === 3 ? 1 : b.index === 4 ? 2 : 3;
+            selectTarget('buttons', transIdx);
+          }
+        });
+        container.appendChild(btn);
+      });
+    }
+
+    function handleHardwareButtonAction(btnIndex, isPressed) {
+      if (btnIndex === 0 && isPressed) changePatchByIndex(-1);
+      if (btnIndex === 1 && isPressed) changePatchByIndex(1);
+      
+      if (btnIndex === 2) {
+        if (isPressed) startSequencer();
+        else stopSequencer();
+      }
+      
+      if (btnIndex === 3 && isPressed) stopSequencer();
+
+      if (btnIndex === 4 && isPressed) {
+        seqRec = !seqRec;
+        triggerDisplayPopup(`Sequencer Record`, seqRec ? `[REC ON]` : `[REC OFF]`);
+        logMidi(`[SEQ] Modo de Gravação: ${seqRec ? 'ON' : 'OFF'}`);
+      }
+
+      if (btnIndex === 7 && isPressed) cycleOledScreen();
+      if (btnIndex === 8 && isPressed) toggleKnobBank();
+      if (btnIndex === 9 && isPressed) cyclePadBank();
+    }
+
+    function toggleKnobBank() {
+      const keys = ['A', 'B', 'C', 'D', 'E'];
+      const nextIdx = (keys.indexOf(currentKnobBankKey) + 1) % keys.length;
+      setKnobBankDirect(keys[nextIdx]);
+    }
+
+    function cyclePadBank() {
+      setPadBankDirect((currentPadBankIndex + 1) % padBankConfigs.length);
+    }
+
+    function renderKeyboard() {
+      const container = document.getElementById('pianoKeys');
+      container.innerHTML = '';
+      const notes = [
+        { note: 60, name: 'C3', black: false },
+        { note: 61, name: 'C#3', black: true, pos: 2.8 },
+        { note: 62, name: 'D3', black: false },
+        { note: 63, name: 'D#3', black: true, pos: 9.8 },
+        { note: 64, name: 'E3', black: false },
+        { note: 65, name: 'F3', black: false },
+        { note: 66, name: 'F#3', black: true, pos: 23.8 },
+        { note: 67, name: 'G3', black: false },
+        { note: 68, name: 'G#3', black: true, pos: 30.8 },
+        { note: 69, name: 'A3', black: false },
+        { note: 70, name: 'A#3', black: true, pos: 37.8 },
+        { note: 71, name: 'B3', black: false },
+        { note: 72, name: 'C4', black: false },
+        { note: 73, name: 'C#4', black: true, pos: 51.8 },
+        { note: 74, name: 'D4', black: false },
+        { note: 75, name: 'D#4', black: true, pos: 58.8 },
+        { note: 76, name: 'E4', black: false },
+        { note: 77, name: 'F4', black: false },
+        { note: 78, name: 'F#4', black: true, pos: 72.8 },
+        { note: 79, name: 'G4', black: false },
+        { note: 80, name: 'G#4', black: true, pos: 79.8 },
+        { note: 81, name: 'A4', black: false },
+        { note: 82, name: 'A#4', black: true, pos: 86.8 },
+        { note: 83, name: 'B4', black: false },
+        { note: 84, name: 'C5', black: false }
+      ];
+
+      notes.forEach((n) => {
+        const key = document.createElement('div');
+        key.className = `key ${n.black ? 'black' : 'white'}`;
+        key.dataset.note = n.note;
+        if (n.black) key.style.left = `${n.pos}%`;
+        key.innerHTML = `<span class="key-note-label">${n.name}</span>`;
+
+        key.addEventListener('mousedown', () => {
+          key.classList.add('active');
+          playSynthNote(n.note, 127);
+          triggerDisplayPopup(`Note On: ${n.name}`, `AMY Note #${n.note}`);
+
+          if (seqRec) {
+            seqStepMask ^= (1 << seqCurrentStep);
+            logMidi(`[SEQ REC] Passo ${seqCurrentStep+1} gravado com Nota #${n.note}`);
+          }
+          selectTarget('keys', 0);
+        });
+        key.addEventListener('mouseup', () => {
+          key.classList.remove('active');
+          stopSynthNote(n.note);
+        });
+        container.appendChild(key);
+      });
+    }
+
+    function setupKnobDragging(element, index) {
+      let startY = 0;
+      let startVal = 0;
+      const onMouseMove = (e) => {
+        const delta = startY - e.clientY;
+        const bank = knobBankConfigs[currentKnobBankKey];
+        let newVal = Math.min(127, Math.max(0, startVal + delta));
+        bank.values[index] = newVal;
+        updateKnobVisual(index, newVal);
+        updateAmyAudioParameter(index, newVal);
+        triggerParameterOverlay(bank.labels[index], currentKnobBankKey, newVal, 64, "%", "Captured");
+      };
+      const onMouseUp = () => {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+      };
+      element.addEventListener('mousedown', (e) => {
+        startY = e.clientY;
+        const bank = knobBankConfigs[currentKnobBankKey];
+        startVal = bank.values[index];
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      });
+    }
+
+    function updateKnobVisual(index, value) {
+      const angle = -135 + (value / 127) * 270;
+      const ind = document.getElementById(`knobInd_${index}`);
+      const val = document.getElementById(`knobVal_${index}`);
+      if (ind) ind.style.transform = `rotate(${angle}deg)`;
+      if (val) val.innerText = value;
+    }
+
+    function updateMappingTags() {
+      document.getElementById('tagPitch').innerText = `PitchBend`;
+      document.getElementById('tagMod').innerText = `CC #${currentProfile.modulation.number}`;
+
+      for (let i = 0; i < 16; i++) {
+        const el = document.getElementById(`tagKnob_${i}`);
+        if (el) el.innerText = `CC #${currentProfile.knobs[i].number}`;
+      }
+      for (let i = 0; i < 16; i++) {
+        const el = document.getElementById(`tagPad_${i}`);
+        if (el) el.innerText = `Note #${currentProfile.pads[i].number}`;
+      }
+      for (let i = 0; i < 4; i++) {
+        const el = document.getElementById(`tagBtn_${i}`);
+        if (el) el.innerText = `CC #${currentProfile.buttons[i].number}`;
+      }
+    }
+
+    function selectTarget(category, index = 0) {
+      selectedTarget = { category, index };
+      document.querySelectorAll('.learning').forEach(el => el.classList.remove('learning'));
+      
+      let targetEl = getElementForTarget(category, index);
+      if (targetEl) targetEl.classList.add('learning');
+
+      const binding = getBinding(category, index);
+      if (binding) {
+        document.getElementById('inspectorControlName').innerText = `${category.toUpperCase()} [${index}]`;
+        document.getElementById('editMsgType').value = binding.msg_type;
+        document.getElementById('editChannel').value = binding.channel;
+        document.getElementById('editNumber').value = binding.number;
+      }
+    }
+
+    function getElementForTarget(category, index) {
+      if (category === 'keys') return document.getElementById('keyboardContainer');
+      if (category === 'pitch') return document.getElementById('stripPitch');
+      if (category === 'modulation') return document.getElementById('stripMod');
+      if (category === 'knobs') return document.getElementById(`knobItem_${index}`);
+      if (category === 'pads') return document.getElementById(`padItem_${index}`);
+      if (category === 'buttons') {
+        const transIds = ['play', 'stop', 'rec', 'bt'];
+        return document.getElementById(`btnHw_${transIds[index]}`);
+      }
+      return null;
+    }
+
+    function getBinding(category, index) {
+      if (category === 'keys') return currentProfile.keys;
+      if (category === 'pitch') return currentProfile.pitch;
+      if (category === 'modulation') return currentProfile.modulation;
+      if (category === 'knobs') return currentProfile.knobs[index];
+      if (category === 'pads') return currentProfile.pads[index];
+      if (category === 'buttons') return currentProfile.buttons[index];
+      return null;
+    }
+
+    function setBinding(category, index, newBinding) {
+      if (category === 'keys') currentProfile.keys = { ...currentProfile.keys, ...newBinding };
+      else if (category === 'pitch') currentProfile.pitch = { ...currentProfile.pitch, ...newBinding };
+      else if (category === 'modulation') currentProfile.modulation = { ...currentProfile.modulation, ...newBinding };
+      else if (category === 'knobs') currentProfile.knobs[index] = { ...currentProfile.knobs[index], ...newBinding };
+      else if (category === 'pads') currentProfile.pads[index] = { ...currentProfile.pads[index], ...newBinding };
+      else if (category === 'buttons') currentProfile.buttons[index] = { ...currentProfile.buttons[index], ...newBinding };
+      updateMappingTags();
+    }
+
+    // =========================================================================
+    // 3. AMY SYNTHESIZER ENGINE & ADVANCED DSP (Subtractive, FM, Additive, PCM)
+    // =========================================================================
+
+    let isAmyLoaded = false;
+    let audioCtx = null;
+    let masterGain = null;
+    let filterNode = null;
+    let analyserNode = null;
+    let activeOscillators = {};
+    let activeVoiceCount = 0;
+
+    function initAmyAndAudioEngine() {
+      if (typeof amy_js_start === 'function') {
+        try {
+          amy_js_start();
+          isAmyLoaded = true;
+          logMidi('[AMY SYNTH] AMY WebAssembly Engine carregado!');
+          document.getElementById('engineModeTag').innerText = 'Engine: AMY WASM (Multicore)';
+        } catch (e) {
+          initFallbackWebAudio();
+        }
+      } else {
+        initFallbackWebAudio();
+      }
+    }
+
+    function initFallbackWebAudio() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.7;
+
+        filterNode = audioCtx.createBiquadFilter();
+        filterNode.type = 'lowpass';
+        filterNode.frequency.value = 3200;
+        filterNode.Q.value = 2.0;
+
+        analyserNode = audioCtx.createAnalyser();
+        analyserNode.fftSize = 256;
+
+        filterNode.connect(masterGain);
+        masterGain.connect(analyserNode);
+        analyserNode.connect(audioCtx.destination);
+
+        logMidi('[AUDIO] Motor DSP Web Audio ativo (Juno & DX7 FM Engine)');
+        document.getElementById('engineModeTag').innerText = 'Engine: AMY DSP (Web Audio)';
+      } catch (e) {
+        console.warn('Audio Context failed', e);
+      }
+    }
+
+    function ensureAudioContext() {
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playSynthNote(midiNote, velocity = 127) {
+      ensureAudioContext();
+      activeVoiceCount++;
+      addMidiMonitorHistory(0, midiNote, velocity);
+
+      const patch = factoryPatches[selectedPatchIndex];
+
+      if (typeof amy_send === 'function' && isAmyLoaded) {
+        try {
+          amy_send({ synth: 1, patch: patch.id, note: midiNote, vel: velocity / 127.0 });
+          return;
+        } catch(e) {}
+      }
+
+      if (!audioCtx) return;
+      stopSynthNote(midiNote);
+
+      const freq = 440 * Math.pow(2, (midiNote - 69) / 12);
+      const noteGain = audioCtx.createGain();
+      const normAtk = (patch.atk / 1000.0) + 0.01;
+      const vol = (velocity / 127.0) * 0.45;
+
+      noteGain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      noteGain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + normAtk);
+
+      if (patch.type === 'fm') {
+        // FM Synthesis (Carrier + Modulator)
+        const carrier = audioCtx.createOscillator();
+        const modulator = audioCtx.createOscillator();
+        const modGain = audioCtx.createGain();
+
+        carrier.type = 'sine';
+        modulator.type = 'sine';
+        carrier.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        modulator.frequency.setValueAtTime(freq * 2.0, audioCtx.currentTime);
+        modGain.gain.setValueAtTime(freq * 1.5, audioCtx.currentTime);
+
+        modulator.connect(modGain);
+        modGain.connect(carrier.frequency);
+        carrier.connect(noteGain);
+        noteGain.connect(filterNode);
+
+        carrier.start(); modulator.start();
+        activeOscillators[midiNote] = { carrier, modulator, modGain, noteGain };
+      } else {
+        // Subtractive / Additive (Saw, Square, Triangle, Sine)
+        const osc1 = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const subOsc = audioCtx.createOscillator();
+
+        const waveMap = ['sine', 'sawtooth', 'sawtooth', 'triangle', 'square', 'sine', 'sawtooth', 'square', 'sine'];
+        const wave = waveMap[patch.wave] || 'sawtooth';
+        osc1.type = wave;
+        osc2.type = wave;
+        subOsc.type = 'square';
+
+        osc1.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        osc2.frequency.setValueAtTime(freq * 1.003, audioCtx.currentTime);
+        subOsc.frequency.setValueAtTime(freq / 2, audioCtx.currentTime);
+
+        const subGain = audioCtx.createGain();
+        subGain.gain.value = 0.3 * vol;
+
+        osc1.connect(noteGain);
+        osc2.connect(noteGain);
+        subOsc.connect(subGain);
+        subGain.connect(noteGain);
+        noteGain.connect(filterNode);
+
+        osc1.start(); osc2.start(); subOsc.start();
+        activeOscillators[midiNote] = { osc1, osc2, subOsc, noteGain };
+      }
+    }
+
+    function stopSynthNote(midiNote) {
+      if (activeVoiceCount > 0) activeVoiceCount--;
+      addMidiMonitorHistory(0, midiNote, 0);
+
+      if (typeof amy_send === 'function' && isAmyLoaded) {
+        try {
+          amy_send({ synth: 1, note: midiNote, vel: 0 });
+        } catch(e) {}
+      }
+
+      if (!audioCtx || !activeOscillators[midiNote]) return;
+      const voice = activeOscillators[midiNote];
+      const patch = factoryPatches[selectedPatchIndex];
+      const normRel = (patch.rel / 1000.0) + 0.05;
+
+      voice.noteGain.gain.setValueAtTime(voice.noteGain.gain.value, audioCtx.currentTime);
+      voice.noteGain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + normRel);
+      
+      setTimeout(() => {
+        try {
+          if (voice.osc1) { voice.osc1.stop(); voice.osc1.disconnect(); }
+          if (voice.osc2) { voice.osc2.stop(); voice.osc2.disconnect(); }
+          if (voice.subOsc) { voice.subOsc.stop(); voice.subOsc.disconnect(); }
+          if (voice.carrier) { voice.carrier.stop(); voice.carrier.disconnect(); }
+          if (voice.modulator) { voice.modulator.stop(); voice.modulator.disconnect(); }
+        } catch (e) {}
+      }, normRel * 1000);
+
+      delete activeOscillators[midiNote];
+    }
+
+    function triggerPadAudio(padIndex, velocity = 127) {
+      ensureAudioContext();
+      addMidiMonitorHistory(0, 36 + padIndex, velocity);
+
+      if (typeof amy_send === 'function' && isAmyLoaded) {
+        try {
+          amy_send({ osc: 0, wave: 4, preset: padIndex, vel: velocity / 127.0 });
+          return;
+        } catch(e) {}
+      }
+
+      if (!audioCtx) return;
+      const drumFreqs = [50, 160, 280, 450, 220, 140, 350, 750];
+      const freq = drumFreqs[padIndex] || 120;
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = padIndex % 2 === 0 ? 'sine' : 'square';
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(25, audioCtx.currentTime + 0.14);
+
+      gain.gain.setValueAtTime((velocity / 127) * 0.7, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.16);
+
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.16);
+    }
+
+    function updateAmyAudioParameter(macroIndex, value) {
+      if (typeof amy_send === 'function' && isAmyLoaded) {
+        try {
+          if (macroIndex === 0) amy_send({ synth: 1, filter_freq: 50 + (value / 127) * 8000 });
+          if (macroIndex === 1) amy_send({ synth: 1, resonance: (value / 127) * 10 });
+          if (macroIndex === 7) amy_send({ volume: value / 127 });
+        } catch(e) {}
+      }
+
+      if (!audioCtx) return;
+      if (macroIndex === 0) {
+        const cutoffFreq = 60 + Math.pow(value / 127, 2.2) * 14000;
+        filterNode.frequency.setTargetAtTime(cutoffFreq, audioCtx.currentTime, 0.03);
+      } else if (macroIndex === 1) {
+        filterNode.Q.setTargetAtTime(1 + (value / 127) * 16, audioCtx.currentTime, 0.03);
+      } else if (macroIndex === 7) {
+        masterGain.gain.setTargetAtTime((value / 127) * 0.8, audioCtx.currentTime, 0.03);
+      }
+    }
+
+    function changePatchByIndex(delta) {
+      selectedPatchIndex = (selectedPatchIndex + delta + factoryPatches.length) % factoryPatches.length;
+      document.getElementById('patchSelect').selectedIndex = selectedPatchIndex;
+      const p = factoryPatches[selectedPatchIndex];
+      
+      if (filterNode) {
+        filterNode.frequency.setValueAtTime(p.cutoff, audioCtx.currentTime);
+        filterNode.Q.setValueAtTime(p.res, audioCtx.currentTime);
+      }
+
+      if (typeof amy_send === 'function' && isAmyLoaded) {
+        try { amy_send({ synth: 1, patch: p.id, num_voices: 8 }); } catch(e) {}
+      }
+      triggerParameterOverlay("PATCH LOAD", "BANK A", p.id, 0.0, p.name, "Captured");
+      logMidi(`[PATCH] #${p.id} [${p.name}] selecionado.`);
+      logTerminal(`Loaded Patch #${p.id} [${p.name}] (Category: ${p.category})`);
+    }
+
+    function selectPatchById(id) {
+      const idx = factoryPatches.findIndex(p => p.id === id);
+      if (idx >= 0) {
+        selectedPatchIndex = idx;
+        changePatchByIndex(0);
+      }
+    }
+
+    function panicReset() {
+      for (let note in activeOscillators) {
+        stopSynthNote(parseInt(note));
+      }
+      activeOscillators = {};
+      activeVoiceCount = 0;
+
+      if (typeof amy_send === 'function' && isAmyLoaded) {
+        try { amy_send({ vel: 0 }); } catch(e) {}
+      }
+
+      triggerDisplayPopup(`🚨 PANIC RESET`, `ALL NOTES OFF`);
+      logMidi(`[PANIC] Comando All Notes Off executado.`);
+      logTerminal(`[PANIC] All notes silenced and oscillators reset.`);
+    }
+
+    function playClickTone(freq = 700) {
+      ensureAudioContext();
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.04);
+    }
+
+    // =========================================================================
+    // 4. WEB MIDI & MIDI LEARN ENGINE WITH AUTO BANK DETECTION
+    // =========================================================================
+
+    let midiAccess = null;
+
+    function initWebMidi() {
+      const dot = document.getElementById('midiStatusDot');
+      const text = document.getElementById('midiStatusText');
+
+      if (navigator.requestMIDIAccess) {
+        navigator.requestMIDIAccess({ sysex: false }).then(
+          (access) => {
+            midiAccess = access;
+            dot.className = 'status-dot active';
+            text.innerText = 'Web MIDI Pronto';
+            updateMidiDevices();
+            midiAccess.onstatechange = () => updateMidiDevices();
+          },
+          (err) => {
+            dot.className = 'status-dot';
+            text.innerText = 'Sem Acesso MIDI';
+            logMidi(`[ERRO MIDI] ${err.message}`);
+          }
+        );
+      } else {
+        dot.className = 'status-dot';
+        text.innerText = 'Sem Web MIDI';
+      }
+    }
+
+    function updateMidiDevices() {
+      const select = document.getElementById('midiInputSelect');
+      select.innerHTML = '<option value="">-- Selecione o Teclado MIDI --</option>';
+      if (!midiAccess) return;
+
+      const inputs = Array.from(midiAccess.inputs.values());
+      inputs.forEach((input) => {
+        const option = document.createElement('option');
+        option.value = input.id;
+        option.innerText = input.name || `Dispositivo MIDI (${input.id})`;
+        select.appendChild(option);
+        input.onmidimessage = handleIncomingMidi;
+      });
+
+      if (inputs.length > 0) {
+        select.selectedIndex = 1;
+        logMidi(`[MIDI CONECTADO] Dispositivo: ${inputs[0].name}`);
+        logTerminal(`[USB HOST] Device Attached: ${inputs[0].name}`);
+      }
+    }
+
+    function handleIncomingMidi(event) {
+      const [status, data1, data2] = event.data;
+      const msgTypeRaw = status >> 4;
+      const channel = status & 0x0f;
+
+      let msgType = 0;
+      let number = data1;
+      let value = data2;
+
+      if (msgTypeRaw === 9 || msgTypeRaw === 8) {
+        msgType = 0;
+        if (msgTypeRaw === 8) value = 0;
+      } else if (msgTypeRaw === 11) {
+        msgType = 1;
+      } else if (msgTypeRaw === 14) {
+        msgType = 2;
+        value = (data2 << 7) | data1;
+      } else if (msgTypeRaw === 12) {
+        msgType = 3;
+      } else {
+        return;
+      }
+
+      const typeStr = msgType === 0 ? 'NOTE' : msgType === 1 ? 'CC' : msgType === 2 ? 'PITCH' : 'PROG';
+      logMidi(`[IN] Ch:${channel+1} ${typeStr} #${number} Val:${value}`, msgType === 0 ? 'note-on' : msgType === 1 ? 'cc' : 'pb');
+
+      if (selectedTarget || isWizardActive) {
+        const target = isWizardActive ? wizardSteps[wizardStepIndex] : selectedTarget;
+        if (target && target.category !== 'prompt') {
+          setBinding(target.category, target.index, { msg_type: msgType, channel, number });
+          playClickTone(880);
+          logMidi(`[MAPPED] ${target.category.toUpperCase()} [${target.index}] -> Ch:${channel+1} #${number}`);
+          if (isWizardActive) advanceWizard();
+          else selectTarget(target.category, target.index);
+        }
+        return;
+      }
+
+      processMappedMidi(msgType, channel, number, value);
+    }
+
+    function processMappedMidi(msgType, channel, number, value) {
+      if (msgType === 0) {
+        // Auto-detect Pad Bank A vs B matching profile note bindings
+        for (let i = 0; i < 8; i++) {
+          if (currentProfile.pads[i].number === number) {
+            if (currentPadBankIndex !== 0) setPadBankDirect(0);
+            handlePadInteraction(i, value);
+            return;
+          }
+          if (currentProfile.pads[8 + i].number === number) {
+            if (currentPadBankIndex !== 1) setPadBankDirect(1);
+            handlePadInteraction(i, value);
+            return;
+          }
+        }
+
+        // Key Notes
+        if (value > 0) {
+          playSynthNote(number, value);
+          highlightKeyVisual(number, true);
+          triggerDisplayPopup(`Note On: #${number}`, `Vel: ${value}`);
+        } else {
+          stopSynthNote(number);
+          highlightKeyVisual(number, false);
+        }
+        return;
+      }
+
+      if (msgType === 2) {
+        const pitchNorm = (value - 8192) / 8192;
+        document.getElementById('pitchFill').style.height = `${((pitchNorm + 1) / 2) * 100}%`;
+        triggerDisplayPopup(`Pitch Bend`, `${value - 8192}`);
+        return;
+      }
+
+      if (msgType === 1) {
+        if (number === currentProfile.modulation.number) {
+          document.getElementById('modFill').style.height = `${(value / 127) * 100}%`;
+          triggerDisplayPopup(`Modulation`, `${value}`);
+          return;
+        }
+
+        // Auto-detect Knob Bank A (0..7) vs Bank B (8..15)
+        for (let i = 0; i < 8; i++) {
+          if (currentProfile.knobs[i].number === number) {
+            if (currentKnobBankKey !== 'A') setKnobBankDirect('A');
+            knobBankConfigs['A'].values[i] = value;
+            updateKnobVisual(i, value);
+            updateAmyAudioParameter(i, value);
+            triggerParameterOverlay(knobBankConfigs['A'].labels[i], "BANK A", value, 64, "%", "Captured");
+            return;
+          }
+          if (currentProfile.knobs[8 + i].number === number) {
+            if (currentKnobBankKey !== 'B') setKnobBankDirect('B');
+            knobBankConfigs['B'].values[i] = value;
+            updateKnobVisual(i, value);
+            updateAmyAudioParameter(i, value);
+            triggerParameterOverlay(knobBankConfigs['B'].labels[i], "BANK B", value, 64, "%", "Captured");
+            return;
+          }
+        }
+
+        // Transport Buttons
+        const transIds = ['play', 'stop', 'rec', 'bt'];
+        for (let i = 0; i < 4; i++) {
+          if (currentProfile.buttons[i].number === number) {
+            const btnEl = document.getElementById(`btnHw_${transIds[i]}`);
+            if (btnEl) btnEl.classList.toggle('pressed', value > 0);
+            handleHardwareButtonAction(i === 0 ? 2 : i === 1 ? 3 : i === 2 ? 4 : 5, value > 0);
+            return;
+          }
+        }
+      }
+    }
+
+    function highlightKeyVisual(noteNum, active) {
+      const keys = document.querySelectorAll('.key');
+      keys.forEach(k => {
+        if (parseInt(k.dataset.note) === noteNum) {
+          k.classList.toggle('active', active);
+        }
+      });
+    }
+
+    // =========================================================================
+    // 5. WIZARD WORKFLOW WITH HARDWARE BANK PROMPTS
+    // =========================================================================
+
+    function startWizard() {
+      isWizardActive = true;
+      wizardStepIndex = 0;
+      document.getElementById('wizardCard').style.display = 'flex';
+      updateWizardUI();
+    }
+
+    function cancelWizard() {
+      isWizardActive = false;
+      document.getElementById('wizardCard').style.display = 'none';
+      document.getElementById('btnWizardNextPrompt').style.display = 'none';
+      document.querySelectorAll('.learning').forEach(el => el.classList.remove('learning'));
+    }
+
+    function updateWizardUI() {
+      if (wizardStepIndex >= wizardSteps.length) {
+        document.getElementById('wizardStepTitle').innerText = '🎉 Mapeamento Concluído!';
+        document.getElementById('wizardStepSub').innerText = 'Clique em "Salvar JSON" para baixar.';
+        document.getElementById('btnWizardNextPrompt').style.display = 'none';
+        playClickTone(1200);
+        setTimeout(() => cancelWizard(), 2500);
+        return;
+      }
+      const step = wizardSteps[wizardStepIndex];
+      document.getElementById('wizardStepTitle').innerText = `[${wizardStepIndex+1}/${wizardSteps.length}] ${step.name}`;
+
+      if (step.category === 'prompt') {
+        document.getElementById('btnWizardNextPrompt').style.display = 'inline-flex';
+        document.getElementById('wizardStepSub').innerText = 'Pressione o botão no teclado físico SMK25 e clique em Avançar.';
+      } else {
+        document.getElementById('btnWizardNextPrompt').style.display = 'none';
+        document.getElementById('wizardStepSub').innerText = 'Acione o controle no teclado físico.';
+        selectTarget(step.category, step.index);
+      }
+    }
+
+    function advanceWizard() {
+      wizardStepIndex++;
+      updateWizardUI();
+    }
+
+    // =========================================================================
+    // 6. STEP SEQUENCER PLAYBACK ENGINE
+    // =========================================================================
+
+    let seqRunning = false;
+    let seqRec = false;
+    let seqCurrentStep = 0;
+    let seqBpm = 120.0;
+    let seqStepMask = 0b1001100110011001;
+    let seqTimer = null;
+
+    function startSequencer() {
+      if (seqRunning) return;
+      seqRunning = true;
+      switchOledScreen('Sequencer');
+      triggerDisplayPopup(`Sequencer`, `[RUNNING] 120.0 BPM`);
+      logMidi('[SEQ] Sequenciador Iniciado (PLAY)');
+      logTerminal('[SEQ] Started 16-step sequencer (120.0 BPM)');
+      
+      const playBtn = document.getElementById('btnHw_play');
+      if (playBtn) playBtn.classList.add('pressed');
+
+      runSequencerTick();
+    }
+
+    function stopSequencer() {
+      seqRunning = false;
+      if (seqTimer) clearTimeout(seqTimer);
+      seqCurrentStep = 0;
+      triggerDisplayPopup(`Sequencer`, `[STOPPED]`);
+      logMidi('[SEQ] Sequenciador Parado (STOP)');
+      logTerminal('[SEQ] Stopped step sequencer');
+
+      const playBtn = document.getElementById('btnHw_play');
+      if (playBtn) playBtn.classList.remove('pressed');
+    }
+
+    function runSequencerTick() {
+      if (!seqRunning) return;
+
+      const isActive = (seqStepMask & (1 << seqCurrentStep)) !== 0;
+      if (isActive) {
+        const stepNotes = [60, 62, 64, 67, 60, 65, 67, 72];
+        const noteToPlay = stepNotes[seqCurrentStep % stepNotes.length];
+        playSynthNote(noteToPlay, 100);
+        setTimeout(() => stopSynthNote(noteToPlay), 120);
+      }
+
+      seqCurrentStep = (seqCurrentStep + 1) % 16;
+      const stepIntervalMs = (60 / seqBpm / 4) * 1000;
+      seqTimer = setTimeout(runSequencerTick, stepIntervalMs);
+    }
+
+    // =========================================================================
+    // 7. EXACT ESP32-S3 SYNTH OLED DISPLAY ENGINE (284 x 76 Pixels)
+    // =========================================================================
+
+    let currentScreenId = 'Home';
+    let screenOrder = ['Home', 'System', 'MidiMonitor', 'Sequencer', 'Pads'];
+    let overlayActive = false;
+    let overlayTimer = null;
+    let overlayData = { name: '', layer: '', currentVal: 0, savedVal: 0, unit: '%', status: 'Captured' };
+
+    let midiHistory = [];
+    function addMidiMonitorHistory(ch, id, val) {
+      midiHistory.unshift({ ch: ch + 1, type: val > 0 ? 'NOTE ON ' : 'NOTE OFF', id, val, ts: Date.now() % 100000 });
+      if (midiHistory.length > 5) midiHistory.pop();
+    }
+
+    let padHitRecent = { idx: -1, val: 0, ts: 0 };
+    function triggerOledPadHit(idx, val) {
+      padHitRecent = { idx, val, ts: Date.now() };
+    }
+
+    function switchOledScreen(screenId) {
+      currentScreenId = screenId;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      const activeBtn = document.getElementById(`tab${screenId.charAt(0).toUpperCase() + screenId.slice(1)}`);
+      if (activeBtn) activeBtn.classList.add('active');
+    }
+
+    function cycleOledScreen() {
+      const idx = screenOrder.indexOf(currentScreenId);
+      const nextIdx = (idx + 1) % screenOrder.length;
+      switchOledScreen(screenOrder[nextIdx]);
+    }
+
+    function previousOledScreen() {
+      const idx = screenOrder.indexOf(currentScreenId);
+      const prevIdx = (idx - 1 + screenOrder.length) % screenOrder.length;
+      switchOledScreen(screenOrder[prevIdx]);
+    }
+
+    function triggerParameterOverlay(name, layer, currentVal, savedVal, unit, status) {
+      overlayData = { name, layer, currentVal, savedVal, unit, status };
+      overlayActive = true;
+      if (overlayTimer) clearTimeout(overlayTimer);
+      overlayTimer = setTimeout(() => {
+        overlayActive = false;
+      }, 1800);
+    }
+
+    function initDisplayEngine() {
+      const canvas = document.getElementById('synthDisplay');
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+
+      function renderLoop() {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        ctx.scale(2, 2);
+
+        if (overlayActive) {
+          renderParameterOverlay(ctx);
+        } else {
+          switch (currentScreenId) {
+            case 'Home': renderHomeScreen(ctx); break;
+            case 'System': renderSystemScreen(ctx); break;
+            case 'MidiMonitor': renderMidiMonitorScreen(ctx); break;
+            case 'Sequencer': renderSequencerScreen(ctx); break;
+            case 'Pads': renderPadScreen(ctx); break;
+            default: renderHomeScreen(ctx); break;
+          }
+        }
+
+        ctx.restore();
+        requestAnimationFrame(renderLoop);
+      }
+
+      requestAnimationFrame(renderLoop);
+    }
+
+    // --- SCREEN 1: HOME SCREEN ---
+    function renderHomeScreen(ctx) {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      const patch = factoryPatches[selectedPatchIndex];
+      const pNumStr = String(patch.id).padStart(3, '0');
+      const patchStr = `${pNumStr} ${patch.name.slice(4).padEnd(14, ' ')} [POLY] 120.0BPM`;
+      ctx.fillText(patchStr, 2, 10);
+
+      ctx.fillStyle = '#00FF88';
+      ctx.fillRect(245, 3, 5, 5);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText('USB', 252, 10);
+
+      ctx.fillStyle = '#FFAA00';
+      ctx.fillRect(275, 3, 5, 5);
+
+      const bank = knobBankConfigs[currentKnobBankKey];
+      ctx.fillStyle = '#00F3FF';
+      ctx.fillText(`KNOB BANK ${currentKnobBankKey} (${bank.name.toUpperCase()})`, 2, 21);
+
+      ctx.strokeStyle = '#444444';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, 23.5);
+      ctx.lineTo(284, 23.5);
+      ctx.stroke();
+
+      const gaugeXs = [2, 37, 72, 107, 142, 177, 212, 247];
+      for (let i = 0; i < 8; i++) {
+        const x = gaugeXs[i];
+        const val = bank.values[i];
+        const norm = val / 127.0;
+
+        ctx.fillStyle = '#777777';
+        ctx.font = '8px "JetBrains Mono", monospace';
+        ctx.fillText(bank.labels[i].slice(0, 4), x, 32);
+
+        ctx.strokeStyle = '#666666';
+        ctx.strokeRect(x, 35, 32, 38);
+
+        const fillH = Math.round(norm * 36);
+        ctx.fillStyle = '#00FFAA';
+        ctx.fillRect(x + 1, 35 + (36 - fillH), 30, fillH);
+      }
+    }
+
+    // --- SCREEN 2: SYSTEM DIAGNOSTICS ---
+    function renderSystemScreen(ctx) {
+      ctx.fillStyle = '#00F3FF';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillText('SYSTEM DIAGNOSTICS', 2, 10);
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText('FW v0.1.0 (ESP32-S3)', 160, 10);
+
+      ctx.strokeStyle = '#444444';
+      ctx.beginPath(); ctx.moveTo(0, 12.5); ctx.lineTo(284, 12.5); ctx.stroke();
+
+      ctx.fillStyle = '#FFAA00';
+      const vStr = String(activeVoiceCount).padStart(2, '0');
+      ctx.fillText(`CPU: 240MHz | DSP LOAD: 14.2% | VOICES: ${vStr}/12 | UNDERRUNS: 000000`, 2, 24);
+
+      ctx.fillStyle = '#00FF88';
+      ctx.fillText('INT RAM: 284 KB | PSRAM: 7.2 MB | FLASH: 16 MB SPIFFS', 2, 40);
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText('MAX RNDR: 2.1ms | AVG RNDR: 0.8ms | USB HOST: SMK25 V2', 2, 56);
+
+      ctx.strokeStyle = '#444444';
+      ctx.beginPath(); ctx.moveTo(0, 64.5); ctx.lineTo(284, 64.5); ctx.stroke();
+      ctx.fillStyle = '#AAAAAA';
+      ctx.fillText('PRESS SC/CH OR USE PAD SHORTCUTS TO SWITCH', 2, 73);
+    }
+
+    // --- SCREEN 3: MIDI MONITOR ---
+    function renderMidiMonitorScreen(ctx) {
+      ctx.fillStyle = '#00F3FF';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillText('MIDI MONITOR [USB HOST: SMK25 V2]', 2, 10);
+
+      ctx.fillStyle = '#FFAA00';
+      ctx.fillText('[LEARN: OFF]', 210, 10);
+
+      ctx.strokeStyle = '#444444';
+      ctx.beginPath(); ctx.moveTo(0, 12.5); ctx.lineTo(284, 12.5); ctx.stroke();
+
+      let y = 25;
+      if (midiHistory.length === 0) {
+        ctx.fillStyle = '#777777';
+        ctx.fillText('Aguardando mensagens MIDI do teclado...', 2, y);
+      } else {
+        midiHistory.forEach((ev, i) => {
+          ctx.fillStyle = i === 0 ? '#FFFFFF' : '#777777';
+          const chStr = String(ev.ch).padStart(2, '0');
+          const idStr = String(ev.id).padStart(3, '0');
+          const valStr = String(ev.val).padStart(5, '0');
+          const tsStr = String(ev.ts).padStart(8, '0');
+          ctx.fillText(`CH${chStr} | ${ev.type} | ID:${idStr} | VAL:${valStr} | TS:${tsStr}ms`, 2, y);
+          y += 12;
+        });
+      }
+    }
+
+    // --- SCREEN 4: SEQUENCER ---
+    function renderSequencerScreen(ctx) {
+      ctx.fillStyle = '#00F3FF';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      const stateStr = seqRunning ? '[RUNNING]' : '[STOPPED]';
+      const recStr = seqRec ? ' [REC]' : '';
+      ctx.fillText(`SEQ: PATTERN 01 ${stateStr}${recStr} BPM:${seqBpm.toFixed(1)} SWING:50%`, 2, 10);
+
+      ctx.strokeStyle = '#444444';
+      ctx.beginPath(); ctx.moveTo(0, 12.5); ctx.lineTo(284, 12.5); ctx.stroke();
+
+      ctx.fillStyle = '#FFAA00';
+      ctx.fillText('TRACK: SYNTH LEAD', 2, 23);
+
+      const startX = 2;
+      const yNums = 34;
+      const yTrigs = 46;
+      const yCurs = 64;
+
+      for (let s = 0; s < 16; s++) {
+        const x = startX + s * 17 + Math.floor(s / 4) * 4;
+        const stepStr = String(s + 1).padStart(2, '0');
+
+        ctx.fillStyle = '#888888';
+        ctx.font = '8px "JetBrains Mono", monospace';
+        ctx.fillText(stepStr, x, yNums);
+
+        const isActive = (seqStepMask & (1 << s)) !== 0;
+        if (isActive) {
+          ctx.fillStyle = '#00FF88';
+          ctx.fillRect(x + 1, yTrigs, 10, 10);
+        } else {
+          ctx.strokeStyle = '#555555';
+          ctx.strokeRect(x + 1, yTrigs, 10, 10);
+        }
+
+        if (s === seqCurrentStep && seqRunning) {
+          ctx.fillStyle = '#FFAA00';
+          ctx.fillText('^', x + 4, yCurs);
+        }
+      }
+    }
+
+    // --- SCREEN 5: PADS SCREEN ---
+    function renderPadScreen(ctx) {
+      ctx.fillStyle = '#00F3FF';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillText(`PADS: ${padBankNames[currentPadBankIndex]}`, 2, 10);
+
+      ctx.strokeStyle = '#444444';
+      ctx.beginPath(); ctx.moveTo(0, 12.5); ctx.lineTo(284, 12.5); ctx.stroke();
+
+      const currentList = padBankConfigs[currentPadBankIndex];
+      const padW = 66;
+      const padH = 24;
+      const now = Date.now();
+      const isHitRecent = (now - padHitRecent.ts) < 200;
+
+      for (let i = 0; i < 8; i++) {
+        const col = i % 4;
+        const row = Math.floor(i / 4);
+        const x = 2 + col * (padW + 4);
+        const y = 16 + row * (padH + 3);
+
+        const isHit = isHitRecent && (padHitRecent.idx === i);
+
+        if (isHit) {
+          ctx.fillStyle = '#04331b';
+          ctx.fillRect(x, y, padW, padH);
+          ctx.strokeStyle = '#FFAA00';
+        } else {
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(x, y, padW, padH);
+          ctx.strokeStyle = '#555555';
+        }
+        ctx.strokeRect(x, y, padW, padH);
+
+        ctx.fillStyle = isHit ? '#FFAA00' : '#FFFFFF';
+        ctx.font = '8px "JetBrains Mono", monospace';
+        ctx.fillText(currentList[i].name.slice(0, 9), x + 3, y + 15);
+      }
+    }
+
+    // --- TRANSIENT PARAMETER OVERLAY ---
+    function renderParameterOverlay(ctx) {
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(4, 4, 276, 68);
+      ctx.strokeStyle = '#00F3FF';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(4, 4, 276, 68);
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 11px "JetBrains Mono", monospace';
+      ctx.fillText(`${overlayData.name} (${overlayData.layer})`, 10, 18);
+
+      ctx.fillStyle = '#00FF88';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillText(`[${overlayData.status} *]`, 190, 18);
+
+      ctx.fillStyle = '#FFAA00';
+      ctx.fillText(`Saved: ${overlayData.savedVal.toFixed(2)} ${overlayData.unit}   CURRENT: ${overlayData.currentVal.toFixed(2)} ${overlayData.unit}`, 10, 36);
+
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.strokeRect(12, 48, 260, 16);
+      const fillW = Math.round((overlayData.currentVal / 127.0) * 258);
+      ctx.fillStyle = '#00FF88';
+      ctx.fillRect(13, 49, fillW, 14);
+    }
+
+    function triggerDisplayPopup(title, sub) {
+      triggerParameterOverlay(title, "SYSTEM", 100, 64, "%", "Active");
+    }
+
+    // =========================================================================
+    // 8. SIMULATED ESP32 SERIAL CONSOLE TERMINAL
+    // =========================================================================
+
+    function initTerminal() {
+      const input = document.getElementById('terminalInput');
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const cmd = input.value.trim();
+          if (cmd.length > 0) {
+            executeTerminalCommand(cmd);
+            input.value = '';
+          }
+        }
+      });
+    }
+
+    function logTerminal(msg) {
+      const out = document.getElementById('terminalOutput');
+      const div = document.createElement('div');
+      div.innerText = msg;
+      out.appendChild(div);
+      out.scrollTop = out.scrollHeight;
+    }
+
+    function executeTerminalCommand(cmdLine) {
+      logTerminal(`smk> ${cmdLine}`);
+      const parts = cmdLine.split(' ');
+      const cmd = parts[0].toLowerCase();
+      const arg1 = parts[1];
+      const arg2 = parts[2];
+
+      switch (cmd) {
+        case 'help':
+          logTerminal("Commands: status, panic, patch_list, patch_select <id>, patch_next, patch_prev, knob_bank <a|b|c|d|e>, pad_bank <a|b|c|d>, ui_screen <home|system|midi|seq|pads>, bpm_set <bpm>, storage_info, reboot");
+          break;
+        case 'status':
+          logTerminal(`Status: Patch=[${factoryPatches[selectedPatchIndex].name}], BPM=${seqBpm}, Voices=${activeVoiceCount}, Bank=${currentKnobBankKey}`);
+          break;
+        case 'panic':
+          panicReset();
+          break;
+        case 'patch_list':
+          factoryPatches.forEach(p => logTerminal(`[#${p.id}] ${p.name} - ${p.category}`));
+          break;
+        case 'patch_select':
+          if (arg1 !== undefined) {
+            selectPatchById(parseInt(arg1));
+          } else {
+            logTerminal("Usage: patch_select <id>");
+          }
+          break;
+        case 'patch_next':
+          changePatchByIndex(1);
+          break;
+        case 'patch_prev':
+          changePatchByIndex(-1);
+          break;
+        case 'knob_bank':
+          if (arg1) setKnobBankDirect(arg1.toUpperCase());
+          break;
+        case 'pad_bank':
+          if (arg1) {
+            const map = { 'a': 0, 'b': 1, 'c': 2, 'd': 3 };
+            setPadBankDirect(map[arg1.toLowerCase()] || 0);
+          }
+          break;
+        case 'ui_screen':
+          if (arg1) {
+            const map = { 'home': 'Home', 'system': 'System', 'midi': 'MidiMonitor', 'seq': 'Sequencer', 'pads': 'Pads' };
+            if (map[arg1.toLowerCase()]) switchOledScreen(map[arg1.toLowerCase()]);
+          }
+          break;
+        case 'bpm_set':
+          if (arg1) {
+            seqBpm = parseFloat(arg1);
+            logTerminal(`Set global BPM to ${seqBpm.toFixed(1)}`);
+          }
+          break;
+        case 'storage_info':
+          logTerminal("SPIFFS Storage: 16 MB Flash, 14 Factory Patches loaded, Live NVS active");
+          break;
+        case 'reboot':
+          logTerminal("Rebooting ESP32-S3 core...");
+          setTimeout(() => logTerminal("[ESP32-S3] Reboot complete. AMY audio ready."), 600);
+          break;
+        default:
+          logTerminal(`Unknown command: ${cmd}. Type 'help' for command list.`);
+          break;
+      }
+    }
+
+    // =========================================================================
+    // 9. JSON PROFILE MANAGEMENT & EVENT LISTENERS
+    // =========================================================================
+
+    function exportProfileJson() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentProfile, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", "smk25_mapping.json");
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      logMidi('[SISTEMA] Arquivo smk25_mapping.json exportado.');
+    }
+
+    function importProfileJson(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const loaded = JSON.parse(e.target.result);
+          if (loaded.magic === "0x53334D31" || loaded.keys) {
+            currentProfile = loaded;
+            updateMappingTags();
+            logMidi('[SISTEMA] Perfil JSON importado com sucesso!');
+            alert('Perfil de mapeamento SMK25 carregado!');
+          }
+        } catch (err) {
+          alert('Erro ao importar JSON: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function setupEventListeners() {
+      document.getElementById('btnStartWizard').addEventListener('click', startWizard);
+      document.getElementById('btnCancelWizard').addEventListener('click', cancelWizard);
+      document.getElementById('btnWizardNextPrompt').addEventListener('click', advanceWizard);
+      document.getElementById('btnExportJson').addEventListener('click', exportProfileJson);
+      document.getElementById('btnImportJson').addEventListener('click', () => document.getElementById('jsonFileInput').click());
+      document.getElementById('jsonFileInput').addEventListener('change', importProfileJson);
+      document.getElementById('btnPanic').addEventListener('click', panicReset);
+      document.getElementById('patchSelect').addEventListener('change', (e) => {
+        selectedPatchIndex = parseInt(e.target.value);
+        changePatchByIndex(0);
+      });
+      document.getElementById('btnClearLog').addEventListener('click', () => document.getElementById('midiLogBox').innerHTML = '');
+
+      document.getElementById('btnSaveBinding').addEventListener('click', () => {
+        if (!selectedTarget) return;
+        const msg_type = parseInt(document.getElementById('editMsgType').value);
+        const channel = parseInt(document.getElementById('editChannel').value);
+        const number = parseInt(document.getElementById('editNumber').value);
+        setBinding(selectedTarget.category, selectedTarget.index, { msg_type, channel, number });
+        logMidi(`[EDITADO] ${selectedTarget.category.toUpperCase()} [${selectedTarget.index}] atualizado!`);
+      });
+
+      document.getElementById('btnLearnSelected').addEventListener('click', () => {
+        if (selectedTarget) {
+          const el = getElementForTarget(selectedTarget.category, selectedTarget.index);
+          if (el) el.classList.add('learning');
+          logMidi(`[LEARN ATIVO] Aguardando sinal MIDI para ${selectedTarget.category.toUpperCase()}...`);
+        }
+      });
+    }
+
+    function logMidi(msg, typeClass = '') {
+      const box = document.getElementById('midiLogBox');
+      const line = document.createElement('div');
+      line.className = `log-line ${typeClass}`;
+      line.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      box.appendChild(line);
+      box.scrollTop = box.scrollHeight;
+    }
+  </script>
+</body>
+</html>
