@@ -65,6 +65,7 @@ private:
     static int cmdProfileShow(int argc, char** argv);
     static int cmdLearnStart(int argc, char** argv);
     static int cmdLearnCancel(int argc, char** argv);
+    static int cmdLearnSkip(int argc, char** argv);
     static int cmdKnobBank(int argc, char** argv);
     static int cmdPadBank(int argc, char** argv);
     static int cmdSceneSave(int argc, char** argv);

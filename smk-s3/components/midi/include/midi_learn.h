@@ -50,7 +50,6 @@ enum class LearnStep : uint8_t {
     PressPlay,
     PressStop,
     PressRec,
-    PressBt,
     Complete
 };
 
@@ -61,6 +60,7 @@ public:
     void begin(ControllerProfile* profile_out);
     void startWizard();
     void cancel();
+    void skipStep();
     
     bool processIncomingMidi(uint8_t msg_type, uint8_t channel, uint16_t number, int32_t value);
     

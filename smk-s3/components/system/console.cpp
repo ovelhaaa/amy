@@ -62,6 +62,7 @@ bool Console::begin() {
     
     uart_param_config(UART_NUM_0, &uart_config);
     uart_driver_install(UART_NUM_0, 1024, 0, 0, NULL, 0);
+    esp_vfs_dev_uart_use_driver(UART_NUM_0);
 
     esp_console_config_t console_config = {};
     console_config.max_cmdline_args = 8;
@@ -101,6 +102,7 @@ bool Console::begin() {
     registerCommand("profile_show", "Show active controller profile bindings", cmdProfileShow);
     registerCommand("learn_start", "Start MIDI Learn wizard", cmdLearnStart);
     registerCommand("learn_cancel", "Cancel MIDI Learn wizard", cmdLearnCancel);
+    registerCommand("learn_skip", "Skip current MIDI Learn wizard step", cmdLearnSkip);
     registerCommand("knob_bank", "Switch knob bank <a|b|c|d|e>", cmdKnobBank);
     registerCommand("pad_bank", "Switch pad bank <a|b|c|d>", cmdPadBank);
     registerCommand("scene_save", "Save live scene <name>", cmdSceneSave);
@@ -394,6 +396,12 @@ int Console::cmdLearnCancel(int argc, char** argv) {
     return 0;
 }
 
+int Console::cmdLearnSkip(int argc, char** argv) {
+    if (!s_midi_learn) return 1;
+    s_midi_learn->skipStep();
+    return 0;
+}
+
 int Console::cmdKnobBank(int argc, char** argv) {
     if (!s_patch_manager) return 1;
     if (argc < 2) {
@@ -596,10 +604,10 @@ void Console::consoleTask(void* arg) {
                     esp_err_t err = esp_console_run(line_buf, &ret);
                     if (err == ESP_ERR_NOT_FOUND) {
                         ESP_LOGW(TAG, "Unrecognized command: '%s'. Type 'help' for available commands.", line_buf);
-                    } else if (err == ESP_OK && ret != ESP_OK) {
-                        ESP_LOGE(TAG, "Command returned error code: 0x%x (%s)", ret, esp_err_to_name(ret));
+                    } else if (err == ESP_OK && ret != 0) {
+                        ESP_LOGE(TAG, "Command returned status: %d", ret);
                     } else if (err != ESP_OK && err != ESP_ERR_INVALID_ARG) {
-                        ESP_LOGE(TAG, "Console error: %s", esp_err_to_name(ret));
+                        ESP_LOGE(TAG, "Console error: %s", esp_err_to_name(err));
                     }
                     line_pos = 0;
                 }

@@ -27,6 +27,12 @@ void MidiLearn::cancel() {
     current_step_ = LearnStep::Idle;
 }
 
+void MidiLearn::skipStep() {
+    if (!isLearning()) return;
+    ESP_LOGI(TAG, "Skipped step [%u]: %s", static_cast<unsigned>(current_step_), currentStepName());
+    advanceStep();
+}
+
 const char* MidiLearn::currentStepName() const {
     switch (current_step_) {
         case LearnStep::PressKey:        return "Press any Key";
@@ -67,7 +73,6 @@ const char* MidiLearn::currentStepName() const {
         case LearnStep::PressPlay:       return "Press Play Button";
         case LearnStep::PressStop:       return "Press Stop Button";
         case LearnStep::PressRec:        return "Press Rec Button";
-        case LearnStep::PressBt:         return "Press BT Button";
         case LearnStep::Complete:        return "Learn Complete!";
         default:                         return "Idle";
     }
@@ -192,7 +197,6 @@ bool MidiLearn::processIncomingMidi(uint8_t msg_type, uint8_t channel, uint16_t 
         case LearnStep::PressPlay:
         case LearnStep::PressStop:
         case LearnStep::PressRec:
-        case LearnStep::PressBt:
             if ((msg_type == 1 && value > 64 && number != target_profile_->modulation.number) || (msg_type == 0 && value > 0)) {
                 uint8_t btn_idx = static_cast<uint8_t>(current_step_) - static_cast<uint8_t>(LearnStep::PressPlay);
                 TargetAction act = static_cast<TargetAction>(static_cast<uint16_t>(TargetAction::Play) + btn_idx);
