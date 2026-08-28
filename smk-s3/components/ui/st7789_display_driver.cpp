@@ -58,7 +58,7 @@ bool ST7789DisplayDriver::begin() {
     buscfg.miso_io_num = -1;
     buscfg.quadwp_io_num = -1;
     buscfg.quadhd_io_num = -1;
-    buscfg.max_transfer_sz = kWidth * kHeight * sizeof(uint16_t);
+    buscfg.max_transfer_sz = config_.width * config_.height * sizeof(uint16_t);
 
     if (spi_bus_initialize(config_.spi_host, &buscfg, SPI_DMA_CH_AUTO) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize SPI bus");
@@ -98,7 +98,7 @@ bool ST7789DisplayDriver::begin() {
     esp_lcd_panel_disp_on_off(panel_handle_, true);
 
     // Allocate Framebuffer in PSRAM or Internal RAM
-    size_t fb_size = kWidth * kHeight * sizeof(uint16_t);
+    size_t fb_size = (size_t)config_.width * config_.height * sizeof(uint16_t);
     framebuffer_ = (uint16_t*)heap_caps_malloc(fb_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!framebuffer_) {
         framebuffer_ = (uint16_t*)heap_caps_malloc(fb_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -110,7 +110,9 @@ bool ST7789DisplayDriver::begin() {
     }
 
     fillScreen(kColorBlack);
-    ESP_LOGI(TAG, "ST7789 esp_lcd panel initialized successfully");
+    invalidate();
+    flush();
+    ESP_LOGI(TAG, "ST7789 esp_lcd panel initialized successfully (%dx%d)", config_.width, config_.height);
     return true;
 }
 
@@ -124,37 +126,61 @@ void ST7789DisplayDriver::setBrightness(uint8_t value) {
 
 void ST7789DisplayDriver::fillScreen(uint16_t color) {
     if (!framebuffer_) return;
-    for (int i = 0; i < kWidth * kHeight; ++i) {
+    int32_t total = (int32_t)config_.width * config_.height;
+    for (int32_t i = 0; i < total; ++i) {
         framebuffer_[i] = color;
     }
+    invalidate();
 }
 
 void ST7789DisplayDriver::drawPixel(int16_t x, int16_t y, uint16_t color) {
-    if (!framebuffer_ || x < 0 || x >= kWidth || y < 0 || y >= kHeight) return;
-    framebuffer_[y * kWidth + x] = color;
+    if (!framebuffer_ || x < 0 || x >= config_.width || y < 0 || y >= config_.height) return;
+    framebuffer_[y * config_.width + x] = color;
+    markDirty(x, y, 1, 1);
 }
 
 void ST7789DisplayDriver::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
     if (!framebuffer_ || w <= 0 || h <= 0) return;
-    int16_t x2 = std::min((int16_t)(x + w), kWidth);
-    int16_t y2 = std::min((int16_t)(y + h), kHeight);
+    int16_t x2 = std::min((int16_t)(x + w), config_.width);
+    int16_t y2 = std::min((int16_t)(y + h), config_.height);
     int16_t x1 = std::max(x, (int16_t)0);
     int16_t y1 = std::max(y, (int16_t)0);
+    if (x1 >= x2 || y1 >= y2) return;
 
     for (int16_t iy = y1; iy < y2; ++iy) {
         for (int16_t ix = x1; ix < x2; ++ix) {
-            framebuffer_[iy * kWidth + ix] = color;
+            framebuffer_[iy * config_.width + ix] = color;
         }
     }
+    markDirty(x1, y1, x2 - x1, y2 - y1);
 }
 
 void ST7789DisplayDriver::flush() {
-    flushRegion(0, 0, kWidth, kHeight);
+    if (!is_dirty_) return;
+    flushRegion(dirty_rect_.x, dirty_rect_.y, dirty_rect_.w, dirty_rect_.h);
+    clearDirty();
 }
 
 void ST7789DisplayDriver::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
     if (!panel_handle_ || !framebuffer_ || w <= 0 || h <= 0) return;
-    esp_lcd_panel_draw_bitmap(panel_handle_, x, y, x + w, y + h, framebuffer_);
+    int16_t x1 = std::max((int16_t)0, x);
+    int16_t y1 = std::max((int16_t)0, y);
+    int16_t x2 = std::min((int16_t)config_.width, (int16_t)(x + w));
+    int16_t y2 = std::min((int16_t)config_.height, (int16_t)(y + h));
+    if (x1 >= x2 || y1 >= y2) return;
+
+    int16_t rw = x2 - x1;
+    int16_t rh = y2 - y1;
+
+    if (x1 == 0 && rw == config_.width) {
+        // Contiguous row band DMA transfer
+        esp_lcd_panel_draw_bitmap(panel_handle_, 0, y1, config_.width, y2, &framebuffer_[y1 * config_.width]);
+    } else {
+        // Line-by-line DMA transfers for sub-rectangles
+        for (int16_t iy = y1; iy < y2; ++iy) {
+            esp_lcd_panel_draw_bitmap(panel_handle_, x1, iy, x2, iy + 1, &framebuffer_[iy * config_.width + x1]);
+        }
+    }
 }
 
 } // namespace smk

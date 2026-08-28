@@ -16,6 +16,8 @@ struct ST7789Config {
     int dc_pin;
     int rst_pin;
     int bl_pin;
+    int16_t width{284};
+    int16_t height{76};
     uint16_t x_offset{0};
     uint16_t y_offset{0};
     spi_host_device_t spi_host{SPI2_HOST};
@@ -34,6 +36,9 @@ public:
     void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) override;
     void flush() override;
     void flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) override;
+
+    int16_t width() const override { return config_.width; }
+    int16_t height() const override { return config_.height; }
 
 private:
     ST7789Config config_;

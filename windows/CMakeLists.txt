@@ -26,6 +26,7 @@ set(AMY_SOURCES
     ${AMY_SRC_DIR}/amy_midi.c
     ${AMY_SRC_DIR}/api.c
     ${AMY_SRC_DIR}/midi_mappings.c
+    ${AMY_SRC_DIR}/cv_trigger.c
 )
 
 add_executable(amy_sine amy_sine.c ${AMY_SOURCES})

@@ -17,6 +17,8 @@ struct ST7735Config {
     int dc_pin;
     int rst_pin;
     int bl_pin;
+    int16_t width{160};
+    int16_t height{128};
     uint16_t x_offset{0};
     uint16_t y_offset{0};
     spi_host_device_t spi_host{SPI2_HOST};
@@ -25,9 +27,6 @@ struct ST7735Config {
 
 class ST7735DisplayDriver : public DisplayDriver {
 public:
-    static constexpr int16_t kScreenWidth = 160;
-    static constexpr int16_t kScreenHeight = 128;
-
     explicit ST7735DisplayDriver(const ST7735Config& config);
     ~ST7735DisplayDriver() override;
 
@@ -39,8 +38,8 @@ public:
     void flush() override;
     void flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) override;
 
-    int16_t width() const override { return kScreenWidth; }
-    int16_t height() const override { return kScreenHeight; }
+    int16_t width() const override { return config_.width; }
+    int16_t height() const override { return config_.height; }
 
 private:
     void sendCmd(uint8_t cmd, const uint8_t* data = nullptr, size_t len = 0);

@@ -191,7 +191,7 @@ bool ST7735DisplayDriver::begin() {
     buscfg.miso_io_num = -1;
     buscfg.quadwp_io_num = -1;
     buscfg.quadhd_io_num = -1;
-    buscfg.max_transfer_sz = kScreenWidth * kScreenHeight * sizeof(uint16_t);
+    buscfg.max_transfer_sz = config_.width * config_.height * sizeof(uint16_t);
 
     esp_err_t ret = spi_bus_initialize(config_.spi_host, &buscfg, SPI_DMA_CH_AUTO);
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
@@ -217,21 +217,22 @@ bool ST7735DisplayDriver::begin() {
     // 5. Send ST7735 native initialization sequence
     initSt7735();
 
-    // 6. Allocate Framebuffer (40 KB)
-    size_t fb_size = kScreenWidth * kScreenHeight * sizeof(uint16_t);
+    // 6. Allocate Framebuffer
+    size_t fb_size = (size_t)config_.width * config_.height * sizeof(uint16_t);
     framebuffer_ = (uint16_t*)heap_caps_malloc(fb_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!framebuffer_) {
         framebuffer_ = (uint16_t*)heap_caps_malloc(fb_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     }
 
     if (!framebuffer_) {
-        ESP_LOGE(TAG, "Failed to allocate 160x128 framebuffer");
+        ESP_LOGE(TAG, "Failed to allocate %dx%d framebuffer", config_.width, config_.height);
         return false;
     }
 
     fillScreen(kColorBlack);
+    invalidate();
     flush();
-    ESP_LOGI(TAG, "ST7735 panel initialized successfully");
+    ESP_LOGI(TAG, "ST7735 panel initialized successfully (%dx%d)", config_.width, config_.height);
     return true;
 }
 
@@ -246,58 +247,58 @@ void ST7735DisplayDriver::setBrightness(uint8_t value) {
 void ST7735DisplayDriver::fillScreen(uint16_t color) {
     if (!framebuffer_) return;
     uint16_t c = colorToNative(color);
-    size_t count = kScreenWidth * kScreenHeight;
+    size_t count = (size_t)config_.width * config_.height;
     for (size_t i = 0; i < count; ++i) {
         framebuffer_[i] = c;
     }
+    invalidate();
 }
 
 void ST7735DisplayDriver::drawPixel(int16_t x, int16_t y, uint16_t color) {
-    if (!framebuffer_ || x < 0 || x >= kScreenWidth || y < 0 || y >= kScreenHeight) return;
-    framebuffer_[y * kScreenWidth + x] = colorToNative(color);
+    if (!framebuffer_ || x < 0 || x >= config_.width || y < 0 || y >= config_.height) return;
+    framebuffer_[y * config_.width + x] = colorToNative(color);
+    markDirty(x, y, 1, 1);
 }
 
 void ST7735DisplayDriver::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
     if (!framebuffer_ || w <= 0 || h <= 0) return;
-    int16_t x2 = std::min((int16_t)(x + w), (int16_t)kScreenWidth);
-    int16_t y2 = std::min((int16_t)(y + h), (int16_t)kScreenHeight);
+    int16_t x2 = std::min((int16_t)(x + w), config_.width);
+    int16_t y2 = std::min((int16_t)(y + h), config_.height);
     int16_t x1 = std::max(x, (int16_t)0);
     int16_t y1 = std::max(y, (int16_t)0);
+    if (x1 >= x2 || y1 >= y2) return;
     uint16_t c = colorToNative(color);
 
     for (int16_t iy = y1; iy < y2; ++iy) {
         for (int16_t ix = x1; ix < x2; ++ix) {
-            framebuffer_[iy * kScreenWidth + ix] = c;
+            framebuffer_[iy * config_.width + ix] = c;
         }
     }
+    markDirty(x1, y1, x2 - x1, y2 - y1);
 }
 
 void ST7735DisplayDriver::flush() {
-    if (!io_handle_ || !framebuffer_) return;
-    setAddrWindow(0, 0, kScreenWidth - 1, kScreenHeight - 1);
-    esp_lcd_panel_io_tx_color(io_handle_, 0x2C, framebuffer_, kScreenWidth * kScreenHeight * sizeof(uint16_t));
+    if (!is_dirty_) return;
+    flushRegion(dirty_rect_.x, dirty_rect_.y, dirty_rect_.w, dirty_rect_.h);
+    clearDirty();
 }
 
 void ST7735DisplayDriver::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
     if (!io_handle_ || !framebuffer_ || w <= 0 || h <= 0) return;
-    if (x == 0 && y == 0 && w == kScreenWidth && h == kScreenHeight) {
-        flush();
-        return;
-    }
-    int16_t x2 = std::min((int16_t)(x + w - 1), (int16_t)(kScreenWidth - 1));
-    int16_t y2 = std::min((int16_t)(y + h - 1), (int16_t)(kScreenHeight - 1));
-    int16_t x1 = std::max(x, (int16_t)0);
-    int16_t y1 = std::max(y, (int16_t)0);
+    int16_t x1 = std::max((int16_t)0, x);
+    int16_t y1 = std::max((int16_t)0, y);
+    int16_t x2 = std::min((int16_t)(config_.width - 1), (int16_t)(x + w - 1));
+    int16_t y2 = std::min((int16_t)(config_.height - 1), (int16_t)(y + h - 1));
     if (x1 > x2 || y1 > y2) return;
 
     setAddrWindow(x1, y1, x2, y2);
-    if (x1 == 0 && x2 == kScreenWidth - 1) {
-        size_t offset = y1 * kScreenWidth;
-        size_t count = (y2 - y1 + 1) * kScreenWidth * sizeof(uint16_t);
+    if (x1 == 0 && x2 == config_.width - 1) {
+        size_t offset = y1 * config_.width;
+        size_t count = (y2 - y1 + 1) * config_.width * sizeof(uint16_t);
         esp_lcd_panel_io_tx_color(io_handle_, 0x2C, &framebuffer_[offset], count);
     } else {
         for (int16_t iy = y1; iy <= y2; ++iy) {
-            size_t offset = iy * kScreenWidth + x1;
+            size_t offset = iy * config_.width + x1;
             size_t count = (x2 - x1 + 1) * sizeof(uint16_t);
             esp_lcd_panel_io_tx_color(io_handle_, 0x2C, &framebuffer_[offset], count);
         }

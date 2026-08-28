@@ -67,6 +67,31 @@ void SequencerScreen::update() {
     }
 }
 
+namespace {
+namespace compact_layout {
+    constexpr int16_t kHeaderDividerY = 11;
+    constexpr int16_t kTrackStartRowY = 14;
+    constexpr int16_t kTrackRowH = 13;
+    constexpr int16_t kMidDividerY = 70;
+    constexpr int16_t kPadBoxY = 85;
+    constexpr int16_t kPadBoxW = 17;
+    constexpr int16_t kPadBoxH = 24;
+}
+namespace wide_layout {
+    constexpr int16_t kHeaderDividerY = 12;
+    constexpr int16_t kTrackStartRowY = 14;
+    constexpr int16_t kTrackRowH = 10;
+    constexpr int16_t kStepBoxW = 12;
+    constexpr int16_t kStepBoxH = 8;
+    constexpr int16_t kGridDividerY = 56;
+    constexpr int16_t kPadMatrixY = 58;
+    constexpr int16_t kPadBoxW = 20;
+    constexpr int16_t kPadBoxH = 15;
+    constexpr int16_t kPadPitchX = 23;
+    constexpr int16_t kShortcutsX = 192;
+}
+} // anonymous namespace
+
 void SequencerScreen::render(DisplayDriver& display) {
     display.fillScreen(DisplayDriver::kColorBlack);
     int16_t dw = display.width();
@@ -86,11 +111,11 @@ void SequencerScreen::render(DisplayDriver& display) {
         }
         FontRenderer::drawString(display, 2, 2, header_buf, DisplayDriver::kColorCyan, DisplayDriver::kColorBlack, FontType::Font5x7);
 
-        display.drawHLine(0, 11, dw, DisplayDriver::kColorMidGray);
+        display.drawHLine(0, compact_layout::kHeaderDividerY, dw, DisplayDriver::kColorMidGray);
 
         // 4 Multi-track rows (y=14..68)
         for (uint8_t t = 0; t < 4; ++t) {
-            int y = 14 + t * 13;
+            int y = compact_layout::kTrackStartRowY + t * compact_layout::kTrackRowH;
             bool is_sel = (t == selected_track_);
             bool is_mute = track_mutes_[t];
 
@@ -98,7 +123,7 @@ void SequencerScreen::render(DisplayDriver& display) {
             uint16_t lbl_col = is_mute ? DisplayDriver::kColorRed : (is_sel ? DisplayDriver::kColorYellow : DisplayDriver::kColorWhite);
             FontRenderer::drawString(display, 2, y + 1, track_names_[t], lbl_col, DisplayDriver::kColorBlack, FontType::Font5x7);
 
-            // 16 Steps (compact 7px boxes)
+            // 16 Steps (compact 6px boxes)
             for (uint8_t s = 0; s < 16; ++s) {
                 int group = s / 4;
                 int x = 24 + s * 8 + group * 2;
@@ -125,7 +150,7 @@ void SequencerScreen::render(DisplayDriver& display) {
             }
         }
 
-        display.drawHLine(0, 70, dw, DisplayDriver::kColorMidGray);
+        display.drawHLine(0, compact_layout::kMidDividerY, dw, DisplayDriver::kColorMidGray);
 
         // Selected Track Detailed Steps & Velocity View (y=74..114)
         char det_buf[48];
@@ -138,17 +163,17 @@ void SequencerScreen::render(DisplayDriver& display) {
         for (uint8_t p = 0; p < 8; ++p) {
             uint8_t s = base_step + p;
             int x = 4 + p * 19;
-            int y = 85;
+            int y = compact_layout::kPadBoxY;
             bool active = (track_masks_[selected_track_] & (1 << s)) != 0;
             bool has_lock = (track_plock_masks_[selected_track_] & (1 << s)) != 0;
 
             if (active) {
-                display.fillRect(x, y, 17, 24, DisplayDriver::kColorCyan);
+                display.fillRect(x, y, compact_layout::kPadBoxW, compact_layout::kPadBoxH, DisplayDriver::kColorCyan);
                 char p_str[4];
                 snprintf(p_str, sizeof(p_str), "%02u", s + 1);
                 FontRenderer::drawString(display, x + 2, y + 8, p_str, DisplayDriver::kColorBlack, DisplayDriver::kColorCyan, FontType::Font5x7);
             } else {
-                display.drawRect(x, y, 17, 24, DisplayDriver::kColorMidGray);
+                display.drawRect(x, y, compact_layout::kPadBoxW, compact_layout::kPadBoxH, DisplayDriver::kColorMidGray);
                 char p_str[4];
                 snprintf(p_str, sizeof(p_str), "%02u", s + 1);
                 FontRenderer::drawString(display, x + 2, y + 8, p_str, DisplayDriver::kColorLightGray, DisplayDriver::kColorBlack, FontType::Font5x7);
@@ -200,11 +225,11 @@ void SequencerScreen::render(DisplayDriver& display) {
              track_names_[selected_track_], step_page_ + 1, step_page_ * 8 + 1, step_page_ * 8 + 8);
     FontRenderer::drawString(display, 186, 2, page_str, DisplayDriver::kColorCyan, DisplayDriver::kColorBlack, FontType::Font5x7);
 
-    display.drawHLine(0, 12, dw, DisplayDriver::kColorMidGray);
+    display.drawHLine(0, wide_layout::kHeaderDividerY, dw, DisplayDriver::kColorMidGray);
 
     // 2. Multi-Track Drum Grid (y=14..54)
     for (uint8_t t = 0; t < 4; ++t) {
-        int y = 14 + t * 10;
+        int y = wide_layout::kTrackStartRowY + t * wide_layout::kTrackRowH;
         bool is_sel = (t == selected_track_);
         bool is_mute = track_mutes_[t];
 
@@ -243,11 +268,11 @@ void SequencerScreen::render(DisplayDriver& display) {
                         default: trig_col = DisplayDriver::kColorGreen; break;
                     }
                 }
-                display.fillRect(x, y, 12, 8, trig_col);
+                display.fillRect(x, y, wide_layout::kStepBoxW, wide_layout::kStepBoxH, trig_col);
             } else {
                 // Dim outline; accent quarter-notes (0, 4, 8, 12)
                 uint16_t border_col = (s % 4 == 0) ? DisplayDriver::kColorMidGray : DisplayDriver::kColorDarkGray;
-                display.drawRect(x, y, 12, 8, border_col);
+                display.drawRect(x, y, wide_layout::kStepBoxW, wide_layout::kStepBoxH, border_col);
             }
 
             // Draw Parameter Lock Indicator Pip (Amber dot at top-right corner of step)
@@ -262,22 +287,22 @@ void SequencerScreen::render(DisplayDriver& display) {
         }
     }
 
-    display.drawHLine(0, 56, dw, DisplayDriver::kColorDarkGray);
+    display.drawHLine(0, wide_layout::kGridDividerY, dw, DisplayDriver::kColorDarkGray);
 
     // 3. Bottom Dynamic Pad Matrix & Navigation Help (y=58..75)
     uint8_t base_step = step_page_ * 8;
     for (uint8_t p = 0; p < 8; ++p) {
         uint8_t s = base_step + p;
-        int x = 4 + p * 23;
-        int y = 58;
+        int x = 4 + p * wide_layout::kPadPitchX;
+        int y = wide_layout::kPadMatrixY;
         bool active = (track_masks_[selected_track_] & (1 << s)) != 0;
         bool has_lock = (track_plock_masks_[selected_track_] & (1 << s)) != 0;
 
         uint16_t pad_border = active ? DisplayDriver::kColorYellow : DisplayDriver::kColorDarkGray;
         uint16_t pad_bg = active ? DisplayDriver::kColorDimGreen : DisplayDriver::kColorBlack;
 
-        display.fillRect(x, y, 20, 15, pad_bg);
-        display.drawRect(x, y, 20, 15, pad_border);
+        display.fillRect(x, y, wide_layout::kPadBoxW, wide_layout::kPadBoxH, pad_bg);
+        display.drawRect(x, y, wide_layout::kPadBoxW, wide_layout::kPadBoxH, pad_border);
 
         char p_txt[6];
         snprintf(p_txt, sizeof(p_txt), "P%u", p + 1);
@@ -295,8 +320,8 @@ void SequencerScreen::render(DisplayDriver& display) {
     }
 
     // Right Action shortcuts
-    FontRenderer::drawString(display, 192, 60, "REC:MOTION-REC", is_recording_ ? DisplayDriver::kColorRed : DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
-    FontRenderer::drawString(display, 192, 68, "PAD-B:PG/MUTE", DisplayDriver::kColorLightGray, DisplayDriver::kColorBlack, FontType::Font5x7);
+    FontRenderer::drawString(display, wide_layout::kShortcutsX, 60, "REC:MOTION-REC", is_recording_ ? DisplayDriver::kColorRed : DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
+    FontRenderer::drawString(display, wide_layout::kShortcutsX, 68, "PAD-B:PG/MUTE", DisplayDriver::kColorLightGray, DisplayDriver::kColorBlack, FontType::Font5x7);
 }
 
 } // namespace smk

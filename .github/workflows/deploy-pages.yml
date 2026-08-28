@@ -1,0 +1,63 @@
+name: Deploy AMY Studio to GitHub Pages
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Python dependencies
+        run: pip install numpy
+
+      - name: Setup Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 4.0.22
+
+      - name: Build WebAssembly & Update docs/amy.js
+        run: make deploy-web
+
+      - name: Sync AMY Studio files to docs/studio
+        run: |
+          mkdir -p docs/studio/css docs/studio/js
+          cp -r tools/amy-studio/css/* docs/studio/css/
+          cp -r tools/amy-studio/js/* docs/studio/js/
+          # Ensure relative script references in docs/studio/index.html
+          sed 's|/docs/enable-threads.js|../enable-threads.js|g; s|/docs/amy.js|../amy.js|g' tools/amy-studio/index.html > docs/studio/index.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'docs'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

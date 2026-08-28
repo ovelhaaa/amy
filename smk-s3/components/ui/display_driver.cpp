@@ -80,4 +80,29 @@ void DisplayDriver::drawBitmap(int16_t x, int16_t y, int16_t w, int16_t h, const
     }
 }
 
+void DisplayDriver::markDirty(int16_t x, int16_t y, int16_t w, int16_t h) {
+    if (w <= 0 || h <= 0) return;
+    int16_t w_max = width();
+    int16_t h_max = height();
+    if (x >= w_max || y >= h_max) return;
+    int16_t x1 = std::max((int16_t)0, x);
+    int16_t y1 = std::max((int16_t)0, y);
+    int16_t x2 = std::min((int16_t)w_max, (int16_t)(x + w));
+    int16_t y2 = std::min((int16_t)h_max, (int16_t)(y + h));
+    if (x2 <= x1 || y2 <= y1) return;
+
+    dirty_rect_.merge(x1, y1, x2 - x1, y2 - y1);
+    is_dirty_ = true;
+}
+
+void DisplayDriver::invalidate() {
+    dirty_rect_ = Rect{0, 0, width(), height()};
+    is_dirty_ = true;
+}
+
+void DisplayDriver::clearDirty() {
+    dirty_rect_ = Rect{0, 0, 0, 0};
+    is_dirty_ = false;
+}
+
 } // namespace smk

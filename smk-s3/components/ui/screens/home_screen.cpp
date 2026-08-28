@@ -113,6 +113,33 @@ void HomeScreen::update() {
     }
 }
 
+namespace {
+namespace compact_layout {
+    constexpr int16_t kHeaderH = 22;
+    constexpr int16_t kScopeX = 3;
+    constexpr int16_t kScopeY = 25;
+    constexpr int16_t kScopeW = 154;
+    constexpr int16_t kScopeH = 30;
+    constexpr int16_t kVoiceY = 57;
+    constexpr int16_t kGaugeY = 66;
+    constexpr int16_t kGaugeW = 18;
+    constexpr int16_t kGaugeH = 59;
+}
+namespace wide_layout {
+    constexpr int16_t kHeaderDividerY = 23;
+    constexpr int16_t kScopeX = 140;
+    constexpr int16_t kScopeY = 2;
+    constexpr int16_t kScopeW = 50;
+    constexpr int16_t kScopeH = 18;
+    constexpr int16_t kVoiceX = 195;
+    constexpr int16_t kVoiceY = 4;
+    constexpr int16_t kUsbX = 242;
+    constexpr int16_t kUsbY = 3;
+    constexpr int16_t kMidiX = 272;
+    constexpr int16_t kMidiY = 3;
+}
+} // anonymous namespace
+
 void HomeScreen::render(DisplayDriver& display) {
     display.fillScreen(DisplayDriver::kColorBlack);
 
@@ -122,7 +149,7 @@ void HomeScreen::render(DisplayDriver& display) {
         // ── 160x128 (1.8" Display) High-Visibility UI Layout ──
 
         // Top Header Banner (Dark Gray background, y=0..22)
-        display.fillRect(0, 0, 160, 22, DisplayDriver::kColorDarkGray);
+        display.fillRect(0, 0, 160, compact_layout::kHeaderH, DisplayDriver::kColorDarkGray);
         
         // Line 1: Patch number & FULL patch name (up to 20 chars) in high contrast white
         const char* name = (patch_name_[0] != '\0') ? patch_name_ : "DEFAULT PATCH";
@@ -143,40 +170,19 @@ void HomeScreen::render(DisplayDriver& display) {
         snprintf(b_str, sizeof(b_str), "[%s] %.0fBPM %-14.14s", s_mode, bpm_ > 0 ? bpm_ : 120.0f, knob_bank_);
         FontRenderer::drawString(display, 3, 12, b_str, DisplayDriver::kColorAmber, DisplayDriver::kColorDarkGray, FontType::Font5x7);
 
-        display.drawHLine(0, 22, 160, DisplayDriver::kColorMidGray);
+        display.drawHLine(0, compact_layout::kHeaderH, 160, DisplayDriver::kColorMidGray);
 
-        // Live Audio Oscilloscope Box (y=25..55, w=154, h=30)
-        display.drawRect(3, 25, 154, 30, DisplayDriver::kColorMidGray);
-        int center_y = 40;
-        int prev_y = center_y;
-
-        // Auto-gain peak detection
-        int32_t max_val = 0;
-        for (size_t i = 0; i < scope_sample_count_; ++i) {
-            int32_t a = (scope_samples_[i] >= 0) ? scope_samples_[i] : -scope_samples_[i];
-            if (a > max_val) max_val = a;
-        }
-
-        if (scope_sample_count_ > 1 && (max_val > 50 || active_voices_ > 0 || midi_active_)) {
-            int32_t scale_divisor = (max_val > 2000) ? max_val : 2000;
-            for (int x = 0; x < 152; ++x) {
-                size_t s_idx = (x * (scope_sample_count_ - 1)) / 152;
-                int32_t val = scope_samples_[s_idx];
-                int wave_y = center_y - (int)((val * 13) / scale_divisor);
-                if (wave_y < 27) wave_y = 27;
-                if (wave_y > 53) wave_y = 53;
-                if (x == 0) prev_y = wave_y;
-                display.drawLine(4 + x, prev_y, 4 + x + 1, wave_y, DisplayDriver::kColorGreen);
-                prev_y = wave_y;
-            }
-        } else {
-            display.drawHLine(4, center_y, 152, DisplayDriver::kColorGreen);
-        }
+        // Live Audio Oscilloscope
+        OscilloscopeWidget scope(compact_layout::kScopeX, compact_layout::kScopeY,
+                                 compact_layout::kScopeW, compact_layout::kScopeH);
+        scope.setSamples(scope_samples_, scope_sample_count_);
+        scope.setActive(active_voices_ > 0 || midi_active_);
+        scope.draw(display);
 
         // 8 Polyphony Voice Indicator Dots (y=57)
         for (uint8_t v = 0; v < max_voices_ && v < 8; ++v) {
             uint16_t voice_col = (v < active_voices_) ? DisplayDriver::kColorCyan : DisplayDriver::kColorDarkGray;
-            display.fillRect(4 + v * 8, 57, 6, 4, voice_col);
+            display.fillRect(4 + v * 8, compact_layout::kVoiceY, 6, 4, voice_col);
         }
 
         display.drawHLine(0, 64, dw, DisplayDriver::kColorMidGray);
@@ -184,7 +190,7 @@ void HomeScreen::render(DisplayDriver& display) {
         // 8 Macro Gauges adaptively positioned across 160px (y=66..126)
         for (int i = 0; i < 8; ++i) {
             int16_t gx = 2 + i * 19;
-            BarGauge g(gx, 66, 18, 59, gauges_[i].label());
+            BarGauge g(gx, compact_layout::kGaugeY, compact_layout::kGaugeW, compact_layout::kGaugeH, gauges_[i].label());
             g.setValue(macro_values_[i]);
             g.draw(display);
         }
@@ -198,51 +204,31 @@ void HomeScreen::render(DisplayDriver& display) {
     FontRenderer::drawString(display, 2, 2, header_str, DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
 
     // Live Audio Oscilloscope Box (Center Header: x=140, y=2, w=50, h=18)
-    display.drawRect(140, 2, 50, 18, DisplayDriver::kColorMidGray);
-    int center_y = 11;
-    int prev_y = center_y;
-
-    int32_t max_val_pan = 0;
-    for (size_t i = 0; i < scope_sample_count_; ++i) {
-        int32_t a = (scope_samples_[i] >= 0) ? scope_samples_[i] : -scope_samples_[i];
-        if (a > max_val_pan) max_val_pan = a;
-    }
-
-    if (scope_sample_count_ > 1 && (max_val_pan > 50 || active_voices_ > 0 || midi_active_)) {
-        int32_t scale_divisor = (max_val_pan > 2000) ? max_val_pan : 2000;
-        for (int x = 0; x < 48; ++x) {
-            size_t s_idx = (x * (scope_sample_count_ - 1)) / 48;
-            int32_t val = scope_samples_[s_idx];
-            int wave_y = center_y - (int)((val * 7) / scale_divisor);
-            if (wave_y < 4) wave_y = 4;
-            if (wave_y > 18) wave_y = 18;
-            if (x == 0) prev_y = wave_y;
-            display.drawLine(141 + x, prev_y, 141 + x + 1, wave_y, DisplayDriver::kColorGreen);
-            prev_y = wave_y;
-        }
-    } else {
-        display.drawHLine(141, center_y, 48, DisplayDriver::kColorGreen);
-    }
+    OscilloscopeWidget scope_pan(wide_layout::kScopeX, wide_layout::kScopeY,
+                                 wide_layout::kScopeW, wide_layout::kScopeH);
+    scope_pan.setSamples(scope_samples_, scope_sample_count_);
+    scope_pan.setActive(active_voices_ > 0 || midi_active_);
+    scope_pan.draw(display);
 
     // Voice Activity Meter (x=195..235)
     for (uint8_t v = 0; v < max_voices_ && v < 8; ++v) {
         uint16_t voice_col = (v < active_voices_) ? DisplayDriver::kColorCyan : DisplayDriver::kColorDarkGray;
-        display.fillRect(195 + v * 5, 4, 4, 14, voice_col);
+        display.fillRect(wide_layout::kVoiceX + v * 5, wide_layout::kVoiceY, 4, 14, voice_col);
     }
 
     // USB & MIDI Indicators (x=242..280)
     uint16_t usb_col = usb_connected_ ? DisplayDriver::kColorGreen : DisplayDriver::kColorRed;
-    display.fillRect(242, 3, 5, 5, usb_col);
+    display.fillRect(wide_layout::kUsbX, wide_layout::kUsbY, 5, 5, usb_col);
     FontRenderer::drawString(display, 249, 2, "USB", DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
 
     if (midi_active_) {
-        display.fillRect(272, 3, 5, 5, DisplayDriver::kColorYellow);
+        display.fillRect(wide_layout::kMidiX, wide_layout::kMidiY, 5, 5, DisplayDriver::kColorYellow);
     }
 
     // Header Line 2: Active Knob Bank
     uint16_t bank_col = (bank_view_ == HomeKnobBankView::BankB_Engine) ? DisplayDriver::kColorAmber : DisplayDriver::kColorCyan;
     FontRenderer::drawString(display, 2, 14, knob_bank_, bank_col, DisplayDriver::kColorBlack, FontType::Font5x7);
-    display.drawHLine(0, 23, display.width(), DisplayDriver::kColorMidGray);
+    display.drawHLine(0, wide_layout::kHeaderDividerY, display.width(), DisplayDriver::kColorMidGray);
 
     // Render 8 Bar Gauges for Macros
     for (int i = 0; i < 8; ++i) {

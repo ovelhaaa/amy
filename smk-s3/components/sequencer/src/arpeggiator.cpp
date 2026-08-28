@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <random>
 
-static const char* TAG = "Arpeggiator";
+[[maybe_unused]] static const char* TAG = "Arpeggiator";
 
 namespace smk {
 

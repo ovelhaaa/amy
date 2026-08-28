@@ -163,4 +163,69 @@ void StatusIndicator::draw(DisplayDriver& display) {
     }
 }
 
+
+// --- OscilloscopeWidget ---
+OscilloscopeWidget::OscilloscopeWidget(int16_t x, int16_t y, int16_t w, int16_t h,
+                                       uint16_t wave_color, uint16_t border_color)
+    : x_(x), y_(y), w_(w), h_(h), wave_color_(wave_color), border_color_(border_color) {}
+
+void OscilloscopeWidget::setPosition(int16_t x, int16_t y, int16_t w, int16_t h) {
+    x_ = x; y_ = y; w_ = w; h_ = h;
+}
+
+void OscilloscopeWidget::setSamples(const int16_t* samples, size_t count) {
+    if (!samples || count == 0) {
+        sample_count_ = 0;
+        return;
+    }
+    size_t n = std::min(count, sizeof(samples_) / sizeof(samples_[0]));
+    for (size_t i = 0; i < n; ++i) {
+        samples_[i] = samples[i];
+    }
+    sample_count_ = n;
+}
+
+void OscilloscopeWidget::setActive(bool active) {
+    active_ = active;
+}
+
+void OscilloscopeWidget::setColors(uint16_t wave_color, uint16_t border_color) {
+    wave_color_ = wave_color;
+    border_color_ = border_color;
+}
+
+void OscilloscopeWidget::draw(DisplayDriver& display) {
+    if (w_ <= 2 || h_ <= 2) return;
+    display.drawRect(x_, y_, w_, h_, border_color_);
+
+    int16_t inner_w = w_ - 2;
+    int16_t inner_h = h_ - 2;
+    int16_t center_y = y_ + 1 + inner_h / 2;
+    int16_t max_amp = inner_h / 2;
+
+    // Peak detection for auto-gain
+    int32_t max_val = 0;
+    for (size_t i = 0; i < sample_count_; ++i) {
+        int32_t a = (samples_[i] >= 0) ? samples_[i] : -samples_[i];
+        if (a > max_val) max_val = a;
+    }
+
+    if (sample_count_ > 1 && (max_val > 50 || active_)) {
+        int32_t scale_divisor = (max_val > 2000) ? max_val : 2000;
+        int16_t prev_y = center_y;
+        for (int16_t ix = 0; ix < inner_w; ++ix) {
+            size_t s_idx = (sample_count_ > 1) ? (size_t)((ix * (sample_count_ - 1)) / inner_w) : 0;
+            int32_t val = samples_[s_idx];
+            int16_t wave_y = center_y - (int16_t)((val * max_amp) / scale_divisor);
+            if (wave_y < y_ + 1) wave_y = y_ + 1;
+            if (wave_y > y_ + h_ - 2) wave_y = y_ + h_ - 2;
+            if (ix == 0) prev_y = wave_y;
+            display.drawLine(x_ + 1 + ix, prev_y, x_ + 1 + ix + 1, wave_y, wave_color_);
+            prev_y = wave_y;
+        }
+    } else {
+        display.drawHLine(x_ + 1, center_y, inner_w, wave_color_);
+    }
+}
+
 } // namespace smk

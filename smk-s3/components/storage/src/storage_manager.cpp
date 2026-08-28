@@ -271,7 +271,7 @@ bool StorageManager::loadProfile(const char* name, ControllerProfile& profile_ou
 
             if (read_bytes == sizeof(ControllerProfileV1)) {
                 profile_out = ProfileManager::createDefaultSmk25Profile();
-                strncpy(profile_out.name, v1.name, sizeof(profile_out.name) - 1);
+                snprintf(profile_out.name, sizeof(profile_out.name), "%s", v1.name);
                 profile_out.keys = v1.keys;
                 profile_out.pitch = v1.pitch;
                 profile_out.modulation = v1.modulation;

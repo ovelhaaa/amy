@@ -1,0 +1,22 @@
+{
+  "name": "amy-studio",
+  "version": "1.0.0",
+  "description": "AMY Synthesizer Desktop Studio, Patch Editor and ESP32-S3 Hardware Manager",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "py": "python server.py"
+  },
+  "keywords": [
+    "amy",
+    "synthesizer",
+    "esp32",
+    "dsp",
+    "midi",
+    "fm-synth",
+    "juno-106",
+    "wavetable"
+  ],
+  "author": "AMY Project",
+  "license": "MIT"
+}

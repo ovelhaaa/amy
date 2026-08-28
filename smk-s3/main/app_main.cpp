@@ -118,6 +118,8 @@ static void app_init_task(void* arg) {
         .dc_pin   = smk::config::kDisplayDc,
         .rst_pin  = smk::config::kDisplayRst,
         .bl_pin   = smk::config::kDisplayBl,
+        .width    = 160,
+        .height   = 128,
         .x_offset = 0,
         .y_offset = 0
     };
@@ -133,6 +135,8 @@ static void app_init_task(void* arg) {
             .dc_pin   = smk::config::kDisplayDc,
             .rst_pin  = smk::config::kDisplayRst,
             .bl_pin   = smk::config::kDisplayBl,
+            .width    = 284,
+            .height   = 76,
             .x_offset = smk::config::kDisplayXOffset,
             .y_offset = smk::config::kDisplayYOffset
         };

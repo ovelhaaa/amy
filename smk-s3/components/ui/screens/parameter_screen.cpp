@@ -100,7 +100,9 @@ void ParameterScreen::render(DisplayDriver& display) {
                  saved_val_, unit_str_, current_val_, unit_str_);
         FontRenderer::drawString(display, 10, 26, val_buf, DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
 
-        progress_bar_.draw(display);
+        ProgressBar pb(10, 46, dw - 20, 16, DisplayDriver::kColorGreen, DisplayDriver::kColorWhite);
+        pb.setValue(current_val_ / 127.0f);
+        pb.draw(display);
     }
 }
 

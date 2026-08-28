@@ -99,4 +99,25 @@ private:
     uint16_t inactive_color_{DisplayDriver::kColorDarkGray};
 };
 
+class OscilloscopeWidget : public Widget {
+public:
+    OscilloscopeWidget(int16_t x = 0, int16_t y = 0, int16_t w = 50, int16_t h = 18,
+                       uint16_t wave_color = DisplayDriver::kColorGreen,
+                       uint16_t border_color = DisplayDriver::kColorMidGray);
+
+    void setPosition(int16_t x, int16_t y, int16_t w, int16_t h);
+    void setSamples(const int16_t* samples, size_t count);
+    void setActive(bool active);
+    void setColors(uint16_t wave_color, uint16_t border_color = DisplayDriver::kColorMidGray);
+    void draw(DisplayDriver& display) override;
+
+private:
+    int16_t x_, y_, w_, h_;
+    uint16_t wave_color_;
+    uint16_t border_color_;
+    bool active_{false};
+    int16_t samples_[128]{};
+    size_t sample_count_{0};
+};
+
 } // namespace smk
