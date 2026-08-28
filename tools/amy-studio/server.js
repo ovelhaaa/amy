@@ -33,6 +33,12 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.url === '/favicon.ico') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   let reqUrl = req.url.split('?')[0];
   if (reqUrl === '/' || reqUrl === '') {
     reqUrl = '/index.html';

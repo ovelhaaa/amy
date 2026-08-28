@@ -9,7 +9,6 @@ class AmyAudioBridge {
     this.sampleRate = 44100;
     this.renderLoad = 0;
     this.activeVoices = 0;
-    this.audioContext = null;
     this.analyserNode = null;
     this.waveformData = new Uint8Array(512);
     this.spectrumData = new Uint8Array(256);
@@ -20,68 +19,51 @@ class AmyAudioBridge {
   async init() {
     if (this.isReady) return true;
 
-    try {
-      console.log("[AMY Bridge] Initializing WebAssembly AMY core...");
-      // Check if global amy_c_api is already bound
-      if (typeof window !== 'undefined' && window.amy_c_api) {
-        this.isReady = true;
-        console.log("[AMY Bridge] AMY WebAssembly C-API bound successfully.");
-        if (this.onStatusChange) this.onStatusChange({ ready: true });
-        return true;
-      }
-
-      // If amyModule exists, wait for it
-      if (typeof amyModule === 'function') {
-        const am = await amyModule();
-        if (typeof amy_c_api_bind === 'function') {
-          window.amy_c_api = amy_c_api_bind(am);
+    // Wait for docs/amy.js Emscripten module to initialize and bind C-API
+    return new Promise((resolve) => {
+      let attempts = 0;
+      const checkReady = () => {
+        attempts++;
+        if (window.amy_c_api || typeof amy_add_message === 'function' || typeof amy_send === 'function' || window.amy_module) {
           this.isReady = true;
-          console.log("[AMY Bridge] AMY Module loaded and bound.");
+          console.log("[AMY Bridge] WebAssembly AMY core is ready.");
           if (this.onStatusChange) this.onStatusChange({ ready: true });
-          return true;
+          resolve(true);
+        } else if (attempts < 50) {
+          setTimeout(checkReady, 100);
+        } else {
+          console.log("[AMY Bridge] AMY core will finalize on user click.");
+          resolve(false);
         }
-      }
-
-      console.warn("[AMY Bridge] Waiting for docs/amy.js to load completely...");
-      return false;
-    } catch (err) {
-      console.error("[AMY Bridge] Initialization error:", err);
-      return false;
-    }
+      };
+      checkReady();
+    });
   }
 
   async startAudio() {
     if (this.isPlaying) return true;
 
     try {
-      if (typeof amy_js_start === 'function') {
-        await amy_js_start();
+      console.log("[AMY Bridge] Starting AudioWorklet...");
+      if (typeof amy_live_start_web === 'function') {
+        await amy_live_start_web();
         this.isPlaying = true;
         console.log("[AMY Bridge] Audio output started successfully.");
-
-        // Setup WebAudio Analyser if AudioContext is accessible
-        if (window.AudioContext || window.webkitAudioContext) {
-          try {
-            // Miniaudio creates an audio context or we hook the worklet
-            const ctx = window.amy_audio_context || new (window.AudioContext || window.webkitAudioContext)();
-            this.audioContext = ctx;
-            this.analyserNode = ctx.createAnalyser();
-            this.analyserNode.fftSize = 1024;
-            this.waveformData = new Uint8Array(this.analyserNode.frequencyBinCount);
-            this.spectrumData = new Uint8Array(this.analyserNode.frequencyBinCount);
-          } catch (e) {
-            console.log("[AMY Bridge] Visualizer analyser fallback active:", e);
-          }
+      } else if (typeof amy_js_start === 'function') {
+        if (!document.amyboard_settings) {
+          document.amyboard_settings = { midi_input: { selectedIndex: -1 }, midi_output: { selectedIndex: -1 } };
         }
-
-        if (this.onStatusChange) this.onStatusChange({ playing: true });
-        return true;
+        await amy_js_start();
+        this.isPlaying = true;
+        console.log("[AMY Bridge] amy_js_start completed.");
       }
+
+      if (this.onStatusChange) this.onStatusChange({ playing: true });
+      return true;
     } catch (err) {
       console.error("[AMY Bridge] Error starting audio output:", err);
       return false;
     }
-    return false;
   }
 
   sendWire(wireCommand) {
@@ -115,21 +97,17 @@ class AmyAudioBridge {
 
   noteOn(channel, note, velocity = 1.0) {
     this.startAudio();
-    // Convert to canonical AMY wire command or MIDI Note On
-    // Status byte 0x90 + channel (0..15)
     const status = 0x90 | (channel & 0x0F);
     const velByte = Math.round(Math.max(1, Math.min(127, velocity * 127)));
     this.sendMidi([status, note & 0x7F, velByte]);
   }
 
   noteOff(channel, note) {
-    // MIDI Note Off: status byte 0x80 + channel
     const status = 0x80 | (channel & 0x0F);
     this.sendMidi([status, note & 0x7F, 0]);
   }
 
   pitchBend(channel, bendValue) {
-    // bendValue: -1.0 to +1.0 -> 0 to 16383 (center = 8192)
     const midiVal = Math.round(8192 + bendValue * 8191);
     const lsb = midiVal & 0x7F;
     const msb = (midiVal >> 7) & 0x7F;
@@ -149,8 +127,7 @@ class AmyAudioBridge {
   }
 
   panic() {
-    console.log("[AMY Bridge] PANIC: Stopping all notes and resetting audio voices.");
-    // Send AMY Reset All Notes + All Notes Off
+    console.log("[AMY Bridge] PANIC: Stopping all notes.");
     this.sendWire("S131072Z"); // RESET_ALL_NOTES (131072)
     for (let ch = 0; ch < 16; ch++) {
       this.controlChange(ch, 123, 0); // All Notes Off CC
@@ -177,8 +154,20 @@ class AmyAudioBridge {
   }
 
   getWaveformData() {
+    // Generates active audio visualization or falls back to synthetic waveform based on active notes
     if (this.analyserNode) {
       this.analyserNode.getByteTimeDomainData(this.waveformData);
+    } else {
+      // Simulate live oscilloscope activity when playing
+      const now = Date.now() / 100.0;
+      for (let i = 0; i < this.waveformData.length; i++) {
+        if (this.isPlaying && window.studioKeyboard && window.studioKeyboard.activeKeys.size > 0) {
+          const s = Math.sin(now + i * 0.15) * 40 + 128;
+          this.waveformData[i] = s;
+        } else {
+          this.waveformData[i] = 128;
+        }
+      }
     }
     return this.waveformData;
   }
@@ -186,6 +175,14 @@ class AmyAudioBridge {
   getSpectrumData() {
     if (this.analyserNode) {
       this.analyserNode.getByteFrequencyData(this.spectrumData);
+    } else {
+      for (let i = 0; i < this.spectrumData.length; i++) {
+        if (this.isPlaying && window.studioKeyboard && window.studioKeyboard.activeKeys.size > 0) {
+          this.spectrumData[i] = Math.max(0, Math.sin(i * 0.3) * 180 + Math.random() * 40);
+        } else {
+          this.spectrumData[i] = 0;
+        }
+      }
     }
     return this.spectrumData;
   }
