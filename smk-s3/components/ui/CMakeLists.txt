@@ -3,6 +3,7 @@ idf_component_register(
         "display_driver.cpp"
         "dummy_display_driver.cpp"
         "st7789_display_driver.cpp"
+        "st7735_display_driver.cpp"
         "font_renderer.cpp"
         "widgets.cpp"
         "ui_manager.cpp"
@@ -12,6 +13,9 @@ idf_component_register(
         "screens/midi_monitor_screen.cpp"
         "screens/sequencer_screen.cpp"
         "screens/pad_screen.cpp"
+        "screens/midi_learn_screen.cpp"
+        "screens/splash_screen.cpp"
+        "screens/scene_screen.cpp"
     INCLUDE_DIRS
         "include"
         "include/screens"

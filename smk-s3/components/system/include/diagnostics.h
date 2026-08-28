@@ -24,6 +24,7 @@ struct DiagnosticCounters {
     
     // System
     std::atomic<uint32_t> panic_count{0};
+    std::atomic<uint32_t> active_voices{0};
 };
 
 class Diagnostics {

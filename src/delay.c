@@ -84,7 +84,21 @@ void free_delay_line(delay_line_t *delay_line) {
     free(delay_line);  // the samples are part of the same malloc.
 }
 
-static SAMPLE FRACTIONAL_SAMPLE(PHASOR phase, const SAMPLE *delay, int index_mask, int index_bits) {
+static inline SAMPLE FRACTIONAL_SAMPLE(PHASOR phase, const SAMPLE *delay, int index_mask, int index_bits) {
+#ifdef AMY_HAS_MUL64
+    // 4-point Hermite interpolation for smooth BBD chorus without interpolation distortion
+    uint32_t base_index = INT_OF_P(phase, index_bits);
+    SAMPLE frac = S_FRAC_OF_P(phase, index_bits);
+    SAMPLE ym1 = delay[(base_index - 1) & index_mask];
+    SAMPLE y0  = delay[base_index];
+    SAMPLE y1  = delay[(base_index + 1) & index_mask];
+    SAMPLE y2  = delay[(base_index + 2) & index_mask];
+    SAMPLE c0 = y0;
+    SAMPLE c1 = SHIFTR(y1 - ym1, 1);
+    SAMPLE c2 = ym1 - SHIFTL(y0, 1) - SHIFTR(y0, 1) + SHIFTL(y1, 1) - SHIFTR(y2, 1);
+    SAMPLE c3 = SHIFTR(y2 - ym1, 1) + SHIFTL(y0 - y1, 1) + SHIFTR(y0 - y1, 1);
+    return c0 + MUL0_SS(frac, c1 + MUL0_SS(frac, c2 + MUL0_SS(frac, c3)));
+#else
     // Interpolated sample copied from oscillators.c:render_lut
     uint32_t base_index = INT_OF_P(phase, index_bits);
     SAMPLE frac = S_FRAC_OF_P(phase, index_bits);
@@ -93,9 +107,10 @@ static SAMPLE FRACTIONAL_SAMPLE(PHASOR phase, const SAMPLE *delay, int index_mas
     // linear interpolation.
     SAMPLE sample = b + MUL8_SS((c - b), frac);
     return sample;
+#endif
 }
 
-void delay_line_in_out(SAMPLE *in, SAMPLE *out, int n_samples, SAMPLE* mod_in, SAMPLE mod_scale, delay_line_t *delay_line, SAMPLE mix_level, SAMPLE feedback_level) {
+AMY_IRAM_ATTR void delay_line_in_out(SAMPLE *in, SAMPLE *out, int n_samples, SAMPLE* mod_in, SAMPLE mod_scale, delay_line_t *delay_line, SAMPLE mix_level, SAMPLE feedback_level) {
     // Read and write the next n_samples from/to the delay line.
     // mod_in is a per-sample modulation of the maximum delay, where 1 gives 
     // the max delay, -1 gives no delay, and 0 gives max_delay/2.
@@ -147,7 +162,7 @@ static inline SAMPLE LPF(SAMPLE samp, SAMPLE *state, SAMPLE lpcoef, SAMPLE lpgai
     return SMULR6(SHIFTR(gain, 1), *state + SMULR6(lpgain, samp - *state));
 }
 
-void delay_line_in_out_fixed_delay(SAMPLE *in, SAMPLE *out, int n_samples, int delay_samples, delay_line_t *delay_line, SAMPLE mix_level, SAMPLE feedback_level, SAMPLE filter_coef) {
+AMY_IRAM_ATTR void delay_line_in_out_fixed_delay(SAMPLE *in, SAMPLE *out, int n_samples, int delay_samples, delay_line_t *delay_line, SAMPLE mix_level, SAMPLE feedback_level, SAMPLE filter_coef) {
     // Read and write the next n_samples from/to the delay line.
     // Simplified version of delay_line_in_out() that uses a fixed integer delay
     // for the whole block.
@@ -308,7 +323,7 @@ void deinit_stereo_reverb(reverb_params_t *rev) {
 #define DL_WRITE(P, val) do { P##_s[P##_n] = (val); P##_n = (P##_n + 1) & P##_m; } while (0)
 #define DL_READ(P)       (P##_s[(P##_n - P##_f) & P##_m])
 
-void stereo_reverb(reverb_params_t *rev, SAMPLE *r_in, SAMPLE *l_in, SAMPLE *r_out, SAMPLE *l_out, int n_samples, SAMPLE level) {
+AMY_IRAM_ATTR void stereo_reverb(reverb_params_t *rev, SAMPLE *r_in, SAMPLE *l_in, SAMPLE *r_out, SAMPLE *l_out, int n_samples, SAMPLE level) {
     // Stereo reverb.  *{r,l}_in each point to n_samples input samples.
     // n_samples are written to {r,l}_out.
     // Recreate
@@ -332,6 +347,8 @@ void stereo_reverb(reverb_params_t *rev, SAMPLE *r_in, SAMPLE *l_in, SAMPLE *r_o
     SAMPLE lpfcoef = rev->lpfcoef, lpfgain = rev->lpfgain, liveness = rev->liveness;
     SAMPLE f1state = rev->f1state, f2state = rev->f2state;
     SAMPLE f3state = rev->f3state, f4state = rev->f4state;
+    float lfo_phase = rev->lfo_phase;
+    float lfo_step = (2.0f * (float)M_PI * 0.75f) / (float)AMY_SAMPLE_RATE;
 
     while(n_samples--) {
         // Early echo reflections.
@@ -372,13 +389,28 @@ void stereo_reverb(reverb_params_t *rev, SAMPLE *r_in, SAMPLE *l_in, SAMPLE *r_o
         l_acc = DL_READ(e6);
 
 
-        // Reverb delays & matrix.
-        SAMPLE d1 = DL_READ(dl1);
+        // Reverb delays & matrix with Dattorro plate diffusion modulation on dl1 & dl2
+        float mod1 = 4.0f * sinf(lfo_phase);
+        float mod2 = 4.0f * cosf(lfo_phase);
+        lfo_phase += lfo_step;
+        if (lfo_phase >= 2.0f * (float)M_PI) lfo_phase -= 2.0f * (float)M_PI;
+
+        int offset1 = dl1_f + (int)mod1;
+        SAMPLE frac1 = F2S(mod1 - (int)mod1);
+        int idx1_a = (dl1_n - offset1) & dl1_m;
+        int idx1_b = (idx1_a - 1) & dl1_m;
+        SAMPLE d1 = dl1_s[idx1_a] + MUL0_SS(frac1, dl1_s[idx1_b] - dl1_s[idx1_a]);
+
+        int offset2 = dl2_f + (int)mod2;
+        SAMPLE frac2 = F2S(mod2 - (int)mod2);
+        int idx2_a = (dl2_n - offset2) & dl2_m;
+        int idx2_b = (idx2_a - 1) & dl2_m;
+        SAMPLE d2 = dl2_s[idx2_a] + MUL0_SS(frac2, dl2_s[idx2_b] - dl2_s[idx2_a]);
+
         d1 = LPF(d1, &f1state, lpfcoef, lpfgain, liveness);
         d1 += r_acc;
         *r_out++ = in_r + MUL8_SS(level, d1);
 
-        SAMPLE d2 = DL_READ(dl2);
         d2 = LPF(d2, &f2state, lpfcoef, lpfgain, liveness);
         d2 += l_acc;
         if (l_out != NULL)  *l_out++ = in_l + MUL8_SS(level, d2);
@@ -411,4 +443,5 @@ void stereo_reverb(reverb_params_t *rev, SAMPLE *r_in, SAMPLE *l_in, SAMPLE *r_o
     rev->f2state = f2state;
     rev->f3state = f3state;
     rev->f4state = f4state;
+    rev->lfo_phase = lfo_phase;
 }

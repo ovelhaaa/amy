@@ -1,5 +1,6 @@
 #pragma once
 #include "synth_engine.h"
+#include <atomic>
 
 namespace smk {
 
@@ -24,7 +25,7 @@ public:
     void setFilter(uint8_t osc_id, float cutoff_hz, float resonance);
     void setOscillatorWaveform(uint8_t osc_id, uint8_t wave_type);
     void setEnvelope(uint8_t osc_id, float attack_ms, float decay_ms, float sustain_level, float release_ms);
-    void loadPreset(uint8_t osc_id, uint16_t preset_id);
+    void loadPreset(uint8_t synth_id, uint16_t preset_id, uint8_t num_voices = 8);
     void sendAmyMessage(const char* message);
 
     // FM Synthesis Controls
@@ -38,6 +39,24 @@ public:
     void setReverb(float room_size, float damp, float mix);
     void setDelay(float delay_ms, float feedback, float mix);
     void setSendLevels(uint8_t osc_id, float reverb_send, float chorus_send, float echo_send);
+
+    // Master Output & Protection
+    void setSoftLimiter(bool enable) { soft_limiter_enabled_.store(enable, std::memory_order_relaxed); }
+    bool softLimiterEnabled() const { return soft_limiter_enabled_.load(std::memory_order_relaxed); }
+    void setMasterGain(float gain);
+    float masterGain() const { return master_gain_.load(std::memory_order_relaxed); }
+
+    // Oscilloscope sample capture for UI
+    static constexpr size_t kScopeBufferSize = 128;
+    static constexpr size_t kRawScopeBufferSize = 512; // stereo samples (256 frames * 2)
+    void getScopeSamples(int16_t* dest, size_t max_count, size_t* out_count = nullptr) const override;
+
+private:
+    std::atomic<uint32_t> active_voices_{0};
+    std::atomic<bool> soft_limiter_enabled_{true};
+    std::atomic<float> master_gain_{1.0f};
+    uint8_t active_notes_[16][128]{};
+    int16_t scope_buffer_[kRawScopeBufferSize]{};
 };
 
 } // namespace smk

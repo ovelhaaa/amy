@@ -93,18 +93,20 @@ const LUT *choose_from_lutset(float period, const LUT *lutset) {
 #define INTERP_LINEAR \
             sample = b + MUL0_SS(c - b, frac);
 
-// Miller's optimization -
-// https://github.com/pure-data/pure-data/blob/db777311d808bb3ba728b94ab067f8d333b7d0c2/src/d_array.c#L831C1-L833C76
-// outlet_float(x->x_obj.ob_outlet, b + frac * (
-//    cminusb - 0.1666667f * (1.-frac) * (
-//        (d - a - 3.0f * cminusb) * frac + (d + 2.0f*a - 3.0f*b))));#
-#define INTERP_CUBIC \
-            SAMPLE a = L2S(lut->table[(base_index - 1) & lut_mask]); \
-            SAMPLE d = L2S(lut->table[(base_index + 2) & lut_mask]); \
-            SAMPLE cminusb = c - b; \
-            SAMPLE fr_d_ma_m3cmb = MUL0_SS(d - a - cminusb - SHIFTL(cminusb, 1), frac); \
-            SAMPLE next_bit = MUL0_SS(fr_d_ma_m3cmb + d + SHIFTL(a - b, 1) - b, MUL0_SS(F2S(1.0f) - frac, F2S(0.16666666666667f))); \
-            sample = b + MUL0_SS(cminusb - next_bit, frac);
+// 4-point, 3rd-order Catmull-Rom / Hermite interpolation (C1 continuous):
+// ym1 = y[n-1], y0 = y[n], y1 = y[n+1], y2 = y[n+2]
+#define INTERP_HERMITE \
+            SAMPLE ym1 = L2S(lut->table[(base_index - 1) & lut_mask]); \
+            SAMPLE y0  = b; \
+            SAMPLE y1  = c; \
+            SAMPLE y2  = L2S(lut->table[(base_index + 2) & lut_mask]); \
+            SAMPLE c0 = y0; \
+            SAMPLE c1 = SHIFTR(y1 - ym1, 1); \
+            SAMPLE c2 = ym1 - SHIFTL(y0, 1) - SHIFTR(y0, 1) + SHIFTL(y1, 1) - SHIFTR(y2, 1); \
+            SAMPLE c3 = SHIFTR(y2 - ym1, 1) + SHIFTL(y0 - y1, 1) + SHIFTR(y0 - y1, 1); \
+            sample = c0 + MUL0_SS(frac, c1 + MUL0_SS(frac, c2 + MUL0_SS(frac, c3)));
+
+#define INTERP_CUBIC INTERP_HERMITE
 
 #define RENDER_LUT_LOOP_END \
             SAMPLE value = buf[i] + MULA_SS(sample, current_amp);	\
@@ -338,10 +340,97 @@ AMY_IRAM_ATTR SAMPLE render_lpf_lut(SAMPLE* buf, uint16_t osc, int8_t is_square,
     return max_value;
 }
 
+// ---------------------------------------------------------------------------
+// PolyBLEP (Band-Limited Step) Oscillator Engine
+// ---------------------------------------------------------------------------
+static inline float poly_blep_residual(float t, float dt) {
+    if (t < dt) {
+        float p = t / dt;
+        return p + p - p * p - 1.0f;
+    }
+    if (t > 1.0f - dt) {
+        float p = (t - 1.0f) / dt;
+        return p * p + p + p + 1.0f;
+    }
+    return 0.0f;
+}
+
+static inline float poly_blamp_residual(float t, float dt) {
+    if (t < dt) {
+        float p = t / dt;
+        return -0.33333333f * p * p * p + p * p - p + 0.33333333f;
+    }
+    if (t > 1.0f - dt) {
+        float p = (t - 1.0f) / dt;
+        return 0.33333333f * p * p * p + p * p + p + 0.33333333f;
+    }
+    return 0.0f;
+}
+
+AMY_IRAM_ATTR SAMPLE render_polyblep(SAMPLE* buf, uint16_t osc, int8_t wave_type, int8_t direction) {
+    float freq = freq_of_logfreq(msynth[osc]->logfreq);
+    if (freq < 1.0f) freq = 1.0f;
+    if (freq > (float)AMY_SAMPLE_RATE * 0.49f) freq = (float)AMY_SAMPLE_RATE * 0.49f;
+
+    float dt = freq / (float)AMY_SAMPLE_RATE;
+    float phase = P2F(synth[osc]->phase);
+    if (phase < 0.0f) phase += 1.0f;
+    if (phase >= 1.0f) phase -= (int)phase;
+
+    float duty = msynth[osc]->duty;
+    if (duty < 0.01f) duty = 0.01f;
+    if (duty > 0.99f) duty = 0.99f;
+
+    float amp_start = (float)direction * msynth[osc]->last_amp;
+    float amp_end = (float)direction * msynth[osc]->amp;
+    float d_amp = (amp_end - amp_start) / (float)AMY_BLOCK_SIZE;
+    float current_amp = amp_start;
+    SAMPLE max_val = 0;
+
+    for (int i = 0; i < AMY_BLOCK_SIZE; ++i) {
+        float sample = 0.0f;
+        if (wave_type == SAW_UP || wave_type == SAW_DOWN) {
+            sample = (2.0f * phase - 1.0f) - poly_blep_residual(phase, dt);
+        } else if (wave_type == PULSE) {
+            float naive = (phase < duty) ? 1.0f : -1.0f;
+            float blep0 = poly_blep_residual(phase, dt);
+            float phase_d = phase - duty;
+            if (phase_d < 0.0f) phase_d += 1.0f;
+            float blep1 = poly_blep_residual(phase_d, dt);
+            sample = naive + blep0 - blep1;
+        } else if (wave_type == TRIANGLE) {
+            float naive = 2.0f * fabsf(2.0f * phase - 1.0f) - 1.0f;
+            float blamp0 = poly_blamp_residual(phase, dt);
+            float phase_half = phase + 0.5f;
+            if (phase_half >= 1.0f) phase_half -= 1.0f;
+            float blamp1 = poly_blamp_residual(phase_half, dt);
+            sample = naive + 4.0f * dt * (blamp0 - blamp1);
+        }
+
+        SAMPLE s = F2S(sample * current_amp);
+        SAMPLE val = buf[i] + s;
+        buf[i] = val;
+        SAMPLE abs_val = (val < 0) ? -val : val;
+        if (abs_val > max_val) max_val = abs_val;
+
+        current_amp += d_amp;
+        phase += dt;
+        if (phase >= 1.0f) phase -= 1.0f;
+    }
+
+    synth[osc]->phase = F2P(phase);
+    msynth[osc]->last_amp = msynth[osc]->amp;
+    return max_val;
+}
+
 SAMPLE render_pulse(SAMPLE* buf, uint16_t osc) {
+#ifdef AMY_POLYBLEP
+    return render_polyblep(buf, osc, PULSE, 1);
+#else
     // Second (negative) impulse is <duty> cycles later.
     _pulse_note_on(osc);
     return render_lpf_lut(buf, osc, true, 1, 0);
+#endif
 }
 
 void pulse_mod_trigger(uint16_t osc) {
@@ -398,10 +487,18 @@ SAMPLE render_saw(SAMPLE* buf, uint16_t osc, int8_t direction) {
 }
 
 SAMPLE render_saw_down(SAMPLE* buf, uint16_t osc) {
+#ifdef AMY_POLYBLEP
+    return render_polyblep(buf, osc, SAW_DOWN, -1);
+#else
     return render_saw(buf, osc, -1);
+#endif
 }
 SAMPLE render_saw_up(SAMPLE* buf, uint16_t osc) {
+#ifdef AMY_POLYBLEP
+    return render_polyblep(buf, osc, SAW_UP, 1);
+#else
     return render_saw(buf, osc, 1);
+#endif
 }
 
 
@@ -453,6 +550,9 @@ void _triangle_note_on(uint16_t osc, float freq) {
 }
 
 SAMPLE render_triangle(SAMPLE* buf, uint16_t osc) {
+#ifdef AMY_POLYBLEP
+    return render_polyblep(buf, osc, TRIANGLE, 1);
+#else
     float freq = freq_of_logfreq(msynth[osc]->logfreq);
     _triangle_note_on(osc, freq);
     PHASOR step = F2P(freq / (float)AMY_SAMPLE_RATE);  // cycles per sec / samples per sec -> cycles per sample
@@ -462,6 +562,7 @@ SAMPLE render_triangle(SAMPLE* buf, uint16_t osc) {
     synth[osc]->phase = render_lut(buf, synth[osc]->phase, step, last_amp, amp, synth[osc]->lut, &max_value);
     msynth[osc]->last_amp = msynth[osc]->amp;
     return max_value;
+#endif
 }
 
 void triangle_mod_trigger(uint16_t osc) {

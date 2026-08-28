@@ -42,12 +42,53 @@ void ClockManager::setBpm(float bpm) {
     }
 }
 
+void ClockManager::setSwing(uint8_t swing_percent) {
+    swing_percent_ = std::clamp(swing_percent, (uint8_t)50, (uint8_t)75);
+}
+
+void ClockManager::setClockSource(ClockSource source) {
+    clock_source_ = source;
+    if (source == ClockSource::UsbMidi) {
+        if (timer_handle_) {
+            esp_timer_stop(timer_handle_);
+        }
+    } else {
+        if (running_) {
+            updateTimerPeriod();
+        }
+    }
+}
+
+void ClockManager::onExternalTick() {
+    if (clock_source_ != ClockSource::UsbMidi || !running_) return;
+    tick_count_++;
+    if (callback_) {
+        callback_(tick_count_, callback_ctx_);
+    }
+}
+
+void ClockManager::onExternalStart() {
+    if (clock_source_ != ClockSource::UsbMidi) return;
+    tick_count_ = 0;
+    running_ = true;
+    ESP_LOGI(TAG, "External USB MIDI Clock Started");
+}
+
+void ClockManager::onExternalStop() {
+    if (clock_source_ != ClockSource::UsbMidi) return;
+    running_ = false;
+    ESP_LOGI(TAG, "External USB MIDI Clock Stopped");
+}
+
 void ClockManager::start() {
     if (running_) return;
     tick_count_ = 0;
     running_ = true;
-    updateTimerPeriod();
-    ESP_LOGI(TAG, "Clock started at %.1f BPM", bpm_);
+    if (clock_source_ == ClockSource::Internal) {
+        updateTimerPeriod();
+    }
+    ESP_LOGI(TAG, "Clock started (Source: %s, %.1f BPM)", 
+             (clock_source_ == ClockSource::Internal ? "INTERNAL" : "USB_MIDI"), bpm_);
 }
 
 void ClockManager::stop() {

@@ -5,6 +5,14 @@
 
 namespace smk {
 
+enum class VelocityCurve : uint8_t {
+    Linear = 0,
+    Soft,
+    Hard,
+    SCurve,
+    Fixed
+};
+
 class MidiParser {
 public:
     using EventCallback = void(*)(const SynthEvent& event, void* ctx);
@@ -14,6 +22,11 @@ public:
     void setCallback(EventCallback cb, void* ctx);
     void setSource(EventSource source);
     void setChannel(uint8_t default_channel);  // for running status
+    
+    void setVelocityCurve(VelocityCurve curve);
+    VelocityCurve velocityCurve() const;
+    static uint8_t applyVelocityCurve(uint8_t raw_velocity, VelocityCurve curve);
+    static const char* velocityCurveName(VelocityCurve curve);
     
     // Process raw USB-MIDI event packet (4 bytes: CIN+cable, status, data1, data2)
     void processUsbMidiPacket(const uint8_t* packet);
@@ -38,6 +51,7 @@ private:
     uint8_t expected_bytes_ = 0;
     
     std::atomic<uint32_t> parse_errors_{0};
+    std::atomic<VelocityCurve> velocity_curve_{VelocityCurve::Linear};
 };
 
 } // namespace smk

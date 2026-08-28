@@ -57,6 +57,7 @@ public:
 
     void setValue(uint8_t value); // 0 to 127
     void setLabel(const char* label);
+    const char* label() const { return label_; }
     void setColors(uint16_t bar_color, uint16_t label_color);
     void draw(DisplayDriver& display) override;
 

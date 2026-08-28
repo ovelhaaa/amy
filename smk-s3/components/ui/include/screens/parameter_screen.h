@@ -32,7 +32,7 @@ public:
 
 private:
     char param_name_[32]{"CUTOFF FREQUENCY"};
-    char target_layer_[12]{"LAYER A"};
+    char target_layer_[12]{"SYNTH"};
     char unit_str_[12]{"kHz"};
     float current_val_{2.40f};
     float saved_val_{1.25f};

@@ -15,6 +15,12 @@ struct SceneHeader {
     uint32_t crc32;          // Checksum
 };
 
+enum class SceneTransition : uint8_t {
+    Immediate    = 0,
+    NextBeat     = 1,
+    EndOfPattern = 2
+};
+
 struct Scene {
     char        name[24];
     uint8_t     patch_id;
@@ -28,6 +34,9 @@ struct Scene {
     uint8_t     arp_octaves;
     bool        arp_latch;
     bool        seq_playing;
+    uint8_t     drum_pattern;     // Sequencer Pattern (0..7)
+    uint8_t     drum_mutes;       // Bitmask: bit 0=BD, 1=SD, 2=CH, 3=OH
+    uint8_t     transition_mode;  // 0=Immediate, 1=NextBeat, 2=EndOfPattern
     uint32_t    crc32;
 };
 

@@ -68,6 +68,9 @@ i2s_chan_handle_t rx_handle;
 // default ESP setup i2s
 amy_err_t esp32_setup_i2s(void) {
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
+    chan_cfg.dma_desc_num = 6;
+    chan_cfg.dma_frame_num = AMY_BLOCK_SIZE;
+    chan_cfg.auto_clear = true;
     if(AMY_HAS_AUDIO_IN) {
         i2s_new_channel(&chan_cfg, &tx_handle, &rx_handle);
     } else {

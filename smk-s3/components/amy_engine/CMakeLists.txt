@@ -31,3 +31,9 @@ target_compile_definitions(${COMPONENT_LIB} PUBLIC
     BLOCK_SIZE_BITS=8
     ESP_PLATFORM=1
 )
+
+target_compile_options(${COMPONENT_LIB} PRIVATE
+    -O3
+    -funroll-loops
+    -fno-strict-aliasing
+)

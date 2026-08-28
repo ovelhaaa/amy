@@ -288,17 +288,17 @@ static inline SAMPLE SMUL64R(SAMPLE a, SAMPLE b) {
 #endif
 }
 
-// All the different (rounded) mults are just SMUL64R
-//#define MUL0_SS(a, b) SMUL64R(a, b)
-//#define MUL4_SS(a, b) SMUL64R(a, b)
-//#define MUL5A_SS(a, b) SMUL64R(a, b)
-//#define MUL6A_SS(a, b) SMUL64R(a, b)
-//#define MUL8_SS(a, b) SMUL64R(a, b)
-//#define MUL8F_SS(a, b) SMUL64R(a, b)
-//#define MUL4E_SS(a, b) SMUL64R(a, b)
-//#define MUL4_SP_S(a, b) SMUL64R(a, b)
-#define SMULR6(a, b) SMUL64R(a, b)
-#define SMULR7(a, b) SMUL64R(a, b)
+// All the different (rounded) mults map to SMUL64R on 64-bit capable hardware (ESP32-S3, x86_64, arm64)
+#define MUL0_SS(a, b)   SMUL64R(a, b)
+#define MUL4_SS(a, b)   SMUL64R(a, b)
+#define MUL5A_SS(a, b)  SMUL64R(a, b)
+#define MUL6A_SS(a, b)  SMUL64R(a, b)
+#define MUL8_SS(a, b)   SMUL64R(a, b)
+#define MUL8F_SS(a, b)  SMUL64R(a, b)
+#define MUL4E_SS(a, b)  SMUL64R(a, b)
+#define MUL4_SP_S(a, b) SMUL64R(a, b)
+#define SMULR6(a, b)    SMUL64R(a, b)
+#define SMULR7(a, b)    SMUL64R(a, b)
 
 #else  // !AMY_HAS_MUL64
 static inline SAMPLE SMULR6(SAMPLE a, SAMPLE b) {
@@ -312,9 +312,6 @@ static inline SAMPLE SMULR7(SAMPLE a, SAMPLE b) {
     SAMPLE r = 4 + ((a + (1 << 9)) >> 10) * ((b + (1 << 9)) >> 10);
     return r >> 3;
 }
-#endif
-// from https://colab.research.google.com/drive/1_uQto5WSVMiSPHQ34cHbCC6qkF614EoN#scrollTo=73JbLFhg44QG
-
 
 // Multiply two SAMPLE values when the result will always be [-1.0, 1.0).
 #define MUL0_SS(a, b) FXMUL_TEMPLATE(a, b, 8, 7, S_FRAC_BITS)  // 8+7 = 15, so additional 8 bits shift right on output to make 23 req'd total.
@@ -331,6 +328,8 @@ static inline SAMPLE SMULR7(SAMPLE a, SAMPLE b) {
 
 // Multiply two SAMPLE values and allow result to occupy full [-256, 256) range
 #define MUL8_SS(a, b)  FXMUL_TEMPLATE(a, b, 12, 11, S_FRAC_BITS)  // 12+11 = 23, so no more shift on result.
+
+#endif
 
 // Shifts
 #define SHIFTR(s, b) ((s) >> (b))

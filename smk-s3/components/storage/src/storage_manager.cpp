@@ -237,21 +237,62 @@ bool StorageManager::loadProfile(const char* name, ControllerProfile& profile_ou
     size_t hdr_read = fread(&header, 1, sizeof(ProfileHeader), f);
 
     if (hdr_read == sizeof(ProfileHeader) && header.magic == kProfileMagic) {
-        ControllerProfile loaded = {};
-        size_t read_bytes = fread(&loaded, 1, sizeof(ControllerProfile), f);
-        fclose(f);
+        if (header.format_version == 2) {
+            ControllerProfile loaded = {};
+            size_t read_bytes = fread(&loaded, 1, sizeof(ControllerProfile), f);
+            fclose(f);
 
-        if (read_bytes == sizeof(ControllerProfile)) {
-            uint32_t computed_crc = calculateProfileCrc32(loaded);
-            if (computed_crc == header.crc32 && computed_crc == loaded.crc32) {
-                profile_out = loaded;
-                ESP_LOGI(TAG, "Loaded Controller Profile [%s] (.s3m) from Flash", name);
+            if (read_bytes == sizeof(ControllerProfile)) {
+                uint32_t computed_crc = calculateProfileCrc32(loaded);
+                if (computed_crc == header.crc32 && computed_crc == loaded.crc32) {
+                    profile_out = loaded;
+                    ESP_LOGI(TAG, "Loaded Controller Profile [%s] (.s3m v2) from Flash", name);
+                    return true;
+                }
+            }
+            ESP_LOGW(TAG, "Profile [%s] payload size mismatch or CRC error", name);
+            return false;
+        } else if (header.format_version == 1) {
+            // Version 1 profile migration:
+            // Read version 1 payload (8 knobs) and upgrade to v2 with default Bank B knobs
+            struct ControllerProfileV1 {
+                char        name[24];
+                MidiBinding keys;
+                MidiBinding pitch;
+                MidiBinding modulation;
+                MidiBinding knobs[8];
+                MidiBinding pads[16];
+                MidiBinding buttons[4];
+                uint32_t    crc32;
+            };
+            ControllerProfileV1 v1 = {};
+            size_t read_bytes = fread(&v1, 1, sizeof(ControllerProfileV1), f);
+            fclose(f);
+
+            if (read_bytes == sizeof(ControllerProfileV1)) {
+                profile_out = ProfileManager::createDefaultSmk25Profile();
+                strncpy(profile_out.name, v1.name, sizeof(profile_out.name) - 1);
+                profile_out.keys = v1.keys;
+                profile_out.pitch = v1.pitch;
+                profile_out.modulation = v1.modulation;
+                for (size_t i = 0; i < 8; ++i) profile_out.knobs[i] = v1.knobs[i];
+                for (size_t i = 0; i < 16; ++i) profile_out.pads[i] = v1.pads[i];
+                for (size_t i = 0; i < 4; ++i) profile_out.buttons[i] = v1.buttons[i];
+                profile_out.crc32 = calculateProfileCrc32(profile_out);
+                ESP_LOGI(TAG, "Migrated legacy Controller Profile [%s] (v1 -> v2) from Flash", name);
                 return true;
             }
+            ESP_LOGW(TAG, "Legacy Profile [%s] v1 size mismatch", name);
+            return false;
+        } else {
+            ESP_LOGW(TAG, "Incompatible profile version: %u on [%s]", header.format_version, name);
+            fclose(f);
+            return false;
         }
     }
+
     fclose(f);
-    ESP_LOGE(TAG, "Failed to load Controller Profile [%s]", name);
+    ESP_LOGE(TAG, "Failed to load Controller Profile [%s]: invalid header", name);
     return false;
 }
 
@@ -301,6 +342,11 @@ bool StorageManager::loadScene(const char* name, Scene& scene_out) {
 
     SceneHeader header = {};
     if (fread(&header, sizeof(SceneHeader), 1, f) == 1 && header.magic == kSceneMagic) {
+        if (header.format_version != kSceneFormatVersion) {
+            fclose(f);
+            return false;
+        }
+
         Scene loaded = {};
         size_t read_bytes = fread(&loaded, 1, sizeof(Scene), f);
         fclose(f);
@@ -313,6 +359,7 @@ bool StorageManager::loadScene(const char* name, Scene& scene_out) {
                 return true;
             }
         }
+        return false;
     }
     fclose(f);
     ESP_LOGE(TAG, "Failed to load Scene [%s]", name);

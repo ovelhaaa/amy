@@ -11,11 +11,14 @@
 #include "controller_profile.h"
 #include "midi_learn.h"
 #include "pad_bank.h"
+#include "usb_midi_host.h"
+#include "amy_adapter.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_console.h"
 #include "esp_vfs_dev.h"
 #include "driver/uart.h"
+#include "driver/uart_vfs.h"
 #include <cstring>
 #include <cstdlib>
 
@@ -33,6 +36,8 @@ NvsStorage*     Console::s_nvs_storage     = nullptr;
 MidiLearn*      Console::s_midi_learn      = nullptr;
 PadManager*     Console::s_pad_manager     = nullptr;
 ControllerProfile* Console::s_active_profile_ptr = nullptr;
+UsbMidiHost*    Console::s_midi_host       = nullptr;
+AmyAdapter*     Console::s_amy_adapter     = nullptr;
 
 static ControllerProfile s_fallback_profile = ProfileManager::createDefaultSmk25Profile();
 
@@ -48,21 +53,22 @@ void Console::setNvsStorage(NvsStorage* nvs_storage) { s_nvs_storage = nvs_stora
 void Console::setMidiLearn(MidiLearn* midi_learn) { s_midi_learn = midi_learn; }
 void Console::setPadManager(PadManager* pad_mgr) { s_pad_manager = pad_mgr; }
 void Console::setActiveProfilePointer(ControllerProfile* prof_ptr) { s_active_profile_ptr = prof_ptr; }
+void Console::setUsbMidiHost(UsbMidiHost* midi_host) { s_midi_host = midi_host; }
+void Console::setAmyAdapter(AmyAdapter* adapter) { s_amy_adapter = adapter; }
 
 bool Console::begin() {
-    uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity    = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .rx_flow_ctrl_thresh = 122,
-        .source_clk = UART_SCLK_DEFAULT
-    };
+    uart_config_t uart_config = {};
+    uart_config.baud_rate = 115200;
+    uart_config.data_bits = UART_DATA_8_BITS;
+    uart_config.parity    = UART_PARITY_DISABLE;
+    uart_config.stop_bits = UART_STOP_BITS_1;
+    uart_config.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
+    uart_config.rx_flow_ctrl_thresh = 122;
+    uart_config.source_clk = UART_SCLK_DEFAULT;
     
     uart_param_config(UART_NUM_0, &uart_config);
     uart_driver_install(UART_NUM_0, 1024, 0, 0, NULL, 0);
-    esp_vfs_dev_uart_use_driver(UART_NUM_0);
+    uart_vfs_dev_use_driver(UART_NUM_0);
 
     esp_console_config_t console_config = {};
     console_config.max_cmdline_args = 8;
@@ -114,6 +120,10 @@ bool Console::begin() {
     registerCommand("patch_prev", "Switch to previous patch", cmdPatchPrev);
     registerCommand("sys_save", "Save current system state to NVS", cmdSysSave);
     registerCommand("sys_load", "Load system state from NVS", cmdSysLoad);
+    registerCommand("velocity", "Set/get velocity curve <linear|soft|hard|scurve|fixed>", cmdVelocity);
+    registerCommand("swing", "Set/get global swing percent <50..75>", cmdSwing);
+    registerCommand("limiter", "Enable/disable master soft-limiter <on|off>", cmdLimiter);
+    registerCommand("clock_source", "Set/get clock sync source <internal|usb>", cmdClockSource);
     registerCommand("help", "List available commands", cmdHelp);
 
     xTaskCreatePinnedToCore(consoleTask, "console_task", 8192, this, 2, &task_handle_, 0);
@@ -183,7 +193,7 @@ int Console::cmdUiParam(int argc, char** argv) {
     const char* param_name = (argc >= 2) ? argv[1] : "CUTOFF FREQ";
     float val = (argc >= 3) ? (float)atof(argv[2]) : 85.0f;
 
-    s_ui_manager->triggerParameterOverlay(param_name, "LAYER A", val, 64.0f, "", TakeoverStatus::Captured);
+    s_ui_manager->triggerParameterOverlay(param_name, "SYNTH", val, 64.0f, "", TakeoverStatus::Captured);
     return 0;
 }
 
@@ -193,7 +203,7 @@ int Console::cmdPatchList(int argc, char** argv) {
     for (size_t i = 0; i < count; ++i) {
         const SynthPatch* p = FactoryPatches::getPatchByIndex(i);
         if (p != nullptr) {
-            ESP_LOGI(TAG, "[%03d] %-20s (Voices: %d, Mode: %d)", (int)p->id, p->name, (int)p->voice_count, (int)p->mode);
+            ESP_LOGI(TAG, "[%03d] %-20s (Voices: %d, EnginePatch: %d)", (int)p->id, p->name, (int)p->voice_count, (int)p->engine_patch);
         }
     }
     return 0;
@@ -372,10 +382,13 @@ int Console::cmdProfileShow(int argc, char** argv) {
     ESP_LOGI(TAG, "--- Active Controller Profile: %s ---", prof.name);
     ESP_LOGI(TAG, "  Modulation: CC #%d", prof.modulation.number);
     for (uint8_t i = 0; i < 8; ++i) {
-        ESP_LOGI(TAG, "  Macro #%d: CC #%d", i + 1, prof.knobs[i].number);
+        ESP_LOGI(TAG, "  Knob #%d (Bank A): CC #%d", i + 1, prof.knobs[i].number);
     }
     for (uint8_t i = 0; i < 8; ++i) {
-        ESP_LOGI(TAG, "  Pad #%d: Note #%d", i + 1, prof.pads[i].number);
+        ESP_LOGI(TAG, "  Knob #%d (Bank B): CC #%d", i + 1, prof.knobs[8 + i].number);
+    }
+    for (uint8_t i = 0; i < 16; ++i) {
+        ESP_LOGI(TAG, "  Pad #%d: Note/CC #%d", i + 1, prof.pads[i].number);
     }
     return 0;
 }
@@ -530,9 +543,13 @@ int Console::cmdSysSave(int argc, char** argv) {
     cfg.global_bpm = s_clock_manager->bpm();
     cfg.master_volume = 100;
     cfg.midi_channel = 0;
+    cfg.velocity_curve = s_midi_host ? static_cast<uint8_t>(s_midi_host->velocityCurve()) : 0;
+    cfg.swing_percent = s_clock_manager ? s_clock_manager->swing() : 50;
+    cfg.soft_limiter = (s_amy_adapter && s_amy_adapter->softLimiterEnabled()) ? 1 : 0;
 
     if (s_nvs_storage->saveConfig(cfg)) {
-        ESP_LOGI(TAG, "System Config Saved to NVS");
+        ESP_LOGI(TAG, "System Config Saved to NVS (PatchID:%d, BPM:%.1f, VelCurve:%d, Swing:%d%%, Limiter:%d)",
+                 cfg.active_patch_id, cfg.global_bpm, cfg.velocity_curve, cfg.swing_percent, cfg.soft_limiter);
     } else {
         ESP_LOGE(TAG, "Failed to save NVS config");
     }
@@ -545,10 +562,126 @@ int Console::cmdSysLoad(int argc, char** argv) {
     if (s_nvs_storage->loadConfig(cfg)) {
         s_patch_manager->selectPatch(cfg.active_patch_id);
         s_clock_manager->setBpm(cfg.global_bpm);
-        ESP_LOGI(TAG, "System Config Loaded from NVS (PatchID:%d, BPM:%.1f)", cfg.active_patch_id, cfg.global_bpm);
+        if (s_midi_host) s_midi_host->setVelocityCurve(static_cast<VelocityCurve>(cfg.velocity_curve));
+        if (s_clock_manager) s_clock_manager->setSwing(cfg.swing_percent);
+        if (s_sequencer) s_sequencer->setSwing((float)cfg.swing_percent);
+        if (s_arpeggiator) s_arpeggiator->setSwing((float)cfg.swing_percent);
+        if (s_amy_adapter) s_amy_adapter->setSoftLimiter(cfg.soft_limiter != 0);
+        if (s_ui_manager) {
+            s_ui_manager->systemScreen().setConfigInfo(
+                MidiParser::velocityCurveName(static_cast<VelocityCurve>(cfg.velocity_curve)),
+                cfg.swing_percent,
+                cfg.soft_limiter != 0
+            );
+        }
+        ESP_LOGI(TAG, "System Config Loaded from NVS (PatchID:%d, BPM:%.1f, VelCurve:%s, Swing:%d%%, Limiter:%s)", 
+                 cfg.active_patch_id, cfg.global_bpm, 
+                 MidiParser::velocityCurveName(static_cast<VelocityCurve>(cfg.velocity_curve)), 
+                 cfg.swing_percent, (cfg.soft_limiter != 0 ? "ON" : "OFF"));
     } else {
         ESP_LOGW(TAG, "No NVS Config found");
     }
+    return 0;
+}
+
+int Console::cmdVelocity(int argc, char** argv) {
+    if (!s_midi_host) {
+        ESP_LOGW(TAG, "USB MIDI Host not initialized");
+        return 1;
+    }
+    if (argc < 2) {
+        VelocityCurve current = s_midi_host->velocityCurve();
+        ESP_LOGI(TAG, "Active Velocity Curve: %s (Options: linear, soft, hard, scurve, fixed)", 
+                 MidiParser::velocityCurveName(current));
+        return 0;
+    }
+
+    VelocityCurve curve = VelocityCurve::Linear;
+    if (strcasecmp(argv[1], "soft") == 0) curve = VelocityCurve::Soft;
+    else if (strcasecmp(argv[1], "hard") == 0) curve = VelocityCurve::Hard;
+    else if (strcasecmp(argv[1], "scurve") == 0 || strcasecmp(argv[1], "s-curve") == 0) curve = VelocityCurve::SCurve;
+    else if (strcasecmp(argv[1], "fixed") == 0) curve = VelocityCurve::Fixed;
+    else curve = VelocityCurve::Linear;
+
+    s_midi_host->setVelocityCurve(curve);
+    if (s_ui_manager && s_clock_manager && s_amy_adapter) {
+        s_ui_manager->systemScreen().setConfigInfo(
+            MidiParser::velocityCurveName(curve),
+            s_clock_manager->swing(),
+            s_amy_adapter->softLimiterEnabled()
+        );
+    }
+    ESP_LOGI(TAG, "Velocity Curve set to: %s", MidiParser::velocityCurveName(curve));
+    return 0;
+}
+
+int Console::cmdSwing(int argc, char** argv) {
+    if (!s_clock_manager) {
+        ESP_LOGW(TAG, "ClockManager not initialized");
+        return 1;
+    }
+    if (argc < 2) {
+        ESP_LOGI(TAG, "Active Swing: %u%% (Range: 50..75%%)", s_clock_manager->swing());
+        return 0;
+    }
+
+    int swing_val = atoi(argv[1]);
+    if (swing_val < 50) swing_val = 50;
+    if (swing_val > 75) swing_val = 75;
+
+    s_clock_manager->setSwing((uint8_t)swing_val);
+    if (s_sequencer) s_sequencer->setSwing((float)swing_val);
+    if (s_arpeggiator) s_arpeggiator->setSwing((float)swing_val);
+    if (s_ui_manager && s_midi_host && s_amy_adapter) {
+        s_ui_manager->systemScreen().setConfigInfo(
+            MidiParser::velocityCurveName(s_midi_host->velocityCurve()),
+            (uint8_t)swing_val,
+            s_amy_adapter->softLimiterEnabled()
+        );
+    }
+    ESP_LOGI(TAG, "Global Swing set to: %d%% (%s)", swing_val, 
+             (swing_val == 50 ? "Straight" : (swing_val <= 60 ? "Light Swing" : (swing_val <= 68 ? "Triplet Swing" : "Dotted Swing"))));
+    return 0;
+}
+
+int Console::cmdLimiter(int argc, char** argv) {
+    if (!s_amy_adapter) {
+        ESP_LOGW(TAG, "AmyAdapter not initialized");
+        return 1;
+    }
+    if (argc < 2) {
+        ESP_LOGI(TAG, "Master Soft-Limiter: %s", s_amy_adapter->softLimiterEnabled() ? "ENABLED" : "DISABLED");
+        return 0;
+    }
+
+    bool enable = (strcasecmp(argv[1], "on") == 0 || strcasecmp(argv[1], "1") == 0 || strcasecmp(argv[1], "true") == 0);
+    s_amy_adapter->setSoftLimiter(enable);
+    if (s_ui_manager && s_midi_host && s_clock_manager) {
+        s_ui_manager->systemScreen().setConfigInfo(
+            MidiParser::velocityCurveName(s_midi_host->velocityCurve()),
+            s_clock_manager->swing(),
+            enable
+        );
+    }
+    ESP_LOGI(TAG, "Master Soft-Limiter set to: %s", enable ? "ENABLED (Soft-Knee Protection)" : "DISABLED");
+    return 0;
+}
+
+int Console::cmdClockSource(int argc, char** argv) {
+    if (!s_clock_manager) {
+        ESP_LOGW(TAG, "ClockManager not initialized");
+        return 1;
+    }
+    if (argc < 2) {
+        ESP_LOGI(TAG, "Clock Sync Source: %s", 
+                 (s_clock_manager->clockSource() == ClockSource::Internal ? "INTERNAL" : "USB_MIDI"));
+        return 0;
+    }
+
+    ClockSource src = (strcasecmp(argv[1], "usb") == 0 || strcasecmp(argv[1], "midi") == 0) 
+                      ? ClockSource::UsbMidi : ClockSource::Internal;
+    s_clock_manager->setClockSource(src);
+    ESP_LOGI(TAG, "Clock Sync Source set to: %s", (src == ClockSource::Internal ? "INTERNAL" : "USB_MIDI"));
     return 0;
 }
 
@@ -562,6 +695,10 @@ int Console::cmdHelp(int argc, char** argv) {
     ESP_LOGI(TAG, " patch_select  - Select active patch <id>");
     ESP_LOGI(TAG, " macro_set     - Set macro value <id 0..7> <val 0..127>");
     ESP_LOGI(TAG, " bpm_set       - Set BPM <30..300>");
+    ESP_LOGI(TAG, " velocity      - Set/get velocity curve <linear|soft|hard|scurve|fixed>");
+    ESP_LOGI(TAG, " swing         - Set/get global swing percent <50..75>");
+    ESP_LOGI(TAG, " limiter       - Enable/disable master soft-limiter <on|off>");
+    ESP_LOGI(TAG, " clock_source  - Set/get clock sync source <internal|usb>");
     ESP_LOGI(TAG, " arp_enable    - Enable/disable arpeggiator <0|1>");
     ESP_LOGI(TAG, " arp_mode      - Set arpeggiator mode <up|down|updown|random>");
     ESP_LOGI(TAG, " seq_step      - Set sequencer step <0..15> <note> <vel> <active>");

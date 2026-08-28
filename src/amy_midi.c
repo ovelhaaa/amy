@@ -600,8 +600,8 @@ void esp_poll_midi(void) {
     }
 }
 
-void run_midi_task() {
-
+void run_midi_task(void *pvParameters) {
+    (void)pvParameters;
     while(1) {
         esp_poll_midi();
         #if defined (AMYBOARD) || defined(AMYBOARD_ARDUINO)

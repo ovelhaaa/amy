@@ -48,13 +48,16 @@ bool NvsStorage::saveConfig(const SystemConfig& config) {
     nvs_set_u32(handle, "bpm_bits", bpm_bits);
     nvs_set_u8(handle, "volume", config.master_volume);
     nvs_set_u8(handle, "channel", config.midi_channel);
+    nvs_set_u8(handle, "vel_curve", config.velocity_curve);
+    nvs_set_u8(handle, "swing", config.swing_percent);
+    nvs_set_u8(handle, "limiter", config.soft_limiter);
 
     err = nvs_commit(handle);
     nvs_close(handle);
 
     if (err == ESP_OK) {
-        ESP_LOGI(TAG, "System Config Saved to NVS (PatchID:%d, BPM:%.1f)", 
-                 config.active_patch_id, config.global_bpm);
+        ESP_LOGI(TAG, "System Config Saved to NVS (PatchID:%d, BPM:%.1f, VelCurve:%d, Swing:%d%%, Limiter:%d)", 
+                 config.active_patch_id, config.global_bpm, config.velocity_curve, config.swing_percent, config.soft_limiter);
         return true;
     }
 
@@ -76,6 +79,9 @@ bool NvsStorage::loadConfig(SystemConfig& config_out) {
     uint32_t bpm_bits = 0;
     uint8_t volume = 100;
     uint8_t channel = 0;
+    uint8_t vel_curve = 0;
+    uint8_t swing = 50;
+    uint8_t limiter = 1;
 
     nvs_get_u8(handle, "patch_id", &patch_id);
     if (nvs_get_u32(handle, "bpm_bits", &bpm_bits) == ESP_OK) {
@@ -83,15 +89,21 @@ bool NvsStorage::loadConfig(SystemConfig& config_out) {
     }
     nvs_get_u8(handle, "volume", &volume);
     nvs_get_u8(handle, "channel", &channel);
+    nvs_get_u8(handle, "vel_curve", &vel_curve);
+    nvs_get_u8(handle, "swing", &swing);
+    nvs_get_u8(handle, "limiter", &limiter);
 
     nvs_close(handle);
 
     config_out.active_patch_id = patch_id;
     config_out.master_volume = volume;
     config_out.midi_channel = channel;
+    config_out.velocity_curve = (vel_curve <= 4) ? vel_curve : 0;
+    config_out.swing_percent = (swing >= 50 && swing <= 75) ? swing : 50;
+    config_out.soft_limiter = limiter;
 
-    ESP_LOGI(TAG, "Loaded System Config from NVS (PatchID:%d, BPM:%.1f)", 
-             config_out.active_patch_id, config_out.global_bpm);
+    ESP_LOGI(TAG, "Loaded System Config from NVS (PatchID:%d, BPM:%.1f, VelCurve:%d, Swing:%d%%, Limiter:%d)", 
+             config_out.active_patch_id, config_out.global_bpm, config_out.velocity_curve, config_out.swing_percent, config_out.soft_limiter);
     return true;
 }
 

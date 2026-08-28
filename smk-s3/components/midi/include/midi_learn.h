@@ -19,7 +19,7 @@ enum class LearnStep : uint8_t {
     TurnKnob6,
     TurnKnob7,
     TurnKnob8,
-    // Bank B Knobs 9..16 (after pressing KNOB-B button on controller)
+    // Bank B Knobs 9..16 (activated via KNOB-B button on controller)
     TurnKnob9,
     TurnKnob10,
     TurnKnob11,
@@ -37,7 +37,7 @@ enum class LearnStep : uint8_t {
     PressPad6,
     PressPad7,
     PressPad8,
-    // Bank B Pads 9..16 (after pressing PAD-B button on controller)
+    // Bank B Pads 9..16 (activated via PAD-B button on controller)
     PressPad9,
     PressPad10,
     PressPad11,
@@ -59,14 +59,27 @@ public:
     
     void begin(ControllerProfile* profile_out);
     void startWizard();
+    void finishAndSave();
     void cancel();
     void skipStep();
+    void reset() { current_step_ = LearnStep::Idle; }
     
     bool processIncomingMidi(uint8_t msg_type, uint8_t channel, uint16_t number, int32_t value);
     
     LearnStep currentStep() const { return current_step_; }
+    uint8_t currentStepNumber() const { return static_cast<uint8_t>(current_step_); }
+    uint8_t totalSteps() const { return static_cast<uint8_t>(LearnStep::Complete); }
     const char* currentStepName() const;
+    const char* currentStepHint() const;
     bool isLearning() const { return current_step_ != LearnStep::Idle && current_step_ != LearnStep::Complete; }
+    bool isComplete() const { return current_step_ == LearnStep::Complete; }
+
+    uint8_t  lastCapturedType() const { return last_captured_type_; }
+    uint8_t  lastCapturedChannel() const { return last_captured_channel_; }
+    uint16_t lastCapturedNumber() const { return last_recorded_number_; }
+    int32_t  lastCapturedValue() const { return last_captured_value_; }
+    uint32_t lastCapturedTimeMs() const { return last_recorded_time_ms_; }
+    ControllerProfile* targetProfile() const { return target_profile_; }
 
 private:
     void advanceStep();
@@ -76,6 +89,9 @@ private:
     ControllerProfile* target_profile_ = nullptr;
     uint32_t           last_recorded_time_ms_ = 0;
     uint16_t           last_recorded_number_ = 0xFFFF;
+    uint8_t            last_captured_type_ = 0;
+    uint8_t            last_captured_channel_ = 0;
+    int32_t            last_captured_value_ = 0;
 };
 
 } // namespace smk

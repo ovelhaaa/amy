@@ -15,6 +15,7 @@ constexpr uint16_t kDmaBufferFrames = 128;  // frames per DMA buffer
 constexpr int kI2sBclk  = 15; // PCM5102A BCK
 constexpr int kI2sLrclk = 16; // PCM5102A LCK (WS)
 constexpr int kI2sData  = 17; // PCM5102A DIN
+constexpr int kI2sMute  = 18; // PCM5102A SD / XSMT (High = Unmuted, Low = Muted)
 
 // ═══════════════════════════════════════════════
 // Display ST7789 SPI GPIOs (Recomendação Segura)
@@ -52,7 +53,7 @@ constexpr uint8_t  kMidiClientTaskPriority = configMAX_PRIORITIES - 3;
 constexpr uint32_t kMidiClientTaskStackSize = 4 * 1024;
 
 constexpr uint8_t  kControlTaskCore     = 0;
-constexpr uint8_t  kControlTaskPriority = configMAX_PRIORITIES - 5;
+constexpr uint8_t  kControlTaskPriority = configMAX_PRIORITIES - 4;
 
 constexpr uint8_t  kConsoleTaskCore     = 0;
 constexpr uint8_t  kConsoleTaskPriority = 5;

@@ -1601,6 +1601,7 @@ void play_delta(struct delta *d) {
                     //    msynth[osc]->last_logfreq = initial_logfreq;
                     // Now we've tested that, we can reset note-off clocks.
                     AMY_UNSET(synth[osc]->note_off_clock);  // Most recent note event is not note-off.
+                    AMY_UNSET(msynth[osc]->last_filter_logfreq); // New note onset immediately snaps to target cutoff
 
                     float initial_freq = freq_of_logfreq(initial_logfreq);
                     osc_note_on(osc, initial_freq);
@@ -1716,7 +1717,7 @@ float amp_combine_controls(float *controls, float *coefs) {
 #ifdef __EMSCRIPTEN__
 #include "emscripten/webaudio.h"
 #endif
-void hold_and_modify(uint16_t osc) {
+AMY_IRAM_ATTR void hold_and_modify(uint16_t osc) {
     // Calculate the dynamic parameters for this frame and store them in the msynth[osc] structure.
     AMY_PROFILE_START(HOLD_AND_MODIFY)
     float ctrl_inputs[NUM_COMBO_COEFS];
@@ -1740,13 +1741,22 @@ void hold_and_modify(uint16_t osc) {
     msynth[osc]->last_logfreq = msynth[osc]->logfreq;
     float filter_logfreq = combine_controls(ctrl_inputs, synth[osc]->filter_logfreq_coefs);
     if (filter_logfreq < MIN_FILTER_LOGFREQ)  filter_logfreq = MIN_FILTER_LOGFREQ;
-    if (AMY_IS_SET(msynth[osc]->last_filter_logfreq)) {
+    if (synth[osc]->note_on_clock == amy_global.total_samples || !AMY_IS_SET(msynth[osc]->last_filter_logfreq)) {
+        // Initial note-on frame, initialize filter cutoff without slew-rate delay
+        msynth[osc]->last_filter_logfreq = filter_logfreq;
+    } else {
         #define MAX_DELTA_FILTER_LOGFREQ_DOWN 3.0f
+        #define MAX_DELTA_FILTER_LOGFREQ_UP   4.0f
         float last_logfreq = msynth[osc]->last_filter_logfreq;
-        if (filter_logfreq < (last_logfreq - (MAX_DELTA_FILTER_LOGFREQ_DOWN / synth[osc]->resonance))) {
-            // Filter cutoff downward slew-rate limit.
-            // See https://github.com/shorepine/amy/issues/126
-            filter_logfreq = last_logfreq - (MAX_DELTA_FILTER_LOGFREQ_DOWN / synth[osc]->resonance);
+        float res = (synth[osc]->resonance < 0.5f) ? 0.5f : synth[osc]->resonance;
+        float max_down = MAX_DELTA_FILTER_LOGFREQ_DOWN / res;
+        float max_up = MAX_DELTA_FILTER_LOGFREQ_UP / res;
+        if (filter_logfreq < (last_logfreq - max_down)) {
+            // Filter cutoff downward slew-rate limit
+            filter_logfreq = last_logfreq - max_down;
+        } else if (filter_logfreq > (last_logfreq + max_up)) {
+            // Filter cutoff upward slew-rate limit
+            filter_logfreq = last_logfreq + max_up;
         }
     }
     msynth[osc]->last_filter_logfreq = filter_logfreq;
@@ -1810,7 +1820,7 @@ static inline float rgain_of_pan(float pan) {
 }
 
 
-void mix_with_pan(SAMPLE *stereo_dest, SAMPLE *mono_src, float pan_start, float pan_end, float level) {
+AMY_IRAM_ATTR void mix_with_pan(SAMPLE *stereo_dest, SAMPLE *mono_src, float pan_start, float pan_end, float level) {
     AMY_PROFILE_START(MIX_WITH_PAN)
     /* copy a block_size of mono samples into an interleaved stereo buffer, applying pan
        and the synth's level (iV). In stereo the level folds into the pan gain endpoints,
@@ -1820,9 +1830,19 @@ void mix_with_pan(SAMPLE *stereo_dest, SAMPLE *mono_src, float pan_start, float 
         // actually dest is mono, pan is ignored.
         if (level != 1.0f) {
             SAMPLE scale = F2S(level);
-            for(uint16_t i=0;i<AMY_BLOCK_SIZE;i++) { stereo_dest[i] += MUL8_SS(scale, mono_src[i]); }
+            for(uint16_t i=0; i<AMY_BLOCK_SIZE; i+=4) {
+                stereo_dest[i]     += MUL8_SS(scale, mono_src[i]);
+                stereo_dest[i + 1] += MUL8_SS(scale, mono_src[i + 1]);
+                stereo_dest[i + 2] += MUL8_SS(scale, mono_src[i + 2]);
+                stereo_dest[i + 3] += MUL8_SS(scale, mono_src[i + 3]);
+            }
         } else {
-            for(uint16_t i=0;i<AMY_BLOCK_SIZE;i++) { stereo_dest[i] += mono_src[i]; }
+            for(uint16_t i=0; i<AMY_BLOCK_SIZE; i+=4) {
+                stereo_dest[i]     += mono_src[i];
+                stereo_dest[i + 1] += mono_src[i + 1];
+                stereo_dest[i + 2] += mono_src[i + 2];
+                stereo_dest[i + 3] += mono_src[i + 3];
+            }
         }
     } else {
         // stereo
@@ -1832,11 +1852,27 @@ void mix_with_pan(SAMPLE *stereo_dest, SAMPLE *mono_src, float pan_start, float 
         SAMPLE gain_r = F2S(rgain_start);
         SAMPLE d_gain_l = F2S((lgain_of_pan(pan_end) * level - lgain_start)) >> BLOCK_SIZE_BITS;
         SAMPLE d_gain_r = F2S((rgain_of_pan(pan_end) * level - rgain_start)) >> BLOCK_SIZE_BITS;
-        for(uint16_t i=0;i<AMY_BLOCK_SIZE;i++) {
-            stereo_dest[i] += MUL8_SS(gain_l, mono_src[i]);
-            stereo_dest[AMY_BLOCK_SIZE + i] += MUL8_SS(gain_r, mono_src[i]);
-            gain_l += d_gain_l;
-            gain_r += d_gain_r;
+        
+        if (d_gain_l == 0 && d_gain_r == 0) {
+            // Constant pan across the block: high-speed 4-wide vector loop
+            for(uint16_t i=0; i<AMY_BLOCK_SIZE; i+=4) {
+                stereo_dest[i]     += MUL8_SS(gain_l, mono_src[i]);
+                stereo_dest[i + 1] += MUL8_SS(gain_l, mono_src[i + 1]);
+                stereo_dest[i + 2] += MUL8_SS(gain_l, mono_src[i + 2]);
+                stereo_dest[i + 3] += MUL8_SS(gain_l, mono_src[i + 3]);
+
+                stereo_dest[AMY_BLOCK_SIZE + i]     += MUL8_SS(gain_r, mono_src[i]);
+                stereo_dest[AMY_BLOCK_SIZE + i + 1] += MUL8_SS(gain_r, mono_src[i + 1]);
+                stereo_dest[AMY_BLOCK_SIZE + i + 2] += MUL8_SS(gain_r, mono_src[i + 2]);
+                stereo_dest[AMY_BLOCK_SIZE + i + 3] += MUL8_SS(gain_r, mono_src[i + 3]);
+            }
+        } else {
+            for(uint16_t i=0; i<AMY_BLOCK_SIZE; i++) {
+                stereo_dest[i] += MUL8_SS(gain_l, mono_src[i]);
+                stereo_dest[AMY_BLOCK_SIZE + i] += MUL8_SS(gain_r, mono_src[i]);
+                gain_l += d_gain_l;
+                gain_r += d_gain_r;
+            }
         }
     }
     AMY_PROFILE_STOP(MIX_WITH_PAN)
@@ -1845,7 +1881,7 @@ void mix_with_pan(SAMPLE *stereo_dest, SAMPLE *mono_src, float pan_start, float 
 // Test if the specified osc is in its release phase (i.e., note-off has been received).
 #define OSC_IN_RELEASE(osc)  (AMY_IS_SET(synth[osc]->note_off_clock))
 
-SAMPLE render_osc_wave(uint16_t osc, uint8_t core, SAMPLE* buf) {
+AMY_IRAM_ATTR SAMPLE render_osc_wave(uint16_t osc, uint8_t core, SAMPLE* buf) {
     AMY_PROFILE_START(RENDER_OSC_WAVE)
     // Returns abs max of what it wrote.
         //if (osc < amy_global.config.max_oscs) // exclude chorus LFOs.
@@ -2077,7 +2113,7 @@ void amy_block_processed(void) {
 #endif
 }
 
-int16_t * amy_fill_buffer() {
+AMY_IRAM_ATTR int16_t * amy_fill_buffer() {
     AMY_PROFILE_START(AMY_FILL_BUFFER)
     #ifdef __EMSCRIPTEN__
     // post a message to the main thread of the audioworklet (amy main, in this case) that a block has been finished
@@ -2165,9 +2201,13 @@ int16_t * amy_fill_buffer() {
         for (int16_t c=0; c < AMY_NCHANS; ++c) {
 
             SAMPLE fsample = 0;
-            for (int bus = 0; bus <= amy_global.highest_bus; ++bus) {
-                // Convert the mixed sample into the int16 range, applying overall gain.
-                fsample += MUL8_SS(volume_scale[bus], fbl[0][bus][i + c * AMY_BLOCK_SIZE]);
+            if (amy_global.highest_bus == 0) {
+                fsample = MUL8_SS(volume_scale[0], fbl[0][0][i + c * AMY_BLOCK_SIZE]);
+            } else {
+                for (int bus = 0; bus <= amy_global.highest_bus; ++bus) {
+                    // Convert the mixed sample into the int16 range, applying overall gain.
+                    fsample += MUL8_SS(volume_scale[bus], fbl[0][bus][i + c * AMY_BLOCK_SIZE]);
+                }
             }
 
             // One-pole high-pass filter to remove large low-frequency excursions from
@@ -2198,9 +2238,9 @@ int16_t * amy_fill_buffer() {
             }
             int16_t sample;
 
-            // TODO -- the esp stuff here could sit outside of AMY
-            // For some reason, have to drop a bit to stop hard wrapping on esp?
-#if defined(ESP_PLATFORM) || defined(__IMXRT1062__)
+            // Soft-clipping stage maps values from FIRST_NONLIN (29491) smoothly up to SAMPLE_MAX (32767).
+            // Legacy 1-bit drop is preserved only under AMY_LEGACY_ESP_ATTENUATION to provide full DAC dynamic range.
+#ifdef AMY_LEGACY_ESP_ATTENUATION
             uintval >>= 1;
 #endif
             if (positive) {

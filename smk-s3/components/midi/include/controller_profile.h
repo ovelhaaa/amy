@@ -5,14 +5,14 @@
 namespace smk {
 
 constexpr uint32_t kProfileMagic = 0x53334D31; // "S3M1"
-constexpr uint16_t kProfileFormatVersion = 1;
+constexpr uint16_t kProfileFormatVersion = 2;
 
 enum class TargetAction : uint16_t {
     Unmapped     = 0,
     Note         = 1,
     PitchBend    = 2,
     Modulation   = 3,
-    // Knobs 1..8 (Bank A) and 9..16 (Bank B)
+    // 16 Physical Knobs (Knobs 1..8 Bank A, Knobs 9..16 Bank B)
     Knob1        = 4,
     Knob2        = 5,
     Knob3        = 6,
@@ -29,7 +29,7 @@ enum class TargetAction : uint16_t {
     Knob14       = 17,
     Knob15       = 18,
     Knob16       = 19,
-    // Pads 1..8 (Bank A) and 9..16 (Bank B)
+    // 16 Pads (Pads 1..8 Bank A, Pads 9..16 Bank B)
     Pad1         = 20,
     Pad2         = 21,
     Pad3         = 22,
@@ -55,7 +55,7 @@ enum class TargetAction : uint16_t {
 
 struct ProfileHeader {
     uint32_t magic;          // 0x53334D31
-    uint16_t format_version; // Version 1
+    uint16_t format_version; // Version 2
     uint16_t data_size;      // Payload size
     uint32_t crc32;          // Payload CRC32 checksum
 };
@@ -75,8 +75,8 @@ struct ControllerProfile {
     MidiBinding keys;
     MidiBinding pitch;
     MidiBinding modulation;
-    MidiBinding knobs[16];  // 16 knobs (1..8 Bank A, 9..16 Bank B)
-    MidiBinding pads[16];   // 16 pads (1..8 Bank A, 9..16 Bank B)
+    MidiBinding knobs[16];  // 16 physical knobs (0..7 Bank A, 8..15 Bank B)
+    MidiBinding pads[16];   // 16 pads (0..7 Bank A, 8..15 Bank B)
     MidiBinding buttons[4]; // Play, Stop, Rec, BT
     uint32_t    crc32;
 };

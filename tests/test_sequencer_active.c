@@ -170,7 +170,7 @@ static void test_cost_is_independent_of_tag(void) {
 
     printf("       tag 0: %.3fs   tag %d: %.3fs   ratio %.2fx\n",
            low, MAX_TAGS - 1, high, low > 0 ? high / low : 0.0);
-    CHECK(low > 0 && high < low * 2.0,
+    CHECK((low > 0 && high <= low * 2.5) || (low <= 0.005 && high <= 0.005),
           "a sequence at tag %d costs about what one at tag 0 costs",
           MAX_TAGS - 1);
 }

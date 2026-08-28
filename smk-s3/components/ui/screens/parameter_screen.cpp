@@ -48,14 +48,17 @@ void ParameterScreen::update() {
 }
 
 void ParameterScreen::render(DisplayDriver& display) {
-    // Draw semi-transparent overlay border box
-    display.fillRect(4, 4, DisplayDriver::kWidth - 8, DisplayDriver::kHeight - 8, DisplayDriver::kColorBlack);
-    display.drawRect(4, 4, DisplayDriver::kWidth - 8, DisplayDriver::kHeight - 8, DisplayDriver::kColorCyan);
+    int16_t dw = display.width();
+    int16_t dh = display.height();
+
+    // Draw overlay border box
+    display.fillRect(4, 4, dw - 8, dh - 8, DisplayDriver::kColorBlack);
+    display.drawRect(4, 4, dw - 8, dh - 8, DisplayDriver::kColorCyan);
 
     // Title line: PARAMETER (LAYER)
     char title_buf[64];
     snprintf(title_buf, sizeof(title_buf), "%s (%s)", param_name_, target_layer_);
-    FontRenderer::drawString(display, 10, 8, title_buf, DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
+    FontRenderer::drawString(display, 8, 8, title_buf, DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
 
     // Soft takeover status indicator
     const char* takeover_str = "[CAPTURED *]";
@@ -79,16 +82,26 @@ void ParameterScreen::render(DisplayDriver& display) {
             break;
     }
 
-    FontRenderer::drawString(display, 190, 8, takeover_str, takeover_color, DisplayDriver::kColorBlack, FontType::Font5x7);
+    if (dw <= 160) {
+        FontRenderer::drawString(display, 8, 22, takeover_str, takeover_color, DisplayDriver::kColorBlack, FontType::Font5x7);
+        char val_buf[64];
+        snprintf(val_buf, sizeof(val_buf), "VAL: %.1f %s", current_val_, unit_str_);
+        FontRenderer::drawString(display, 8, 36, val_buf, DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
 
-    // Values line: Saved vs Current
-    char val_buf[64];
-    snprintf(val_buf, sizeof(val_buf), "Saved: %.2f %s   CURRENT: %.2f %s", 
-             saved_val_, unit_str_, current_val_, unit_str_);
-    FontRenderer::drawString(display, 10, 26, val_buf, DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
+        ProgressBar pb(8, 52, dw - 16, 14, DisplayDriver::kColorGreen, DisplayDriver::kColorWhite);
+        pb.setValue(current_val_ / 127.0f);
+        pb.draw(display);
+    } else {
+        int16_t to_x = dw - 8 - FontRenderer::stringWidth(takeover_str, FontType::Font5x7);
+        FontRenderer::drawString(display, to_x, 8, takeover_str, takeover_color, DisplayDriver::kColorBlack, FontType::Font5x7);
 
-    // Render Progress Bar
-    progress_bar_.draw(display);
+        char val_buf[64];
+        snprintf(val_buf, sizeof(val_buf), "Saved: %.2f %s   CURRENT: %.2f %s", 
+                 saved_val_, unit_str_, current_val_, unit_str_);
+        FontRenderer::drawString(display, 10, 26, val_buf, DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
+
+        progress_bar_.draw(display);
+    }
 }
 
 } // namespace smk

@@ -102,26 +102,145 @@ static const uint8_t font5x7[][5] = {
     {0x08, 0x04, 0x08, 0x10, 0x08}  // '~'
 };
 
+// Compact 3x5 ASCII Bitmap Font (character set 32..126)
+static const uint8_t font3x5[][3] = {
+    {0x00, 0x00, 0x00}, // ' ' (32)
+    {0x00, 0x17, 0x00}, // '!'
+    {0x03, 0x00, 0x03}, // '"'
+    {0x1F, 0x0A, 0x1F}, // '#'
+    {0x12, 0x1F, 0x09}, // '$'
+    {0x19, 0x04, 0x13}, // '%'
+    {0x14, 0x1B, 0x0A}, // '&'
+    {0x00, 0x03, 0x00}, // '\''
+    {0x00, 0x0E, 0x11}, // '('
+    {0x11, 0x0E, 0x00}, // ')'
+    {0x0A, 0x04, 0x0A}, // '*'
+    {0x04, 0x0E, 0x04}, // '+'
+    {0x00, 0x10, 0x08}, // ','
+    {0x04, 0x04, 0x04}, // '-'
+    {0x00, 0x10, 0x00}, // '.'
+    {0x10, 0x08, 0x04}, // '/'
+    {0x1F, 0x11, 0x1F}, // '0'
+    {0x00, 0x1F, 0x00}, // '1'
+    {0x1D, 0x15, 0x17}, // '2'
+    {0x15, 0x15, 0x1F}, // '3'
+    {0x07, 0x04, 0x1F}, // '4'
+    {0x17, 0x15, 0x1D}, // '5'
+    {0x1F, 0x15, 0x1D}, // '6'
+    {0x01, 0x01, 0x1F}, // '7'
+    {0x1F, 0x15, 0x1F}, // '8'
+    {0x17, 0x15, 0x1F}, // '9'
+    {0x00, 0x0A, 0x00}, // ':'
+    {0x00, 0x12, 0x08}, // ';'
+    {0x04, 0x0A, 0x11}, // '<'
+    {0x0A, 0x0A, 0x0A}, // '='
+    {0x11, 0x0A, 0x04}, // '>'
+    {0x01, 0x15, 0x02}, // '?'
+    {0x1E, 0x15, 0x1D}, // '@'
+    {0x1F, 0x05, 0x1F}, // 'A'
+    {0x1F, 0x15, 0x0A}, // 'B'
+    {0x1F, 0x11, 0x11}, // 'C'
+    {0x1F, 0x11, 0x0E}, // 'D'
+    {0x1F, 0x15, 0x11}, // 'E'
+    {0x1F, 0x05, 0x01}, // 'F'
+    {0x1F, 0x11, 0x1D}, // 'G'
+    {0x1F, 0x04, 0x1F}, // 'H'
+    {0x11, 0x1F, 0x11}, // 'I'
+    {0x08, 0x10, 0x0F}, // 'J'
+    {0x1F, 0x04, 0x1B}, // 'K'
+    {0x1F, 0x10, 0x10}, // 'L'
+    {0x1F, 0x02, 0x1F}, // 'M'
+    {0x1F, 0x02, 0x1F}, // 'N'
+    {0x1F, 0x11, 0x1F}, // 'O'
+    {0x1F, 0x05, 0x07}, // 'P'
+    {0x0F, 0x11, 0x1F}, // 'Q'
+    {0x1F, 0x05, 0x1A}, // 'R'
+    {0x12, 0x15, 0x09}, // 'S'
+    {0x01, 0x1F, 0x01}, // 'T'
+    {0x1F, 0x10, 0x1F}, // 'U'
+    {0x0F, 0x10, 0x0F}, // 'V'
+    {0x1F, 0x08, 0x1F}, // 'W'
+    {0x1B, 0x04, 0x1B}, // 'X'
+    {0x03, 0x1C, 0x03}, // 'Y'
+    {0x19, 0x15, 0x13}, // 'Z'
+    {0x00, 0x1F, 0x11}, // '['
+    {0x04, 0x08, 0x10}, // '\'
+    {0x11, 0x1F, 0x00}, // ']'
+    {0x02, 0x01, 0x02}, // '^'
+    {0x10, 0x10, 0x10}, // '_'
+    {0x00, 0x01, 0x02}, // '`'
+    {0x14, 0x14, 0x1C}, // 'a'
+    {0x1F, 0x14, 0x08}, // 'b'
+    {0x0C, 0x14, 0x14}, // 'c'
+    {0x08, 0x14, 0x1F}, // 'd'
+    {0x1C, 0x14, 0x18}, // 'e'
+    {0x04, 0x1F, 0x05}, // 'f'
+    {0x18, 0x14, 0x1C}, // 'g'
+    {0x1F, 0x04, 0x18}, // 'h'
+    {0x00, 0x17, 0x00}, // 'i'
+    {0x10, 0x17, 0x00}, // 'j'
+    {0x1F, 0x04, 0x18}, // 'k'
+    {0x00, 0x1F, 0x00}, // 'l'
+    {0x1C, 0x0C, 0x1C}, // 'm'
+    {0x1C, 0x04, 0x18}, // 'n'
+    {0x0C, 0x14, 0x0C}, // 'o'
+    {0x1F, 0x14, 0x08}, // 'p'
+    {0x08, 0x14, 0x1F}, // 'q'
+    {0x1C, 0x04, 0x08}, // 'r'
+    {0x14, 0x14, 0x08}, // 's'
+    {0x04, 0x1E, 0x14}, // 't'
+    {0x1C, 0x10, 0x1C}, // 'u'
+    {0x0C, 0x10, 0x0C}, // 'v'
+    {0x1C, 0x08, 0x1C}, // 'w'
+    {0x14, 0x08, 0x14}, // 'x'
+    {0x1C, 0x10, 0x0C}, // 'y'
+    {0x14, 0x14, 0x14}, // 'z'
+    {0x00, 0x1B, 0x0E}, // '{'
+    {0x00, 0x1F, 0x00}, // '|'
+    {0x0E, 0x1B, 0x00}, // '}'
+    {0x02, 0x01, 0x02}  // '~'
+};
+
 void FontRenderer::drawChar(DisplayDriver& display, int16_t x, int16_t y, char c, 
                            uint16_t fg_color, uint16_t bg_color, 
                            FontType font, uint8_t scale) {
     if (c < 32 || c > 126) c = ' ';
     uint8_t idx = (uint8_t)c - 32;
 
-    int char_w = (font == FontType::Font5x7) ? 5 : 8;
-    int char_h = (font == FontType::Font5x7) ? 7 : 12;
+    if (font == FontType::Font3x5) {
+        int char_w = 3;
+        int char_h = 5;
+        for (int col = 0; col < char_w; ++col) {
+            uint8_t line = font3x5[idx][col];
+            for (int row = 0; row < char_h; ++row) {
+                bool pixel_on = (line >> row) & 0x01;
+                uint16_t color = pixel_on ? fg_color : bg_color;
 
-    for (int col = 0; col < char_w; ++col) {
-        uint8_t line = (col < 5) ? font5x7[idx][col] : 0x00;
-        for (int row = 0; row < char_h; ++row) {
-            bool pixel_on = (line >> row) & 0x01;
-            uint16_t color = pixel_on ? fg_color : bg_color;
+                if (pixel_on || bg_color != 0x0000) {
+                    if (scale == 1) {
+                        display.drawPixel(x + col, y + row, color);
+                    } else {
+                        display.fillRect(x + col * scale, y + row * scale, scale, scale, color);
+                    }
+                }
+            }
+        }
+    } else {
+        int char_w = 5;
+        int char_h = 7;
+        uint8_t eff_scale = (font == FontType::Font8x12) ? (scale * 2) : scale;
+        for (int col = 0; col < char_w; ++col) {
+            uint8_t line = font5x7[idx][col];
+            for (int row = 0; row < char_h; ++row) {
+                bool pixel_on = (line >> row) & 0x01;
+                uint16_t color = pixel_on ? fg_color : bg_color;
 
-            if (pixel_on || bg_color != 0x0000) {
-                if (scale == 1) {
-                    display.drawPixel(x + col, y + row, color);
-                } else {
-                    display.fillRect(x + col * scale, y + row * scale, scale, scale, color);
+                if (pixel_on || bg_color != 0x0000) {
+                    if (eff_scale == 1) {
+                        display.drawPixel(x + col, y + row, color);
+                    } else {
+                        display.fillRect(x + col * eff_scale, y + row * eff_scale, eff_scale, eff_scale, color);
+                    }
                 }
             }
         }
@@ -132,7 +251,7 @@ void FontRenderer::drawString(DisplayDriver& display, int16_t x, int16_t y, cons
                              uint16_t fg_color, uint16_t bg_color, 
                              FontType font, uint8_t scale) {
     if (!str) return;
-    int char_w = (font == FontType::Font5x7 ? 6 : 9) * scale; // 5/8 px + 1 px spacing
+    int char_w = (font == FontType::Font3x5) ? (4 * scale) : ((font == FontType::Font8x12) ? (12 * scale) : (6 * scale));
     int16_t cur_x = x;
     
     while (*str) {
@@ -145,12 +264,14 @@ void FontRenderer::drawString(DisplayDriver& display, int16_t x, int16_t y, cons
 int16_t FontRenderer::stringWidth(const char* str, FontType font, uint8_t scale) {
     if (!str) return 0;
     size_t len = strlen(str);
-    int char_w = (font == FontType::Font5x7 ? 6 : 9) * scale;
+    int char_w = (font == FontType::Font3x5) ? (4 * scale) : ((font == FontType::Font8x12) ? (12 * scale) : (6 * scale));
     return (int16_t)(len * char_w);
 }
 
 int16_t FontRenderer::fontHeight(FontType font, uint8_t scale) {
-    return (font == FontType::Font5x7 ? 7 : 12) * scale;
+    if (font == FontType::Font3x5) return 5 * scale;
+    if (font == FontType::Font8x12) return 14 * scale;
+    return 7 * scale;
 }
 
 } // namespace smk

@@ -4,11 +4,14 @@ idf_component_register(
         "src/factory_patches.cpp"
         "src/patch_manager.cpp"
         "src/pad_bank.cpp"
+        "src/scene_manager.cpp"
     INCLUDE_DIRS
         "include"
     REQUIRES
         "system"
         "audio"
         "ui"
+        "storage"
+        "sequencer"
         "freertos"
 )

@@ -33,7 +33,8 @@ enum class ButtonId : uint8_t {
     Record = 4,
     OctavePlus = 5,
     OctaveMinus = 6,
-    Arp = 7
+    Arp = 7,
+    Scene = 8
 };
 
 enum class EventSource : uint8_t {

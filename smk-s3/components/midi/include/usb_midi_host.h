@@ -23,6 +23,12 @@ public:
     uint16_t deviceVid() const;
     uint16_t devicePid() const;
     
+    // Velocity Curve & Parser
+    void setVelocityCurve(VelocityCurve curve) { parser_.setVelocityCurve(curve); }
+    VelocityCurve velocityCurve() const { return parser_.velocityCurve(); }
+    MidiParser& parser() { return parser_; }
+    const MidiParser& parser() const { return parser_; }
+    
     // Diagnostics
     uint32_t disconnectCount() const;
     uint32_t reconnectCount() const;

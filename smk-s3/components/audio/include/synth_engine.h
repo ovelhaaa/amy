@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <cstddef>
 
 namespace smk {
 
@@ -20,6 +21,9 @@ public:
     virtual uint16_t blockSize() const = 0;
     virtual float renderLoad() const = 0;
     virtual uint32_t activeVoices() const = 0;
+    virtual void getScopeSamples(int16_t* dest, size_t max_count, size_t* out_count = nullptr) const {
+        (void)dest; (void)max_count; if (out_count) *out_count = 0;
+    }
 };
 
 

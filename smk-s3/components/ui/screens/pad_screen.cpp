@@ -70,28 +70,76 @@ static const char* bankModeToString(PadBankMode mode) {
 
 void PadScreen::render(DisplayDriver& display) {
     display.fillScreen(DisplayDriver::kColorBlack);
+    int16_t dw = display.width();
 
-    // Title line
-    char title_buf[64];
-    snprintf(title_buf, sizeof(title_buf), "PADS: %s - %s", bankModeToString(bank_mode_), kit_name_);
-    FontRenderer::drawString(display, 2, 2, title_buf, DisplayDriver::kColorCyan, DisplayDriver::kColorBlack, FontType::Font5x7);
-    display.drawHLine(0, 11, DisplayDriver::kWidth, DisplayDriver::kColorMidGray);
-
-    // Render 8 Pad boxes in 2 rows of 4 pads
-    // Row 1: Pads 1-4
-    // Row 2: Pads 5-8
     uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
     bool hit_recent = (now - last_hit_time_ms_) < 200;
 
-    int pad_w = 66;
+    // ── 160x128 Display Layout (2 Columns x 4 Rows, Full Pad Names) ──
+    if (dw <= 160) {
+        char title_buf[48];
+        snprintf(title_buf, sizeof(title_buf), "PADS: %s", bankModeToString(bank_mode_));
+        FontRenderer::drawString(display, 2, 2, title_buf, DisplayDriver::kColorCyan, DisplayDriver::kColorBlack, FontType::Font5x7);
+        display.drawHLine(0, 11, dw, DisplayDriver::kColorMidGray);
+
+        int pad_w = 76;
+        int pad_h = 23;
+
+        for (uint8_t i = 0; i < 8; ++i) {
+            int col = (i >= 4) ? 1 : 0; // Left column (0..3), Right column (4..7)
+            int row = i % 4;
+
+            int x = 3 + col * 78;
+            int y = 14 + row * 25;
+
+            bool is_hit = hit_recent && (last_hit_pad_ == i);
+            uint16_t border_col = is_hit ? DisplayDriver::kColorYellow : DisplayDriver::kColorMidGray;
+            uint16_t bg_col = is_hit ? DisplayDriver::kColorDimGreen : DisplayDriver::kColorBlack;
+
+            display.fillRect(x, y, pad_w, pad_h, bg_col);
+            display.drawRect(x, y, pad_w, pad_h, border_col);
+
+            // Pad Number Badge
+            char p_badge[6];
+            snprintf(p_badge, sizeof(p_badge), "P%d", i + 1);
+            FontRenderer::drawString(display, x + 3, y + 4, p_badge, is_hit ? DisplayDriver::kColorYellow : DisplayDriver::kColorCyan, bg_col, FontType::Font5x7);
+
+            // Full Pad Instrument/Chord Label
+            FontRenderer::drawString(display, x + 20, y + 4, pad_labels_[i], DisplayDriver::kColorWhite, bg_col, FontType::Font5x7);
+
+            // Velocity hit visual bar
+            if (is_hit) {
+                int bar_w = (last_hit_vel_ * (pad_w - 6)) / 127;
+                display.fillRect(x + 3, y + 16, bar_w, 4, DisplayDriver::kColorYellow);
+            }
+        }
+
+        // Bottom status bar
+        char hit_buf[48];
+        if (hit_recent) {
+            snprintf(hit_buf, sizeof(hit_buf), "HIT P%d [%s] VEL:%d", last_hit_pad_ + 1, pad_labels_[last_hit_pad_], last_hit_vel_);
+            FontRenderer::drawString(display, 2, 116, hit_buf, DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
+        } else {
+            FontRenderer::drawString(display, 2, 116, "PAD-B: SWITCH BANK", DisplayDriver::kColorLightGray, DisplayDriver::kColorBlack, FontType::Font5x7);
+        }
+        return;
+    }
+
+    // ── 284x76 Panoramic Layout (2 Rows x 4 Columns) ──
+    char title_buf[64];
+    snprintf(title_buf, sizeof(title_buf), "PADS: %s - %s", bankModeToString(bank_mode_), kit_name_);
+    FontRenderer::drawString(display, 2, 2, title_buf, DisplayDriver::kColorCyan, DisplayDriver::kColorBlack, FontType::Font5x7);
+    display.drawHLine(0, 11, dw, DisplayDriver::kColorMidGray);
+
+    int pad_w = 67;
     int pad_h = 24;
 
     for (uint8_t i = 0; i < 8; ++i) {
         int col = i % 4;
         int row = i / 4;
 
-        int x = 2 + col * (pad_w + 4);
-        int y = 14 + row * (pad_h + 3);
+        int x = 3 + col * 70;
+        int y = 14 + row * 26;
 
         bool is_hit = hit_recent && (last_hit_pad_ == i);
         uint16_t border_col = is_hit ? DisplayDriver::kColorYellow : DisplayDriver::kColorMidGray;
@@ -100,18 +148,21 @@ void PadScreen::render(DisplayDriver& display) {
         display.fillRect(x, y, pad_w, pad_h, bg_col);
         display.drawRect(x, y, pad_w, pad_h, border_col);
 
-        // Pad Label
-        char p_label[16];
+        char p_label[24];
         snprintf(p_label, sizeof(p_label), "P%d:%s", i + 1, pad_labels_[i]);
-        FontRenderer::drawString(display, x + 3, y + 8, p_label, DisplayDriver::kColorWhite, bg_col, FontType::Font5x7);
+        FontRenderer::drawString(display, x + 3, y + 7, p_label, is_hit ? DisplayDriver::kColorYellow : DisplayDriver::kColorWhite, bg_col, FontType::Font5x7);
+
+        if (is_hit) {
+            int bar_w = (last_hit_vel_ * (pad_w - 6)) / 127;
+            display.fillRect(x + 3, y + 18, bar_w, 3, DisplayDriver::kColorYellow);
+        }
     }
 
-    // Status bar at bottom
     char hit_buf[48];
     if (hit_recent) {
-        snprintf(hit_buf, sizeof(hit_buf), "LAST HIT: PAD %d (%s) VEL: %d", last_hit_pad_ + 1, pad_labels_[last_hit_pad_], last_hit_vel_);
+        snprintf(hit_buf, sizeof(hit_buf), "HIT P%d [%s] VEL:%d", last_hit_pad_ + 1, pad_labels_[last_hit_pad_], last_hit_vel_);
     } else {
-        snprintf(hit_buf, sizeof(hit_buf), "READY | PRESS PAD-B TO SWITCH BANKS");
+        snprintf(hit_buf, sizeof(hit_buf), "PAD-B: SWITCH BANK");
     }
     FontRenderer::drawString(display, 2, 66, hit_buf, DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
 }

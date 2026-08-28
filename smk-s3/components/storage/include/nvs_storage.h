@@ -8,6 +8,9 @@ struct SystemConfig {
     float   global_bpm = 120.0f;
     uint8_t master_volume = 100;
     uint8_t midi_channel = 0;
+    uint8_t velocity_curve = 0; // 0: Linear, 1: Soft, 2: Hard, 3: SCurve, 4: Fixed
+    uint8_t swing_percent = 50;  // 50%..75%
+    uint8_t soft_limiter = 1;   // 1: Enabled, 0: Disabled
 };
 
 class NvsStorage {

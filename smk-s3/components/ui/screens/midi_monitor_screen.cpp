@@ -39,28 +39,37 @@ static const char* eventTypeToString(EventType type) {
 
 void MidiMonitorScreen::render(DisplayDriver& display) {
     display.fillScreen(DisplayDriver::kColorBlack);
+    int16_t dw = display.width();
+    int16_t dh = display.height();
 
     // Title bar
-    FontRenderer::drawString(display, 2, 2, "MIDI MONITOR [USB HOST: SMK25 V2]", DisplayDriver::kColorCyan, DisplayDriver::kColorBlack, FontType::Font5x7);
-    const char* learn_str = learn_active_ ? "[LEARN: ON]" : "[LEARN: OFF]";
+    FontRenderer::drawString(display, 2, 2, "MIDI MONITOR", DisplayDriver::kColorCyan, DisplayDriver::kColorBlack, FontType::Font5x7);
+    const char* learn_str = learn_active_ ? "[LRN:ON]" : "[LRN:OFF]";
     uint16_t learn_col = learn_active_ ? DisplayDriver::kColorYellow : DisplayDriver::kColorMidGray;
-    FontRenderer::drawString(display, 210, 2, learn_str, learn_col, DisplayDriver::kColorBlack, FontType::Font5x7);
-    display.drawHLine(0, 11, DisplayDriver::kWidth, DisplayDriver::kColorMidGray);
+    int16_t lx = dw - 2 - FontRenderer::stringWidth(learn_str, FontType::Font5x7);
+    FontRenderer::drawString(display, lx, 2, learn_str, learn_col, DisplayDriver::kColorBlack, FontType::Font5x7);
+    display.drawHLine(0, 11, dw, DisplayDriver::kColorMidGray);
 
-    // Render history entries (up to 4 lines)
+    // Render history entries
     int y = 16;
-    for (size_t i = 0; i < kHistorySize; ++i) {
+    size_t max_lines = (dh <= 128) ? 8 : 4;
+    for (size_t i = 0; i < kHistorySize && i < max_lines; ++i) {
         size_t idx = (head_ + kHistorySize - 1 - i) % kHistorySize;
         if (!history_[idx].valid) continue;
 
         const auto& ev = history_[idx].event;
         char line_buf[64];
-        snprintf(line_buf, sizeof(line_buf), "CH%02u | %s | ID:%03u | VAL:%05ld | TS:%08lums",
-                 ev.channel + 1, eventTypeToString(ev.type), ev.id, (long)ev.value, (long)(ev.timestamp_us / 1000));
+        if (dw <= 160) {
+            snprintf(line_buf, sizeof(line_buf), "C%02u %s #%03u V:%03ld",
+                     ev.channel + 1, eventTypeToString(ev.type), ev.id, (long)ev.value);
+        } else {
+            snprintf(line_buf, sizeof(line_buf), "CH%02u | %s | ID:%03u | VAL:%05ld | TS:%08lums",
+                     ev.channel + 1, eventTypeToString(ev.type), ev.id, (long)ev.value, (long)(ev.timestamp_us / 1000));
+        }
         
         uint16_t col = (i == 0) ? DisplayDriver::kColorWhite : DisplayDriver::kColorMidGray;
         FontRenderer::drawString(display, 2, y, line_buf, col, DisplayDriver::kColorBlack, FontType::Font5x7);
-        y += 14;
+        y += 13;
     }
 }
 

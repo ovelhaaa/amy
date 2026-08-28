@@ -3,13 +3,6 @@
 
 namespace smk {
 
-enum class SynthMode : uint8_t {
-    Single = 0,
-    Layer  = 1,
-    Split  = 2,
-    Multi  = 3
-};
-
 enum class KnobBank : uint8_t {
     BankA_Macros     = 0, // 8 Macros
     BankB_Oscillator = 1, // Osc mix, wave, detune, octave, sub, noise, FM, mod
@@ -46,27 +39,13 @@ struct MacroConfig {
 };
 
 constexpr uint32_t kPatchMagic = 0x534D4B31; // "SMK1"
-constexpr uint16_t kPatchFormatVersion = 1;
+constexpr uint16_t kPatchFormatVersion = 2;
 
 struct PatchHeader {
     uint32_t magic;          // 0x534D4B31
-    uint16_t format_version; // Version 1
+    uint16_t format_version; // Version 2
     uint16_t data_size;      // Payload data size
     uint32_t crc32;          // Checksum of patch data
-};
-
-struct LayerConfig {
-    uint16_t engine_patch;  // AMY preset or patch ID
-    int8_t   transpose;     // Transpose in semitones (-24..+24)
-    uint8_t  volume;        // 0..127 (default 100)
-    int8_t   pan;           // -64 (Left) .. +63 (Right)
-    uint8_t  low_key;       // Min key (0..127)
-    uint8_t  high_key;      // Max key (0..127)
-    uint8_t  low_velocity;  // Min velocity (0..127)
-    uint8_t  high_velocity; // Max velocity (0..127)
-    uint8_t  max_voices;    // Max voices allocated
-    uint8_t  midi_channel;  // MIDI Channel (0..15 or 0xFF)
-    uint16_t flags;         // Bit 0: Enabled, Bit 1: Mute, Bit 2: Solo
 };
 
 struct SynthPatch {
@@ -74,11 +53,9 @@ struct SynthPatch {
     char        name[24];
     char        category[16];
     char        author[16];
-    SynthMode   mode;         // Single, Layer, Split, Multi
-    uint8_t     split_point;  // MIDI key for split mode (default 60 = C4)
-    LayerConfig layer_a;      // Primary layer
-    LayerConfig layer_b;      // Secondary layer
-    uint8_t     voice_count;
+    uint16_t    engine_patch; // AMY preset or patch ID (0..127 Juno, 128..255 DX7, 256+ PCM)
+    int8_t      transpose;    // Transpose in semitones (-24..+24)
+    uint8_t     voice_count;  // Max polyphony voices (e.g. 8)
     uint8_t     wave_type;    // 0=SINE, 1=SAW_DOWN, 2=SAW_UP, 3=TRIANGLE, 4=SQUARE, 5=NOISE, 6=KS, 7=PCM, 8=ALGO
     float       base_freq;
     float       filter_cutoff;

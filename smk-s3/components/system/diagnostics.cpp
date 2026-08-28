@@ -40,7 +40,7 @@ Diagnostics::Snapshot Diagnostics::takeSnapshot() const {
     s.psram_size = esp_psram_get_size();
     
     s.render_load = 0.0f; // Could be computed based on average render time and budget
-    s.active_voices = 0; // Retrieve from AMY
+    s.active_voices = counters_.active_voices.load();
     
     s.midi_parse_errors = counters_.midi_parse_errors.load();
     s.events_received = counters_.events_received.load();

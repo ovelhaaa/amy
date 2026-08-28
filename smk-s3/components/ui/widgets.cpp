@@ -77,17 +77,33 @@ void BarGauge::setColors(uint16_t bar_color, uint16_t label_color) {
 }
 
 void BarGauge::draw(DisplayDriver& display) {
-    // Draw label at top
-    FontRenderer::drawString(display, x_, y_, label_, label_color_, DisplayDriver::kColorBlack, FontType::Font5x7);
+    // Select compact 3x5 font for narrow gauges to prevent overlap
+    FontType font = (w_ <= 24) ? FontType::Font3x5 : FontType::Font5x7;
+    int16_t char_step = (font == FontType::Font3x5) ? 4 : 6;
 
-    // Numeric value
+    // Center the label horizontally within the gauge width
+    int16_t lbl_len = (int16_t)strlen(label_);
+    int16_t lbl_w = lbl_len > 0 ? (lbl_len * char_step - 1) : 0;
+    int16_t lbl_x = x_ + (w_ - lbl_w) / 2;
+    if (lbl_x < x_) lbl_x = x_;
+
+    // Draw label at top
+    FontRenderer::drawString(display, lbl_x, y_, label_, label_color_, DisplayDriver::kColorBlack, font);
+
+    // Center numeric value
     char val_str[8];
-    snprintf(val_str, sizeof(val_str), "%02d", value_);
-    FontRenderer::drawString(display, x_, y_ + 9, val_str, DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
+    snprintf(val_str, sizeof(val_str), "%u", value_);
+    int16_t val_len = (int16_t)strlen(val_str);
+    int16_t val_w = val_len > 0 ? (val_len * char_step - 1) : 0;
+    int16_t val_x = x_ + (w_ - val_w) / 2;
+    if (val_x < x_) val_x = x_;
+
+    int16_t num_y = (font == FontType::Font3x5) ? (y_ + 7) : (y_ + 9);
+    FontRenderer::drawString(display, val_x, num_y, val_str, DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, font);
 
     // Vertical gauge bar
-    int16_t bar_y = y_ + 18;
-    int16_t bar_h = h_ - 18;
+    int16_t bar_y = (font == FontType::Font3x5) ? (y_ + 14) : (y_ + 18);
+    int16_t bar_h = h_ - ((font == FontType::Font3x5) ? 14 : 18);
     display.drawRect(x_, bar_y, w_, bar_h, DisplayDriver::kColorMidGray);
 
     float norm = (float)value_ / 127.0f;

@@ -15,6 +15,8 @@ class StorageManager; // Forward declaration
 class NvsStorage;     // Forward declaration
 class MidiLearn;      // Forward declaration
 class PadManager;     // Forward declaration
+class UsbMidiHost;    // Forward declaration
+class AmyAdapter;     // Forward declaration
 struct ControllerProfile; // Forward declaration
 
 class Console {
@@ -31,6 +33,8 @@ public:
     void setNvsStorage(NvsStorage* nvs_storage);
     void setMidiLearn(MidiLearn* midi_learn);
     void setPadManager(PadManager* pad_mgr);
+    void setUsbMidiHost(UsbMidiHost* midi_host);
+    void setAmyAdapter(AmyAdapter* adapter);
     void setActiveProfilePointer(ControllerProfile* prof_ptr);
     
     // Register additional commands
@@ -77,6 +81,10 @@ private:
     static int cmdPatchPrev(int argc, char** argv);
     static int cmdSysSave(int argc, char** argv);
     static int cmdSysLoad(int argc, char** argv);
+    static int cmdVelocity(int argc, char** argv);
+    static int cmdSwing(int argc, char** argv);
+    static int cmdLimiter(int argc, char** argv);
+    static int cmdClockSource(int argc, char** argv);
     static int cmdHelp(int argc, char** argv);
     
     static UIManager*      s_ui_manager;
@@ -89,6 +97,8 @@ private:
     static MidiLearn*      s_midi_learn;
     static PadManager*         s_pad_manager;
     static ControllerProfile*   s_active_profile_ptr;
+    static UsbMidiHost*        s_midi_host;
+    static AmyAdapter*         s_amy_adapter;
 
     // Task for console REPL
     static void consoleTask(void* arg);

@@ -10,7 +10,7 @@ namespace smk {
 
 class PCM5102Output : public AudioOutput {
 public:
-    PCM5102Output(int bclk_pin, int lrclk_pin, int data_pin);
+    PCM5102Output(int bclk_pin, int lrclk_pin, int data_pin, int mute_pin = -1);
     virtual ~PCM5102Output();
 
     bool begin() override;
@@ -25,11 +25,10 @@ private:
     int _bclk_pin;
     int _lrclk_pin;
     int _data_pin;
+    int _mute_pin;
     i2s_chan_handle_t _tx_handle;
     std::atomic<uint32_t> _underruns;
     std::atomic<uint32_t> _frames_written;
-    int32_t* _conversion_buffer;
-    size_t _conversion_buffer_size;
 };
 
 

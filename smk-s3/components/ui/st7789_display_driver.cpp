@@ -2,6 +2,7 @@
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include <cstring>
 #include <cstdlib>
 #include <algorithm>
@@ -29,13 +30,25 @@ ST7789DisplayDriver::~ST7789DisplayDriver() {
 bool ST7789DisplayDriver::begin() {
     ESP_LOGI(TAG, "Initializing ST7789 Panel via ESP-IDF esp_lcd (284x76)");
 
-    // Backlight GPIO configuration
+    // Backlight LEDC PWM configuration
     if (config_.bl_pin >= 0) {
-        gpio_config_t bk_gpio_config = {};
-        bk_gpio_config.mode = GPIO_MODE_OUTPUT;
-        bk_gpio_config.pin_bit_mask = 1ULL << config_.bl_pin;
-        gpio_config(&bk_gpio_config);
-        gpio_set_level((gpio_num_t)config_.bl_pin, 1);
+        ledc_timer_config_t ledc_timer = {};
+        ledc_timer.speed_mode       = LEDC_LOW_SPEED_MODE;
+        ledc_timer.duty_resolution  = LEDC_TIMER_8_BIT;
+        ledc_timer.timer_num        = LEDC_TIMER_0;
+        ledc_timer.freq_hz          = 5000;
+        ledc_timer.clk_cfg          = LEDC_AUTO_CLK;
+        ledc_timer_config(&ledc_timer);
+
+        ledc_channel_config_t ledc_channel = {};
+        ledc_channel.gpio_num       = config_.bl_pin;
+        ledc_channel.speed_mode     = LEDC_LOW_SPEED_MODE;
+        ledc_channel.channel        = LEDC_CHANNEL_0;
+        ledc_channel.intr_type      = LEDC_INTR_DISABLE;
+        ledc_channel.timer_sel      = LEDC_TIMER_0;
+        ledc_channel.duty           = 0; // Start at 0 (minimum/dark)
+        ledc_channel.hpoint         = 0;
+        ledc_channel_config(&ledc_channel);
     }
 
     // SPI bus configuration
@@ -54,8 +67,8 @@ bool ST7789DisplayDriver::begin() {
 
     // ESP-IDF LCD Panel IO configuration
     esp_lcd_panel_io_spi_config_t io_config = {};
-    io_config.dc_gpio_num = config_.dc_pin;
-    io_config.cs_gpio_num = config_.cs_pin;
+    io_config.dc_gpio_num = (gpio_num_t)config_.dc_pin;
+    io_config.cs_gpio_num = (gpio_num_t)config_.cs_pin;
     io_config.pclk_hz = config_.clock_speed_hz;
     io_config.lcd_cmd_bits = 8;
     io_config.lcd_param_bits = 8;
@@ -69,8 +82,8 @@ bool ST7789DisplayDriver::begin() {
 
     // ST7789 Panel configuration
     esp_lcd_panel_dev_config_t panel_config = {};
-    panel_config.reset_gpio_num = config_.rst_pin;
-    panel_config.rgb_endian = LCD_RGB_ENDIAN_BGR;
+    panel_config.reset_gpio_num = (gpio_num_t)config_.rst_pin;
+    panel_config.rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR;
     panel_config.bits_per_pixel = 16;
 
     if (esp_lcd_new_panel_st7789(io_handle_, &panel_config, &panel_handle_) != ESP_OK) {
@@ -104,7 +117,8 @@ bool ST7789DisplayDriver::begin() {
 void ST7789DisplayDriver::setBrightness(uint8_t value) {
     brightness_ = value;
     if (config_.bl_pin >= 0) {
-        gpio_set_level((gpio_num_t)config_.bl_pin, value > 0 ? 1 : 0);
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, value);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
     }
 }
 

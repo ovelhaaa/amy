@@ -7,6 +7,9 @@
 #include "screens/midi_monitor_screen.h"
 #include "screens/sequencer_screen.h"
 #include "screens/pad_screen.h"
+#include "screens/midi_learn_screen.h"
+#include "screens/splash_screen.h"
+#include "screens/scene_screen.h"
 #include "synth_event.h"
 
 #include "freertos/FreeRTOS.h"
@@ -15,12 +18,17 @@
 
 namespace smk {
 
+class SynthEngine;
+
 enum class ScreenId : uint8_t {
+    Splash,
     Home,
     System,
     MidiMonitor,
     Sequencer,
-    Pads
+    Pads,
+    MidiLearn,
+    Scenes
 };
 
 class UIManager {
@@ -44,25 +52,39 @@ public:
 
     void processEvent(const SynthEvent& event);
 
+    SplashScreen& splashScreen() { return splash_screen_; }
     HomeScreen& homeScreen() { return home_screen_; }
     SystemScreen& systemScreen() { return system_screen_; }
     MidiMonitorScreen& midiMonitorScreen() { return midi_monitor_screen_; }
     SequencerScreen& sequencerScreen() { return sequencer_screen_; }
     PadScreen& padScreen() { return pad_screen_; }
+    MidiLearnScreen& midiLearnScreen() { return midi_learn_screen_; }
+    SceneScreen& sceneScreen() { return scene_screen_; }
+
+    void setWaveformSamples(const int16_t* samples, size_t count) {
+        home_screen_.setWaveformSamples(samples, count);
+    }
+    void setSynthEngine(SynthEngine* engine) {
+        synth_engine_ = engine;
+    }
 
 private:
     static void uiTaskRoutine(void* arg);
 
     DisplayDriver& display_;
-    ScreenId current_screen_id_{ScreenId::Home};
+    SynthEngine* synth_engine_{nullptr};
+    ScreenId current_screen_id_{ScreenId::Splash};
     ScreenBase* current_screen_{nullptr};
 
+    SplashScreen splash_screen_;
     HomeScreen home_screen_;
     ParameterScreen parameter_screen_;
     SystemScreen system_screen_;
     MidiMonitorScreen midi_monitor_screen_;
     SequencerScreen sequencer_screen_;
     PadScreen pad_screen_;
+    MidiLearnScreen midi_learn_screen_;
+    SceneScreen scene_screen_;
 
     bool overlay_active_{false};
     TaskHandle_t task_handle_{nullptr};

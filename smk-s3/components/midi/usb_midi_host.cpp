@@ -23,10 +23,10 @@ UsbMidiHost::~UsbMidiHost() {
 bool UsbMidiHost::begin() {
     ESP_LOGI(TAG, "Initializing USB Host Library");
     
-    const usb_host_config_t host_config = {
-        .skip_phy_setup = false,
-        .intr_flags = ESP_INTR_FLAG_LEVEL1,
-    };
+    usb_host_config_t host_config = {};
+    host_config.skip_phy_setup = false;
+    host_config.intr_flags = ESP_INTR_FLAG_LEVEL1;
+
     esp_err_t err = usb_host_install(&host_config);
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "Failed to install USB host: %s", esp_err_to_name(err));
@@ -72,7 +72,7 @@ uint32_t UsbMidiHost::reconnectCount() const {
 }
 
 void UsbMidiHost::usbHostTask(void* arg) {
-    UsbMidiHost* self = static_cast<UsbMidiHost*>(arg);
+    (void)arg;
     while (true) {
         uint32_t event_flags;
         esp_err_t err = usb_host_lib_handle_events(portMAX_DELAY, &event_flags);
@@ -177,7 +177,7 @@ bool UsbMidiHost::findMidiInterface(usb_device_handle_t dev_handle) {
     esp_err_t err = usb_host_get_active_config_descriptor(dev_handle, &config_desc);
     if (err != ESP_OK) return false;
     
-    const uint8_t* p = config_desc->val;
+    const uint8_t* p = (const uint8_t*)config_desc;
     const uint8_t* end = p + config_desc->wTotalLength;
     
     bool found_midi = false;
@@ -257,7 +257,7 @@ void UsbMidiHost::transferCallback(usb_transfer_t* transfer) {
 
 void UsbMidiHost::onMidiEvent(const SynthEvent& event, void* ctx) {
     UsbMidiHost* self = static_cast<UsbMidiHost*>(ctx);
-    self->event_bus_.sendFromISR(event);
+    self->event_bus_.send(event);
 }
 
 void UsbMidiHost::handleDeviceDisconnection() {

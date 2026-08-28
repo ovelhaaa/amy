@@ -22,6 +22,44 @@ void MidiLearn::startWizard() {
     ESP_LOGI(TAG, "==================================================");
 }
 
+void MidiLearn::finishAndSave() {
+    if (!target_profile_) return;
+    
+    // Fill in any bindings that were not learned with standard SMK25 defaults
+    smk::ControllerProfile defaults = smk::ProfileManager::createDefaultSmk25Profile();
+    
+    if (target_profile_->keys.target_action == 0) {
+        target_profile_->keys = defaults.keys;
+    }
+    if (target_profile_->pitch.target_action == 0) {
+        target_profile_->pitch = defaults.pitch;
+    }
+    if (target_profile_->modulation.target_action == 0) {
+        target_profile_->modulation = defaults.modulation;
+    }
+    for (size_t i = 0; i < 16; ++i) {
+        if (target_profile_->knobs[i].target_action == 0) {
+            target_profile_->knobs[i] = defaults.knobs[i];
+        }
+    }
+    for (size_t i = 0; i < 16; ++i) {
+        if (target_profile_->pads[i].target_action == 0) {
+            target_profile_->pads[i] = defaults.pads[i];
+        }
+    }
+    for (size_t i = 0; i < 4; ++i) {
+        if (target_profile_->buttons[i].target_action == 0) {
+            target_profile_->buttons[i] = defaults.buttons[i];
+        }
+    }
+
+    target_profile_->crc32 = calculateProfileCrc32(*target_profile_);
+    current_step_ = LearnStep::Complete;
+    ESP_LOGI(TAG, "==================================================");
+    ESP_LOGI(TAG, "MIDI Learn Finished and Saved (CRC32: 0x%08X)", target_profile_->crc32);
+    ESP_LOGI(TAG, "==================================================");
+}
+
 void MidiLearn::cancel() {
     ESP_LOGI(TAG, "MIDI Learn Wizard Cancelled");
     current_step_ = LearnStep::Idle;
@@ -46,7 +84,7 @@ const char* MidiLearn::currentStepName() const {
         case LearnStep::TurnKnob6:       return "Turn Knob 6 (Bank A)";
         case LearnStep::TurnKnob7:       return "Turn Knob 7 (Bank A)";
         case LearnStep::TurnKnob8:       return "Turn Knob 8 (Bank A)";
-        case LearnStep::TurnKnob9:       return "[KNOB-B] Press KNOB-B on controller, then Turn Knob 1 (Bank B)";
+        case LearnStep::TurnKnob9:       return "[KNOB-B] Ative KNOB-B, Gire Knob 1";
         case LearnStep::TurnKnob10:      return "Turn Knob 2 (Bank B)";
         case LearnStep::TurnKnob11:      return "Turn Knob 3 (Bank B)";
         case LearnStep::TurnKnob12:      return "Turn Knob 4 (Bank B)";
@@ -62,7 +100,7 @@ const char* MidiLearn::currentStepName() const {
         case LearnStep::PressPad6:       return "Press Pad 6 (Bank A)";
         case LearnStep::PressPad7:       return "Press Pad 7 (Bank A)";
         case LearnStep::PressPad8:       return "Press Pad 8 (Bank A)";
-        case LearnStep::PressPad9:       return "[PAD-B] Press PAD-B on controller, then Press Pad 1 (Bank B)";
+        case LearnStep::PressPad9:       return "[PAD-B] Ative PAD-B, Toque Pad 1";
         case LearnStep::PressPad10:      return "Press Pad 2 (Bank B)";
         case LearnStep::PressPad11:      return "Press Pad 3 (Bank B)";
         case LearnStep::PressPad12:      return "Press Pad 4 (Bank B)";
@@ -75,6 +113,51 @@ const char* MidiLearn::currentStepName() const {
         case LearnStep::PressRec:        return "Press Rec Button";
         case LearnStep::Complete:        return "Learn Complete!";
         default:                         return "Idle";
+    }
+}
+
+const char* MidiLearn::currentStepHint() const {
+    switch (current_step_) {
+        case LearnStep::PressKey:        return "Toque qualquer tecla no teclado";
+        case LearnStep::MovePitch:       return "Mova Pitch Wheel p/ calibrar ou toque tecla p/ SALVAR";
+        case LearnStep::MoveModulation:  return "Mova a roda/fita de Modulacao";
+        case LearnStep::TurnKnob1:       return "Gire o Knob 1 (Banco A)";
+        case LearnStep::TurnKnob2:       return "Gire o Knob 2 (Banco A)";
+        case LearnStep::TurnKnob3:       return "Gire o Knob 3 (Banco A)";
+        case LearnStep::TurnKnob4:       return "Gire o Knob 4 (Banco A)";
+        case LearnStep::TurnKnob5:       return "Gire o Knob 5 (Banco A)";
+        case LearnStep::TurnKnob6:       return "Gire o Knob 6 (Banco A)";
+        case LearnStep::TurnKnob7:       return "Gire o Knob 7 (Banco A)";
+        case LearnStep::TurnKnob8:       return "Gire o Knob 8 (Banco A)";
+        case LearnStep::TurnKnob9:       return "Ative KNOB-B no teclado e gire Knob 1";
+        case LearnStep::TurnKnob10:      return "Gire o Knob 2 (Banco B)";
+        case LearnStep::TurnKnob11:      return "Gire o Knob 3 (Banco B)";
+        case LearnStep::TurnKnob12:      return "Gire o Knob 4 (Banco B)";
+        case LearnStep::TurnKnob13:      return "Gire o Knob 5 (Banco B)";
+        case LearnStep::TurnKnob14:      return "Gire o Knob 6 (Banco B)";
+        case LearnStep::TurnKnob15:      return "Gire o Knob 7 (Banco B)";
+        case LearnStep::TurnKnob16:      return "Gire o Knob 8 (Banco B)";
+        case LearnStep::PressPad1:       return "Pressione o Pad 1 (Banco A)";
+        case LearnStep::PressPad2:       return "Pressione o Pad 2 (Banco A)";
+        case LearnStep::PressPad3:       return "Pressione o Pad 3 (Banco A)";
+        case LearnStep::PressPad4:       return "Pressione o Pad 4 (Banco A)";
+        case LearnStep::PressPad5:       return "Pressione o Pad 5 (Banco A)";
+        case LearnStep::PressPad6:       return "Pressione o Pad 6 (Banco A)";
+        case LearnStep::PressPad7:       return "Pressione o Pad 7 (Banco A)";
+        case LearnStep::PressPad8:       return "Pressione o Pad 8 (Banco A)";
+        case LearnStep::PressPad9:       return "Ative PAD-B no teclado e toque Pad 1";
+        case LearnStep::PressPad10:      return "Pressione o Pad 2 (Banco B)";
+        case LearnStep::PressPad11:      return "Pressione o Pad 3 (Banco B)";
+        case LearnStep::PressPad12:      return "Pressione o Pad 4 (Banco B)";
+        case LearnStep::PressPad13:      return "Pressione o Pad 5 (Banco B)";
+        case LearnStep::PressPad14:      return "Pressione o Pad 6 (Banco B)";
+        case LearnStep::PressPad15:      return "Pressione o Pad 7 (Banco B)";
+        case LearnStep::PressPad16:      return "Pressione o Pad 8 (Banco B)";
+        case LearnStep::PressPlay:       return "Pressione o Botao PLAY";
+        case LearnStep::PressStop:       return "Pressione o Botao STOP";
+        case LearnStep::PressRec:        return "Pressione o Botao REC";
+        case LearnStep::Complete:        return "Mapeamento Completo!";
+        default:                         return "Aguardando...";
     }
 }
 
@@ -99,7 +182,6 @@ void MidiLearn::advanceStep() {
         target_profile_->crc32 = calculateProfileCrc32(*target_profile_);
         ESP_LOGI(TAG, "==================================================");
         ESP_LOGI(TAG, "MIDI Learn Wizard Completed Successfully! (CRC32: 0x%08X)", target_profile_->crc32);
-        ESP_LOGI(TAG, "Use 'profile_save <nome>' to persist to Flash SPIFFS");
         ESP_LOGI(TAG, "==================================================");
     } else if (current_step_ != LearnStep::Idle) {
         ESP_LOGI(TAG, ">>> STEP [%u/%u]: %s <<<", static_cast<unsigned>(current_step_), static_cast<unsigned>(LearnStep::Complete), currentStepName());
@@ -109,14 +191,14 @@ void MidiLearn::advanceStep() {
 bool MidiLearn::processIncomingMidi(uint8_t msg_type, uint8_t channel, uint16_t number, int32_t value) {
     if (!isLearning() || !target_profile_) return false;
 
-    // Enforce 500ms refractory cooldown delay between recorded steps
+    // Enforce 250ms refractory cooldown delay between recorded steps
     uint32_t now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
-    if (now_ms - last_recorded_time_ms_ < 500) {
+    if (now_ms - last_recorded_time_ms_ < 250) {
         return false;
     }
 
-    // Require distinct ID if received within 1000ms
-    if (number == last_recorded_number_ && (now_ms - last_recorded_time_ms_ < 1000)) {
+    // Require distinct ID if received within 600ms
+    if (number == last_recorded_number_ && (now_ms - last_recorded_time_ms_ < 600)) {
         return false;
     }
 
@@ -131,10 +213,15 @@ bool MidiLearn::processIncomingMidi(uint8_t msg_type, uint8_t channel, uint16_t 
             }
             break;
         case LearnStep::MovePitch:
-            if (msg_type == 2) { // Pitch Bend
+            if (msg_type == 2) { // Pitch Bend moved -> calibrate and continue
                 recordBinding(target_profile_->pitch, msg_type, channel, number, TargetAction::PitchBend);
-                ESP_LOGI(TAG, "Recorded Pitch: msg_type=%d", msg_type);
+                ESP_LOGI(TAG, "Recorded Pitch: msg_type=%d -> Continuing Full Wizard", msg_type);
                 recorded = true;
+            } else if (msg_type == 0 && value > 0) {
+                // Key pressed instead of moving pitch wheel -> finish and save default profile!
+                ESP_LOGI(TAG, "Key pressed at MovePitch -> Finalizing and saving profile by default");
+                finishAndSave();
+                return true;
             }
             break;
         case LearnStep::MoveModulation:
@@ -166,7 +253,11 @@ bool MidiLearn::processIncomingMidi(uint8_t msg_type, uint8_t channel, uint16_t 
                 if (knob_idx > 0 && number == target_profile_->knobs[knob_idx - 1].number) return false;
                 TargetAction act = static_cast<TargetAction>(static_cast<uint16_t>(TargetAction::Knob1) + knob_idx);
                 recordBinding(target_profile_->knobs[knob_idx], msg_type, channel, number, act);
-                ESP_LOGI(TAG, "Recorded Knob #%d: CC #%d", knob_idx + 1, number);
+                if (knob_idx < 8) {
+                    ESP_LOGI(TAG, "Recorded Knob #%d (Bank A): CC #%d", knob_idx + 1, number);
+                } else {
+                    ESP_LOGI(TAG, "Recorded Knob #%d (Bank B): CC #%d", (knob_idx - 8) + 1, number);
+                }
                 recorded = true;
             }
             break;
@@ -211,6 +302,9 @@ bool MidiLearn::processIncomingMidi(uint8_t msg_type, uint8_t channel, uint16_t 
 
     if (recorded) {
         last_recorded_number_ = number;
+        last_captured_type_ = msg_type;
+        last_captured_channel_ = channel;
+        last_captured_value_ = value;
         advanceStep();
         return true;
     }

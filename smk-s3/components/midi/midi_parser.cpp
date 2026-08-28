@@ -1,9 +1,82 @@
 #include "midi_parser.h"
 #include "esp_timer.h"
+#include <cmath>
+#include <algorithm>
 
 namespace smk {
 
+static uint8_t s_vel_lut[5][128];
+static bool s_vel_lut_init = false;
+
+static void initVelocityLuts() {
+    if (s_vel_lut_init) return;
+    
+    for (int i = 0; i < 128; ++i) {
+        float norm = (float)i / 127.0f;
+        
+        // 0. Linear
+        s_vel_lut[0][i] = (uint8_t)i;
+        
+        // 1. Soft (Exponential, power 1.6)
+        if (i == 0) s_vel_lut[1][i] = 0;
+        else {
+            int val = (int)std::round(127.0f * std::pow(norm, 1.6f));
+            s_vel_lut[1][i] = (uint8_t)std::clamp(val, 1, 127);
+        }
+        
+        // 2. Hard (Logarithmic, power 0.6)
+        if (i == 0) s_vel_lut[2][i] = 0;
+        else {
+            int val = (int)std::round(127.0f * std::pow(norm, 0.6f));
+            s_vel_lut[2][i] = (uint8_t)std::clamp(val, 1, 127);
+        }
+        
+        // 3. SCurve (Sigmoid)
+        if (i == 0) s_vel_lut[3][i] = 0;
+        else {
+            float s_min = 1.0f / (1.0f + std::exp(4.0f));
+            float s_max = 1.0f / (1.0f + std::exp(-4.0f));
+            float s_val = 1.0f / (1.0f + std::exp(-8.0f * (norm - 0.5f)));
+            float s_norm = (s_val - s_min) / (s_max - s_min);
+            int val = (int)std::round(127.0f * std::clamp(s_norm, 0.0f, 1.0f));
+            s_vel_lut[3][i] = (uint8_t)std::clamp(val, 1, 127);
+        }
+        
+        // 4. Fixed (127 for any hit)
+        s_vel_lut[4][i] = (i > 0) ? 127 : 0;
+    }
+    s_vel_lut_init = true;
+}
+
 MidiParser::MidiParser() {
+    initVelocityLuts();
+}
+
+void MidiParser::setVelocityCurve(VelocityCurve curve) {
+    velocity_curve_.store(curve, std::memory_order_relaxed);
+}
+
+VelocityCurve MidiParser::velocityCurve() const {
+    return velocity_curve_.load(std::memory_order_relaxed);
+}
+
+uint8_t MidiParser::applyVelocityCurve(uint8_t raw_velocity, VelocityCurve curve) {
+    initVelocityLuts();
+    raw_velocity &= 0x7F;
+    uint8_t c_idx = static_cast<uint8_t>(curve);
+    if (c_idx > 4) c_idx = 0;
+    return s_vel_lut[c_idx][raw_velocity];
+}
+
+const char* MidiParser::velocityCurveName(VelocityCurve curve) {
+    switch (curve) {
+        case VelocityCurve::Linear: return "LINEAR";
+        case VelocityCurve::Soft:   return "SOFT";
+        case VelocityCurve::Hard:   return "HARD";
+        case VelocityCurve::SCurve: return "S-CURVE";
+        case VelocityCurve::Fixed:  return "FIXED";
+        default:                    return "LINEAR";
+    }
 }
 
 void MidiParser::setCallback(EventCallback cb, void* ctx) {
@@ -37,7 +110,8 @@ void MidiParser::processUsbMidiPacket(const uint8_t* packet) {
             if (data2 == 0) {
                 emitEvent(EventType::NoteOff, channel, data1, 0);
             } else {
-                emitEvent(EventType::NoteOn, channel, data1, data2);
+                uint8_t curved_vel = applyVelocityCurve(data2, velocity_curve_.load(std::memory_order_relaxed));
+                emitEvent(EventType::NoteOn, channel, data1, curved_vel);
             }
             break;
         case 0xB: // Control Change
@@ -59,6 +133,17 @@ void MidiParser::processUsbMidiPacket(const uint8_t* packet) {
         case 0xC: // Program Change
             emitEvent(EventType::ProgramChange, channel, data1, 0);
             break;
+        case 0xF: // Single Byte / Realtime
+            if (status == 0xF8) {
+                emitEvent(EventType::Clock, 0, 0, 0);
+            } else if (status == 0xFA || status == 0xFB) {
+                emitEvent(EventType::TransportPlay, 0, 0, 0);
+            } else if (status == 0xFC) {
+                emitEvent(EventType::TransportStop, 0, 0, 0);
+            } else if (status == 0xFF) {
+                emitEvent(EventType::Panic, 0, 0, 0);
+            }
+            break;
         default:
             // Other CINs not currently handled
             break;
@@ -66,13 +151,21 @@ void MidiParser::processUsbMidiPacket(const uint8_t* packet) {
 }
 
 void MidiParser::processByte(uint8_t byte) {
-    // Handle running status for future serial MIDI
-    if (byte & 0x80) {
-        if (byte >= 0xF8) {
-            // Realtime message
-            if (byte == 0xFF) emitEvent(EventType::Panic, 0, 0, 0);
-            return;
+    // Handle realtime messages immediately regardless of running status
+    if (byte >= 0xF8) {
+        if (byte == 0xF8) {
+            emitEvent(EventType::Clock, 0, 0, 0);
+        } else if (byte == 0xFA || byte == 0xFB) {
+            emitEvent(EventType::TransportPlay, 0, 0, 0);
+        } else if (byte == 0xFC) {
+            emitEvent(EventType::TransportStop, 0, 0, 0);
+        } else if (byte == 0xFF) {
+            emitEvent(EventType::Panic, 0, 0, 0);
         }
+        return;
+    }
+
+    if (byte & 0x80) {
         if (byte >= 0xF0) {
             // System common, ignored for now
             return;
@@ -107,7 +200,8 @@ void MidiParser::processByte(uint8_t byte) {
                     if (data_bytes_[1] == 0) {
                         emitEvent(EventType::NoteOff, channel, data_bytes_[0], 0);
                     } else {
-                        emitEvent(EventType::NoteOn, channel, data_bytes_[0], data_bytes_[1]);
+                        uint8_t curved_vel = applyVelocityCurve(data_bytes_[1], velocity_curve_.load(std::memory_order_relaxed));
+                        emitEvent(EventType::NoteOn, channel, data_bytes_[0], curved_vel);
                     }
                     break;
                 case 0xB: // CC

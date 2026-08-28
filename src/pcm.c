@@ -303,7 +303,7 @@ uint32_t fill_sample_from_file(memorypcm_preset_t *preset_p, uint32_t frames_nee
     return frames_read;
 }
 
-SAMPLE render_pcm(SAMPLE* buf, uint16_t osc) {
+AMY_IRAM_ATTR SAMPLE render_pcm(SAMPLE* buf, uint16_t osc) {
     if(AMY_IS_SET(synth[osc]->preset)) {
         SAMPLE max_value = 0;
         memorypcm_preset_t rom_local;
@@ -368,15 +368,30 @@ SAMPLE render_pcm(SAMPLE* buf, uint16_t osc) {
                         LUTSAMPLE cl = table[next_offset];
                         LUTSAMPLE cr = table[next_offset + 1];
                         c = (LUTSAMPLE)(((int32_t)cl + (int32_t)cr) / 2);
-                    } else {
-                        c = b;
                     }
                 }
             } else {
                 b = table[base_index];
                 c = (next_index < sample_length) ? table[next_index] : b;
             }
-            SAMPLE sample = L2S(b) + MUL4_SS(L2S(c - b), frac);
+            SAMPLE sample;
+#ifdef AMY_HAS_MUL64
+            if (preset->channels == 1) {
+                LUTSAMPLE ym1 = (base_index > 0) ? table[base_index - 1] : table[base_index];
+                LUTSAMPLE y0  = table[base_index];
+                LUTSAMPLE y1  = (next_index < sample_length) ? table[next_index] : y0;
+                LUTSAMPLE y2  = ((next_index + 1) < sample_length) ? table[next_index + 1] : y1;
+                SAMPLE c0 = L2S(y0);
+                SAMPLE c1 = SHIFTR(L2S(y1) - L2S(ym1), 1);
+                SAMPLE c2 = L2S(ym1) - SHIFTL(L2S(y0), 1) - SHIFTR(L2S(y0), 1) + SHIFTL(L2S(y1), 1) - SHIFTR(L2S(y2), 1);
+                SAMPLE c3 = SHIFTR(L2S(y2) - L2S(ym1), 1) + SHIFTL(L2S(y0) - L2S(y1), 1) + SHIFTR(L2S(y0) - L2S(y1), 1);
+                sample = c0 + MUL0_SS(frac, c1 + MUL0_SS(frac, c2 + MUL0_SS(frac, c3)));
+            } else {
+                sample = L2S(b) + MUL4_SS(L2S(c - b), frac);
+            }
+#else
+            sample = L2S(b) + MUL4_SS(L2S(c - b), frac);
+#endif
             synth[osc]->phase = P_WRAPPED_SUM(synth[osc]->phase, step);
             base_index = INT_OF_P(synth[osc]->phase, PCM_INDEX_BITS);
 

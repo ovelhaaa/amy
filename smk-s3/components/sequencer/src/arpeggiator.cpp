@@ -120,8 +120,19 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
         last_played_note_ = -1;
     }
 
-    // Check if current tick reaches a step boundary
-    if ((tick_count % ticks_per_step) == 0) {
+    // Check if current tick reaches a step boundary (with swing on 16th notes)
+    bool is_step_tick = false;
+    if (ticks_per_step == 6 && swing_percent_ > 50.0f) {
+        uint32_t tick_split = (uint32_t)std::round(12.0f * (swing_percent_ / 100.0f));
+        if (tick_split < 6) tick_split = 6;
+        if (tick_split > 9) tick_split = 9;
+        uint32_t mod12 = tick_count % 12;
+        is_step_tick = (mod12 == 0) || (mod12 == tick_split);
+    } else {
+        is_step_tick = ((tick_count % ticks_per_step) == 0);
+    }
+
+    if (is_step_tick) {
         std::vector<HeldNote> pattern;
         generateArpPattern(pattern);
 

@@ -72,6 +72,7 @@ void PadManager::nextBank() {
 }
 
 void PadManager::setBank(PadBank bank) {
+    if (active_bank_ == bank) return;
     active_bank_ = bank;
     const char* bname = "BANK A: DRUMS";
     switch (active_bank_) {
@@ -96,9 +97,10 @@ void PadManager::handlePadPress(uint8_t pad_idx, uint8_t velocity, AmyAdapter* e
     }
 
     // Single note or multi-note chord trigger
+    uint8_t pad_channel = (active_bank_ == PadBank::BankA_Drums) ? 9 : 0;
     for (uint8_t i = 0; i < config.note_count; ++i) {
         if (engine) {
-            engine->noteOn(9, config.notes[i], velocity); // Channel 10 / 9 for drums/pads
+            engine->noteOn(pad_channel, config.notes[i], velocity);
         }
     }
 
@@ -112,9 +114,10 @@ void PadManager::handlePadRelease(uint8_t pad_idx, AmyAdapter* engine) {
     const auto& config = bank_configs_[static_cast<uint8_t>(active_bank_)][pad_idx];
 
     if (!config.is_fx) {
+        uint8_t pad_channel = (active_bank_ == PadBank::BankA_Drums) ? 9 : 0;
         for (uint8_t i = 0; i < config.note_count; ++i) {
             if (engine) {
-                engine->noteOff(9, config.notes[i]);
+                engine->noteOff(pad_channel, config.notes[i]);
             }
         }
     }

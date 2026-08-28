@@ -73,6 +73,7 @@ extern const uint32_t pcm_wavetable_len;
 
 
 // Set block size and SR. We try for 256/44100, but some platforms don't let us:
+#ifndef AMY_BLOCK_SIZE
 #ifdef AMY_DAISY
 #define AMY_BLOCK_SIZE 128
 #define BLOCK_SIZE_BITS 7 // log2 of BLOCK_SIZE
@@ -80,7 +81,9 @@ extern const uint32_t pcm_wavetable_len;
 #define AMY_BLOCK_SIZE 256
 #define BLOCK_SIZE_BITS 8 // log2 of BLOCK_SIZE
 #endif
+#endif
 
+#ifndef AMY_SAMPLE_RATE
 #ifdef AMY_DAISY
 #define AMY_SAMPLE_RATE 48000
 #elif defined __EMSCRIPTEN__
@@ -88,8 +91,13 @@ extern const uint32_t pcm_wavetable_len;
 #else
 #define AMY_SAMPLE_RATE 44100 
 #endif
+#endif
 
 #define PCM_AMY_SAMPLE_RATE 22050
+
+#ifndef AMY_NO_POLYBLEP
+#define AMY_POLYBLEP
+#endif
 
 // Transfer types.
 #define AMY_TRANSFER_TYPE_NONE 0
@@ -281,6 +289,8 @@ enum coefs{
 #define FILTER_LPF24 4
 #define FILTER_NOTCH 5
 #define FILTER_PHASER 6
+#define FILTER_MOOG24 7
+#define FILTER_TPT_SVF 8
 // synth[].wave values
 #define SINE 0
 #define PULSE 1
@@ -817,6 +827,7 @@ typedef struct reverb_params {
     SAMPLE lpfcoef;
     SAMPLE lpfgain;
     SAMPLE liveness;
+    float lfo_phase;
 } reverb_params_t;
 
 typedef struct reverb_state {

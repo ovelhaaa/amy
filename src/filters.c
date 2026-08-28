@@ -242,6 +242,125 @@ static AMY_IRAM_ATTR void dsps_phaser_f32_ansi(SAMPLE *block, int len, SAMPLE a,
     }
 }
 
+// ---------------------------------------------------------------------------
+// TPT State Variable Filter (Zero Delay Feedback)
+// Highly stable under fast cutoff sweeps, exact analog frequency response.
+// w[0] = s1 state, w[1] = s2 state
+// ---------------------------------------------------------------------------
+static AMY_IRAM_ATTR SAMPLE dsps_tpt_svf_process(SAMPLE *block, int len, float ratio, float resonance, uint8_t filter_type, SAMPLE *w) {
+    if (ratio > 0.49f) ratio = 0.49f;
+    if (ratio < LOWEST_RATIO) ratio = LOWEST_RATIO;
+    if (resonance < 0.5f) resonance = 0.5f;
+
+    // Bilinear pre-warping: g = tan(pi * ratio)
+    float g_f = tanf((float)M_PI * ratio);
+    float r_f = 1.0f / (2.0f * resonance); // damping factor
+    float h_f = 1.0f / (1.0f + 2.0f * r_f * g_f + g_f * g_f);
+    float gs1_f = 2.0f * r_f + g_f;
+
+    SAMPLE g = F2S(g_f);
+    SAMPLE h = F2S(h_f);
+    SAMPLE gs1 = F2S(gs1_f);
+
+    SAMPLE s1 = w[0];
+    SAMPLE s2 = w[1];
+    SAMPLE max_val = 0;
+
+    for (int i = 0; i < len; ++i) {
+        SAMPLE x0 = block[i];
+        SAMPLE hp = FILT_MUL_SS(h, x0 - FILT_MUL_SS(gs1, s1) - s2);
+        SAMPLE v1 = FILT_MUL_SS(g, hp);
+        SAMPLE bp = v1 + s1;
+        s1 = v1 + bp;
+        SAMPLE v2 = FILT_MUL_SS(g, bp);
+        SAMPLE lp = v2 + s2;
+        s2 = v2 + lp;
+
+        SAMPLE y0;
+        if (filter_type == FILTER_BPF) {
+            y0 = bp;
+        } else if (filter_type == FILTER_HPF) {
+            y0 = hp;
+        } else if (filter_type == FILTER_NOTCH) {
+            y0 = hp + lp;
+        } else {
+            // FILTER_LPF / FILTER_TPT_SVF
+            y0 = lp;
+        }
+
+        block[i] = y0;
+        SAMPLE abs_y = (y0 < 0) ? -y0 : y0;
+        if (abs_y > max_val) max_val = abs_y;
+    }
+
+    w[0] = s1;
+    w[1] = s2;
+    return max_val;
+}
+
+// ---------------------------------------------------------------------------
+// Moog 24dB / Oct Ladder Filter with Saturated 4-pole Topology
+// Warm analog character with soft non-linear saturation per stage and bass compensation.
+// w[0..3] = s0..s3 states
+// ---------------------------------------------------------------------------
+static inline SAMPLE moog_sat(SAMPLE x) {
+    if (x > F2S(1.5f)) return F2S(1.0f);
+    if (x < F2S(-1.5f)) return F2S(-1.0f);
+    // Cubic soft saturation: x - (x^3)/3
+    SAMPLE x3 = FILT_MUL_SS(x, FILT_MUL_SS(x, x));
+    return x - FILT_MUL_SS(F2S(0.3333333f), x3);
+}
+
+static AMY_IRAM_ATTR SAMPLE dsps_moog24_process(SAMPLE *block, int len, float ratio, float resonance, SAMPLE *w) {
+    if (ratio > 0.45f) ratio = 0.45f;
+    if (ratio < LOWEST_RATIO) ratio = LOWEST_RATIO;
+
+    // 1-pole cutoff tuning
+    float g_f = 1.0f - expf(-2.0f * (float)M_PI * ratio);
+    if (g_f > 0.99f) g_f = 0.99f;
+    if (g_f < 0.0001f) g_f = 0.0001f;
+
+    // Resonance mapping: res 0..8 -> k 0..3.8
+    float k_f = 3.8f * (resonance / 8.0f);
+    if (k_f > 3.85f) k_f = 3.85f;
+    if (k_f < 0.0f) k_f = 0.0f;
+
+    // Bass compensation gain to counteract passband drop at high resonance
+    float comp_f = 1.0f + 0.4f * k_f;
+
+    SAMPLE g = F2S(g_f);
+    SAMPLE k = F2S(k_f);
+    SAMPLE comp = F2S(comp_f);
+
+    SAMPLE s0 = w[0];
+    SAMPLE s1 = w[1];
+    SAMPLE s2 = w[2];
+    SAMPLE s3 = w[3];
+    SAMPLE max_val = 0;
+
+    for (int i = 0; i < len; ++i) {
+        SAMPLE x0 = block[i];
+        SAMPLE fb = FILT_MUL_SS(k, moog_sat(s3));
+        SAMPLE u = x0 - fb;
+
+        s0 += FILT_MUL_SS(g, moog_sat(u) - moog_sat(s0));
+        s1 += FILT_MUL_SS(g, moog_sat(s0) - moog_sat(s1));
+        s2 += FILT_MUL_SS(g, moog_sat(s1) - moog_sat(s2));
+        s3 += FILT_MUL_SS(g, moog_sat(s2) - moog_sat(s3));
+
+        SAMPLE y0 = FILT_MUL_SS(comp, s3);
+        block[i] = y0;
+        SAMPLE abs_y = (y0 < 0) ? -y0 : y0;
+        if (abs_y > max_val) max_val = abs_y;
+    }
+
+    w[0] = s0;
+    w[1] = s1;
+    w[2] = s2;
+    w[3] = s3;
+    return max_val;
+}
+
 #ifndef AMY_HAS_MUL64
 // On the RP2040 (and other ARMV6 platforms) we use block-floating-point)
 #define USE_BLOCK_FLOATING_POINT
@@ -941,6 +1060,22 @@ AMY_IRAM_ATTR SAMPLE filter_process(SAMPLE * block, uint16_t osc, SAMPLE max_val
         AMY_PROFILE_STOP(FILTER_PROCESS)
         // Post-filter max_val is a hint on this path (see split_fb below); the
         // mix of two unity-gain paths keeps the incoming bound representative.
+        return max_val;
+    }
+    if(synth[osc]->filter_type==FILTER_MOOG24) {
+        AMY_PROFILE_STOP(FILTER_PROCESS_STAGE0)
+        AMY_PROFILE_START(FILTER_PROCESS_STAGE1)
+        max_val = dsps_moog24_process(block, AMY_BLOCK_SIZE, ratio, msynth[osc]->resonance, synth[osc]->filter_delay);
+        AMY_PROFILE_STOP(FILTER_PROCESS_STAGE1)
+        AMY_PROFILE_STOP(FILTER_PROCESS)
+        return max_val;
+    }
+    if(synth[osc]->filter_type==FILTER_TPT_SVF) {
+        AMY_PROFILE_STOP(FILTER_PROCESS_STAGE0)
+        AMY_PROFILE_START(FILTER_PROCESS_STAGE1)
+        max_val = dsps_tpt_svf_process(block, AMY_BLOCK_SIZE, ratio, msynth[osc]->resonance, FILTER_LPF, synth[osc]->filter_delay);
+        AMY_PROFILE_STOP(FILTER_PROCESS_STAGE1)
+        AMY_PROFILE_STOP(FILTER_PROCESS)
         return max_val;
     }
     if(synth[osc]->filter_type==FILTER_LPF || synth[osc]->filter_type==FILTER_LPF24)

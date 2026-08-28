@@ -1,6 +1,6 @@
 #pragma once
 #include "patch_types.h"
-#include "ui_manager.h" // For TakeoverStatus enum definition
+#include "screens/parameter_screen.h" // For TakeoverStatus enum definition
 #include <array>
 #include <cmath>
 

@@ -30,14 +30,16 @@ ControllerProfile ProfileManager::createDefaultSmk25Profile() {
     // Modulation: CC #1
     prof.modulation = { 1, 0xFF, 1, (uint16_t)TargetAction::Modulation, 0, 127, 0 };
 
-    // Knobs: CC #1 .. CC #8 (Bank A -> Knob1..Knob8), CC #9 .. CC #16 (Bank B -> Knob9..Knob16)
+    // Knobs: 
+    // Bank A (Knobs 1..8):  CC #21 .. CC #28
+    // Bank B (Knobs 9..16): CC #29 .. CC #36
     for (uint8_t i = 0; i < 16; ++i) {
-        prof.knobs[i] = { 1, 0xFF, (uint16_t)(1 + i), (uint16_t)((uint16_t)TargetAction::Knob1 + i), 0, 127, 0 };
+        prof.knobs[i] = { 1, 0xFF, (uint16_t)(21 + i), (uint16_t)((uint16_t)TargetAction::Knob1 + i), 0, 127, 0 };
     }
 
-    // Pads: Note #36 .. Note #43 (Bank A -> Pad1..Pad8), Note #44 .. Note #51 (Bank B -> Pad9..Pad16)
+    // Pads: Note #36 .. Note #43 (Bank A -> Pad1..Pad8), Note #44 .. Note #51 (Bank B -> Pad9..Pad16) on Channel 10 (idx 9)
     for (uint8_t i = 0; i < 16; ++i) {
-        prof.pads[i] = { 0, 0xFF, (uint16_t)(36 + i), (uint16_t)((uint16_t)TargetAction::Pad1 + i), 0, 127, 0 };
+        prof.pads[i] = { 0, 9, (uint16_t)(36 + i), (uint16_t)((uint16_t)TargetAction::Pad1 + i), 0, 127, 0 };
     }
 
     // Buttons (Play, Stop, Rec, BT)
@@ -77,13 +79,14 @@ TargetAction ProfileManager::matchBinding(const ControllerProfile& profile, uint
     }
 
     if (msg_type == 0) { // Note
+        // Only match pads if they explicitly match the incoming MIDI channel (e.g. Channel 10)
         for (uint8_t i = 0; i < 16; ++i) {
-            if (profile.pads[i].msg_type == 0 && profile.pads[i].number == number) {
+            if (profile.pads[i].msg_type == 0 && profile.pads[i].channel == channel && profile.pads[i].number == number) {
                 return static_cast<TargetAction>(profile.pads[i].target_action);
             }
         }
         for (uint8_t i = 0; i < 4; ++i) {
-            if (profile.buttons[i].msg_type == 0 && profile.buttons[i].number == number) {
+            if (profile.buttons[i].msg_type == 0 && profile.buttons[i].channel == channel && profile.buttons[i].number == number) {
                 return static_cast<TargetAction>(profile.buttons[i].target_action);
             }
         }

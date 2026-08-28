@@ -43,8 +43,8 @@ public:
     virtual void flush() = 0;
     virtual void flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) = 0;
 
-    int16_t width() const { return kWidth; }
-    int16_t height() const { return kHeight; }
+    virtual int16_t width() const { return kWidth; }
+    virtual int16_t height() const { return kHeight; }
 };
 
 } // namespace smk
