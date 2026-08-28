@@ -45,6 +45,10 @@ void UIManager::switchScreen(ScreenId screen_id) {
     }
 
     if (current_screen_) {
+        if (screen_id != ScreenId::Splash) {
+            display_.setBrightness(255);
+        }
+        display_.invalidate();
         current_screen_->onEnter();
         ESP_LOGI(TAG, "Switched to screen: %s", current_screen_->name());
     }

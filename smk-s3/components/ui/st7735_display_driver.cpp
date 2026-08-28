@@ -164,7 +164,7 @@ bool ST7735DisplayDriver::begin() {
         ledc_channel.channel        = LEDC_CHANNEL_0;
         ledc_channel.intr_type      = LEDC_INTR_DISABLE;
         ledc_channel.timer_sel      = LEDC_TIMER_0;
-        ledc_channel.duty           = 0; // Start at 0 (minimum/dark)
+        ledc_channel.duty           = 255; // Start at full brightness
         ledc_channel.hpoint         = 0;
         ledc_channel_config(&ledc_channel);
     }

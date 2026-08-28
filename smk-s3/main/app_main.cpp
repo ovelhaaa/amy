@@ -110,41 +110,41 @@ static void app_init_task(void* arg) {
     // 8. Start AudioTask
     smk::AudioTask::start(amy_adapter, pcm_out, smk::config::kAudioTaskCore, smk::config::kAudioTaskPriority);
 
-    // 9. Initialize UI Subsystem (ST7735 1.8" 160x128 or ST7789 284x76 Display)
-    smk::ST7735Config st7735_cfg = {
+    // 9. Initialize UI Subsystem (ST7789 284x76 Widescreen Display)
+    smk::ST7789Config st7789_cfg = {
         .mosi_pin = smk::config::kDisplayMosi,
         .sclk_pin = smk::config::kDisplaySclk,
         .cs_pin   = smk::config::kDisplayCs,
         .dc_pin   = smk::config::kDisplayDc,
         .rst_pin  = smk::config::kDisplayRst,
         .bl_pin   = smk::config::kDisplayBl,
-        .width    = 160,
-        .height   = 128,
-        .x_offset = 0,
-        .y_offset = 0
+        .width    = 284,
+        .height   = 76,
+        .x_offset = smk::config::kDisplayXOffset,
+        .y_offset = smk::config::kDisplayYOffset
     };
 
-    smk::DisplayDriver* display_driver = new smk::ST7735DisplayDriver(st7735_cfg);
+    smk::DisplayDriver* display_driver = new smk::ST7789DisplayDriver(st7789_cfg);
     if (!display_driver->begin()) {
-        ESP_LOGW(TAG, "ST7735 1.8\" Display not detected; trying ST7789 284x76...");
+        ESP_LOGW(TAG, "ST7789 284x76 Display not detected; trying ST7735 1.8\" (160x128)...");
         delete display_driver;
-        smk::ST7789Config st7789_cfg = {
+        smk::ST7735Config st7735_cfg = {
             .mosi_pin = smk::config::kDisplayMosi,
             .sclk_pin = smk::config::kDisplaySclk,
             .cs_pin   = smk::config::kDisplayCs,
             .dc_pin   = smk::config::kDisplayDc,
             .rst_pin  = smk::config::kDisplayRst,
             .bl_pin   = smk::config::kDisplayBl,
-            .width    = 284,
-            .height   = 76,
-            .x_offset = smk::config::kDisplayXOffset,
-            .y_offset = smk::config::kDisplayYOffset
+            .width    = 160,
+            .height   = 128,
+            .x_offset = 0,
+            .y_offset = 0
         };
-        display_driver = new smk::ST7789DisplayDriver(st7789_cfg);
+        display_driver = new smk::ST7735DisplayDriver(st7735_cfg);
         if (!display_driver->begin()) {
-            ESP_LOGW(TAG, "ST7789 Display not detected; falling back to DummyDisplayDriver");
+            ESP_LOGW(TAG, "ST7735 Display not detected; falling back to DummyDisplayDriver");
             delete display_driver;
-            display_driver = new smk::DummyDisplayDriver();
+            display_driver = new smk::DummyDisplayDriver(284, 76);
             display_driver->begin();
         }
     }
