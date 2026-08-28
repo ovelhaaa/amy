@@ -454,14 +454,7 @@ void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     amy_adapter_->setChorus(0.0f, 0.0f, 0.0f);
     amy_adapter_->setDelay(0.0f, 0.0f, 0.0f);
 
-    // 3. For custom subtractive initialization (engine_patch == 0), apply baseline parameters
-    if (patch.engine_patch == 0) {
-        amy_adapter_->setOscillatorWaveform(1, patch.wave_type);
-        amy_adapter_->setFilter(1, patch.filter_cutoff, patch.filter_res);
-        amy_adapter_->setEnvelope(1, patch.amp_attack, patch.amp_decay, patch.amp_sustain, patch.amp_release);
-    }
-
-    // 4. Update UI macro status without destructively overriding preset internals
+    // 3. Update UI macro status without destructively overriding preset internals
     if (ui_manager_) {
         uint8_t m_vals[8];
         for (int i = 0; i < 8; ++i) m_vals[i] = static_cast<uint8_t>(patch.macros[i].current_val);

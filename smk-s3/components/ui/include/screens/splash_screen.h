@@ -23,7 +23,7 @@ public:
 
 private:
     uint32_t start_time_ms_{0};
-    uint32_t duration_ms_{4000}; // 4.0s splash duration with smooth fade-in
+    uint32_t duration_ms_{1500}; // 1.5s splash duration with fast transition to Home
     bool is_finished_{false};
     uint8_t anim_frame_{0};
 };

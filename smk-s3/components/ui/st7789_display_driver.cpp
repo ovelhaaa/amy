@@ -97,9 +97,9 @@ bool ST7789DisplayDriver::begin() {
     esp_lcd_panel_set_gap(panel_handle_, config_.x_offset, config_.y_offset);
     esp_lcd_panel_disp_on_off(panel_handle_, true);
 
-    // Allocate Framebuffer in PSRAM or Internal RAM
+    // Allocate Framebuffer in DMA-capable internal RAM
     size_t fb_size = (size_t)config_.width * config_.height * sizeof(uint16_t);
-    framebuffer_ = (uint16_t*)heap_caps_malloc(fb_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    framebuffer_ = (uint16_t*)heap_caps_malloc(fb_size, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (!framebuffer_) {
         framebuffer_ = (uint16_t*)heap_caps_malloc(fb_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     }

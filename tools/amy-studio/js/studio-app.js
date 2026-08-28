@@ -1,5 +1,6 @@
 /**
  * AMY Studio - Main Application Controller & UI Binder
+ * Integrates Synthesis, DX7 Matrix, Juno-106, Graphical Envelopes, Sequencer, Piano Roll, PCM Browser, Scenes & WAV Recorder.
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -11,33 +12,51 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 2. Initialize Virtual Piano Keyboard
   window.studioKeyboard.init('pianoKeyboardContainer');
 
-  // 3. Initialize Factory Patches Selector
+  // 3. Initialize Interactive Graphical Envelopes
+  window.eg0Canvas = new InteractiveEnvelopeCanvas('eg0Canvas', 0);
+  window.eg1Canvas = new InteractiveEnvelopeCanvas('eg1Canvas', 1);
+
+  // 4. Initialize Piano Roll & Sample Browser & Scenes
+  window.melodicPianoRoll = new MelodicPianoRoll('pianoRollContainer');
+  window.sampleBrowser = new SampleBrowserManager('sampleBrowserContainer');
+  window.sceneManager = new StudioSceneManager('scenesMatrixContainer');
+
+  // 5. Initialize Factory Patches Selector
   populatePatchDropdown();
 
-  // 4. Initialize Rotary Knobs & Sliders Interaction
+  // 6. Initialize Rotary Knobs & Sliders Interaction
   setupKnobInteractions();
 
-  // 5. Initialize Sequencer Grid
+  // 7. Initialize Sequencer Grid
   setupSequencerGrid();
 
-  // 6. Setup Navigation Tabs
+  // 8. Setup Navigation Tabs
   setupViewTabs();
 
-  // 7. Setup Action Buttons & Hardware Sync
+  // 9. Setup Action Buttons, Recorder & Hardware Sync
   setupHeaderControls();
 
-  // 8. Auto-initialize AMY WebAssembly engine
+  // 10. Setup Juno-106 Controls
+  setupJunoControls();
+
+  // 11. Setup DX7 SysEx Importer
+  setupDx7SysExImporter();
+
+  // 12. Setup MIDI Learn Controller
+  setupMidiLearn();
+
+  // 13. Setup Terminal & Telemetry
+  setupTerminal();
+
+  // 14. Auto-initialize AMY WebAssembly engine
   if (window.amyAudioBridge) {
     await window.amyAudioBridge.init();
   }
 
-  // 9. Subscribe to State Changes to update UI
+  // 15. Subscribe to State Changes to update UI & Envelopes
   window.synthStateManager.subscribe((patch, changedProp, source) => {
     updateUiFromState(patch, changedProp);
   });
-
-  // 10. Setup Terminal Input
-  setupTerminal();
 
   // Setup click-to-start audio unlock
   document.body.addEventListener('click', () => {
@@ -126,11 +145,22 @@ function setupKnobInteractions() {
     };
 
     knob.addEventListener('mousedown', (e) => {
+      if (e.altKey || e.button === 2) {
+        e.preventDefault();
+        window.midiLearnManager.startLearn(param, knob, min, max);
+        return;
+      }
+
       e.preventDefault();
       startY = e.clientY;
       startVal = parseFloat(knob.dataset.current || ((min + max) / 2));
       window.addEventListener('mousemove', onMouseMove);
       window.addEventListener('mouseup', onMouseUp);
+    });
+
+    knob.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      window.midiLearnManager.startLearn(param, knob, min, max);
     });
   });
 
@@ -147,7 +177,84 @@ function setupKnobInteractions() {
 }
 
 // ══════════════════════════════════════════════════════════
-// SEQUENCER GRID SETUP
+// ROLAND JUNO-106 PANEL BINDINGS
+// ══════════════════════════════════════════════════════════
+function setupJunoControls() {
+  document.querySelectorAll('.juno-slider').forEach(slider => {
+    slider.addEventListener('input', (e) => {
+      const param = e.target.dataset.juno;
+      const val = parseFloat(e.target.value);
+      if (param && window.juno106Panel) {
+        window.juno106Panel.setVcfParam(param, val);
+      }
+    });
+  });
+
+  document.querySelectorAll('.btn-chorus').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.btn-chorus').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const mode = btn.dataset.chorusMode;
+      window.juno106Panel.setChorus(mode);
+    });
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+// YAMAHA DX7 SYSEX IMPORTER
+// ══════════════════════════════════════════════════════════
+function setupDx7SysExImporter() {
+  const input = document.getElementById('fileImportSyx');
+  if (!input) return;
+
+  input.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bytes = new Uint8Array(evt.target.result);
+        const patches = Dx7SysExImporter.parseSysEx(bytes);
+        if (patches.length > 0) {
+          patches.forEach(p => AMY_FACTORY_PATCHES.push(p));
+          populatePatchDropdown();
+          window.synthStateManager.loadFactoryPatch(patches[0].id);
+          alert(`Sucesso: ${patches.length} patch(es) do Yamaha DX7 importados e prontos para tocar!`);
+        } else {
+          alert("Nenhum patch DX7 válido encontrado no arquivo .syx.");
+        }
+      } catch (err) {
+        alert("Erro ao decodificar SysEx: " + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+// MIDI LEARN CONTROLLER
+// ══════════════════════════════════════════════════════════
+function setupMidiLearn() {
+  if (window.amyAudioBridge) {
+    const origLog = window.amyAudioBridge.onMidiLog;
+    window.amyAudioBridge.onMidiLog = (ev) => {
+      if (origLog) origLog(ev);
+      if (ev.type === 'MIDI' && ev.data && ev.data.length >= 3) {
+        const status = ev.data[0] & 0xF0;
+        const channel = ev.data[0] & 0x0F;
+        if (status === 0xB0) {
+          const cc = ev.data[1];
+          const val = ev.data[2];
+          window.midiLearnManager.processMidiMessage(channel, cc, val);
+        }
+      }
+    };
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// SEQUENCER GRID & MELODIC PIANO ROLL
 // ══════════════════════════════════════════════════════════
 function setupSequencerGrid() {
   const container = document.getElementById('drumTracksContainer');
@@ -187,12 +294,24 @@ function setupSequencerGrid() {
     container.appendChild(row);
   });
 
-  // Step indicator callback
   seq.onStepChange = (currentStep) => {
+    // Drum steps highlight
     document.querySelectorAll('.seq-step').forEach(el => el.classList.remove('current'));
     for (let t = 0; t < seq.drumTracks.length; t++) {
       const el = document.getElementById(`drum_step_${t}_${currentStep}`);
       if (el) el.classList.add('current');
+    }
+
+    // Melodic Piano Roll highlight & trigger
+    if (window.melodicPianoRoll) {
+      window.melodicPianoRoll.setPlayhead(currentStep);
+      const stepNote = window.melodicPianoRoll.steps[currentStep];
+      if (stepNote && window.amyAudioBridge) {
+        window.amyAudioBridge.noteOn(0, stepNote.note, stepNote.vel);
+        setTimeout(() => {
+          if (window.amyAudioBridge) window.amyAudioBridge.noteOff(0, stepNote.note);
+        }, 120);
+      }
     }
   };
 }
@@ -214,7 +333,6 @@ function setupViewTabs() {
       const targetView = document.getElementById(viewId);
       if (targetView) targetView.classList.add('active');
 
-      // Update OLED display simulator screen
       if (viewId === 'viewHardware') {
         window.amyVisualizerEngine.currentOledScreen = "System";
       } else if (viewId === 'viewSequencer') {
@@ -229,15 +347,30 @@ function setupViewTabs() {
 }
 
 // ══════════════════════════════════════════════════════════
-// HEADER ACTIONS & HARDWARE SYNC
+// HEADER ACTIONS, RECORDER & HARDWARE SYNC
 // ══════════════════════════════════════════════════════════
 function setupHeaderControls() {
-  // Panic Button
+  // WAV Audio Recorder Button
+  const btnRec = document.getElementById('btnRecordWav');
+  if (btnRec) {
+    btnRec.addEventListener('click', () => {
+      const rec = window.amyAudioRecorder;
+      if (rec.isRecording) {
+        rec.stopRecording();
+        btnRec.innerText = '🔴 GRAVAR WAV';
+        btnRec.classList.remove('btn-danger');
+      } else {
+        rec.startRecording();
+        btnRec.innerText = '⏹ GRAVANDO...';
+        btnRec.classList.add('btn-danger');
+      }
+    });
+  }
+
   document.getElementById('btnPanic')?.addEventListener('click', () => {
     if (window.amyAudioBridge) window.amyAudioBridge.panic();
   });
 
-  // Play / Stop Sequencer Button
   document.getElementById('btnSeqPlay')?.addEventListener('click', (e) => {
     const seq = window.amyStudioSequencer;
     seq.toggle();
@@ -246,11 +379,9 @@ function setupHeaderControls() {
     e.target.classList.toggle('btn-primary', !seq.isPlaying);
   });
 
-  // Undo / Redo
   document.getElementById('btnUndo')?.addEventListener('click', () => window.synthStateManager.undo());
   document.getElementById('btnRedo')?.addEventListener('click', () => window.synthStateManager.redo());
 
-  // Connect ESP32 Button
   document.getElementById('btnConnectEsp32')?.addEventListener('click', async () => {
     const sync = window.esp32HardwareSync;
     if (sync.isConnected) {
@@ -268,13 +399,11 @@ function setupHeaderControls() {
     }
   });
 
-  // Upload Patch to ESP32 Flash Button
   document.getElementById('btnUploadFlash')?.addEventListener('click', () => {
     const p = window.synthStateManager.currentPatch;
     window.esp32HardwareSync.uploadPatchToFlash(p.id, p);
   });
 
-  // Export Patch JSON (.amy)
   document.getElementById('btnExportPatch')?.addEventListener('click', () => {
     const patch = window.synthStateManager.currentPatch;
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(patch, null, 2));
@@ -284,7 +413,6 @@ function setupHeaderControls() {
     a.click();
   });
 
-  // Import Patch JSON
   document.getElementById('fileImportPatch')?.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -338,9 +466,15 @@ function logTerminal(msg, type = 'info') {
 }
 
 function updateUiFromState(patch, changedProp) {
-  // Update dropdown if changed
   const select = document.getElementById('patchSelect');
   if (select && select.value != patch.id) {
     select.value = patch.id;
+  }
+
+  if (window.eg0Canvas) {
+    window.eg0Canvas.updateParams(patch.amp_attack, patch.amp_decay, patch.amp_sustain, patch.amp_release, patch.eg0_type);
+  }
+  if (window.eg1Canvas) {
+    window.eg1Canvas.updateParams(patch.eg1_attack, patch.eg1_decay, patch.eg1_sustain, patch.eg1_release, patch.eg1_type);
   }
 }

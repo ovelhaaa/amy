@@ -110,43 +110,26 @@ static void app_init_task(void* arg) {
     // 8. Start AudioTask
     smk::AudioTask::start(amy_adapter, pcm_out, smk::config::kAudioTaskCore, smk::config::kAudioTaskPriority);
 
-    // 9. Initialize UI Subsystem (ST7789 284x76 Widescreen Display)
-    smk::ST7789Config st7789_cfg = {
+    // 9. Initialize UI Subsystem for 1.8" (160x128) ST7735 Display
+    smk::ST7735Config st7735_cfg = {
         .mosi_pin = smk::config::kDisplayMosi,
         .sclk_pin = smk::config::kDisplaySclk,
         .cs_pin   = smk::config::kDisplayCs,
         .dc_pin   = smk::config::kDisplayDc,
         .rst_pin  = smk::config::kDisplayRst,
         .bl_pin   = smk::config::kDisplayBl,
-        .width    = 284,
-        .height   = 76,
-        .x_offset = smk::config::kDisplayXOffset,
-        .y_offset = smk::config::kDisplayYOffset
+        .width    = 160,
+        .height   = 128,
+        .x_offset = 0,
+        .y_offset = 0
     };
 
-    smk::DisplayDriver* display_driver = new smk::ST7789DisplayDriver(st7789_cfg);
+    smk::DisplayDriver* display_driver = new smk::ST7735DisplayDriver(st7735_cfg);
     if (!display_driver->begin()) {
-        ESP_LOGW(TAG, "ST7789 284x76 Display not detected; trying ST7735 1.8\" (160x128)...");
+        ESP_LOGE(TAG, "ST7735 1.8\" Display initialization failed; using DummyDisplayDriver fallback");
         delete display_driver;
-        smk::ST7735Config st7735_cfg = {
-            .mosi_pin = smk::config::kDisplayMosi,
-            .sclk_pin = smk::config::kDisplaySclk,
-            .cs_pin   = smk::config::kDisplayCs,
-            .dc_pin   = smk::config::kDisplayDc,
-            .rst_pin  = smk::config::kDisplayRst,
-            .bl_pin   = smk::config::kDisplayBl,
-            .width    = 160,
-            .height   = 128,
-            .x_offset = 0,
-            .y_offset = 0
-        };
-        display_driver = new smk::ST7735DisplayDriver(st7735_cfg);
-        if (!display_driver->begin()) {
-            ESP_LOGW(TAG, "ST7735 Display not detected; falling back to DummyDisplayDriver");
-            delete display_driver;
-            display_driver = new smk::DummyDisplayDriver(284, 76);
-            display_driver->begin();
-        }
+        display_driver = new smk::DummyDisplayDriver(160, 128);
+        display_driver->begin();
     }
 
     smk::UIManager* ui_manager = new smk::UIManager(*display_driver);
@@ -436,6 +419,11 @@ static void app_init_task(void* arg) {
                             }
                         }
                     }
+                    if (amy_adapter && ui_manager && patch_manager) {
+                        uint32_t active_v = amy_adapter->activeVoices();
+                        ui_manager->homeScreen().setActiveVoices(active_v, patch_manager->activePatch().voice_count);
+                        smk::Diagnostics::instance().counters().active_voices.store(active_v);
+                    }
                     continue;
                 }
 
@@ -480,6 +468,9 @@ static void app_init_task(void* arg) {
             switch (event.type) {
                 case smk::EventType::NoteOn:
                     if (event.source == smk::EventSource::UsbMidi && arpeggiator->isEnabled()) {
+                        if (clock_manager && !clock_manager->isRunning()) {
+                            clock_manager->start();
+                        }
                         arpeggiator->noteOn((uint8_t)event.id, (uint8_t)event.value);
                     } else {
                         amy_adapter->noteOn(event.channel, (uint8_t)event.id, (uint8_t)event.value);

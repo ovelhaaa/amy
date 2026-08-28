@@ -217,15 +217,15 @@ bool ST7735DisplayDriver::begin() {
     // 5. Send ST7735 native initialization sequence
     initSt7735();
 
-    // 6. Allocate Framebuffer
+    // 6. Allocate Framebuffer in DMA-capable internal RAM
     size_t fb_size = (size_t)config_.width * config_.height * sizeof(uint16_t);
-    framebuffer_ = (uint16_t*)heap_caps_malloc(fb_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    framebuffer_ = (uint16_t*)heap_caps_malloc(fb_size, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (!framebuffer_) {
         framebuffer_ = (uint16_t*)heap_caps_malloc(fb_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     }
 
     if (!framebuffer_) {
-        ESP_LOGE(TAG, "Failed to allocate %dx%d framebuffer", config_.width, config_.height);
+        ESP_LOGE(TAG, "Failed to allocate %dx%d DMA framebuffer (%zu bytes)", config_.width, config_.height, fb_size);
         return false;
     }
 
@@ -279,7 +279,10 @@ void ST7735DisplayDriver::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, u
 
 void ST7735DisplayDriver::flush() {
     if (!is_dirty_) return;
-    flushRegion(dirty_rect_.x, dirty_rect_.y, dirty_rect_.w, dirty_rect_.h);
+    // For 160x128 panel (40KB), a clean full-frame DMA transfer takes only 2.7ms at 15MHz
+    setAddrWindow(0, 0, config_.width - 1, config_.height - 1);
+    size_t total_bytes = (size_t)config_.width * config_.height * sizeof(uint16_t);
+    esp_lcd_panel_io_tx_color(io_handle_, 0x2C, framebuffer_, total_bytes);
     clearDirty();
 }
 
@@ -291,13 +294,14 @@ void ST7735DisplayDriver::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h
     int16_t y2 = std::min((int16_t)(config_.height - 1), (int16_t)(y + h - 1));
     if (x1 > x2 || y1 > y2) return;
 
-    setAddrWindow(x1, y1, x2, y2);
     if (x1 == 0 && x2 == config_.width - 1) {
+        setAddrWindow(0, y1, config_.width - 1, y2);
         size_t offset = y1 * config_.width;
         size_t count = (y2 - y1 + 1) * config_.width * sizeof(uint16_t);
         esp_lcd_panel_io_tx_color(io_handle_, 0x2C, &framebuffer_[offset], count);
     } else {
         for (int16_t iy = y1; iy <= y2; ++iy) {
+            setAddrWindow(x1, iy, x2, iy);
             size_t offset = iy * config_.width + x1;
             size_t count = (x2 - x1 + 1) * sizeof(uint16_t);
             esp_lcd_panel_io_tx_color(io_handle_, 0x2C, &framebuffer_[offset], count);

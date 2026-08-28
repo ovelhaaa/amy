@@ -22,7 +22,15 @@
   <script type="text/javascript" src="js/amy-bridge.js"></script>
   <script type="text/javascript" src="js/patch-data.js"></script>
   <script type="text/javascript" src="js/synth-state.js"></script>
+  <script type="text/javascript" src="js/envelope-canvas.js"></script>
+  <script type="text/javascript" src="js/juno-editor.js"></script>
   <script type="text/javascript" src="js/dx7-algorithms.js"></script>
+  <script type="text/javascript" src="js/dx7-sysex-importer.js"></script>
+  <script type="text/javascript" src="js/midi-learn.js"></script>
+  <script type="text/javascript" src="js/audio-recorder.js"></script>
+  <script type="text/javascript" src="js/piano-roll.js"></script>
+  <script type="text/javascript" src="js/sample-browser.js"></script>
+  <script type="text/javascript" src="js/scene-manager.js"></script>
   <script type="text/javascript" src="js/sequencer.js"></script>
   <script type="text/javascript" src="js/visualizers.js"></script>
   <script type="text/javascript" src="js/keyboard.js"></script>
@@ -38,12 +46,12 @@
     <div class="brand-section">
       <div class="brand-logo">A</div>
       <div class="brand-info">
-        <h1>AMY STUDIO <span class="version-badge">v1.0.0</span></h1>
+        <h1>AMY STUDIO <span class="version-badge">v1.2.0 Pro</span></h1>
         <p class="tagline">DSP Host & ESP32-S3 Synthesizer Workstation</p>
       </div>
     </div>
 
-    <!-- Center: Preset Selector -->
+    <!-- Center: Preset Selector & Transport -->
     <div class="header-center">
       <div class="patch-selector-bar">
         <label for="patchSelect" style="font-size: 10px; font-weight: 700; color: var(--accent-cyan);">PRESET:</label>
@@ -55,6 +63,7 @@
       </div>
 
       <button id="btnSeqPlay" class="btn btn-primary">▶ PLAY</button>
+      <button id="btnRecordWav" class="btn">🔴 GRAVAR WAV</button>
       <button id="btnPanic" class="btn btn-danger">🚨 PANIC</button>
     </div>
 
@@ -80,12 +89,15 @@
        ══════════════════════════════════════════════════════════ -->
   <nav class="view-tabs">
     <div class="tabs-group">
-      <button class="tab-button active" data-view="viewSynth">🎛️ SÍNTESE & JUNO</button>
+      <button class="tab-button active" data-view="viewSynth">🎛️ SÍNTESE & ENVELOPES</button>
+      <button class="tab-button" data-view="viewJuno">🎹 ROLAND JUNO-106</button>
       <button class="tab-button" data-view="viewFm">💠 DX7 FM MATRIX</button>
+      <button class="tab-button" data-view="viewSequencer">🥁 SEQUENCER & PIANO ROLL</button>
+      <button class="tab-button" data-view="viewSamples">📦 PCM & SAMPLES (128)</button>
+      <button class="tab-button" data-view="viewScenes">🎬 SCENES & LIVE SONGS</button>
       <button class="tab-button" data-view="viewEffects">🎚️ EFFECTS RACK</button>
       <button class="tab-button" data-view="viewMacros">⚡ SMK MACROS (8)</button>
-      <button class="tab-button" data-view="viewSequencer">🥁 SEQUENCER & DRUMS</button>
-      <button class="tab-button" data-view="viewHardware">📟 ESP32-S3 OLED & FLASH</button>
+      <button class="tab-button" data-view="viewHardware">📟 ESP32 OLED & FLASH</button>
       <button class="tab-button" data-view="viewMidi">📊 MIDI MONITOR</button>
     </div>
 
@@ -100,7 +112,7 @@
        ══════════════════════════════════════════════════════════ -->
   <main class="workspace">
 
-    <!-- ── TAB 1: SÍNTESE ANALÓGICA & JUNO-106 ── -->
+    <!-- ── TAB 1: SÍNTESE ANALÓGICA & ENVELOPES GRÁFICOS ── -->
     <div id="viewSynth" class="view-container active">
       <div class="panel-grid">
         
@@ -123,23 +135,17 @@
           </div>
           <div class="param-grid">
             <div class="param-item">
-              <div class="knob-container" data-param="duty" data-min="0.05" data-max="0.95" data-current="0.5">
-                <div class="knob-pointer"></div>
-              </div>
+              <div class="knob-container" data-param="duty" data-min="0.05" data-max="0.95" data-current="0.5"><div class="knob-pointer"></div></div>
               <span class="param-label">PULSE WIDTH</span>
               <span class="param-val" id="val_duty">0.50</span>
             </div>
             <div class="param-item">
-              <div class="knob-container" data-param="feedback" data-min="0" data-max="1" data-current="0">
-                <div class="knob-pointer"></div>
-              </div>
+              <div class="knob-container" data-param="feedback" data-min="0" data-max="1" data-current="0"><div class="knob-pointer"></div></div>
               <span class="param-label">FEEDBACK</span>
               <span class="param-val" id="val_feedback">0.00</span>
             </div>
             <div class="param-item">
-              <div class="knob-container" data-param="portamento_ms" data-min="0" data-max="1000" data-current="0">
-                <div class="knob-pointer"></div>
-              </div>
+              <div class="knob-container" data-param="portamento_ms" data-min="0" data-max="1000" data-current="0"><div class="knob-pointer"></div></div>
               <span class="param-label">GLIDE (MS)</span>
               <span class="param-val" id="val_portamento_ms">0</span>
             </div>
@@ -163,88 +169,145 @@
           </div>
           <div class="param-grid">
             <div class="param-item">
-              <div class="knob-container" data-param="filter_cutoff" data-min="20" data-max="12000" data-current="2500">
-                <div class="knob-pointer"></div>
-              </div>
+              <div class="knob-container" data-param="filter_cutoff" data-min="20" data-max="12000" data-current="2500"><div class="knob-pointer"></div></div>
               <span class="param-label">CUTOFF (HZ)</span>
               <span class="param-val" id="val_filter_cutoff">2500</span>
             </div>
             <div class="param-item">
-              <div class="knob-container" data-param="filter_res" data-min="0.5" data-max="16" data-current="1.2">
-                <div class="knob-pointer"></div>
-              </div>
+              <div class="knob-container" data-param="filter_res" data-min="0.5" data-max="16" data-current="1.2"><div class="knob-pointer"></div></div>
               <span class="param-label">RESONANCE (Q)</span>
               <span class="param-val" id="val_filter_res">1.2</span>
             </div>
             <div class="param-item">
-              <div class="knob-container" data-param="filter_env_amt" data-min="0" data-max="1" data-current="0.5">
-                <div class="knob-pointer"></div>
-              </div>
+              <div class="knob-container" data-param="filter_env_amt" data-min="0" data-max="1" data-current="0.5"><div class="knob-pointer"></div></div>
               <span class="param-label">ENV AMOUNT</span>
               <span class="param-val" id="val_filter_env_amt">0.50</span>
             </div>
           </div>
         </div>
 
-        <!-- Envelope 0 Card (Amp) -->
+        <!-- Envelope 0 Card (Interactive Canvas) -->
         <div class="panel-card">
           <div class="card-header">
-            <span class="card-title">ENVELOPE <span class="highlight">EG0 (AMP)</span></span>
-            <span class="param-val">ADSR</span>
+            <span class="card-title">ENVELOPE <span class="highlight">EG0 (AMPLITUDE)</span></span>
+            <span class="param-val" style="color: var(--accent-green);">ARRASTE OS NÓS</span>
           </div>
-          <div class="param-grid">
-            <div class="param-item">
-              <div class="knob-container" data-param="amp_attack" data-min="1" data-max="3000" data-current="10">
-                <div class="knob-pointer green"></div>
-              </div>
-              <span class="param-label">ATTACK (MS)</span>
-              <span class="param-val" id="val_amp_attack">10</span>
-            </div>
-            <div class="param-item">
-              <div class="knob-container" data-param="amp_decay" data-min="5" data-max="5000" data-current="200">
-                <div class="knob-pointer green"></div>
-              </div>
-              <span class="param-label">DECAY (MS)</span>
-              <span class="param-val" id="val_amp_decay">200</span>
-            </div>
-            <div class="param-item">
-              <div class="knob-container" data-param="amp_sustain" data-min="0" data-max="1" data-current="0.7">
-                <div class="knob-pointer green"></div>
-              </div>
-              <span class="param-label">SUSTAIN</span>
-              <span class="param-val" id="val_amp_sustain">0.70</span>
-            </div>
-            <div class="param-item">
-              <div class="knob-container" data-param="amp_release" data-min="5" data-max="6000" data-current="300">
-                <div class="knob-pointer green"></div>
-              </div>
-              <span class="param-label">RELEASE (MS)</span>
-              <span class="param-val" id="val_amp_release">300</span>
-            </div>
+          <div class="envelope-canvas-box">
+            <canvas id="eg0Canvas" width="280" height="96"></canvas>
+          </div>
+        </div>
+
+        <!-- Envelope 1 Card (Filter/Mod) -->
+        <div class="panel-card">
+          <div class="card-header">
+            <span class="card-title">ENVELOPE <span class="highlight">EG1 (FILTRO / MOD)</span></span>
+            <span class="param-val" style="color: var(--accent-cyan);">INTERATIVO</span>
+          </div>
+          <div class="envelope-canvas-box">
+            <canvas id="eg1Canvas" width="280" height="96"></canvas>
           </div>
         </div>
 
       </div>
     </div>
 
-    <!-- ── TAB 2: DX7 FM MATRIX ── -->
+    <!-- ── TAB 2: ROLAND JUNO-106 DEDICATED PANEL ── -->
+    <div id="viewJuno" class="view-container">
+      <div class="panel-card" style="background: linear-gradient(180deg, #181d2c 0%, #0f131d 100%); border: 2px solid #28334e;">
+        <div class="card-header">
+          <span class="card-title" style="color: #fff; font-size: 14px; font-weight: 800;">ROLAND <span class="highlight" style="color: var(--accent-red);">JUNO-106</span> CONTROL PANEL</span>
+          <span class="param-val" style="color: var(--accent-cyan);">ANALOG EMULATION</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-top: 10px;">
+          <!-- DCO Section -->
+          <div class="panel-card" style="background: var(--bg-card);">
+            <span class="card-title" style="color: var(--accent-cyan);">1. DCO</span>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                <span>PULSE / PWM</span>
+                <input type="range" class="juno-slider" data-juno="pwmVal" min="0" max="127" value="64">
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                <span>LFO MOD DEPTH</span>
+                <input type="range" class="juno-slider" data-juno="lfoDepth" min="0" max="127" value="0">
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                <span>SUB OSC LEVEL</span>
+                <input type="range" class="juno-slider" data-juno="subLevel" min="0" max="127" value="0">
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                <span>NOISE LEVEL</span>
+                <input type="range" class="juno-slider" data-juno="noiseLevel" min="0" max="127" value="0">
+              </div>
+            </div>
+          </div>
+
+          <!-- HPF & VCF Section -->
+          <div class="panel-card" style="background: var(--bg-card);">
+            <span class="card-title" style="color: var(--accent-gold);">2. HPF & VCF</span>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                <span>HPF CUTOFF</span>
+                <input type="range" class="juno-slider" data-juno="hpfFreq" min="0" max="3" step="1" value="0" onchange="juno106Panel.setHpf(parseInt(this.value))">
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                <span>VCF CUTOFF (FREQ)</span>
+                <input type="range" class="juno-slider" data-juno="cutoff" min="0" max="127" value="64">
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                <span>RESONANCE (RES)</span>
+                <input type="range" class="juno-slider" data-juno="resonance" min="0" max="127" value="20">
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                <span>ENV MODULATION</span>
+                <input type="range" class="juno-slider" data-juno="envMod" min="0" max="127" value="64">
+              </div>
+            </div>
+          </div>
+
+          <!-- VCA & Chorus Section -->
+          <div class="panel-card" style="background: var(--bg-card);">
+            <span class="card-title" style="color: var(--accent-purple);">3. VCA & CHORUS</span>
+            <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 6px;">
+              <div style="font-size: 10px;">
+                <span>STEREO CHORUS MODE:</span>
+                <div style="display: flex; gap: 4px; margin-top: 6px;">
+                  <button class="btn btn-chorus" data-chorus-mode="OFF">OFF</button>
+                  <button class="btn btn-chorus active" data-chorus-mode="I">CHORUS I</button>
+                  <button class="btn btn-chorus" data-chorus-mode="II">CHORUS II</button>
+                  <button class="btn btn-chorus" data-chorus-mode="I+II">I + II (LUSH)</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB 3: DX7 FM MATRIX & SYSEX IMPORTER ── -->
     <div id="viewFm" class="view-container">
       <div class="panel-card">
         <div class="card-header">
           <span class="card-title">DX7 FM ENGINE <span class="highlight">32 ALGORITMOS</span></span>
-          <select id="dx7AlgoSelect" class="patch-dropdown" onchange="dx7MatrixEditor.setAlgorithm(parseInt(this.value))">
-            <option value="1">ALGO 01: Dual 3-Op Stacks (Classic)</option>
-            <option value="2">ALGO 02: Dual Stack (Op2 Feedback)</option>
-            <option value="3">ALGO 03: Dual 3-Op Branches</option>
-            <option value="5">ALGO 05: Triple 2-Op Pairs (Bells)</option>
-            <option value="16">ALGO 16: Triple Carrier Mixed</option>
-            <option value="32">ALGO 32: Pure 6-Sine Additive Organ</option>
-          </select>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <select id="dx7AlgoSelect" class="patch-dropdown" onchange="dx7MatrixEditor.setAlgorithm(parseInt(this.value))">
+              <option value="1">ALGO 01: Dual 3-Op Stacks (Classic)</option>
+              <option value="2">ALGO 02: Dual Stack (Op2 Feedback)</option>
+              <option value="3">ALGO 03: Dual 3-Op Branches</option>
+              <option value="5">ALGO 05: Triple 2-Op Pairs (Bells)</option>
+              <option value="16">ALGO 16: Triple Carrier Mixed</option>
+              <option value="32">ALGO 32: Pure 6-Sine Additive Organ</option>
+            </select>
+            <label class="btn btn-gold" style="margin: 0; cursor: pointer;">
+              📁 IMPORTAR .SYX (DX7)
+              <input type="file" id="fileImportSyx" accept=".syx" style="display: none;">
+            </label>
+          </div>
         </div>
         <p style="font-size: 11px; color: var(--text-muted);">Configure ratios, detune e envelopes individuais para os 6 operadores FM:</p>
         
         <div class="panel-grid" style="margin-top: 10px;">
-          <!-- 6 Operators Cards -->
           <div class="panel-card" style="background: var(--bg-card);">
             <span class="card-title">OPERATOR <span class="highlight">OP 1 (Carrier)</span></span>
             <div class="param-grid">
@@ -290,10 +353,57 @@
       </div>
     </div>
 
-    <!-- ── TAB 3: EFFECTS RACK ── -->
+    <!-- ── TAB 4: SEQUENCER & PIANO ROLL ── -->
+    <div id="viewSequencer" class="view-container">
+      <!-- 16-Step Melodic Piano Roll -->
+      <div class="panel-card">
+        <div class="card-header">
+          <span class="card-title">16-STEP MELODIC <span class="highlight">PIANO ROLL SEQUENCER</span></span>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <label style="font-size: 10px;">TEMPO (BPM):</label>
+            <input type="number" id="seqBpmInput" value="120" min="30" max="300" style="width: 55px; background: var(--bg-card); color: #fff; border: 1px solid var(--border-subtle); padding: 3px; font-family: monospace;" onchange="amyStudioSequencer.setBpm(parseFloat(this.value))">
+          </div>
+        </div>
+        <div id="pianoRollContainer" style="margin-top: 8px;"></div>
+      </div>
+
+      <!-- 16-Step Drum Machine Grid -->
+      <div class="panel-card">
+        <div class="card-header">
+          <span class="card-title">8-TRACK POLYPHONIC <span class="highlight">DRUM MACHINE</span></span>
+          <span class="param-val">808 / 909 / LINN KITS</span>
+        </div>
+        <div id="drumTracksContainer" style="margin-top: 8px;"></div>
+      </div>
+    </div>
+
+    <!-- ── TAB 5: PCM SAMPLES & WAVETABLE BROWSER ── -->
+    <div id="viewSamples" class="view-container">
+      <div class="panel-card">
+        <div class="card-header">
+          <span class="card-title">PCM SAMPLE & WAVETABLE <span class="highlight">AUDIO LIBRARY (128)</span></span>
+          <span class="param-val">CLIQUE PARA OUVIR (AUDITION)</span>
+        </div>
+        <p style="font-size: 11px; color: var(--text-muted);">Amostras PCM de alta fidelidade integradas no motor AMY (baterias acústicas, sintetizadas e instrumentos):</p>
+        <div id="sampleBrowserContainer" style="margin-top: 10px;"></div>
+      </div>
+    </div>
+
+    <!-- ── TAB 6: SCENES & LIVE PERFORMANCE MATRIX ── -->
+    <div id="viewScenes" class="view-container">
+      <div class="panel-card">
+        <div class="card-header">
+          <span class="card-title">LIVE PERFORMANCE <span class="highlight">SCENE & SONG MATRIX</span></span>
+          <span class="param-val">TRANSIÇÃO QUANTIZADA</span>
+        </div>
+        <p style="font-size: 11px; color: var(--text-muted);">Alterne instantaneamente entre cenas ao vivo com sincronização perfeita de BPM, padrões de bateria, melodia e macros:</p>
+        <div id="scenesMatrixContainer" style="margin-top: 10px;"></div>
+      </div>
+    </div>
+
+    <!-- ── TAB 7: EFFECTS RACK ── -->
     <div id="viewEffects" class="view-container">
       <div class="panel-grid">
-        <!-- 3-Band EQ -->
         <div class="panel-card">
           <div class="card-header"><span class="card-title">PARAMETRIC <span class="highlight">EQ 3-BAND</span></span></div>
           <div class="param-grid">
@@ -315,7 +425,6 @@
           </div>
         </div>
 
-        <!-- Chorus -->
         <div class="panel-card">
           <div class="card-header"><span class="card-title">STEREO <span class="highlight">CHORUS</span></span></div>
           <div class="param-grid">
@@ -337,7 +446,6 @@
           </div>
         </div>
 
-        <!-- Delay / Echo -->
         <div class="panel-card">
           <div class="card-header"><span class="card-title">DIGITAL <span class="highlight">DELAY / ECHO</span></span></div>
           <div class="param-grid">
@@ -359,7 +467,6 @@
           </div>
         </div>
 
-        <!-- Reverb -->
         <div class="panel-card">
           <div class="card-header"><span class="card-title">ALGORITHMIC <span class="highlight">REVERB</span></span></div>
           <div class="param-grid">
@@ -383,79 +490,61 @@
       </div>
     </div>
 
-    <!-- ── TAB 4: SMK-S3 MACROS ── -->
+    <!-- ── TAB 8: SMK-S3 MACROS & MIDI LEARN ── -->
     <div id="viewMacros" class="view-container">
       <div class="macro-section">
         <div class="card-header">
           <span class="card-title">SMK-S3 <span class="highlight">8 PERFORMANCE MACROS</span></span>
-          <span class="param-val">KNOB BANK A</span>
+          <span class="param-val">CLIQUE DIREITO / ALT+CLIQUE PARA MIDI LEARN</span>
         </div>
         <div class="macro-grid">
           <div class="macro-card">
             <span class="macro-name">1. CHAR</span>
-            <div class="knob-container" data-macro="0" data-min="0" data-max="100" data-current="50"><div class="knob-pointer gold"></div></div>
+            <div class="knob-container" data-macro="0" data-param="macro_0" data-min="0" data-max="100" data-current="50"><div class="knob-pointer gold"></div></div>
             <span class="param-val" id="val_macro_0">50</span>
           </div>
           <div class="macro-card">
             <span class="macro-name">2. BRTE</span>
-            <div class="knob-container" data-macro="1" data-min="0" data-max="100" data-current="50"><div class="knob-pointer gold"></div></div>
+            <div class="knob-container" data-macro="1" data-param="macro_1" data-min="0" data-max="100" data-current="50"><div class="knob-pointer gold"></div></div>
             <span class="param-val" id="val_macro_1">50</span>
           </div>
           <div class="macro-card">
             <span class="macro-name">3. MOTN</span>
-            <div class="knob-container" data-macro="2" data-min="0" data-max="100" data-current="30"><div class="knob-pointer gold"></div></div>
+            <div class="knob-container" data-macro="2" data-param="macro_2" data-min="0" data-max="100" data-current="30"><div class="knob-pointer gold"></div></div>
             <span class="param-val" id="val_macro_2">30</span>
           </div>
           <div class="macro-card">
             <span class="macro-name">4. SHAP</span>
-            <div class="knob-container" data-macro="3" data-min="0" data-max="100" data-current="50"><div class="knob-pointer gold"></div></div>
+            <div class="knob-container" data-macro="3" data-param="macro_3" data-min="0" data-max="100" data-current="50"><div class="knob-pointer gold"></div></div>
             <span class="param-val" id="val_macro_3">50</span>
           </div>
           <div class="macro-card">
             <span class="macro-name">5. ATK</span>
-            <div class="knob-container" data-macro="4" data-min="0" data-max="100" data-current="10"><div class="knob-pointer gold"></div></div>
+            <div class="knob-container" data-macro="4" data-param="macro_4" data-min="0" data-max="100" data-current="10"><div class="knob-pointer gold"></div></div>
             <span class="param-val" id="val_macro_4">10</span>
           </div>
           <div class="macro-card">
             <span class="macro-name">6. REL</span>
-            <div class="knob-container" data-macro="5" data-min="0" data-max="100" data-current="40"><div class="knob-pointer gold"></div></div>
+            <div class="knob-container" data-macro="5" data-param="macro_5" data-min="0" data-max="100" data-current="40"><div class="knob-pointer gold"></div></div>
             <span class="param-val" id="val_macro_5">40</span>
           </div>
           <div class="macro-card">
             <span class="macro-name">7. SPCE</span>
-            <div class="knob-container" data-macro="6" data-min="0" data-max="100" data-current="25"><div class="knob-pointer gold"></div></div>
+            <div class="knob-container" data-macro="6" data-param="macro_6" data-min="0" data-max="100" data-current="25"><div class="knob-pointer gold"></div></div>
             <span class="param-val" id="val_macro_6">25</span>
           </div>
           <div class="macro-card">
             <span class="macro-name">8. DRV</span>
-            <div class="knob-container" data-macro="7" data-min="0" data-max="100" data-current="0"><div class="knob-pointer gold"></div></div>
+            <div class="knob-container" data-macro="7" data-param="macro_7" data-min="0" data-max="100" data-current="0"><div class="knob-pointer gold"></div></div>
             <span class="param-val" id="val_macro_7">0</span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- ── TAB 5: SEQUENCER & DRUMS ── -->
-    <div id="viewSequencer" class="view-container">
-      <div class="panel-card">
-        <div class="card-header">
-          <span class="card-title">16-STEP POLYPHONIC <span class="highlight">DRUM MACHINE & SYNTH SEQ</span></span>
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <label style="font-size: 10px;">TEMPO (BPM):</label>
-            <input type="number" id="seqBpmInput" value="120" min="30" max="300" style="width: 55px; background: var(--bg-card); color: #fff; border: 1px solid var(--border-subtle); padding: 3px; font-family: monospace;" onchange="amyStudioSequencer.setBpm(parseFloat(this.value))">
-          </div>
-        </div>
-
-        <div id="drumTracksContainer" style="margin-top: 10px;">
-          <!-- Generated dynamically by sequencer.js -->
-        </div>
-      </div>
-    </div>
-
-    <!-- ── TAB 6: ESP32-S3 OLED & FLASH MANAGER ── -->
+    <!-- ── TAB 9: ESP32-S3 OLED & FLASH MANAGER ── -->
     <div id="viewHardware" class="view-container">
       <div class="panel-grid">
-        <!-- Exact 284x76 Display Simulation -->
         <div class="panel-card">
           <div class="card-header">
             <span class="card-title">ESP32-S3 <span class="highlight">284 × 76 OLED EMULATOR</span></span>
@@ -471,7 +560,6 @@
           </div>
         </div>
 
-        <!-- Serial Terminal & Flash CLI -->
         <div class="panel-card">
           <div class="card-header">
             <span class="card-title">SERIAL CONSOLE <span class="highlight">CLI TERMINAL</span></span>
@@ -485,7 +573,7 @@
       </div>
     </div>
 
-    <!-- ── TAB 7: MIDI MONITOR ── -->
+    <!-- ── TAB 10: MIDI MONITOR ── -->
     <div id="viewMidi" class="view-container">
       <div class="panel-card">
         <div class="card-header">

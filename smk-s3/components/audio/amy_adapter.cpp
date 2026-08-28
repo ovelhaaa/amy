@@ -63,7 +63,8 @@ void AmyAdapter::noteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
         }
         active_voices_++;
         amy_event e = amy_default_event();
-        e.synth = channel + 1;
+        // Synth 10 is GM Drums (channel 9); all other channels route to main synth (synth 1)
+        e.synth = (channel == 9) ? 10 : 1;
         e.midi_note = (float)note;
         e.velocity = (float)velocity / 127.0f;
         amy_add_event(&e);
@@ -80,7 +81,7 @@ void AmyAdapter::noteOff(uint8_t channel, uint8_t note) {
         if (active_voices_ > 0) active_voices_--;
     }
     amy_event e = amy_default_event();
-    e.synth = channel + 1;
+    e.synth = (channel == 9) ? 10 : 1;
     e.midi_note = (float)note;
     e.velocity = 0.0f;
     amy_add_event(&e);
@@ -88,17 +89,17 @@ void AmyAdapter::noteOff(uint8_t channel, uint8_t note) {
 
 void AmyAdapter::pitchBend(uint8_t channel, int16_t value) {
     amy_event e = amy_default_event();
-    e.synth = (channel & 0x0F) + 1;
+    e.synth = (channel == 9) ? 10 : 1;
     // MIDI Pitch Bend standard: 0..16383 (center 8192). Range: +/- 2 semitones
     e.pitch_bend = ((float)(value - 8192)) / (6.0f * 8192.0f);
     amy_add_event(&e);
 }
 
 void AmyAdapter::controlChange(uint8_t channel, uint8_t controller, uint8_t value) {
-    uint8_t ch = (channel & 0x0F) + 1;
+    uint8_t target_synth = (channel == 9) ? 10 : 1;
     if (controller == 64) { // Sustain Pedal
         amy_event e = amy_default_event();
-        e.synth = ch;
+        e.synth = target_synth;
         e.pedal = value;
         amy_add_event(&e);
     } else if (controller == 120 || controller == 123) { // All Sound Off / All Notes Off

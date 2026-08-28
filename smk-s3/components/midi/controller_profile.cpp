@@ -79,14 +79,14 @@ TargetAction ProfileManager::matchBinding(const ControllerProfile& profile, uint
     }
 
     if (msg_type == 0) { // Note
-        // Only match pads if they explicitly match the incoming MIDI channel (e.g. Channel 10)
+        // Only match pads if they explicitly match the incoming MIDI channel (e.g. Channel 10 / index 9) and not wildcard 0xFF
         for (uint8_t i = 0; i < 16; ++i) {
-            if (profile.pads[i].msg_type == 0 && profile.pads[i].channel == channel && profile.pads[i].number == number) {
+            if (profile.pads[i].msg_type == 0 && profile.pads[i].channel != 0xFF && profile.pads[i].channel == channel && profile.pads[i].number == number) {
                 return static_cast<TargetAction>(profile.pads[i].target_action);
             }
         }
         for (uint8_t i = 0; i < 4; ++i) {
-            if (profile.buttons[i].msg_type == 0 && profile.buttons[i].channel == channel && profile.buttons[i].number == number) {
+            if (profile.buttons[i].msg_type == 0 && profile.buttons[i].channel != 0xFF && profile.buttons[i].channel == channel && profile.buttons[i].number == number) {
                 return static_cast<TargetAction>(profile.buttons[i].target_action);
             }
         }
