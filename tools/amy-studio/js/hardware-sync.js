@@ -186,8 +186,39 @@ class ESP32HardwareSyncManager {
   }
 
   // ══════════════════════════════════════════════════════════
-  // FLASH SPIFFS PATCH UPLOAD & BACKUP
+  // BINARY PACKING UTILITIES (.s3p / .s3s)
   // ══════════════════════════════════════════════════════════
+  packPatchToS3P(patchData) {
+    const jsonStr = JSON.stringify(patchData);
+    const payload = new TextEncoder().encode(jsonStr);
+    const header = new Uint8Array([0x53, 0x33, 0x50, 0x01]); // 'S' '3' 'P' v1
+    const s3p = new Uint8Array(header.length + payload.length);
+    s3p.set(header);
+    s3p.set(payload, header.length);
+    return s3p;
+  }
+
+  unpackS3P(bytes) {
+    if (bytes[0] === 0x53 && bytes[1] === 0x33 && bytes[2] === 0x50) {
+      const payload = bytes.slice(4);
+      const jsonStr = new TextDecoder().decode(payload);
+      return JSON.parse(jsonStr);
+    }
+    throw new Error("Formato .s3p inválido ou corrompido");
+  }
+
+  packSceneToS3S(sceneData) {
+    const jsonStr = JSON.stringify(sceneData);
+    const payload = new TextEncoder().encode(jsonStr);
+    const header = new Uint8Array([0x53, 0x33, 0x53, 0x01]); // 'S' '3' 'S' v1
+    const s3s = new Uint8Array(header.length + payload.length);
+    s3s.set(header);
+    s3s.set(payload, header.length);
+    return s3s;
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // FLASH SPIFFS PATCH UPLOAD & BACKUP
   async uploadPatchToFlash(slotId, patchData) {
     if (!this.isConnected) {
       alert("Conecte o ESP32-S3 via Serial para transferir o patch!");
@@ -196,13 +227,29 @@ class ESP32HardwareSyncManager {
 
     this.log(`[Flash Manager] Gravando Patch #${slotId} ("${patchData.name}") na Flash SPIFFS...`, "info");
     
+    if (this.onProgressUpdate) this.onProgressUpdate(0);
+
     // 1. Send synth wire command to set parameters on active voice
     if (window.synthStateManager) {
       window.synthStateManager.applyFullPatch();
     }
 
+    if (this.onProgressUpdate) this.onProgressUpdate(30);
+
+    // Empacotar binário para log/validação (O firmware atual salva o estado ativo via comando 'patch save')
+    const s3pBytes = this.packPatchToS3P(patchData);
+    this.log(`[Flash Manager] Patch empacotado para SPIFFS: ${s3pBytes.length} bytes (.s3p)`, "info");
+
+    if (this.onProgressUpdate) this.onProgressUpdate(70);
+
     // 2. Instruct firmware to persist active patch into Flash slotId
     this.sendSerialCommand(`patch save ${slotId}`);
+    
+    if (this.onProgressUpdate) {
+      this.onProgressUpdate(100);
+      setTimeout(() => this.onProgressUpdate(null), 2000); // hide after 2s
+    }
+
     this.log(`[Flash Manager] Patch #${slotId} gravado com sucesso!`, "success");
     
     // Refresh patch list

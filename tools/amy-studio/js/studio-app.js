@@ -453,6 +453,34 @@ function setupTerminal() {
   window.esp32HardwareSync.onLogMessage = (msg, type) => {
     logTerminal(msg, type);
   };
+
+  window.esp32HardwareSync.onProgressUpdate = (percent) => {
+    let barEl = document.getElementById('uploadProgressBar');
+    if (percent === null) {
+      if (barEl) barEl.remove();
+      return;
+    }
+    
+    if (!barEl) {
+      barEl = document.createElement('div');
+      barEl.id = 'uploadProgressBar';
+      barEl.style.width = '100%';
+      barEl.style.height = '6px';
+      barEl.style.background = '#232b3e';
+      barEl.style.marginTop = '8px';
+      barEl.style.borderRadius = '3px';
+      barEl.innerHTML = `<div id="uploadProgressFill" style="width: 0%; height: 100%; background: #00ff88; border-radius: 3px; transition: width 0.2s;"></div>`;
+      
+      const win = document.getElementById('terminalOutput');
+      if (win) {
+        win.appendChild(barEl);
+        win.scrollTop = win.scrollHeight;
+      }
+    }
+    
+    const fill = document.getElementById('uploadProgressFill');
+    if (fill) fill.style.width = `${percent}%`;
+  };
 }
 
 function logTerminal(msg, type = 'info') {

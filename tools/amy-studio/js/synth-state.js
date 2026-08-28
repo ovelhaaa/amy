@@ -180,6 +180,13 @@ class SynthStateManager {
       return;
     }
 
+    // If it has a custom pre-baked wireCommand (e.g. DX7 SysEx Imports)
+    if (this.currentPatch.wireCommand !== undefined) {
+      if (window.amyAudioBridge) window.amyAudioBridge.sendWire(this.currentPatch.wireCommand);
+      if (window.esp32HardwareSync) window.esp32HardwareSync.sendWireIfConnected(this.currentPatch.wireCommand);
+      return;
+    }
+
     // Otherwise apply full custom synthesis structure
     const p = this.currentPatch;
     const a = Math.round(p.amp_attack);
@@ -210,6 +217,7 @@ class SynthStateManager {
       this.currentPatch.name = found.name;
       this.currentPatch.category = found.category;
       this.currentPatch.basePatch = found.basePatch;
+      this.currentPatch.wireCommand = found.wireCommand;
       this.applyFullPatch();
       this.notify('all', 'preset_loaded');
     }

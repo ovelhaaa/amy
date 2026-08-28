@@ -81,9 +81,11 @@ class Juno106PanelController {
     }
 
     // 5. Select Waveform (SAW + PULSE mix)
-    let wave = 1; // SAW_DOWN
+    // In AMY, PULSE=1, SAW_DOWN=2
+    let wave = 2; // Default to SAW_DOWN
     if (s.pulseOn && !s.sawOn) wave = 1; // PULSE
-    if (!s.pulseOn && s.sawOn) wave = 1; // SAW
+    if (!s.pulseOn && s.sawOn) wave = 2; // SAW
+    if (s.pulseOn && s.sawOn) wave = 2; // (Ideally we'd mix them or allocate 2 voices, using SAW for now)
 
     // Send complete Juno state wire commands to AMY
     const cmds = [
