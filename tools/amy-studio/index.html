@@ -190,7 +190,12 @@
         <div class="panel-card">
           <div class="card-header">
             <span class="card-title">ENVELOPE <span class="highlight">EG0 (AMPLITUDE)</span></span>
-            <span class="param-val" style="color: var(--accent-green);">ARRASTE OS NÓS</span>
+            <select class="patch-dropdown" style="min-width: 90px; font-size: 9px;" onchange="synthStateManager.setParam('eg0_type', parseInt(this.value))">
+              <option value="0">RC (Analog)</option>
+              <option value="1">LINEAR</option>
+              <option value="2">DX7</option>
+              <option value="3">EXPONENTIAL</option>
+            </select>
           </div>
           <div class="envelope-canvas-box">
             <canvas id="eg0Canvas" width="280" height="96"></canvas>
@@ -201,7 +206,12 @@
         <div class="panel-card">
           <div class="card-header">
             <span class="card-title">ENVELOPE <span class="highlight">EG1 (FILTRO / MOD)</span></span>
-            <span class="param-val" style="color: var(--accent-cyan);">INTERATIVO</span>
+            <select class="patch-dropdown" style="min-width: 90px; font-size: 9px;" onchange="synthStateManager.setParam('eg1_type', parseInt(this.value))">
+              <option value="0">RC (Analog)</option>
+              <option value="1">LINEAR</option>
+              <option value="2">DX7</option>
+              <option value="3">EXPONENTIAL</option>
+            </select>
           </div>
           <div class="envelope-canvas-box">
             <canvas id="eg1Canvas" width="280" height="96"></canvas>
@@ -317,13 +327,13 @@
               </div>
               <div class="param-item">
                 <div class="knob-container" data-param="fm_op1_amp" data-min="0" data-max="1" data-current="1.0"><div class="knob-pointer"></div></div>
-                <span class="param-label">OUTPUT LEVEL</span>
+                <span class="param-label">LEVEL</span>
               </div>
             </div>
           </div>
 
           <div class="panel-card" style="background: var(--bg-card);">
-            <span class="card-title">OPERATOR <span class="highlight">OP 2 (Modulator)</span></span>
+            <span class="card-title">OPERATOR <span class="highlight">OP 2</span></span>
             <div class="param-grid">
               <div class="param-item">
                 <div class="knob-container" data-param="fm_op2_ratio" data-min="0.5" data-max="16" data-current="2.0"><div class="knob-pointer gold"></div></div>
@@ -331,7 +341,49 @@
               </div>
               <div class="param-item">
                 <div class="knob-container" data-param="fm_op2_amp" data-min="0" data-max="1" data-current="0.8"><div class="knob-pointer"></div></div>
-                <span class="param-label">MOD INDEX</span>
+                <span class="param-label">LEVEL</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-card" style="background: var(--bg-card);">
+            <span class="card-title">OPERATOR <span class="highlight">OP 3</span></span>
+            <div class="param-grid">
+              <div class="param-item">
+                <div class="knob-container" data-param="fm_op3_ratio" data-min="0.5" data-max="16" data-current="1.0"><div class="knob-pointer gold"></div></div>
+                <span class="param-label">RATIO</span>
+              </div>
+              <div class="param-item">
+                <div class="knob-container" data-param="fm_op3_amp" data-min="0" data-max="1" data-current="0.5"><div class="knob-pointer"></div></div>
+                <span class="param-label">LEVEL</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-card" style="background: var(--bg-card);">
+            <span class="card-title">OPERATOR <span class="highlight">OP 4</span></span>
+            <div class="param-grid">
+              <div class="param-item">
+                <div class="knob-container" data-param="fm_op4_ratio" data-min="0.5" data-max="16" data-current="2.0"><div class="knob-pointer gold"></div></div>
+                <span class="param-label">RATIO</span>
+              </div>
+              <div class="param-item">
+                <div class="knob-container" data-param="fm_op4_amp" data-min="0" data-max="1" data-current="0.5"><div class="knob-pointer"></div></div>
+                <span class="param-label">LEVEL</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-card" style="background: var(--bg-card);">
+            <span class="card-title">OPERATOR <span class="highlight">OP 5</span></span>
+            <div class="param-grid">
+              <div class="param-item">
+                <div class="knob-container" data-param="fm_op5_ratio" data-min="0.5" data-max="16" data-current="1.0"><div class="knob-pointer gold"></div></div>
+                <span class="param-label">RATIO</span>
+              </div>
+              <div class="param-item">
+                <div class="knob-container" data-param="fm_op5_amp" data-min="0" data-max="1" data-current="0.5"><div class="knob-pointer"></div></div>
+                <span class="param-label">LEVEL</span>
               </div>
             </div>
           </div>
@@ -342,6 +394,10 @@
               <div class="param-item">
                 <div class="knob-container" data-param="fm_op6_ratio" data-min="0.5" data-max="16" data-current="1.0"><div class="knob-pointer gold"></div></div>
                 <span class="param-label">RATIO</span>
+              </div>
+              <div class="param-item">
+                <div class="knob-container" data-param="fm_op6_amp" data-min="0" data-max="1" data-current="0.5"><div class="knob-pointer"></div></div>
+                <span class="param-label">LEVEL</span>
               </div>
               <div class="param-item">
                 <div class="knob-container" data-param="fm_op6_fb" data-min="0" data-max="1" data-current="0.4"><div class="knob-pointer red"></div></div>

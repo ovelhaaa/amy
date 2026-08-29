@@ -406,11 +406,14 @@ function setupHeaderControls() {
 
   document.getElementById('btnExportPatch')?.addEventListener('click', () => {
     const patch = window.synthStateManager.currentPatch;
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(patch, null, 2));
+    const s3pBytes = window.esp32HardwareSync.packPatchToS3P(patch);
+    const blob = new Blob([s3pBytes], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = dataStr;
-    a.download = `${patch.name.replace(/\s+/g, '_').toLowerCase()}.amy`;
+    a.href = url;
+    a.download = `${patch.name.replace(/\s+/g, '_').toLowerCase()}.s3p`;
     a.click();
+    URL.revokeObjectURL(url);
   });
 
   document.getElementById('fileImportPatch')?.addEventListener('change', (e) => {
@@ -419,7 +422,13 @@ function setupHeaderControls() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const loaded = JSON.parse(evt.target.result);
+        let loaded;
+        if (file.name.endsWith('.s3p')) {
+          const bytes = new Uint8Array(evt.target.result);
+          loaded = window.esp32HardwareSync.unpackS3P(bytes);
+        } else {
+          loaded = JSON.parse(evt.target.result);
+        }
         window.synthStateManager.currentPatch = loaded;
         window.synthStateManager.applyFullPatch();
         window.synthStateManager.notify('all', 'import');
@@ -427,8 +436,13 @@ function setupHeaderControls() {
       } catch (err) {
         alert("Erro ao importar arquivo de patch: " + err.message);
       }
+      e.target.value = ''; // Reset input
     };
-    reader.readAsText(file);
+    if (file.name.endsWith('.s3p')) {
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.readAsText(file);
+    }
   });
 }
 
@@ -504,5 +518,50 @@ function updateUiFromState(patch, changedProp) {
   }
   if (window.eg1Canvas) {
     window.eg1Canvas.updateParams(patch.eg1_attack, patch.eg1_decay, patch.eg1_sustain, patch.eg1_release, patch.eg1_type);
+  }
+
+  // Helper to update a single knob
+  const updateKnob = (key, val) => {
+    const knob = document.querySelector(`[data-param="${key}"]`);
+    if (knob) {
+      const min = parseFloat(knob.dataset.min || 0);
+      const max = parseFloat(knob.dataset.max || 100);
+      const pct = Math.max(0, Math.min(1, (val - min) / (max - min)));
+      const pointer = knob.querySelector('.knob-pointer');
+      if (pointer) {
+        const deg = -135 + (pct * 270);
+        pointer.style.transform = `rotate(${deg}deg)`;
+      }
+      const label = document.getElementById(`val_${key}`);
+      if (label) {
+        label.innerText = (val < 10 && !Number.isInteger(val)) ? val.toFixed(2) : Math.round(val);
+      }
+    }
+  };
+
+  // Update analog params
+  Object.keys(patch).forEach(key => {
+    updateKnob(key, patch[key]);
+    
+    // Also update dropdowns (like wave_type, filter_type)
+    const selects = document.querySelectorAll('select.patch-dropdown');
+    selects.forEach(s => {
+      if (s.onchange && s.onchange.toString().includes(`'${key}'`)) {
+        s.value = patch[key];
+      }
+    });
+  });
+
+  // Update DX7 operators if present
+  if (patch.operators && Array.isArray(patch.operators)) {
+    patch.operators.forEach(op => {
+      updateKnob(`fm_op${op.opNum || op.id}_ratio`, op.ratio);
+      const ampVal = op.level !== undefined ? op.level : op.amp;
+      updateKnob(`fm_op${op.opNum || op.id}_amp`, ampVal);
+    });
+    updateKnob(`fm_op6_fb`, patch.feedback);
+    
+    const algoSelect = document.getElementById('dx7AlgoSelect');
+    if (algoSelect) algoSelect.value = patch.algorithm;
   }
 }

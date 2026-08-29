@@ -161,6 +161,21 @@ class SynthStateManager {
         const eqH = this.currentPatch.eq_high.toFixed(1);
         wire = `y0x${eqL},${eqM},${eqH}Z`;
         break;
+      
+      // FM DX7 Operators (Mapped to voices 2-7)
+      case 'fm_op1_ratio': wire = `v7a${val.toFixed(3)}Z`; break;
+      case 'fm_op1_amp':   wire = `v7I${val.toFixed(3)}Z`; break;
+      case 'fm_op2_ratio': wire = `v6a${val.toFixed(3)}Z`; break;
+      case 'fm_op2_amp':   wire = `v6I${val.toFixed(3)}Z`; break;
+      case 'fm_op3_ratio': wire = `v5a${val.toFixed(3)}Z`; break;
+      case 'fm_op3_amp':   wire = `v5I${val.toFixed(3)}Z`; break;
+      case 'fm_op4_ratio': wire = `v4a${val.toFixed(3)}Z`; break;
+      case 'fm_op4_amp':   wire = `v4I${val.toFixed(3)}Z`; break;
+      case 'fm_op5_ratio': wire = `v3a${val.toFixed(3)}Z`; break;
+      case 'fm_op5_amp':   wire = `v3I${val.toFixed(3)}Z`; break;
+      case 'fm_op6_ratio': wire = `v2a${val.toFixed(3)}Z`; break;
+      case 'fm_op6_amp':   wire = `v2I${val.toFixed(3)}Z`; break;
+      case 'fm_op6_fb':    wire = `v0b${val.toFixed(3)}Z`; break;
     }
 
     if (wire.length > 0) {
