@@ -173,6 +173,19 @@ function setupKnobInteractions() {
         window.synthStateManager.setParam(param, val);
       }
     });
+
+    const triggerMidiLearn = (e) => {
+      e.preventDefault();
+      const param = slider.dataset.param || slider.dataset.juno;
+      const min = parseFloat(slider.min || 0);
+      const max = parseFloat(slider.max || 100);
+      if (param) window.midiLearnManager.startLearn(param, slider, min, max);
+    };
+
+    slider.addEventListener('mousedown', (e) => {
+      if (e.altKey || e.button === 2) triggerMidiLearn(e);
+    });
+    slider.addEventListener('contextmenu', triggerMidiLearn);
   });
 }
 
@@ -429,6 +442,7 @@ function setupHeaderControls() {
         } else {
           loaded = JSON.parse(evt.target.result);
         }
+        window.synthStateManager.pushState();
         window.synthStateManager.currentPatch = loaded;
         window.synthStateManager.applyFullPatch();
         window.synthStateManager.notify('all', 'import');
@@ -551,6 +565,13 @@ function updateUiFromState(patch, changedProp) {
       }
     });
   });
+
+  // Update macros
+  if (patch.macros && Array.isArray(patch.macros)) {
+    patch.macros.forEach((m, idx) => {
+      updateKnob(`macro_${idx}`, m.val);
+    });
+  }
 
   // Update DX7 operators if present
   if (patch.operators && Array.isArray(patch.operators)) {

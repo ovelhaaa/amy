@@ -4,7 +4,9 @@
 
 #define pdMS_TO_TICKS(ms) ((uint32_t)(ms))
 #define pdTRUE  1
+#define pdPASS  1
 #define pdFALSE 0
+#define errQUEUE_FULL 0
 #define portMAX_DELAY 0xFFFFFFFF
 
 typedef uint32_t TickType_t;

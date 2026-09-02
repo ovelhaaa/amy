@@ -3,6 +3,7 @@
 #include "nvs.h"
 #include "esp_log.h"
 #include <cstring>
+#include <cmath>
 
 static const char* TAG = "NvsStorage";
 static const char* NVS_NAMESPACE = "smk_sys";
@@ -86,6 +87,9 @@ bool NvsStorage::loadConfig(SystemConfig& config_out) {
     nvs_get_u8(handle, "patch_id", &patch_id);
     if (nvs_get_u32(handle, "bpm_bits", &bpm_bits) == ESP_OK) {
         memcpy(&config_out.global_bpm, &bpm_bits, sizeof(float));
+    }
+    if (config_out.global_bpm < 30.0f || config_out.global_bpm > 300.0f || std::isnan(config_out.global_bpm)) {
+        config_out.global_bpm = 120.0f;
     }
     nvs_get_u8(handle, "volume", &volume);
     nvs_get_u8(handle, "channel", &channel);

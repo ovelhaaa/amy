@@ -21,6 +21,7 @@ struct DiagnosticCounters {
     // USB
     std::atomic<uint32_t> usb_disconnects{0};
     std::atomic<uint32_t> usb_reconnects{0};
+    std::atomic<bool>     usb_connected{false};
     
     // System
     std::atomic<uint32_t> panic_count{0};

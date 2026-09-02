@@ -39,8 +39,14 @@ int8_t dsps_biquad_gen_lpf_f32(SAMPLE *coeffs, float f, float qFactor)
     if (qFactor < 0.51f) {
         qFactor = 0.51f;
     }
+    if (qFactor > 8.0f) {
+        qFactor = 8.0f;
+    }
     if (f > 0.45f) {
         f = 0.45f;
+    }
+    if (f > 0.38f) {
+        qFactor = 0.51f + (qFactor - 0.51f) * (0.45f - f) / 0.07f;
     }
     float Fs = 1;
 
@@ -1042,6 +1048,7 @@ AMY_IRAM_ATTR SAMPLE filter_process(SAMPLE * block, uint16_t osc, SAMPLE max_val
 
     float ratio = freq_of_logfreq(msynth[osc]->filter_logfreq)/(float)AMY_SAMPLE_RATE;
     if(ratio < LOWEST_RATIO) ratio = LOWEST_RATIO;
+    if(ratio > 0.45f) ratio = 0.45f;
     if(synth[osc]->filter_type==FILTER_PHASER) {
         // Not a biquad: dedicated allpass-chain runner, no coeffs[5], no BFP wrapper.
         float f = ratio;

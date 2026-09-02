@@ -97,7 +97,7 @@ bool Console::begin() {
     registerCommand("arp_swing", "Set arpeggiator swing percent <0..75>", cmdArpSwing);
     registerCommand("seq_step", "Set sequencer step <step 0..15> <note> <vel> <active>", cmdSeqStep);
     registerCommand("seq_play", "Start step sequencer", cmdSeqPlay);
-    registerCommand("seq_stop", "Start step sequencer", cmdSeqStop);
+    registerCommand("seq_stop", "Stop step sequencer", cmdSeqStop);
     registerCommand("seq_pattern", "Select sequencer pattern slot <0..7>", cmdSeqPattern);
     registerCommand("seq_swing", "Set sequencer swing percent <0..75>", cmdSeqSwing);
     registerCommand("storage_info", "Show SPIFFS Flash storage status", cmdStorageInfo);
@@ -154,7 +154,10 @@ int Console::cmdAudioStatus(int argc, char** argv) {
 }
 
 int Console::cmdPanic(int argc, char** argv) {
-    ESP_LOGW(TAG, "Panic triggered!");
+    ESP_LOGW(TAG, "Panic triggered! Silencing synth engine and resetting sequencers.");
+    if (s_arpeggiator) s_arpeggiator->reset();
+    if (s_sequencer) s_sequencer->stop();
+    if (s_amy_adapter) s_amy_adapter->panic();
     return 0;
 }
 
@@ -740,7 +743,40 @@ void Console::consoleTask(void* arg) {
                     int ret;
                     esp_err_t err = esp_console_run(line_buf, &ret);
                     if (err == ESP_ERR_NOT_FOUND) {
-                        ESP_LOGW(TAG, "Unrecognized command: '%s'. Type 'help' for available commands.", line_buf);
+                        // Check for space-to-underscore command aliases (e.g. "patch list" -> "patch_list", "patch save" -> "patch_save", "patch load" -> "patch_load", "audio status" -> "audio_status")
+                        char alias_buf[256];
+                        bool has_alias = false;
+                        if (strncmp(line_buf, "patch list", 10) == 0) {
+                            snprintf(alias_buf, sizeof(alias_buf), "patch_list%s", line_buf + 10);
+                            has_alias = true;
+                        } else if (strncmp(line_buf, "patch save", 10) == 0) {
+                            snprintf(alias_buf, sizeof(alias_buf), "patch_save%s", line_buf + 10);
+                            has_alias = true;
+                        } else if (strncmp(line_buf, "patch load", 10) == 0) {
+                            snprintf(alias_buf, sizeof(alias_buf), "patch_load%s", line_buf + 10);
+                            has_alias = true;
+                        } else if (strncmp(line_buf, "audio status", 12) == 0) {
+                            snprintf(alias_buf, sizeof(alias_buf), "audio_status%s", line_buf + 12);
+                            has_alias = true;
+                        } else if (strncmp(line_buf, "midi monitor", 12) == 0) {
+                            snprintf(alias_buf, sizeof(alias_buf), "midi_monitor%s", line_buf + 12);
+                            has_alias = true;
+                        } else if (strncmp(line_buf, "profile save", 12) == 0) {
+                            snprintf(alias_buf, sizeof(alias_buf), "profile_save%s", line_buf + 12);
+                            has_alias = true;
+                        } else if (strncmp(line_buf, "profile load", 12) == 0) {
+                            snprintf(alias_buf, sizeof(alias_buf), "profile_load%s", line_buf + 12);
+                            has_alias = true;
+                        }
+
+                        if (has_alias) {
+                            esp_console_run(alias_buf, &ret);
+                        } else if (s_amy_adapter != nullptr) {
+                            // Forward directly to AMY wire engine
+                            s_amy_adapter->sendAmyMessage(line_buf);
+                        } else {
+                            ESP_LOGW(TAG, "Unrecognized command: '%s'. Type 'help' for available commands.", line_buf);
+                        }
                     } else if (err == ESP_OK && ret != 0) {
                         ESP_LOGE(TAG, "Command returned status: %d", ret);
                     } else if (err != ESP_OK && err != ESP_ERR_INVALID_ARG) {

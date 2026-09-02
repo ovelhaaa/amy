@@ -48,7 +48,7 @@ Diagnostics::Snapshot Diagnostics::takeSnapshot() const {
     s.usb_disconnects = counters_.usb_disconnects.load();
     s.usb_reconnects = counters_.usb_reconnects.load();
     s.panic_count = counters_.panic_count.load();
-    s.usb_connected = (s.usb_reconnects >= s.usb_disconnects);
+    s.usb_connected = counters_.usb_connected.load(std::memory_order_relaxed);
     s.firmware_version = "0.1.0"; 
     
     return s;

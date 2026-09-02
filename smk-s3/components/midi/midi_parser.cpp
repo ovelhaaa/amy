@@ -115,13 +115,12 @@ void MidiParser::processUsbMidiPacket(const uint8_t* packet) {
             }
             break;
         case 0xB: // Control Change
-            emitEvent(EventType::ControlChange, channel, data1, data2);
-            if (data1 == 1) { // Modulation
+            if (data1 == 1) { // Modulation Wheel/Strip
                 emitEvent(EventType::Modulation, channel, data1, data2);
-            } else if (data1 == 120) { // All Sound Off
+            } else if (data1 == 120 || data1 == 123) { // All Sound Off / All Notes Off
                 emitEvent(EventType::AllNotesOff, channel, 0, 0);
-            } else if (data1 == 123) { // All Notes Off
-                emitEvent(EventType::AllNotesOff, channel, 0, 0);
+            } else {
+                emitEvent(EventType::ControlChange, channel, data1, data2);
             }
             break;
         case 0xE: // Pitch Bend
@@ -205,11 +204,12 @@ void MidiParser::processByte(uint8_t byte) {
                     }
                     break;
                 case 0xB: // CC
-                    emitEvent(EventType::ControlChange, channel, data_bytes_[0], data_bytes_[1]);
-                    if (data_bytes_[0] == 1) {
+                    if (data_bytes_[0] == 1) { // Modulation
                         emitEvent(EventType::Modulation, channel, data_bytes_[0], data_bytes_[1]);
                     } else if (data_bytes_[0] == 120 || data_bytes_[0] == 123) {
                         emitEvent(EventType::AllNotesOff, channel, 0, 0);
+                    } else {
+                        emitEvent(EventType::ControlChange, channel, data_bytes_[0], data_bytes_[1]);
                     }
                     break;
                 case 0xE: // Pitch Bend

@@ -21,13 +21,15 @@ bool EventBus::send(const SynthEvent& event) {
         if (event.type == EventType::NoteOff || 
             event.type == EventType::AllNotesOff || 
             event.type == EventType::Panic) {
-            // Try to force to front for critical events
+            // Drop oldest message to make room for critical event
+            SynthEvent discarded_ev;
+            xQueueReceive(queue_, &discarded_ev, 0);
             res = xQueueSendToFront(queue_, &event, 0);
             if (res != pdTRUE) {
-                overflow_count_.fetch_add(1, std::memory_order_relaxed);
-                return false;
+                res = xQueueSend(queue_, &event, 0);
             }
-            return true;
+            overflow_count_.fetch_add(1, std::memory_order_relaxed);
+            return (res == pdTRUE);
         }
         overflow_count_.fetch_add(1, std::memory_order_relaxed);
         return false;
@@ -39,6 +41,15 @@ bool EventBus::sendFromISR(const SynthEvent& event, BaseType_t* pxHigherPriority
     if (!queue_) return false;
     BaseType_t res = xQueueSendFromISR(queue_, &event, pxHigherPriorityTaskWoken);
     if (res != pdTRUE) {
+        if (event.type == EventType::NoteOff || 
+            event.type == EventType::AllNotesOff || 
+            event.type == EventType::Panic) {
+            SynthEvent discarded_ev;
+            xQueueReceiveFromISR(queue_, &discarded_ev, pxHigherPriorityTaskWoken);
+            res = xQueueSendToFrontFromISR(queue_, &event, pxHigherPriorityTaskWoken);
+            overflow_count_.fetch_add(1, std::memory_order_relaxed);
+            return (res == pdTRUE);
+        }
         overflow_count_.fetch_add(1, std::memory_order_relaxed);
         return false;
     }

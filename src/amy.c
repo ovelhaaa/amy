@@ -507,7 +507,7 @@ int8_t global_init(amy_config_t c) {
     amy_global.transfer_filename[0] = '\0';
     amy_global.debug_flag = 0;
     amy_global.highest_bus = 0;
-    amy_global.hpf_state = 0;
+    for (int c = 0; c < AMY_NCHANS; ++c) amy_global.hpf_state[c] = 0;
     amy_global.render_us = 0;
     amy_global.overload_count = 0;
     amy_global.oom_count = 0;
@@ -2214,10 +2214,10 @@ AMY_IRAM_ATTR int16_t * amy_fill_buffer() {
             // some FM patches. b = [1 -1]; a = [1 -0.995]
             //SAMPLE new_state = fsample + SMULR6(F2S(0.995f), amy_global.hpf_state);  // High-output-range, rounded MUL is critical here.
 #ifdef AMY_HPF_OUTPUT
-            SAMPLE new_state = fsample + amy_global.hpf_state
-                - SHIFTR(amy_global.hpf_state + SHIFTR(F2S(1.0), 16), 8);  // i.e. 0.9961*hpf_state
-            fsample = new_state - amy_global.hpf_state;
-            amy_global.hpf_state = new_state;
+            SAMPLE new_state = fsample + amy_global.hpf_state[c]
+                - SHIFTR(amy_global.hpf_state[c] + SHIFTR(F2S(1.0), 16), 8);  // i.e. 0.9961*hpf_state
+            fsample = new_state - amy_global.hpf_state[c];
+            amy_global.hpf_state[c] = new_state;
 #endif
 
             // soft clipping.

@@ -252,6 +252,14 @@ void UsbMidiHost::transferCallback(usb_transfer_t* transfer) {
             transfer->num_bytes = kTransferBufferSize;
             usb_host_transfer_submit(transfer);
         }
+    } else {
+        // Re-submit on transient non-fatal errors if device is still connected
+        if (self->isDeviceConnected() && 
+            transfer->status != USB_TRANSFER_STATUS_CANCELED && 
+            transfer->status != USB_TRANSFER_STATUS_NO_DEVICE) {
+            transfer->num_bytes = kTransferBufferSize;
+            usb_host_transfer_submit(transfer);
+        }
     }
 }
 

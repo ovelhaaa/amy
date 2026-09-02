@@ -39,7 +39,7 @@ public:
 
     void processTick(uint32_t tick_count, EventBus& event_bus);
 
-    void setEnabled(bool enable);
+    void setEnabled(bool enable, EventBus* event_bus = nullptr);
     bool isEnabled() const { return enabled_; }
 
     void setMode(ArpMode mode) { mode_ = mode; }
@@ -61,10 +61,11 @@ public:
     bool latch() const { return latch_; }
 
     void reset();
+    void reset(EventBus& event_bus);
 
 private:
     uint32_t getTicksPerStep() const;
-    void generateArpPattern(std::vector<HeldNote>& pattern_out);
+    void generateArpPattern();
 
     bool                    enabled_ = false;
     ArpMode                 mode_ = ArpMode::Up;
@@ -76,6 +77,14 @@ private:
 
     std::vector<HeldNote>   held_notes_;
     std::vector<HeldNote>   latched_notes_;
+
+    static constexpr size_t kMaxPatternNotes = 64;
+    static constexpr size_t kMaxChordNotes = 16;
+    std::array<HeldNote, kMaxPatternNotes> pattern_buffer_{};
+    size_t                  pattern_len_ = 0;
+
+    std::array<int16_t, kMaxChordNotes> active_chord_notes_{};
+    size_t                  active_chord_count_ = 0;
     
     size_t                  current_step_idx_ = 0;
     bool                    up_direction_ = true;

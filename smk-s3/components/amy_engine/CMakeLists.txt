@@ -29,6 +29,8 @@ idf_component_register(SRCS
 
 target_compile_definitions(${COMPONENT_LIB} PUBLIC
     BLOCK_SIZE_BITS=8
+    AMY_BLOCK_SIZE=256
+    AMY_SAMPLE_RATE=48000
     ESP_PLATFORM=1
 )
 

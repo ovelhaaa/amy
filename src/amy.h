@@ -1,7 +1,7 @@
 #ifndef __AMY_H
 #define __AMY_H
 
-#ifdef ESP_PATFORM
+#ifdef ESP_PLATFORM
 #pragma GCC optimize ("O2")  // #779: Arduino esp32 core builds libs at -Os with no opt menu.
 #endif
 
@@ -884,7 +884,7 @@ typedef struct global_state {
     uint8_t debug_flag;
     // How many buses do we actually have to process?
     uint8_t highest_bus;
-    SAMPLE hpf_state;
+    SAMPLE hpf_state[AMY_NCHANS];
     
     // Transfer
     uint8_t transfer_flag;

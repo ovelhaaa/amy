@@ -70,6 +70,7 @@ public:
 
     void play();
     void stop();
+    void stop(EventBus& event_bus);
     void record();
 
     SequencerState state() const { return state_; }

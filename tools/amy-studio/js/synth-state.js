@@ -228,11 +228,19 @@ class SynthStateManager {
     const found = AMY_FACTORY_PATCHES.find(p => p.id === presetId);
     if (found) {
       this.pushState();
-      this.currentPatch.id = found.id;
-      this.currentPatch.name = found.name;
-      this.currentPatch.category = found.category;
-      this.currentPatch.basePatch = found.basePatch;
-      this.currentPatch.wireCommand = found.wireCommand;
+      
+      // Preserve macros if not provided by preset
+      const currentMacros = this.currentPatch.macros;
+      
+      // Create a fresh template and merge the found patch
+      const base = JSON.parse(JSON.stringify(DEFAULT_PATCH_TEMPLATE));
+      Object.assign(base, found);
+      
+      if (!found.macros && currentMacros) {
+        base.macros = JSON.parse(JSON.stringify(currentMacros));
+      }
+      
+      this.currentPatch = base;
       this.applyFullPatch();
       this.notify('all', 'preset_loaded');
     }

@@ -44,12 +44,18 @@ bool AmyAdapter::begin(uint32_t sample_rate_hz) {
     config.ram_caps_sysex = MALLOC_CAP_SPIRAM;
     config.overload_threshold = 0.95f;
     config.overload_ms = 500;
-    config.max_oscs = 120;
+    config.max_oscs = 200;
     
     active_voices_.store(0);
     std::memset(active_notes_, 0, sizeof(active_notes_));
 
     amy_start(config);
+
+    // Release unused upstream synth 2 (DX7 ch2 placeholder) to maximize clean oscillator headroom for Synth 1 & GM Drums
+    amy_event e = amy_default_event();
+    e.synth = 2;
+    e.num_voices = 0;
+    amy_add_event(&e);
 
     return true;
 }

@@ -43,14 +43,14 @@ void SceneManager::initFactoryScenes() {
             sc.macro_values[m] = 50.0f;
         }
 
-        sc.arp_enabled = (i == 0 || i == 2 || i == 4 || i == 6);
+        sc.arp_enabled = false;
         sc.arp_mode = (i == 2) ? static_cast<uint8_t>(ArpMode::UpDown) : ((i == 4) ? static_cast<uint8_t>(ArpMode::Random) : static_cast<uint8_t>(ArpMode::Up));
         sc.arp_division = static_cast<uint8_t>(ArpDivision::Div1_16);
         sc.arp_octaves = (i == 3 || i == 5) ? 2 : 1;
         sc.arp_latch = false;
-        sc.seq_playing = (i > 0 && i < 7);
+        sc.seq_playing = false;
         sc.drum_pattern = static_cast<uint8_t>(i % 8);
-        sc.drum_mutes = (i == 0 || i == 6) ? 0x01 : 0x00; // Mute kick in intro/breakdown
+        sc.drum_mutes = 0x00;
         sc.transition_mode = static_cast<uint8_t>(SceneTransition::EndOfPattern);
         sc.crc32 = calculateSceneCrc32(sc);
     }

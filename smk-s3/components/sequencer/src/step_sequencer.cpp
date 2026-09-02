@@ -312,6 +312,23 @@ void StepSequencer::stop() {
     ESP_LOGI(TAG, "StepSequencer STOP");
 }
 
+void StepSequencer::stop(EventBus& event_bus) {
+    for (size_t t = 0; t < kMaxTracks; ++t) {
+        if (last_played_notes_[t] >= 0) {
+            SynthEvent off_ev;
+            off_ev.type = EventType::NoteOff;
+            off_ev.source = EventSource::Sequencer;
+            off_ev.channel = track_channels_[t];
+            off_ev.id = (uint16_t)last_played_notes_[t];
+            off_ev.value = 0;
+            off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+            event_bus.send(off_ev);
+            last_played_notes_[t] = -1;
+        }
+    }
+    stop();
+}
+
 void StepSequencer::record() {
     if (state_ == SequencerState::Recording) {
         state_ = SequencerState::Playing;
@@ -403,7 +420,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
             if (chain_.enabled && chain_.length > 1) {
                 chain_.current_index = (chain_.current_index + 1) % chain_.length;
                 if (!chain_.loop && chain_.current_index == 0) {
-                    stop();
+                    stop(event_bus);
                     return;
                 }
                 current_pattern_ = chain_.patterns[chain_.current_index];

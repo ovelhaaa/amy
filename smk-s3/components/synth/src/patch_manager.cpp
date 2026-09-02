@@ -182,23 +182,28 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     break;
                 case 1:
                     param_name = "DELAY TIME";
-                    if (amy_adapter_) amy_adapter_->setDelay(10.0f + norm_val * 990.0f, 0.4f, 0.5f);
+                    bank_b_fx_values_[1] = static_cast<uint8_t>(effective_val);
+                    if (amy_adapter_) amy_adapter_->setDelay(10.0f + norm_val * 990.0f, (float)bank_b_fx_values_[2] / 127.0f * 0.95f, (float)bank_b_fx_values_[3] / 127.0f);
                     break;
                 case 2:
                     param_name = "DELAY FEEDBACK";
-                    if (amy_adapter_) amy_adapter_->setDelay(250.0f, norm_val * 0.95f, 0.5f);
+                    bank_b_fx_values_[2] = static_cast<uint8_t>(effective_val);
+                    if (amy_adapter_) amy_adapter_->setDelay(10.0f + (float)bank_b_fx_values_[1] / 127.0f * 990.0f, norm_val * 0.95f, (float)bank_b_fx_values_[3] / 127.0f);
                     break;
                 case 3:
                     param_name = "DELAY MIX";
-                    if (amy_adapter_) amy_adapter_->setDelay(250.0f, 0.4f, norm_val);
+                    bank_b_fx_values_[3] = static_cast<uint8_t>(effective_val);
+                    if (amy_adapter_) amy_adapter_->setDelay(10.0f + (float)bank_b_fx_values_[1] / 127.0f * 990.0f, (float)bank_b_fx_values_[2] / 127.0f * 0.95f, norm_val);
                     break;
                 case 4:
                     param_name = "REVERB SIZE";
-                    if (amy_adapter_) amy_adapter_->setReverb(norm_val, 0.5f, 0.5f);
+                    bank_b_fx_values_[4] = static_cast<uint8_t>(effective_val);
+                    if (amy_adapter_) amy_adapter_->setReverb(norm_val, 0.7f, (float)bank_b_fx_values_[5] / 127.0f);
                     break;
                 case 5:
                     param_name = "REVERB MIX";
-                    if (amy_adapter_) amy_adapter_->setReverb(0.7f, 0.5f, norm_val);
+                    bank_b_fx_values_[5] = static_cast<uint8_t>(effective_val);
+                    if (amy_adapter_) amy_adapter_->setReverb((float)bank_b_fx_values_[4] / 127.0f, 0.7f, norm_val);
                     break;
                 case 6:
                     param_name = "DRIVE LEVEL";
@@ -289,28 +294,32 @@ switch (b_idx) {
     }
     case 4: { // Knob B5: Chorus Depth (0% .. 100%)
         param_name = "CHORUS DEPTH";
-        status = soft_takeover_.update(takeover_id, physical_val, 20.0f, effective_val);
+        status = soft_takeover_.update(takeover_id, physical_val, (float)bank_b_fx_values_[0], effective_val);
+        bank_b_fx_values_[0] = static_cast<uint8_t>(std::clamp(effective_val, 0.0f, 127.0f));
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
         if (amy_adapter_) amy_adapter_->setChorus(norm * 0.8f, 0.5f, norm * 0.7f);
         break;
     }
     case 5: { // Knob B6: Delay Time (10ms .. 1000ms)
         param_name = "DELAY TIME";
-        status = soft_takeover_.update(takeover_id, physical_val, 30.0f, effective_val);
+        status = soft_takeover_.update(takeover_id, physical_val, (float)bank_b_fx_values_[1], effective_val);
+        bank_b_fx_values_[1] = static_cast<uint8_t>(std::clamp(effective_val, 0.0f, 127.0f));
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
         if (amy_adapter_) amy_adapter_->setDelay(10.0f + norm * 990.0f, 0.4f, 0.5f);
         break;
     }
     case 6: { // Knob B7: Reverb Mix (0% .. 100%)
         param_name = "REVERB MIX";
-        status = soft_takeover_.update(takeover_id, physical_val, 40.0f, effective_val);
+        status = soft_takeover_.update(takeover_id, physical_val, (float)bank_b_fx_values_[2], effective_val);
+        bank_b_fx_values_[2] = static_cast<uint8_t>(std::clamp(effective_val, 0.0f, 127.0f));
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
         if (amy_adapter_) amy_adapter_->setReverb(0.7f, 0.5f, norm * 0.8f);
         break;
     }
     case 7: { // Knob B8: Master Tone / FM Feedback
         param_name = "MASTER DRIVE";
-        status = soft_takeover_.update(takeover_id, physical_val, 15.0f, effective_val);
+        status = soft_takeover_.update(takeover_id, physical_val, (float)bank_b_fx_values_[3], effective_val);
+        bank_b_fx_values_[3] = static_cast<uint8_t>(std::clamp(effective_val, 0.0f, 127.0f));
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
         if (active_patch_.wave_type == 8 && amy_adapter_) {
             amy_adapter_->setFmFeedback(1, std::clamp(norm * 0.16f, 0.0f, 0.16f));
@@ -327,10 +336,10 @@ if (ui_manager_) {
         static_cast<uint8_t>(std::clamp((active_patch_.filter_res - 0.5f) / 9.5f * 127.0f, 0.0f, 127.0f)),
         static_cast<uint8_t>(std::clamp((active_patch_.amp_attack - 1.0f) / 4999.0f * 127.0f, 0.0f, 127.0f)),
         static_cast<uint8_t>(std::clamp((active_patch_.amp_release - 1.0f) / 4999.0f * 127.0f, 0.0f, 127.0f)),
-        static_cast<uint8_t>(effective_val),
-        static_cast<uint8_t>(effective_val),
-        static_cast<uint8_t>(effective_val),
-        static_cast<uint8_t>(effective_val)
+        bank_b_fx_values_[0],
+        bank_b_fx_values_[1],
+        bank_b_fx_values_[2],
+        bank_b_fx_values_[3]
     };
     ui_manager_->homeScreen().setHomeKnobBankView(HomeScreen::HomeKnobBankView::BankB_Engine);
     ui_manager_->homeScreen().setEngineValues(eng_vals);
@@ -450,7 +459,7 @@ void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     amy_adapter_->loadPreset(1, patch.engine_patch, patch.voice_count > 0 ? patch.voice_count : 8);
 
     // 2. Set clean default effect levels (prevent noise leak / stale reverb accumulation)
-    amy_adapter_->setReverb(0.7f, 0.5f, 0.0f);
+    amy_adapter_->setReverb(0.7f, 0.7f, 0.0f);
     amy_adapter_->setChorus(0.0f, 0.0f, 0.0f);
     amy_adapter_->setDelay(0.0f, 0.0f, 0.0f);
 

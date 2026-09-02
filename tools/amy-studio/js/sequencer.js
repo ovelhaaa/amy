@@ -102,14 +102,28 @@ class AmyStudioSequencer {
       }
     }
 
-    // 2. Trigger Melodic Synth Track Step
-    const sStep = this.synthTrack[step];
-    if (sStep && sStep.active) {
-      if (window.amyAudioBridge) {
-        window.amyAudioBridge.noteOn(0, sStep.note, sStep.vel / 127.0);
-        setTimeout(() => {
-          window.amyAudioBridge.noteOff(0, sStep.note);
-        }, ((60000.0 / this.bpm) / 4.0) * sStep.gate);
+    // 2. Trigger Melodic Synth Track Step (from Piano Roll if available)
+    if (window.melodicPianoRoll && window.melodicPianoRoll.steps) {
+      const pStep = window.melodicPianoRoll.steps[step];
+      if (pStep && pStep.note) {
+        if (Math.random() <= pStep.prob) { // probability check
+          if (window.amyAudioBridge) {
+            window.amyAudioBridge.noteOn(0, pStep.note, pStep.vel);
+            setTimeout(() => {
+              window.amyAudioBridge.noteOff(0, pStep.note);
+            }, ((60000.0 / this.bpm) / 4.0) * pStep.gate);
+          }
+        }
+      }
+    } else {
+      const sStep = this.synthTrack[step];
+      if (sStep && sStep.active) {
+        if (window.amyAudioBridge) {
+          window.amyAudioBridge.noteOn(0, sStep.note, sStep.vel / 127.0);
+          setTimeout(() => {
+            window.amyAudioBridge.noteOff(0, sStep.note);
+          }, ((60000.0 / this.bpm) / 4.0) * sStep.gate);
+        }
       }
     }
 

@@ -59,6 +59,7 @@ private:
     SynthPatch     active_patch_;
     KnobBank       active_bank_    = KnobBank::BankA_Macros;
     SoftTakeover   soft_takeover_;
+    std::array<uint8_t, 4> bank_b_fx_values_{0, 0, 40, 15}; // Chorus, Delay, Reverb, Drive
 };
 
 } // namespace smk

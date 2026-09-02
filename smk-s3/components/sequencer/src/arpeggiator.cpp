@@ -13,10 +13,15 @@ Arpeggiator::Arpeggiator() {
     latched_notes_.reserve(16);
 }
 
-void Arpeggiator::setEnabled(bool enable) {
+void Arpeggiator::setEnabled(bool enable, EventBus* event_bus) {
     enabled_ = enable;
     if (!enabled_) {
-        reset();
+        if (event_bus != nullptr) {
+            reset(*event_bus);
+        } else {
+            held_notes_.clear();
+            latched_notes_.clear();
+        }
     }
 }
 
@@ -61,9 +66,43 @@ void Arpeggiator::noteOff(uint8_t note) {
 void Arpeggiator::reset() {
     held_notes_.clear();
     latched_notes_.clear();
+    pattern_len_ = 0;
+    active_chord_count_ = 0;
     current_step_idx_ = 0;
     up_direction_ = true;
     last_played_note_ = -1;
+}
+
+void Arpeggiator::reset(EventBus& event_bus) {
+    // Send NoteOff for any active sounding notes before resetting
+    if (active_chord_count_ > 0) {
+        for (size_t i = 0; i < active_chord_count_; ++i) {
+            if (active_chord_notes_[i] >= 0) {
+                SynthEvent off_ev;
+                off_ev.type = EventType::NoteOff;
+                off_ev.source = EventSource::Arpeggiator;
+                off_ev.channel = 0;
+                off_ev.id = (uint16_t)active_chord_notes_[i];
+                off_ev.value = 0;
+                off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+                event_bus.send(off_ev);
+            }
+        }
+        active_chord_count_ = 0;
+    }
+    if (last_played_note_ >= 0) {
+        SynthEvent off_ev;
+        off_ev.type = EventType::NoteOff;
+        off_ev.source = EventSource::Arpeggiator;
+        off_ev.channel = 0;
+        off_ev.id = (uint16_t)last_played_note_;
+        off_ev.value = 0;
+        off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+        event_bus.send(off_ev);
+        last_played_note_ = -1;
+    }
+
+    reset();
 }
 
 uint32_t Arpeggiator::getTicksPerStep() const {
@@ -78,46 +117,76 @@ uint32_t Arpeggiator::getTicksPerStep() const {
     }
 }
 
-void Arpeggiator::generateArpPattern(std::vector<HeldNote>& pattern_out) {
-    pattern_out.clear();
+void Arpeggiator::generateArpPattern() {
+    pattern_len_ = 0;
     const auto& base_notes = (!held_notes_.empty()) ? held_notes_ : latched_notes_;
-
     if (base_notes.empty()) return;
 
-    std::vector<HeldNote> sorted_notes = base_notes;
+    // Stack buffer for sorting base notes (max 16 held notes)
+    std::array<HeldNote, 16> sorted_notes{};
+    size_t base_count = std::min(base_notes.size(), size_t(16));
+    for (size_t i = 0; i < base_count; ++i) {
+        sorted_notes[i] = base_notes[i];
+    }
+
     if (mode_ != ArpMode::AsPlayed) {
-        std::sort(sorted_notes.begin(), sorted_notes.end(), [](const HeldNote& a, const HeldNote& b) {
+        std::sort(sorted_notes.begin(), sorted_notes.begin() + base_count, [](const HeldNote& a, const HeldNote& b) {
             return a.note < b.note;
         });
     }
 
     for (uint8_t oct = 0; oct < octaves_; ++oct) {
-        for (const auto& hn : sorted_notes) {
+        for (size_t i = 0; i < base_count; ++i) {
+            const auto& hn = sorted_notes[i];
             int16_t transposed_note = hn.note + (oct * 12);
-            if (transposed_note <= 127) {
-                pattern_out.push_back({(uint8_t)transposed_note, hn.velocity});
+            if (transposed_note <= 127 && pattern_len_ < kMaxPatternNotes) {
+                pattern_buffer_[pattern_len_++] = HeldNote{ (uint8_t)transposed_note, hn.velocity };
             }
         }
     }
 }
 
 void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
-    if (!enabled_) return;
+    if (!enabled_) {
+        // If disabled while notes were sounding, turn them off cleanly
+        if (active_chord_count_ > 0 || last_played_note_ >= 0) {
+            reset(event_bus);
+        }
+        return;
+    }
 
     uint32_t ticks_per_step = getTicksPerStep();
 
-    // Check if we need to emit a NoteOff for the previous arpeggiated note
-    if (last_played_note_ >= 0 && tick_count >= note_off_tick_) {
-        SynthEvent off_ev;
-        off_ev.type = EventType::NoteOff;
-        off_ev.source = EventSource::Arpeggiator;
-        off_ev.channel = 0;
-        off_ev.id = (uint16_t)last_played_note_;
-        off_ev.value = 0;
-        off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
-        event_bus.send(off_ev);
+    // Check if we need to emit NoteOff for the previous arpeggiated note(s)
+    if (tick_count >= note_off_tick_) {
+        if (active_chord_count_ > 0) {
+            for (size_t i = 0; i < active_chord_count_; ++i) {
+                if (active_chord_notes_[i] >= 0) {
+                    SynthEvent off_ev;
+                    off_ev.type = EventType::NoteOff;
+                    off_ev.source = EventSource::Arpeggiator;
+                    off_ev.channel = 0;
+                    off_ev.id = (uint16_t)active_chord_notes_[i];
+                    off_ev.value = 0;
+                    off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+                    event_bus.send(off_ev);
+                }
+            }
+            active_chord_count_ = 0;
+        }
 
-        last_played_note_ = -1;
+        if (last_played_note_ >= 0) {
+            SynthEvent off_ev;
+            off_ev.type = EventType::NoteOff;
+            off_ev.source = EventSource::Arpeggiator;
+            off_ev.channel = 0;
+            off_ev.id = (uint16_t)last_played_note_;
+            off_ev.value = 0;
+            off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+            event_bus.send(off_ev);
+
+            last_played_note_ = -1;
+        }
     }
 
     // Check if current tick reaches a step boundary (with swing on 16th notes)
@@ -133,33 +202,32 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
     }
 
     if (is_step_tick) {
-        std::vector<HeldNote> pattern;
-        generateArpPattern(pattern);
+        generateArpPattern();
 
-        if (pattern.empty()) {
+        if (pattern_len_ == 0) {
             current_step_idx_ = 0;
             return;
         }
 
-        if (current_step_idx_ >= pattern.size()) {
+        if (current_step_idx_ >= pattern_len_) {
             current_step_idx_ = 0;
         }
 
-        HeldNote current_hn = pattern[current_step_idx_];
+        HeldNote current_hn = pattern_buffer_[current_step_idx_];
 
         // Advance index according to ArpMode
         switch (mode_) {
             case ArpMode::Up:
             case ArpMode::AsPlayed:
-                current_step_idx_ = (current_step_idx_ + 1) % pattern.size();
+                current_step_idx_ = (current_step_idx_ + 1) % pattern_len_;
                 break;
             case ArpMode::Down:
-                if (current_step_idx_ == 0) current_step_idx_ = pattern.size() - 1;
+                if (current_step_idx_ == 0) current_step_idx_ = pattern_len_ - 1;
                 else current_step_idx_--;
                 break;
             case ArpMode::UpDown:
                 if (up_direction_) {
-                    if (current_step_idx_ + 1 < pattern.size()) {
+                    if (current_step_idx_ + 1 < pattern_len_) {
                         current_step_idx_++;
                     } else {
                         up_direction_ = false;
@@ -170,12 +238,12 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
                         current_step_idx_--;
                     } else {
                         up_direction_ = true;
-                        if (pattern.size() > 1) current_step_idx_ = 1;
+                        if (pattern_len_ > 1) current_step_idx_ = 1;
                     }
                 }
                 break;
             case ArpMode::Random:
-                current_step_idx_ = rand() % pattern.size();
+                current_step_idx_ = rand() % pattern_len_;
                 break;
             case ArpMode::Chord:
                 current_step_idx_ = 0;
@@ -183,8 +251,12 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
         }
 
         if (mode_ == ArpMode::Chord) {
-            // Emit NoteOn for all notes in pattern simultaneously
-            for (const auto& hn : pattern) {
+            // Emit NoteOn for all notes in pattern simultaneously and track them
+            active_chord_count_ = std::min(pattern_len_, kMaxChordNotes);
+            for (size_t i = 0; i < active_chord_count_; ++i) {
+                const auto& hn = pattern_buffer_[i];
+                active_chord_notes_[i] = hn.note;
+
                 SynthEvent on_ev;
                 on_ev.type = EventType::NoteOn;
                 on_ev.source = EventSource::Arpeggiator;
@@ -194,9 +266,10 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
                 on_ev.timestamp_us = (uint32_t)esp_timer_get_time();
                 event_bus.send(on_ev);
             }
-            last_played_note_ = pattern[0].note;
+            last_played_note_ = -1;
         } else {
             // Emit NoteOn for single arpeggiated note
+            active_chord_count_ = 0;
             SynthEvent on_ev;
             on_ev.type = EventType::NoteOn;
             on_ev.source = EventSource::Arpeggiator;

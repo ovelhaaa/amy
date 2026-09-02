@@ -187,11 +187,17 @@ void HomeScreen::render(DisplayDriver& display) {
 
         display.drawHLine(0, 64, dw, DisplayDriver::kColorMidGray);
 
-        // 8 Macro Gauges adaptively positioned across 160px (y=66..126)
+        // 8 Gauges adaptively positioned across 160px (y=66..126)
         for (int i = 0; i < 8; ++i) {
             int16_t gx = 2 + i * 19;
             BarGauge g(gx, compact_layout::kGaugeY, compact_layout::kGaugeW, compact_layout::kGaugeH, gauges_[i].label());
-            g.setValue(macro_values_[i]);
+            if (bank_view_ == HomeKnobBankView::BankB_Engine) {
+                g.setValue(engine_values_[i]);
+                g.setColors(DisplayDriver::kColorAmber, DisplayDriver::kColorWhite);
+            } else {
+                g.setValue(macro_values_[i]);
+                g.setColors(DisplayDriver::kColorCyan, DisplayDriver::kColorWhite);
+            }
             g.draw(display);
         }
         return;

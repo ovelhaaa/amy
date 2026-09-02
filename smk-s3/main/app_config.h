@@ -8,9 +8,9 @@ namespace smk::config {
 // Audio Configuration & PCM5102A DAC GPIOs
 // ═══════════════════════════════════════════════
 constexpr uint32_t kSampleRateHz = 48000;
-constexpr uint16_t kBlockSize = 128;
-constexpr uint8_t  kDmaBufferCount = 3;
-constexpr uint16_t kDmaBufferFrames = 128;  // frames per DMA buffer
+constexpr uint16_t kBlockSize = 256;
+constexpr uint8_t  kDmaBufferCount = 4;
+constexpr uint16_t kDmaBufferFrames = 256;  // frames per DMA buffer
 
 constexpr int kI2sBclk  = 15; // PCM5102A BCK
 constexpr int kI2sLrclk = 16; // PCM5102A LCK (WS)
