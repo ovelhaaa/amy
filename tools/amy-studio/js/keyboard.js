@@ -94,6 +94,7 @@ class StudioKeyboardController {
     }
 
     container.appendChild(pianoKeys);
+    if (window.layerSplitManager) window.layerSplitManager.updateKeyboardVisuals();
   }
 
   setupEventListeners() {
@@ -135,14 +136,18 @@ class StudioKeyboardController {
     const el = document.getElementById(`key_${note}`);
     if (el) el.classList.add('active');
 
-    // Send to local AMY Audio Worklet
-    if (window.amyAudioBridge) {
-      window.amyAudioBridge.noteOn(0, note, this.velocity);
-    }
+    if (window.layerSplitManager) {
+      window.layerSplitManager.routeNoteOn(0, note, this.velocity);
+    } else {
+      // Send to local AMY Audio Worklet
+      if (window.amyAudioBridge) {
+        window.amyAudioBridge.noteOn(0, note, this.velocity);
+      }
 
-    // Send to connected ESP32-S3 hardware
-    if (window.esp32HardwareSync) {
-      window.esp32HardwareSync.noteOn(0, note, this.velocity);
+      // Send to connected ESP32-S3 hardware
+      if (window.esp32HardwareSync) {
+        window.esp32HardwareSync.noteOn(0, note, this.velocity);
+      }
     }
   }
 
@@ -153,12 +158,16 @@ class StudioKeyboardController {
     const el = document.getElementById(`key_${note}`);
     if (el) el.classList.remove('active');
 
-    if (window.amyAudioBridge) {
-      window.amyAudioBridge.noteOff(0, note);
-    }
+    if (window.layerSplitManager) {
+      window.layerSplitManager.routeNoteOff(0, note);
+    } else {
+      if (window.amyAudioBridge) {
+        window.amyAudioBridge.noteOff(0, note);
+      }
 
-    if (window.esp32HardwareSync) {
-      window.esp32HardwareSync.noteOff(0, note);
+      if (window.esp32HardwareSync) {
+        window.esp32HardwareSync.noteOff(0, note);
+      }
     }
   }
 

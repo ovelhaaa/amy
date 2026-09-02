@@ -747,3 +747,23 @@ footer.performance-footer {
 ::-webkit-scrollbar-thumb:hover {
   background: #384566;
 }
+
+/* ══════════════════════════════════════════════════════════
+   KEYBOARD SPLIT ZONES
+   ══════════════════════════════════════════════════════════ */
+.piano-key.zone-lower.white {
+  background: #102130 !important;
+  border-bottom: 3px solid var(--accent-cyan) !important;
+}
+.piano-key.zone-lower.black {
+  background: #061520 !important;
+  border-bottom: 3px solid var(--accent-cyan) !important;
+}
+.piano-key.zone-upper.white {
+  background: #11281e !important;
+  border-bottom: 3px solid var(--accent-green) !important;
+}
+.piano-key.zone-upper.black {
+  background: #061c12 !important;
+  border-bottom: 3px solid var(--accent-green) !important;
+}

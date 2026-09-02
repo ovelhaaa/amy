@@ -127,5 +127,45 @@ const DEFAULT_PATCH_TEMPLATE = {
     { name: "REL",  val: 40.0, label: "Release Time" },
     { name: "SPCE", val: 25.0, label: "Space / Reverb" },
     { name: "DRV",  val: 0.0,  label: "Drive / Saturation" }
-  ]
+  ],
+
+  // 16-Harmonic Partials (Additive)
+  harmonics: [
+    { num: 1, amp: 1.0, phase: 0.0 },
+    { num: 2, amp: 0.5, phase: 0.0 },
+    { num: 3, amp: 0.33, phase: 0.0 },
+    { num: 4, amp: 0.25, phase: 0.0 },
+    { num: 5, amp: 0.2, phase: 0.0 },
+    { num: 6, amp: 0.16, phase: 0.0 },
+    { num: 7, amp: 0.14, phase: 0.0 },
+    { num: 8, amp: 0.12, phase: 0.0 },
+    { num: 9, amp: 0.11, phase: 0.0 },
+    { num: 10, amp: 0.1, phase: 0.0 },
+    { num: 11, amp: 0.09, phase: 0.0 },
+    { num: 12, amp: 0.08, phase: 0.0 },
+    { num: 13, amp: 0.07, phase: 0.0 },
+    { num: 14, amp: 0.07, phase: 0.0 },
+    { num: 15, amp: 0.06, phase: 0.0 },
+    { num: 16, amp: 0.06, phase: 0.0 }
+  ],
+
+  // 6-Slot Modulation Matrix
+  mod_matrix: [
+    { source: 'lfo1', dest: 'cutoff', amount: 0.35 },
+    { source: 'eg1',  dest: 'cutoff', amount: 0.60 },
+    { source: 'vel',  dest: 'amp',    amount: 0.75 },
+    { source: 'modwheel', dest: 'pitch', amount: 0.15 },
+    { source: 'none', dest: 'none',   amount: 0.0 },
+    { source: 'none', dest: 'none',   amount: 0.0 }
+  ],
+
+  // Keyboard Layer & Split Configuration
+  layer_config: {
+    mode: 'single', // 'single', 'layer', 'split'
+    split_point: 60,
+    balance: 0.5,
+    layer_b_patch: 4,
+    layer_b_detune: 12,
+    layer_b_transpose: 0
+  }
 };

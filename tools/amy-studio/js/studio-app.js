@@ -16,15 +16,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.eg0Canvas = new InteractiveEnvelopeCanvas('eg0Canvas', 0);
   window.eg1Canvas = new InteractiveEnvelopeCanvas('eg1Canvas', 1);
 
-  // 4. Initialize Piano Roll & Sample Browser & Scenes
+  // 4. Initialize Additive Synthesis, Mod Matrix & Layer/Split
+  window.additiveHarmonicEditor = new AdditiveHarmonicEditor('additiveDrawbarsContainer', 'additiveWaveformCanvas');
+  window.modMatrixManager = new ModulationMatrixManager('modMatrixContainer');
+  window.layerSplitManager = new LayerSplitManager('layerSplitContainer');
+
+  // 5. Initialize Piano Roll & Sample Browser & Scenes
   window.melodicPianoRoll = new MelodicPianoRoll('pianoRollContainer');
   window.sampleBrowser = new SampleBrowserManager('sampleBrowserContainer');
   window.sceneManager = new StudioSceneManager('scenesMatrixContainer');
 
-  // 5. Initialize Factory Patches Selector
+  // 6. Initialize Factory Patches Selector
   populatePatchDropdown();
 
-  // 6. Initialize Rotary Knobs & Sliders Interaction
+  // 7. Initialize Rotary Knobs & Sliders Interaction
   setupKnobInteractions();
 
   // 7. Initialize Sequencer Grid
@@ -429,6 +434,37 @@ function setupHeaderControls() {
     URL.revokeObjectURL(url);
   });
 
+  // Export C++ Factory Table File
+  document.getElementById('btnExportCpp')?.addEventListener('click', () => {
+    if (window.cppPatchTableGenerator) {
+      window.cppPatchTableGenerator.downloadCppFile();
+    }
+  });
+
+  // Download Complete SPIFFS Backup (.s3b)
+  document.getElementById('btnBackupSpiffs')?.addEventListener('click', () => {
+    if (window.spiffsBackupManager) {
+      window.spiffsBackupManager.downloadBackup();
+    }
+  });
+
+  // Restore Complete SPIFFS Backup (.s3b)
+  document.getElementById('fileRestoreS3b')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bundle = await window.spiffsBackupManager.parseBackupFile(evt.target.result);
+        await window.spiffsBackupManager.restoreBackup(bundle, true);
+      } catch (err) {
+        alert("Erro ao restaurar backup .s3b: " + err.message);
+      }
+      e.target.value = '';
+    };
+    reader.readAsArrayBuffer(file);
+  });
+
   document.getElementById('fileImportPatch')?.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -584,5 +620,15 @@ function updateUiFromState(patch, changedProp) {
     
     const algoSelect = document.getElementById('dx7AlgoSelect');
     if (algoSelect) algoSelect.value = patch.algorithm;
+  }
+
+  // Update Additive Harmonics if present
+  if (patch.harmonics && window.additiveHarmonicEditor) {
+    window.additiveHarmonicEditor.importData(patch.harmonics);
+  }
+
+  // Update Mod Matrix if present
+  if (patch.mod_matrix && window.modMatrixManager) {
+    window.modMatrixManager.importData(patch.mod_matrix);
   }
 }

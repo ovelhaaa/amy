@@ -34,6 +34,11 @@
   <script type="text/javascript" src="js/sequencer.js"></script>
   <script type="text/javascript" src="js/visualizers.js"></script>
   <script type="text/javascript" src="js/keyboard.js"></script>
+  <script type="text/javascript" src="js/additive-editor.js"></script>
+  <script type="text/javascript" src="js/mod-matrix.js"></script>
+  <script type="text/javascript" src="js/layer-split-manager.js"></script>
+  <script type="text/javascript" src="js/cpp-generator.js"></script>
+  <script type="text/javascript" src="js/backup-manager.js"></script>
   <script type="text/javascript" src="js/hardware-sync.js"></script>
   <script type="text/javascript" src="js/studio-app.js"></script>
 </head>
@@ -71,6 +76,12 @@
     <div class="header-actions">
       <button id="btnConnectEsp32" class="btn btn-primary">🔌 CONECTAR ESP32</button>
       <button id="btnUploadFlash" class="btn btn-gold">💾 GRAVAR FLASH</button>
+      <button id="btnBackupSpiffs" class="btn btn-gold" title="Download de backup completo da Flash (.s3b)">📦 BACKUP (.S3B)</button>
+      <label class="btn btn-gold" style="margin: 0; cursor: pointer;" title="Restaurar backup completo .s3b">
+        📥 RESTAURAR
+        <input type="file" id="fileRestoreS3b" accept=".s3b" style="display: none;">
+      </label>
+      <button id="btnExportCpp" class="btn" title="Exportar tabela de patches em código C++ para factory_patches.cpp">📄 C++ CODE</button>
       <button id="btnExportPatch" class="btn">📤 EXPORTAR</button>
       <label class="btn" style="margin: 0; cursor: pointer;">
         📥 IMPORTAR
@@ -90,6 +101,7 @@
   <nav class="view-tabs">
     <div class="tabs-group">
       <button class="tab-button active" data-view="viewSynth">🎛️ SÍNTESE & ENVELOPES</button>
+      <button class="tab-button" data-view="viewAdditive">🌈 SÍNTESE ADITIVA (16P)</button>
       <button class="tab-button" data-view="viewJuno">🎹 ROLAND JUNO-106</button>
       <button class="tab-button" data-view="viewFm">💠 DX7 FM MATRIX</button>
       <button class="tab-button" data-view="viewSequencer">🥁 SEQUENCER & PIANO ROLL</button>
@@ -215,6 +227,53 @@
           </div>
           <div class="envelope-canvas-box">
             <canvas id="eg1Canvas" width="280" height="96"></canvas>
+          </div>
+        </div>
+
+        <!-- Modulation Matrix Card (6 Slots) -->
+        <div class="panel-card" style="grid-column: 1 / -1; background: var(--bg-card);">
+          <div class="card-header">
+            <span class="card-title">MATRIZ DE MODULAÇÃO <span class="highlight">MOD MATRIX (6 SLOTS)</span></span>
+            <span class="param-val" style="color: var(--accent-cyan);">ROTEAMENTO BIPOLAR AMY</span>
+          </div>
+          <div id="modMatrixContainer" style="margin-top: 6px;"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── TAB: SÍNTESE ADITIVA (16 PARCIAIS / FOURIER) ── -->
+    <div id="viewAdditive" class="view-container">
+      <div class="panel-grid">
+        
+        <!-- Additive Drawbars Card -->
+        <div class="panel-card" style="grid-column: span 2; background: linear-gradient(180deg, #151a27 0%, #0d111a 100%);">
+          <div class="card-header">
+            <span class="card-title">DRAWBARS DE HARMÔNICOS <span class="highlight">(1..16x FUNDAMENTAL)</span></span>
+            <div style="display: flex; gap: 4px;">
+              <button class="btn" style="font-size: 9px;" onclick="additiveHarmonicEditor.applyPreset('sine')">SINE</button>
+              <button class="btn" style="font-size: 9px;" onclick="additiveHarmonicEditor.applyPreset('saw')">SAW</button>
+              <button class="btn" style="font-size: 9px;" onclick="additiveHarmonicEditor.applyPreset('square')">SQUARE</button>
+              <button class="btn" style="font-size: 9px;" onclick="additiveHarmonicEditor.applyPreset('triangle')">TRI</button>
+              <button class="btn btn-gold" style="font-size: 9px;" onclick="additiveHarmonicEditor.applyPreset('organ888')">ORGAN 888</button>
+              <button class="btn" style="font-size: 9px;" onclick="additiveHarmonicEditor.applyPreset('bell')">BELL</button>
+              <button class="btn" style="font-size: 9px;" onclick="additiveHarmonicEditor.applyPreset('formantAh')">VOX AH</button>
+            </div>
+          </div>
+          <div id="additiveDrawbarsContainer" style="margin-top: 8px;"></div>
+        </div>
+
+        <!-- Composite Fourier Waveform Preview -->
+        <div class="panel-card" style="background: var(--bg-card);">
+          <div class="card-header">
+            <span class="card-title">ONDA COMPOSTA <span class="highlight">FOURIER SUM</span></span>
+            <span class="param-val" style="color: var(--accent-cyan);">BYO_PARTIALS (W10)</span>
+          </div>
+          <div style="background: #0a0d14; border: 1px solid #1c2436; border-radius: 6px; padding: 6px; display: flex; justify-content: center;">
+            <canvas id="additiveWaveformCanvas" width="280" height="110"></canvas>
+          </div>
+          <div style="margin-top: 10px; font-size: 10px; color: #94a3b8; line-height: 1.4;">
+            <p>A síntese aditiva reconstrói a onda através da superposição de 16 osciladores senoidais parciais com amplitudes e fases individuais, mapeados automaticamente para os osciladores AMY <code style="color: var(--accent-cyan);">v1..v16</code> sob o oscilador mestre <code style="color: var(--accent-green);">v0 (BYO_PARTIALS)</code>.</p>
           </div>
         </div>
 
@@ -694,6 +753,9 @@
         </div>
       </div>
     </div>
+
+    <!-- Layer & Split Controls -->
+    <div id="layerSplitContainer" style="flex: 1; min-width: 260px;"></div>
 
     <!-- Virtual Piano Keyboard -->
     <div class="piano-keyboard-container" id="pianoKeyboardContainer">
