@@ -134,6 +134,22 @@ class Dx7SysExImporter {
       });
     }
 
+    let wireCommand = "";
+    operators.forEach((op) => {
+      // Map DX7 operators 6..1 to AMY voices 2..7
+      const voice = 2 + (6 - op.opNum);
+      const times = op.rates.map(r => Math.max(1, (99 - r) * 20)); // Rough DX7 rate to ms conversion
+      const lvls = op.levels.map(l => (l / 99.0).toFixed(3));
+      
+      // A<time1>,<val1>,<time2>,<val2>...
+      const envStr = `A0,0.000,${times[0]},${lvls[0]},${times[1]},${lvls[1]},${times[2]},${lvls[2]},${times[3]},${lvls[3]}`;
+      
+      wireCommand += `v${voice}a${op.ratio.toFixed(3)}P0.25${envStr}L1I${op.level.toFixed(3)}Z`;
+    });
+    
+    // Add Algorithm and Feedback on Voice 0
+    wireCommand += `v0w8o${algo}b${(feedback / 7.0).toFixed(3)}Z`;
+
     return {
       id: 1024 + index,
       name: name,
@@ -142,7 +158,7 @@ class Dx7SysExImporter {
       algorithm: algo,
       feedback: feedback / 7.0,
       operators: operators,
-      wireCommand: `v0w8o${algo}b${(feedback / 7.0).toFixed(3)}Z`
+      wireCommand: wireCommand
     };
   }
 }

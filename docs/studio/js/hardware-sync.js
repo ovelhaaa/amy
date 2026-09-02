@@ -57,8 +57,9 @@ class ESP32HardwareSyncManager {
       // Request initial status and patch list from ESP32
       setTimeout(() => {
         this.sendSerialCommand("status\n");
-        this.sendSerialCommand("patch list\n");
-        this.sendSerialCommand("audio status\n");
+        this.sendSerialCommand("patch_list\n");
+        this.sendSerialCommand("audio_status\n");
+        this.sendSerialCommand("storage_info\n");
       }, 300);
 
       return true;
@@ -124,28 +125,63 @@ class ESP32HardwareSyncManager {
   handleIncomingLine(line) {
     this.log(line, "info");
 
-    // Parse status responses
-    if (line.includes("DSP LOAD:") || line.includes("DSP Load:")) {
-      const match = line.match(/(\d+(\.\d+)?)%/);
-      if (match) this.telemetry.dspLoadPercent = parseFloat(match[1]);
-      if (this.onTelemetryUpdate) this.onTelemetryUpdate(this.telemetry);
-    }
-
-    if (line.includes("UNDERRUNS:") || line.includes("Underruns:")) {
-      const match = line.match(/UNDERRUNS:\s*(\d+)/i);
+    // 1. Audio status and Underruns
+    if (line.includes("Underruns:") || line.includes("UNDERRUNS:")) {
+      const match = line.match(/Underruns[:=]\s*(\d+)/i);
       if (match) this.telemetry.underruns = parseInt(match[1]);
       if (this.onTelemetryUpdate) this.onTelemetryUpdate(this.telemetry);
     }
 
-    if (line.startsWith("[#") && line.includes("]")) {
-      // Patch list line format: [#000] Patch Name - Category
-      const match = line.match(/\[#(\d+)\]\s*([^-]+)\s*-\s*(.+)/);
+    // 2. Memory & PSRAM
+    if (line.includes("FreeInternal=") || line.includes("Internal RAM Free:")) {
+      const ramMatch = line.match(/(?:FreeInternal=|Internal RAM Free:\s*)(\d+)/i);
+      if (ramMatch) this.telemetry.freeRamKb = Math.round(parseInt(ramMatch[1]) / 1024);
+      const psramMatch = line.match(/(?:FreePSRAM=|PSRAM Free:\s*)(\d+)/i);
+      if (psramMatch) this.telemetry.freePsramMb = (parseInt(psramMatch[1]) / (1024 * 1024)).toFixed(1);
+      if (this.onTelemetryUpdate) this.onTelemetryUpdate(this.telemetry);
+    }
+
+    // 3. Hardware / CPU
+    if (line.includes("CPUFreq=") || line.includes("CPU: 240MHz")) {
+      const cpuMatch = line.match(/CPUFreq=(\d+)MHz/i);
+      if (cpuMatch) this.telemetry.cpuFreqMhz = parseInt(cpuMatch[1]);
+      if (this.onTelemetryUpdate) this.onTelemetryUpdate(this.telemetry);
+    }
+
+    // 4. Periodic System Status Line
+    if (line.startsWith("Status:") && line.includes("Voices=")) {
+      const voiceMatch = line.match(/Voices=(\d+)/i);
+      if (voiceMatch) this.telemetry.activeVoices = parseInt(voiceMatch[1]);
+      const storageMatch = line.match(/StorageUsed=(\d+)KB/i);
+      if (storageMatch) this.telemetry.spiffsUsedKb = parseInt(storageMatch[1]);
+      if (this.onTelemetryUpdate) this.onTelemetryUpdate(this.telemetry);
+    }
+
+    // 5. SPIFFS Flash Partition Stats
+    if (line.includes("SPIFFS Partition:") || line.includes("SPIFFS Mounted")) {
+      const totalMatch = line.match(/Total=(\d+)\s*KB/i);
+      const usedMatch = line.match(/Used=(\d+)\s*KB/i);
+      if (totalMatch) this.telemetry.spiffsTotalKb = parseInt(totalMatch[1]);
+      if (usedMatch) this.telemetry.spiffsUsedKb = parseInt(usedMatch[1]);
+      if (this.onTelemetryUpdate) this.onTelemetryUpdate(this.telemetry);
+    }
+
+    // 6. Factory Patches List
+    if (line.match(/^\[#?\d+\]/)) {
+      // Formats: [000] Name (Voices: 10, EnginePatch: 0) OR [#000] Name - Category
+      const match = line.match(/^\[#?(\d+)\]\s+([^(\-]+)(?:-|\(|\n|$)/);
       if (match) {
         const slot = parseInt(match[1]);
         const name = match[2].trim();
-        const cat = match[3].trim();
-        this.flashPatches.push({ slot, name, cat });
-        if (this.onPatchListUpdate) this.onPatchListUpdate(this.flashPatches);
+        const catMatch = line.match(/-\s*([^(\n]+)/) || line.match(/EnginePatch:\s*(\d+)/);
+        const cat = catMatch ? catMatch[1].trim() : "Synth";
+        
+        // Avoid duplicate additions
+        const exists = this.flashPatches.some(p => p.slot === slot);
+        if (!exists) {
+          this.flashPatches.push({ slot, name, cat });
+          if (this.onPatchListUpdate) this.onPatchListUpdate(this.flashPatches);
+        }
       }
     }
   }
@@ -167,27 +203,62 @@ class ESP32HardwareSyncManager {
 
   noteOn(channel, note, velocity) {
     if (!this.isConnected) return;
-    this.sendSerialCommand(`v0n${note}l${velocity.toFixed(3)}Z`);
+    const synthId = (channel === 9) ? 10 : (channel === 1 ? 2 : 1);
+    this.sendSerialCommand(`i${synthId}n${note}l${velocity.toFixed(3)}Z`);
   }
 
   noteOff(channel, note) {
     if (!this.isConnected) return;
-    this.sendSerialCommand(`v0n${note}l0Z`);
+    const synthId = (channel === 9) ? 10 : (channel === 1 ? 2 : 1);
+    this.sendSerialCommand(`i${synthId}n${note}l0Z`);
   }
 
   pitchBend(channel, bendVal) {
     if (!this.isConnected) return;
-    this.sendSerialCommand(`v0f,,,,,,${bendVal.toFixed(3)}Z`);
+    const synthId = (channel === 9) ? 10 : (channel === 1 ? 2 : 1);
+    this.sendSerialCommand(`i${synthId}s${bendVal.toFixed(3)}Z`);
   }
 
   controlChange(channel, cc, val) {
     if (!this.isConnected) return;
-    this.sendSerialCommand(`ic${channel},${cc},${val}Z`);
+    // CC mapping or parameter trigger
+    this.sendSerialCommand(`i1c${channel},${cc},${val}Z`);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // BINARY PACKING UTILITIES (.s3p / .s3s)
+  // ══════════════════════════════════════════════════════════
+  packPatchToS3P(patchData) {
+    const jsonStr = JSON.stringify(patchData);
+    const payload = new TextEncoder().encode(jsonStr);
+    const header = new Uint8Array([0x53, 0x33, 0x50, 0x01]); // 'S' '3' 'P' v1
+    const s3p = new Uint8Array(header.length + payload.length);
+    s3p.set(header);
+    s3p.set(payload, header.length);
+    return s3p;
+  }
+
+  unpackS3P(bytes) {
+    if (bytes[0] === 0x53 && bytes[1] === 0x33 && bytes[2] === 0x50) {
+      const payload = bytes.slice(4);
+      const jsonStr = new TextDecoder().decode(payload);
+      return JSON.parse(jsonStr);
+    }
+    throw new Error("Formato .s3p inválido ou corrompido");
+  }
+
+  packSceneToS3S(sceneData) {
+    const jsonStr = JSON.stringify(sceneData);
+    const payload = new TextEncoder().encode(jsonStr);
+    const header = new Uint8Array([0x53, 0x33, 0x53, 0x01]); // 'S' '3' 'S' v1
+    const s3s = new Uint8Array(header.length + payload.length);
+    s3s.set(header);
+    s3s.set(payload, header.length);
+    return s3s;
   }
 
   // ══════════════════════════════════════════════════════════
   // FLASH SPIFFS PATCH UPLOAD & BACKUP
-  // ══════════════════════════════════════════════════════════
   async uploadPatchToFlash(slotId, patchData) {
     if (!this.isConnected) {
       alert("Conecte o ESP32-S3 via Serial para transferir o patch!");
@@ -196,30 +267,46 @@ class ESP32HardwareSyncManager {
 
     this.log(`[Flash Manager] Gravando Patch #${slotId} ("${patchData.name}") na Flash SPIFFS...`, "info");
     
+    if (this.onProgressUpdate) this.onProgressUpdate(0);
+
     // 1. Send synth wire command to set parameters on active voice
     if (window.synthStateManager) {
       window.synthStateManager.applyFullPatch();
     }
 
+    if (this.onProgressUpdate) this.onProgressUpdate(30);
+
+    // Empacotar binário para log/validação (O firmware atual salva o estado ativo via comando 'patch save')
+    const s3pBytes = this.packPatchToS3P(patchData);
+    this.log(`[Flash Manager] Patch empacotado para SPIFFS: ${s3pBytes.length} bytes (.s3p)`, "info");
+
+    if (this.onProgressUpdate) this.onProgressUpdate(70);
+
     // 2. Instruct firmware to persist active patch into Flash slotId
-    this.sendSerialCommand(`patch save ${slotId}`);
+    this.sendSerialCommand(`patch_save ${slotId}`);
+    
+    if (this.onProgressUpdate) {
+      this.onProgressUpdate(100);
+      setTimeout(() => this.onProgressUpdate(null), 2000); // hide after 2s
+    }
+
     this.log(`[Flash Manager] Patch #${slotId} gravado com sucesso!`, "success");
     
     // Refresh patch list
-    setTimeout(() => this.sendSerialCommand("patch list"), 500);
+    setTimeout(() => this.sendSerialCommand("patch_list"), 500);
     return true;
   }
 
   async loadPatchFromFlash(slotId) {
     if (!this.isConnected) return;
     this.log(`[Flash Manager] Carregando Patch #${slotId} da Flash SPIFFS...`, "info");
-    this.sendSerialCommand(`patch load ${slotId}`);
+    this.sendSerialCommand(`patch_load ${slotId}`);
   }
 
   async refreshFlashPatchList() {
     if (!this.isConnected) return;
     this.flashPatches = [];
-    this.sendSerialCommand("patch list");
+    this.sendSerialCommand("patch_list");
   }
 
   log(msg, type = 'info') {

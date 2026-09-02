@@ -67,7 +67,16 @@ class MidiLearnManager {
           const idx = parseInt(key.split('_')[1]);
           window.synthStateManager.setMacro(idx, mappedVal);
         } else {
-          window.synthStateManager.setParam(key, mappedVal, false);
+          const junoSlider = document.querySelector(`.juno-slider[data-juno="${key}"]`);
+          if (junoSlider) {
+            junoSlider.value = mappedVal;
+            if (window.juno106Panel) window.juno106Panel.setVcfParam(key, mappedVal);
+          } else {
+            window.synthStateManager.setParam(key, mappedVal, false);
+            // If it's a generic slider mapped by data-param (like volume), update it
+            const genericSlider = document.querySelector(`input[type="range"][data-param="${key}"]`);
+            if (genericSlider) genericSlider.value = mappedVal;
+          }
         }
       }
     }

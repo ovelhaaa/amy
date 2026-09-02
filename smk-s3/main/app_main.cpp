@@ -337,6 +337,14 @@ static void app_init_task(void* arg) {
                             }
                         } else {
                             // Pad Bank B (Pads 9..16) Contextual Navigation & Shortcuts
+                            // Apply 180ms debounce window to prevent silicone pad mechanical re-triggering
+                            static int64_t s_last_bank_b_nav_us = 0;
+                            int64_t now_us = esp_timer_get_time();
+                            if (now_us - s_last_bank_b_nav_us < 180000) {
+                                continue; // Ignore rapid mechanical pad bounce
+                            }
+                            s_last_bank_b_nav_us = now_us;
+
                             uint8_t b_idx = pad_idx - 8;
                             if (ui_manager && ui_manager->activeScreenId() == smk::ScreenId::Sequencer && step_sequencer) {
                                 switch (b_idx) {
@@ -669,6 +677,7 @@ static void app_init_task(void* arg) {
                      snapshot.active_voices);
         }
     }
+    vTaskDelete(NULL);
 }
 
 extern "C" void app_main() {

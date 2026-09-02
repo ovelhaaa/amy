@@ -203,22 +203,26 @@ class ESP32HardwareSyncManager {
 
   noteOn(channel, note, velocity) {
     if (!this.isConnected) return;
-    this.sendSerialCommand(`v0n${note}l${velocity.toFixed(3)}Z`);
+    const synthId = (channel === 9) ? 10 : (channel === 1 ? 2 : 1);
+    this.sendSerialCommand(`i${synthId}n${note}l${velocity.toFixed(3)}Z`);
   }
 
   noteOff(channel, note) {
     if (!this.isConnected) return;
-    this.sendSerialCommand(`v0n${note}l0Z`);
+    const synthId = (channel === 9) ? 10 : (channel === 1 ? 2 : 1);
+    this.sendSerialCommand(`i${synthId}n${note}l0Z`);
   }
 
   pitchBend(channel, bendVal) {
     if (!this.isConnected) return;
-    this.sendSerialCommand(`v0f,,,,,,${bendVal.toFixed(3)}Z`);
+    const synthId = (channel === 9) ? 10 : (channel === 1 ? 2 : 1);
+    this.sendSerialCommand(`i${synthId}s${bendVal.toFixed(3)}Z`);
   }
 
   controlChange(channel, cc, val) {
     if (!this.isConnected) return;
-    this.sendSerialCommand(`ic${channel},${cc},${val}Z`);
+    // CC mapping or parameter trigger
+    this.sendSerialCommand(`i1c${channel},${cc},${val}Z`);
   }
 
   // ══════════════════════════════════════════════════════════

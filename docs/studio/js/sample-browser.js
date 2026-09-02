@@ -85,14 +85,15 @@ class SampleBrowserManager {
       `;
 
       card.addEventListener('click', () => {
-        // Audition sample via AMY PCM wave (wave=7)
-        if (window.amyAudioBridge) {
-          window.amyAudioBridge.sendWire(`v1w7p${sample.id}l1Z`);
-          window.amyAudioBridge.noteOn(1, sample.note, 0.9);
-          setTimeout(() => {
-            if (window.amyAudioBridge) window.amyAudioBridge.noteOff(1, sample.note);
-          }, 400);
-        }
+        // Audition sample via AMY PCM wave (wave=7) on oscillator 0
+        const playWire = `v0w7p${sample.id}n${sample.note}l1.0Z`;
+        const stopWire = `v0l0Z`;
+        if (window.amyAudioBridge) window.amyAudioBridge.sendWire(playWire);
+        if (window.esp32HardwareSync) window.esp32HardwareSync.sendWireIfConnected(playWire);
+        setTimeout(() => {
+          if (window.amyAudioBridge) window.amyAudioBridge.sendWire(stopWire);
+          if (window.esp32HardwareSync) window.esp32HardwareSync.sendWireIfConnected(stopWire);
+        }, 600);
       });
 
       card.addEventListener('mouseenter', () => {

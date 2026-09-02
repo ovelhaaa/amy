@@ -136,6 +136,14 @@ class StudioKeyboardController {
     const el = document.getElementById(`key_${note}`);
     if (el) el.classList.add('active');
 
+    // Feed Arpeggiator & Live Sequencer Recording
+    if (window.amyStudioSequencer) {
+      window.amyStudioSequencer.addHeldNote(note);
+      if (window.amyStudioSequencer.isRecording) {
+        window.amyStudioSequencer.recordLiveNote(note, this.velocity);
+      }
+    }
+
     if (window.layerSplitManager) {
       window.layerSplitManager.routeNoteOn(0, note, this.velocity);
     } else {
@@ -157,6 +165,11 @@ class StudioKeyboardController {
 
     const el = document.getElementById(`key_${note}`);
     if (el) el.classList.remove('active');
+
+    // Feed Arpeggiator release
+    if (window.amyStudioSequencer) {
+      window.amyStudioSequencer.removeHeldNote(note);
+    }
 
     if (window.layerSplitManager) {
       window.layerSplitManager.routeNoteOff(0, note);

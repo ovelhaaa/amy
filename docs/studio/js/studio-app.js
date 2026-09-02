@@ -16,15 +16,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.eg0Canvas = new InteractiveEnvelopeCanvas('eg0Canvas', 0);
   window.eg1Canvas = new InteractiveEnvelopeCanvas('eg1Canvas', 1);
 
-  // 4. Initialize Piano Roll & Sample Browser & Scenes
+  // 4. Initialize Additive Synthesis, Mod Matrix & Layer/Split
+  window.additiveHarmonicEditor = new AdditiveHarmonicEditor('additiveDrawbarsContainer', 'additiveWaveformCanvas');
+  window.modMatrixManager = new ModulationMatrixManager('modMatrixContainer');
+  window.layerSplitManager = new LayerSplitManager('layerSplitContainer');
+
+  // 5. Initialize Piano Roll & Sample Browser & Scenes
   window.melodicPianoRoll = new MelodicPianoRoll('pianoRollContainer');
   window.sampleBrowser = new SampleBrowserManager('sampleBrowserContainer');
   window.sceneManager = new StudioSceneManager('scenesMatrixContainer');
 
-  // 5. Initialize Factory Patches Selector
+  // 5b. Initialize M-VAVE SMK25 V2 8-Pad Performance Bank
+  window.padBankManager = new PadBankManager('padBankContainer');
+
+  // 6. Initialize Factory Patches Selector
   populatePatchDropdown();
 
-  // 6. Initialize Rotary Knobs & Sliders Interaction
+  // 7. Initialize Rotary Knobs & Sliders Interaction
   setupKnobInteractions();
 
   // 7. Initialize Sequencer Grid
@@ -173,6 +181,19 @@ function setupKnobInteractions() {
         window.synthStateManager.setParam(param, val);
       }
     });
+
+    const triggerMidiLearn = (e) => {
+      e.preventDefault();
+      const param = slider.dataset.param || slider.dataset.juno;
+      const min = parseFloat(slider.min || 0);
+      const max = parseFloat(slider.max || 100);
+      if (param) window.midiLearnManager.startLearn(param, slider, min, max);
+    };
+
+    slider.addEventListener('mousedown', (e) => {
+      if (e.altKey || e.button === 2) triggerMidiLearn(e);
+    });
+    slider.addEventListener('contextmenu', triggerMidiLearn);
   });
 }
 
@@ -247,6 +268,20 @@ function setupMidiLearn() {
           const cc = ev.data[1];
           const val = ev.data[2];
           window.midiLearnManager.processMidiMessage(channel, cc, val);
+        } else if (status === 0x90 && ev.data[2] > 0) {
+          const note = ev.data[1];
+          const vel = ev.data[2] / 127.0;
+          if (window.amyStudioSequencer) {
+            window.amyStudioSequencer.addHeldNote(note);
+            if (window.amyStudioSequencer.isRecording) {
+              window.amyStudioSequencer.recordLiveNote(note, vel);
+            }
+          }
+        } else if (status === 0x80 || (status === 0x90 && ev.data[2] === 0)) {
+          const note = ev.data[1];
+          if (window.amyStudioSequencer) {
+            window.amyStudioSequencer.removeHeldNote(note);
+          }
         }
       }
     };
@@ -314,6 +349,85 @@ function setupSequencerGrid() {
       }
     }
   };
+
+  // Arpeggiator UI Controls
+  const btnToggleArp = document.getElementById('btnToggleArp');
+  const arpModeSelect = document.getElementById('arpModeSelect');
+  const arpDivSelect = document.getElementById('arpDivSelect');
+  const arpOctSelect = document.getElementById('arpOctSelect');
+  const btnToggleArpLatch = document.getElementById('btnToggleArpLatch');
+  const arpSwingSlider = document.getElementById('arpSwingSlider');
+
+  btnToggleArp?.addEventListener('click', () => {
+    const isEnabled = !seq.arpEnabled;
+    seq.setArpEnabled(isEnabled);
+    btnToggleArp.innerText = isEnabled ? '⚡ ARPEGIADOR: ON' : '⚡ ARPEGIADOR: OFF';
+    btnToggleArp.classList.toggle('btn-primary', isEnabled);
+  });
+
+  arpModeSelect?.addEventListener('change', (e) => {
+    seq.setArpMode(e.target.value);
+  });
+
+  arpDivSelect?.addEventListener('change', (e) => {
+    seq.setArpDivision(e.target.value);
+  });
+
+  arpOctSelect?.addEventListener('change', (e) => {
+    seq.setArpOctaves(parseInt(e.target.value));
+  });
+
+  btnToggleArpLatch?.addEventListener('click', () => {
+    const latch = !seq.arpLatch;
+    seq.setArpLatch(latch);
+    btnToggleArpLatch.innerText = latch ? 'LATCH: ON' : 'LATCH: OFF';
+    btnToggleArpLatch.classList.toggle('btn-gold', latch);
+  });
+
+  arpSwingSlider?.addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    seq.setArpSwing(val);
+    const lbl = document.getElementById('val_arpSwing');
+    if (lbl) lbl.innerText = `${val}%`;
+  });
+
+  // Standard MIDI (.mid) Export & Import
+  document.getElementById('btnExportMidi')?.addEventListener('click', () => {
+    const steps = window.melodicPianoRoll ? window.melodicPianoRoll.steps : [];
+    window.standardMidiFileHandler.downloadMidi(seq.drumTracks, steps, seq.bpm);
+  });
+
+  document.getElementById('fileImportMidi')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const parsed = window.standardMidiFileHandler.importMidiFile(evt.target.result);
+        if (parsed.bpm) {
+          seq.setBpm(parsed.bpm);
+          const bpmIn = document.getElementById('seqBpmInput');
+          if (bpmIn) bpmIn.value = parsed.bpm;
+        }
+        if (parsed.pianoRollSteps && window.melodicPianoRoll) {
+          window.melodicPianoRoll.steps = parsed.pianoRollSteps;
+          window.melodicPianoRoll.render();
+        }
+        if (parsed.drumTracks) {
+          parsed.drumTracks.forEach(dt => {
+            const track = seq.drumTracks.find(t => t.note === dt.note);
+            if (track) track.pattern = dt.pattern;
+          });
+          setupSequencerGrid();
+        }
+        alert("Arquivo MIDI (.mid) importado com sucesso para o Sequenciador!");
+      } catch (err) {
+        alert("Erro ao importar arquivo MIDI: " + err.message);
+      }
+      e.target.value = '';
+    };
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 // ══════════════════════════════════════════════════════════
@@ -368,7 +482,37 @@ function setupHeaderControls() {
   }
 
   document.getElementById('btnPanic')?.addEventListener('click', () => {
+    // 1. Panic AMY WebAudio Bridge
     if (window.amyAudioBridge) window.amyAudioBridge.panic();
+
+    // 2. Panic connected ESP32-S3 hardware
+    if (window.esp32HardwareSync && window.esp32HardwareSync.isConnected) {
+      window.esp32HardwareSync.sendSerialCommand('panic');
+      window.esp32HardwareSync.sendWireIfConnected('S131072Z');
+    }
+
+    // 3. Stop sequencer if running
+    if (window.amyStudioSequencer && window.amyStudioSequencer.isPlaying) {
+      window.amyStudioSequencer.stop();
+      const btnPlay = document.getElementById('btnSeqPlay');
+      if (btnPlay) {
+        btnPlay.innerText = '▶ PLAY';
+        btnPlay.classList.remove('btn-danger');
+        btnPlay.classList.add('btn-primary');
+      }
+    }
+
+    // 4. Clear virtual keyboard active keys
+    if (window.studioKeyboard) {
+      window.studioKeyboard.activeKeys.forEach(n => window.studioKeyboard.triggerNoteOff(n));
+      window.studioKeyboard.activeKeys.clear();
+      document.querySelectorAll('.piano-key').forEach(k => k.classList.remove('active'));
+    }
+
+    // 5. Clear sequencer held notes
+    if (window.amyStudioSequencer) {
+      window.amyStudioSequencer.heldNotes = [];
+    }
   });
 
   document.getElementById('btnSeqPlay')?.addEventListener('click', (e) => {
@@ -377,6 +521,37 @@ function setupHeaderControls() {
     e.target.innerText = seq.isPlaying ? '⏹ STOP' : '▶ PLAY';
     e.target.classList.toggle('btn-danger', seq.isPlaying);
     e.target.classList.toggle('btn-primary', !seq.isPlaying);
+  });
+
+  // Live Step Record Binders
+  const updateRecButtons = (isRec) => {
+    const b1 = document.getElementById('btnRecordSeq');
+    const b2 = document.getElementById('btnRecordSeqView');
+    [b1, b2].forEach(btn => {
+      if (btn) {
+        btn.innerText = isRec ? '⏹ REC ON' : '⏺ REC';
+        btn.classList.toggle('btn-danger', isRec);
+      }
+    });
+
+    const btnPlay = document.getElementById('btnSeqPlay');
+    if (btnPlay && window.amyStudioSequencer.isPlaying) {
+      btnPlay.innerText = '⏹ STOP';
+      btnPlay.classList.add('btn-danger');
+      btnPlay.classList.remove('btn-primary');
+    }
+  };
+
+  if (window.amyStudioSequencer) {
+    window.amyStudioSequencer.onRecordStateChange = updateRecButtons;
+  }
+
+  document.getElementById('btnRecordSeq')?.addEventListener('click', () => {
+    window.amyStudioSequencer.toggleRecord();
+  });
+
+  document.getElementById('btnRecordSeqView')?.addEventListener('click', () => {
+    window.amyStudioSequencer.toggleRecord();
   });
 
   document.getElementById('btnUndo')?.addEventListener('click', () => window.synthStateManager.undo());
@@ -406,11 +581,45 @@ function setupHeaderControls() {
 
   document.getElementById('btnExportPatch')?.addEventListener('click', () => {
     const patch = window.synthStateManager.currentPatch;
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(patch, null, 2));
+    const s3pBytes = window.esp32HardwareSync.packPatchToS3P(patch);
+    const blob = new Blob([s3pBytes], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = dataStr;
-    a.download = `${patch.name.replace(/\s+/g, '_').toLowerCase()}.amy`;
+    a.href = url;
+    a.download = `${patch.name.replace(/\s+/g, '_').toLowerCase()}.s3p`;
     a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // Export C++ Factory Table File
+  document.getElementById('btnExportCpp')?.addEventListener('click', () => {
+    if (window.cppPatchTableGenerator) {
+      window.cppPatchTableGenerator.downloadCppFile();
+    }
+  });
+
+  // Download Complete SPIFFS Backup (.s3b)
+  document.getElementById('btnBackupSpiffs')?.addEventListener('click', () => {
+    if (window.spiffsBackupManager) {
+      window.spiffsBackupManager.downloadBackup();
+    }
+  });
+
+  // Restore Complete SPIFFS Backup (.s3b)
+  document.getElementById('fileRestoreS3b')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bundle = await window.spiffsBackupManager.parseBackupFile(evt.target.result);
+        await window.spiffsBackupManager.restoreBackup(bundle, true);
+      } catch (err) {
+        alert("Erro ao restaurar backup .s3b: " + err.message);
+      }
+      e.target.value = '';
+    };
+    reader.readAsArrayBuffer(file);
   });
 
   document.getElementById('fileImportPatch')?.addEventListener('change', (e) => {
@@ -419,7 +628,14 @@ function setupHeaderControls() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const loaded = JSON.parse(evt.target.result);
+        let loaded;
+        if (file.name.endsWith('.s3p')) {
+          const bytes = new Uint8Array(evt.target.result);
+          loaded = window.esp32HardwareSync.unpackS3P(bytes);
+        } else {
+          loaded = JSON.parse(evt.target.result);
+        }
+        window.synthStateManager.pushState();
         window.synthStateManager.currentPatch = loaded;
         window.synthStateManager.applyFullPatch();
         window.synthStateManager.notify('all', 'import');
@@ -427,8 +643,13 @@ function setupHeaderControls() {
       } catch (err) {
         alert("Erro ao importar arquivo de patch: " + err.message);
       }
+      e.target.value = ''; // Reset input
     };
-    reader.readAsText(file);
+    if (file.name.endsWith('.s3p')) {
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.readAsText(file);
+    }
   });
 }
 
@@ -453,6 +674,34 @@ function setupTerminal() {
   window.esp32HardwareSync.onLogMessage = (msg, type) => {
     logTerminal(msg, type);
   };
+
+  window.esp32HardwareSync.onProgressUpdate = (percent) => {
+    let barEl = document.getElementById('uploadProgressBar');
+    if (percent === null) {
+      if (barEl) barEl.remove();
+      return;
+    }
+    
+    if (!barEl) {
+      barEl = document.createElement('div');
+      barEl.id = 'uploadProgressBar';
+      barEl.style.width = '100%';
+      barEl.style.height = '6px';
+      barEl.style.background = '#232b3e';
+      barEl.style.marginTop = '8px';
+      barEl.style.borderRadius = '3px';
+      barEl.innerHTML = `<div id="uploadProgressFill" style="width: 0%; height: 100%; background: #00ff88; border-radius: 3px; transition: width 0.2s;"></div>`;
+      
+      const win = document.getElementById('terminalOutput');
+      if (win) {
+        win.appendChild(barEl);
+        win.scrollTop = win.scrollHeight;
+      }
+    }
+    
+    const fill = document.getElementById('uploadProgressFill');
+    if (fill) fill.style.width = `${percent}%`;
+  };
 }
 
 function logTerminal(msg, type = 'info') {
@@ -476,5 +725,67 @@ function updateUiFromState(patch, changedProp) {
   }
   if (window.eg1Canvas) {
     window.eg1Canvas.updateParams(patch.eg1_attack, patch.eg1_decay, patch.eg1_sustain, patch.eg1_release, patch.eg1_type);
+  }
+
+  // Helper to update a single knob
+  const updateKnob = (key, val) => {
+    const knob = document.querySelector(`[data-param="${key}"]`);
+    if (knob) {
+      const min = parseFloat(knob.dataset.min || 0);
+      const max = parseFloat(knob.dataset.max || 100);
+      const pct = Math.max(0, Math.min(1, (val - min) / (max - min)));
+      const pointer = knob.querySelector('.knob-pointer');
+      if (pointer) {
+        const deg = -135 + (pct * 270);
+        pointer.style.transform = `rotate(${deg}deg)`;
+      }
+      const label = document.getElementById(`val_${key}`);
+      if (label) {
+        label.innerText = (val < 10 && !Number.isInteger(val)) ? val.toFixed(2) : Math.round(val);
+      }
+    }
+  };
+
+  // Update analog params
+  Object.keys(patch).forEach(key => {
+    updateKnob(key, patch[key]);
+    
+    // Also update dropdowns (like wave_type, filter_type)
+    const selects = document.querySelectorAll('select.patch-dropdown');
+    selects.forEach(s => {
+      if (s.onchange && s.onchange.toString().includes(`'${key}'`)) {
+        s.value = patch[key];
+      }
+    });
+  });
+
+  // Update macros
+  if (patch.macros && Array.isArray(patch.macros)) {
+    patch.macros.forEach((m, idx) => {
+      updateKnob(`macro_${idx}`, m.val);
+    });
+  }
+
+  // Update DX7 operators if present
+  if (patch.operators && Array.isArray(patch.operators)) {
+    patch.operators.forEach(op => {
+      updateKnob(`fm_op${op.opNum || op.id}_ratio`, op.ratio);
+      const ampVal = op.level !== undefined ? op.level : op.amp;
+      updateKnob(`fm_op${op.opNum || op.id}_amp`, ampVal);
+    });
+    updateKnob(`fm_op6_fb`, patch.feedback);
+    
+    const algoSelect = document.getElementById('dx7AlgoSelect');
+    if (algoSelect) algoSelect.value = patch.algorithm;
+  }
+
+  // Update Additive Harmonics if present
+  if (patch.harmonics && window.additiveHarmonicEditor) {
+    window.additiveHarmonicEditor.importData(patch.harmonics);
+  }
+
+  // Update Mod Matrix if present
+  if (patch.mod_matrix && window.modMatrixManager) {
+    window.modMatrixManager.importData(patch.mod_matrix);
   }
 }

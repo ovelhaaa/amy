@@ -26,6 +26,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.sampleBrowser = new SampleBrowserManager('sampleBrowserContainer');
   window.sceneManager = new StudioSceneManager('scenesMatrixContainer');
 
+  // 5b. Initialize M-VAVE SMK25 V2 8-Pad Performance Bank
+  window.padBankManager = new PadBankManager('padBankContainer');
+
   // 6. Initialize Factory Patches Selector
   populatePatchDropdown();
 
@@ -265,6 +268,20 @@ function setupMidiLearn() {
           const cc = ev.data[1];
           const val = ev.data[2];
           window.midiLearnManager.processMidiMessage(channel, cc, val);
+        } else if (status === 0x90 && ev.data[2] > 0) {
+          const note = ev.data[1];
+          const vel = ev.data[2] / 127.0;
+          if (window.amyStudioSequencer) {
+            window.amyStudioSequencer.addHeldNote(note);
+            if (window.amyStudioSequencer.isRecording) {
+              window.amyStudioSequencer.recordLiveNote(note, vel);
+            }
+          }
+        } else if (status === 0x80 || (status === 0x90 && ev.data[2] === 0)) {
+          const note = ev.data[1];
+          if (window.amyStudioSequencer) {
+            window.amyStudioSequencer.removeHeldNote(note);
+          }
         }
       }
     };
@@ -332,6 +349,85 @@ function setupSequencerGrid() {
       }
     }
   };
+
+  // Arpeggiator UI Controls
+  const btnToggleArp = document.getElementById('btnToggleArp');
+  const arpModeSelect = document.getElementById('arpModeSelect');
+  const arpDivSelect = document.getElementById('arpDivSelect');
+  const arpOctSelect = document.getElementById('arpOctSelect');
+  const btnToggleArpLatch = document.getElementById('btnToggleArpLatch');
+  const arpSwingSlider = document.getElementById('arpSwingSlider');
+
+  btnToggleArp?.addEventListener('click', () => {
+    const isEnabled = !seq.arpEnabled;
+    seq.setArpEnabled(isEnabled);
+    btnToggleArp.innerText = isEnabled ? '⚡ ARPEGIADOR: ON' : '⚡ ARPEGIADOR: OFF';
+    btnToggleArp.classList.toggle('btn-primary', isEnabled);
+  });
+
+  arpModeSelect?.addEventListener('change', (e) => {
+    seq.setArpMode(e.target.value);
+  });
+
+  arpDivSelect?.addEventListener('change', (e) => {
+    seq.setArpDivision(e.target.value);
+  });
+
+  arpOctSelect?.addEventListener('change', (e) => {
+    seq.setArpOctaves(parseInt(e.target.value));
+  });
+
+  btnToggleArpLatch?.addEventListener('click', () => {
+    const latch = !seq.arpLatch;
+    seq.setArpLatch(latch);
+    btnToggleArpLatch.innerText = latch ? 'LATCH: ON' : 'LATCH: OFF';
+    btnToggleArpLatch.classList.toggle('btn-gold', latch);
+  });
+
+  arpSwingSlider?.addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    seq.setArpSwing(val);
+    const lbl = document.getElementById('val_arpSwing');
+    if (lbl) lbl.innerText = `${val}%`;
+  });
+
+  // Standard MIDI (.mid) Export & Import
+  document.getElementById('btnExportMidi')?.addEventListener('click', () => {
+    const steps = window.melodicPianoRoll ? window.melodicPianoRoll.steps : [];
+    window.standardMidiFileHandler.downloadMidi(seq.drumTracks, steps, seq.bpm);
+  });
+
+  document.getElementById('fileImportMidi')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const parsed = window.standardMidiFileHandler.importMidiFile(evt.target.result);
+        if (parsed.bpm) {
+          seq.setBpm(parsed.bpm);
+          const bpmIn = document.getElementById('seqBpmInput');
+          if (bpmIn) bpmIn.value = parsed.bpm;
+        }
+        if (parsed.pianoRollSteps && window.melodicPianoRoll) {
+          window.melodicPianoRoll.steps = parsed.pianoRollSteps;
+          window.melodicPianoRoll.render();
+        }
+        if (parsed.drumTracks) {
+          parsed.drumTracks.forEach(dt => {
+            const track = seq.drumTracks.find(t => t.note === dt.note);
+            if (track) track.pattern = dt.pattern;
+          });
+          setupSequencerGrid();
+        }
+        alert("Arquivo MIDI (.mid) importado com sucesso para o Sequenciador!");
+      } catch (err) {
+        alert("Erro ao importar arquivo MIDI: " + err.message);
+      }
+      e.target.value = '';
+    };
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 // ══════════════════════════════════════════════════════════
@@ -386,7 +482,37 @@ function setupHeaderControls() {
   }
 
   document.getElementById('btnPanic')?.addEventListener('click', () => {
+    // 1. Panic AMY WebAudio Bridge
     if (window.amyAudioBridge) window.amyAudioBridge.panic();
+
+    // 2. Panic connected ESP32-S3 hardware
+    if (window.esp32HardwareSync && window.esp32HardwareSync.isConnected) {
+      window.esp32HardwareSync.sendSerialCommand('panic');
+      window.esp32HardwareSync.sendWireIfConnected('S131072Z');
+    }
+
+    // 3. Stop sequencer if running
+    if (window.amyStudioSequencer && window.amyStudioSequencer.isPlaying) {
+      window.amyStudioSequencer.stop();
+      const btnPlay = document.getElementById('btnSeqPlay');
+      if (btnPlay) {
+        btnPlay.innerText = '▶ PLAY';
+        btnPlay.classList.remove('btn-danger');
+        btnPlay.classList.add('btn-primary');
+      }
+    }
+
+    // 4. Clear virtual keyboard active keys
+    if (window.studioKeyboard) {
+      window.studioKeyboard.activeKeys.forEach(n => window.studioKeyboard.triggerNoteOff(n));
+      window.studioKeyboard.activeKeys.clear();
+      document.querySelectorAll('.piano-key').forEach(k => k.classList.remove('active'));
+    }
+
+    // 5. Clear sequencer held notes
+    if (window.amyStudioSequencer) {
+      window.amyStudioSequencer.heldNotes = [];
+    }
   });
 
   document.getElementById('btnSeqPlay')?.addEventListener('click', (e) => {
@@ -395,6 +521,37 @@ function setupHeaderControls() {
     e.target.innerText = seq.isPlaying ? '⏹ STOP' : '▶ PLAY';
     e.target.classList.toggle('btn-danger', seq.isPlaying);
     e.target.classList.toggle('btn-primary', !seq.isPlaying);
+  });
+
+  // Live Step Record Binders
+  const updateRecButtons = (isRec) => {
+    const b1 = document.getElementById('btnRecordSeq');
+    const b2 = document.getElementById('btnRecordSeqView');
+    [b1, b2].forEach(btn => {
+      if (btn) {
+        btn.innerText = isRec ? '⏹ REC ON' : '⏺ REC';
+        btn.classList.toggle('btn-danger', isRec);
+      }
+    });
+
+    const btnPlay = document.getElementById('btnSeqPlay');
+    if (btnPlay && window.amyStudioSequencer.isPlaying) {
+      btnPlay.innerText = '⏹ STOP';
+      btnPlay.classList.add('btn-danger');
+      btnPlay.classList.remove('btn-primary');
+    }
+  };
+
+  if (window.amyStudioSequencer) {
+    window.amyStudioSequencer.onRecordStateChange = updateRecButtons;
+  }
+
+  document.getElementById('btnRecordSeq')?.addEventListener('click', () => {
+    window.amyStudioSequencer.toggleRecord();
+  });
+
+  document.getElementById('btnRecordSeqView')?.addEventListener('click', () => {
+    window.amyStudioSequencer.toggleRecord();
   });
 
   document.getElementById('btnUndo')?.addEventListener('click', () => window.synthStateManager.undo());

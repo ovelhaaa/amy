@@ -1,6 +1,7 @@
 /**
  * AMY Studio - Dedicated Roland Juno-106 Synthesizer Panel & DSP Translator
- * Implements the authentic Roland Juno-106 architecture using the formulas in amy/juno.py
+ * Implements the authentic Roland Juno-106 architecture using the formulas in amy/juno.py.
+ * Targets polyphonic instrument i1 (Synth 1, MIDI ch 0) for ESP32 firmware parity.
  */
 
 class Juno106PanelController {
@@ -81,14 +82,16 @@ class Juno106PanelController {
     }
 
     // 5. Select Waveform (SAW + PULSE mix)
-    let wave = 1; // SAW_DOWN
+    // In AMY, PULSE=1, SAW_DOWN=2
+    let wave = 2; // Default to SAW_DOWN
     if (s.pulseOn && !s.sawOn) wave = 1; // PULSE
-    if (!s.pulseOn && s.sawOn) wave = 1; // SAW
+    if (!s.pulseOn && s.sawOn) wave = 2; // SAW
+    if (s.pulseOn && s.sawOn) wave = 2;
 
-    // Send complete Juno state wire commands to AMY
+    // Target polyphonic instrument i1 (Synth 1)
     const cmds = [
-      `v0w${wave}d${duty.toFixed(3)}G1F${cutoffHz.toFixed(1)}R${resQ.toFixed(2)}`,
-      `y0k${chorusLvl.toFixed(2)},320,${chorusRate.toFixed(2)},${chorusDepth.toFixed(2)}Z`
+      `i1w${wave}d${duty.toFixed(3)}G1F${cutoffHz.toFixed(1)}R${resQ.toFixed(2)}Z`,
+      `k${chorusLvl.toFixed(2)},320,${chorusRate.toFixed(2)},${chorusDepth.toFixed(2)}Z`
     ];
 
     const wire = cmds.join('');
@@ -98,3 +101,7 @@ class Juno106PanelController {
 }
 
 window.juno106Panel = new Juno106PanelController();
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { Juno106PanelController };
+}

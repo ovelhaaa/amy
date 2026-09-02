@@ -15,8 +15,8 @@
   <link rel="stylesheet" href="css/studio.css">
   
   <!-- AMY WebAssembly Core AudioWorklet & Glue -->
-  <script type="text/javascript" src="../enable-threads.js"></script>
-  <script type="text/javascript" src="../amy.js"></script>
+  <script type="text/javascript" src="/docs/enable-threads.js"></script>
+  <script type="text/javascript" src="/docs/amy.js"></script>
   
   <!-- Application JS Modules -->
   <script type="text/javascript" src="js/amy-bridge.js"></script>
@@ -34,6 +34,13 @@
   <script type="text/javascript" src="js/sequencer.js"></script>
   <script type="text/javascript" src="js/visualizers.js"></script>
   <script type="text/javascript" src="js/keyboard.js"></script>
+  <script type="text/javascript" src="js/additive-editor.js"></script>
+  <script type="text/javascript" src="js/mod-matrix.js"></script>
+  <script type="text/javascript" src="js/layer-split-manager.js"></script>
+  <script type="text/javascript" src="js/cpp-generator.js"></script>
+  <script type="text/javascript" src="js/backup-manager.js"></script>
+  <script type="text/javascript" src="js/midi-file-handler.js"></script>
+  <script type="text/javascript" src="js/pad-bank.js"></script>
   <script type="text/javascript" src="js/hardware-sync.js"></script>
   <script type="text/javascript" src="js/studio-app.js"></script>
 </head>
@@ -63,6 +70,7 @@
       </div>
 
       <button id="btnSeqPlay" class="btn btn-primary">▶ PLAY</button>
+      <button id="btnRecordSeq" class="btn" title="Gravação em Tempo Real no Sequenciador (Live Step Record)">⏺ REC</button>
       <button id="btnRecordWav" class="btn">🔴 GRAVAR WAV</button>
       <button id="btnPanic" class="btn btn-danger">🚨 PANIC</button>
     </div>
@@ -71,6 +79,12 @@
     <div class="header-actions">
       <button id="btnConnectEsp32" class="btn btn-primary">🔌 CONECTAR ESP32</button>
       <button id="btnUploadFlash" class="btn btn-gold">💾 GRAVAR FLASH</button>
+      <button id="btnBackupSpiffs" class="btn btn-gold" title="Download de backup completo da Flash (.s3b)">📦 BACKUP (.S3B)</button>
+      <label class="btn btn-gold" style="margin: 0; cursor: pointer;" title="Restaurar backup completo .s3b">
+        📥 RESTAURAR
+        <input type="file" id="fileRestoreS3b" accept=".s3b" style="display: none;">
+      </label>
+      <button id="btnExportCpp" class="btn" title="Exportar tabela de patches em código C++ para factory_patches.cpp">📄 C++ CODE</button>
       <button id="btnExportPatch" class="btn">📤 EXPORTAR</button>
       <label class="btn" style="margin: 0; cursor: pointer;">
         📥 IMPORTAR
@@ -90,6 +104,7 @@
   <nav class="view-tabs">
     <div class="tabs-group">
       <button class="tab-button active" data-view="viewSynth">🎛️ SÍNTESE & ENVELOPES</button>
+      <button class="tab-button" data-view="viewAdditive">🌈 SÍNTESE ADITIVA (16P)</button>
       <button class="tab-button" data-view="viewJuno">🎹 ROLAND JUNO-106</button>
       <button class="tab-button" data-view="viewFm">💠 DX7 FM MATRIX</button>
       <button class="tab-button" data-view="viewSequencer">🥁 SEQUENCER & PIANO ROLL</button>
@@ -121,11 +136,11 @@
           <div class="card-header">
             <span class="card-title">OSCILADOR <span class="highlight">DCO 1</span></span>
             <select class="patch-dropdown" style="min-width: 110px; font-size: 10px;" onchange="synthStateManager.setParam('wave_type', parseInt(this.value))">
-              <option value="1">SAW DOWN (Juno)</option>
-              <option value="2">SAW UP</option>
+              <option value="2">SAW DOWN (Juno)</option>
+              <option value="1">PULSE / PWM</option>
+              <option value="3">SAW UP</option>
               <option value="0">SINE</option>
               <option value="4">TRIANGLE</option>
-              <option value="1">PULSE / PWM</option>
               <option value="5">NOISE</option>
               <option value="6">KARPLUS-STRONG</option>
               <option value="7">PCM SAMPLE</option>
@@ -190,7 +205,12 @@
         <div class="panel-card">
           <div class="card-header">
             <span class="card-title">ENVELOPE <span class="highlight">EG0 (AMPLITUDE)</span></span>
-            <span class="param-val" style="color: var(--accent-green);">ARRASTE OS NÓS</span>
+            <select class="patch-dropdown" style="min-width: 90px; font-size: 9px;" onchange="synthStateManager.setParam('eg0_type', parseInt(this.value))">
+              <option value="0">RC (Analog)</option>
+              <option value="1">LINEAR</option>
+              <option value="2">DX7</option>
+              <option value="3">EXPONENTIAL</option>
+            </select>
           </div>
           <div class="envelope-canvas-box">
             <canvas id="eg0Canvas" width="280" height="96"></canvas>
@@ -201,10 +221,62 @@
         <div class="panel-card">
           <div class="card-header">
             <span class="card-title">ENVELOPE <span class="highlight">EG1 (FILTRO / MOD)</span></span>
-            <span class="param-val" style="color: var(--accent-cyan);">INTERATIVO</span>
+            <select class="patch-dropdown" style="min-width: 90px; font-size: 9px;" onchange="synthStateManager.setParam('eg1_type', parseInt(this.value))">
+              <option value="0">RC (Analog)</option>
+              <option value="1">LINEAR</option>
+              <option value="2">DX7</option>
+              <option value="3">EXPONENTIAL</option>
+            </select>
           </div>
           <div class="envelope-canvas-box">
             <canvas id="eg1Canvas" width="280" height="96"></canvas>
+          </div>
+        </div>
+
+        <!-- Modulation Matrix Card (6 Slots) -->
+        <div class="panel-card" style="grid-column: 1 / -1; background: var(--bg-card);">
+          <div class="card-header">
+            <span class="card-title">MATRIZ DE MODULAÇÃO <span class="highlight">MOD MATRIX (6 SLOTS)</span></span>
+            <span class="param-val" style="color: var(--accent-cyan);">ROTEAMENTO BIPOLAR AMY</span>
+          </div>
+          <div id="modMatrixContainer" style="margin-top: 6px;"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── TAB: SÍNTESE ADITIVA (16 PARCIAIS / FOURIER) ── -->
+    <div id="viewAdditive" class="view-container">
+      <div class="panel-grid">
+        
+        <!-- Additive Drawbars Card -->
+        <div class="panel-card" style="grid-column: span 2; background: linear-gradient(180deg, #151a27 0%, #0d111a 100%);">
+          <div class="card-header">
+            <span class="card-title">DRAWBARS DE HARMÔNICOS <span class="highlight">(1..16x FUNDAMENTAL)</span></span>
+            <div style="display: flex; gap: 4px;">
+              <button class="btn" style="font-size: 9px;" onclick="additiveHarmonicEditor.applyPreset('sine')">SINE</button>
+              <button class="btn" style="font-size: 9px;" onclick="additiveHarmonicEditor.applyPreset('saw')">SAW</button>
+              <button class="btn" style="font-size: 9px;" onclick="additiveHarmonicEditor.applyPreset('square')">SQUARE</button>
+              <button class="btn" style="font-size: 9px;" onclick="additiveHarmonicEditor.applyPreset('triangle')">TRI</button>
+              <button class="btn btn-gold" style="font-size: 9px;" onclick="additiveHarmonicEditor.applyPreset('organ888')">ORGAN 888</button>
+              <button class="btn" style="font-size: 9px;" onclick="additiveHarmonicEditor.applyPreset('bell')">BELL</button>
+              <button class="btn" style="font-size: 9px;" onclick="additiveHarmonicEditor.applyPreset('formantAh')">VOX AH</button>
+            </div>
+          </div>
+          <div id="additiveDrawbarsContainer" style="margin-top: 8px;"></div>
+        </div>
+
+        <!-- Composite Fourier Waveform Preview -->
+        <div class="panel-card" style="background: var(--bg-card);">
+          <div class="card-header">
+            <span class="card-title">ONDA COMPOSTA <span class="highlight">FOURIER SUM</span></span>
+            <span class="param-val" style="color: var(--accent-cyan);">BYO_PARTIALS (W10)</span>
+          </div>
+          <div style="background: #0a0d14; border: 1px solid #1c2436; border-radius: 6px; padding: 6px; display: flex; justify-content: center;">
+            <canvas id="additiveWaveformCanvas" width="280" height="110"></canvas>
+          </div>
+          <div style="margin-top: 10px; font-size: 10px; color: #94a3b8; line-height: 1.4;">
+            <p>A síntese aditiva reconstrói a onda através da superposição de 16 osciladores senoidais parciais com amplitudes e fases individuais, mapeados automaticamente para os osciladores AMY <code style="color: var(--accent-cyan);">v1..v16</code> sob o oscilador mestre <code style="color: var(--accent-green);">v0 (BYO_PARTIALS)</code>.</p>
           </div>
         </div>
 
@@ -317,13 +389,13 @@
               </div>
               <div class="param-item">
                 <div class="knob-container" data-param="fm_op1_amp" data-min="0" data-max="1" data-current="1.0"><div class="knob-pointer"></div></div>
-                <span class="param-label">OUTPUT LEVEL</span>
+                <span class="param-label">LEVEL</span>
               </div>
             </div>
           </div>
 
           <div class="panel-card" style="background: var(--bg-card);">
-            <span class="card-title">OPERATOR <span class="highlight">OP 2 (Modulator)</span></span>
+            <span class="card-title">OPERATOR <span class="highlight">OP 2</span></span>
             <div class="param-grid">
               <div class="param-item">
                 <div class="knob-container" data-param="fm_op2_ratio" data-min="0.5" data-max="16" data-current="2.0"><div class="knob-pointer gold"></div></div>
@@ -331,7 +403,49 @@
               </div>
               <div class="param-item">
                 <div class="knob-container" data-param="fm_op2_amp" data-min="0" data-max="1" data-current="0.8"><div class="knob-pointer"></div></div>
-                <span class="param-label">MOD INDEX</span>
+                <span class="param-label">LEVEL</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-card" style="background: var(--bg-card);">
+            <span class="card-title">OPERATOR <span class="highlight">OP 3</span></span>
+            <div class="param-grid">
+              <div class="param-item">
+                <div class="knob-container" data-param="fm_op3_ratio" data-min="0.5" data-max="16" data-current="1.0"><div class="knob-pointer gold"></div></div>
+                <span class="param-label">RATIO</span>
+              </div>
+              <div class="param-item">
+                <div class="knob-container" data-param="fm_op3_amp" data-min="0" data-max="1" data-current="0.5"><div class="knob-pointer"></div></div>
+                <span class="param-label">LEVEL</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-card" style="background: var(--bg-card);">
+            <span class="card-title">OPERATOR <span class="highlight">OP 4</span></span>
+            <div class="param-grid">
+              <div class="param-item">
+                <div class="knob-container" data-param="fm_op4_ratio" data-min="0.5" data-max="16" data-current="2.0"><div class="knob-pointer gold"></div></div>
+                <span class="param-label">RATIO</span>
+              </div>
+              <div class="param-item">
+                <div class="knob-container" data-param="fm_op4_amp" data-min="0" data-max="1" data-current="0.5"><div class="knob-pointer"></div></div>
+                <span class="param-label">LEVEL</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-card" style="background: var(--bg-card);">
+            <span class="card-title">OPERATOR <span class="highlight">OP 5</span></span>
+            <div class="param-grid">
+              <div class="param-item">
+                <div class="knob-container" data-param="fm_op5_ratio" data-min="0.5" data-max="16" data-current="1.0"><div class="knob-pointer gold"></div></div>
+                <span class="param-label">RATIO</span>
+              </div>
+              <div class="param-item">
+                <div class="knob-container" data-param="fm_op5_amp" data-min="0" data-max="1" data-current="0.5"><div class="knob-pointer"></div></div>
+                <span class="param-label">LEVEL</span>
               </div>
             </div>
           </div>
@@ -342,6 +456,10 @@
               <div class="param-item">
                 <div class="knob-container" data-param="fm_op6_ratio" data-min="0.5" data-max="16" data-current="1.0"><div class="knob-pointer gold"></div></div>
                 <span class="param-label">RATIO</span>
+              </div>
+              <div class="param-item">
+                <div class="knob-container" data-param="fm_op6_amp" data-min="0" data-max="1" data-current="0.5"><div class="knob-pointer"></div></div>
+                <span class="param-label">LEVEL</span>
               </div>
               <div class="param-item">
                 <div class="knob-container" data-param="fm_op6_fb" data-min="0" data-max="1" data-current="0.4"><div class="knob-pointer red"></div></div>
@@ -355,21 +473,83 @@
 
     <!-- ── TAB 4: SEQUENCER & PIANO ROLL ── -->
     <div id="viewSequencer" class="view-container">
+      <!-- Arpeggiator & Performance Controls -->
+      <div class="panel-card" style="margin-bottom: 10px;">
+        <div class="card-header">
+          <span class="card-title">SMK-S3 <span class="highlight">HARDWARE ARPEGGIATOR</span></span>
+          <span class="param-val">SINCRONIZADO VIA SERIAL / AMY ENGINE</span>
+        </div>
+        <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 8px;">
+          <button id="btnToggleArp" class="btn" style="min-width: 130px;">⚡ ARPEGIADOR: OFF</button>
+          
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 10px; font-weight: 700;">MODO:</label>
+            <select id="arpModeSelect" class="patch-dropdown" style="padding: 4px 8px;">
+              <option value="UP">UP (Ascendente)</option>
+              <option value="DOWN">DOWN (Descendente)</option>
+              <option value="UPDOWN">UP/DOWN (Pendular)</option>
+              <option value="RANDOM">RANDOM (Aleatório)</option>
+              <option value="ASPLAYED">AS PLAYED (Ordem Tocada)</option>
+              <option value="CHORD">CHORD (Gated Stutter)</option>
+            </select>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 10px; font-weight: 700;">DIVISÃO:</label>
+            <select id="arpDivSelect" class="patch-dropdown" style="padding: 4px 8px;">
+              <option value="1/4">1/4 (Semínima)</option>
+              <option value="1/8">1/8 (Colcheia)</option>
+              <option value="1/8T">1/8T (Tercina Colcheia)</option>
+              <option value="1/16" selected>1/16 (Semicolcheia)</option>
+              <option value="1/16T">1/16T (Tercina Semicolcheia)</option>
+              <option value="1/32">1/32 (Fusa)</option>
+            </select>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 10px; font-weight: 700;">OITAVAS:</label>
+            <select id="arpOctSelect" class="patch-dropdown" style="padding: 4px 8px;">
+              <option value="1">1 Oitava</option>
+              <option value="2" selected>2 Oitavas</option>
+              <option value="3">3 Oitavas</option>
+              <option value="4">4 Oitavas</option>
+            </select>
+          </div>
+
+          <button id="btnToggleArpLatch" class="btn" style="padding: 4px 10px;">LATCH: OFF</button>
+
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 10px; font-weight: 700;">SWING:</label>
+            <input type="range" id="arpSwingSlider" min="50" max="75" value="50" style="width: 70px;">
+            <span id="val_arpSwing" style="font-size: 10px; font-family: monospace;">50%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 16-Step Melodic Piano Roll -->
       <div class="panel-card">
         <div class="card-header">
           <span class="card-title">16-STEP MELODIC <span class="highlight">PIANO ROLL SEQUENCER</span></span>
-          <div style="display: flex; gap: 8px; align-items: center;">
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <label style="font-size: 10px;">TEMPO (BPM):</label>
             <input type="number" id="seqBpmInput" value="120" min="30" max="300" style="width: 55px; background: var(--bg-card); color: #fff; border: 1px solid var(--border-subtle); padding: 3px; font-family: monospace;" onchange="amyStudioSequencer.setBpm(parseFloat(this.value))">
+            
+            <button id="btnRecordSeqView" class="btn" title="Gravação em Tempo Real no Sequenciador">⏺ REC</button>
+            <button id="btnExportMidi" class="btn btn-gold" title="Exportar sequência para arquivo Standard MIDI (.mid)">📤 EXPORTAR .MID</button>
+            <label class="btn" style="margin: 0; cursor: pointer;" title="Importar arquivo Standard MIDI (.mid)">
+              📥 IMPORTAR .MID
+              <input type="file" id="fileImportMidi" accept=".mid,.midi" style="display: none;">
+            </label>
           </div>
         </div>
         <div id="pianoRollContainer" style="margin-top: 8px;"></div>
       </div>
 
+      <!-- 16-Step Drum Machine Grid -->
       <div class="panel-card">
         <div class="card-header">
           <span class="card-title">8-TRACK POLYPHONIC <span class="highlight">DRUM MACHINE</span></span>
-          <span class="param-val">808 / 909 / LINN KITS</span>
+          <span class="param-val">808 / 909 / LINN KITS (CANAL MIDI 10)</span>
         </div>
         <div id="drumTracksContainer" style="margin-top: 8px;"></div>
       </div>
@@ -608,6 +788,11 @@
   </main>
 
   <!-- ══════════════════════════════════════════════════════════
+       M-VAVE SMK25 V2 8-PAD PERFORMANCE BANK
+       ══════════════════════════════════════════════════════════ -->
+  <div id="padBankContainer" style="padding: 6px 16px; background: #0b0f17; border-top: 1px solid #1c2436;"></div>
+
+  <!-- ══════════════════════════════════════════════════════════
        PERFORMANCE KEYBOARD & VISUALIZERS (FOOTER)
        ══════════════════════════════════════════════════════════ -->
   <footer class="performance-footer">
@@ -636,6 +821,9 @@
         </div>
       </div>
     </div>
+
+    <!-- Layer & Split Controls -->
+    <div id="layerSplitContainer" style="flex: 1; min-width: 260px;"></div>
 
     <!-- Virtual Piano Keyboard -->
     <div class="piano-keyboard-container" id="pianoKeyboardContainer">

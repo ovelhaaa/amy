@@ -1,5 +1,7 @@
 /**
  * DX7 FM Synthesis Engine & Algorithm Matrix for AMY Studio
+ * Synchronized with ESP32-S3 firmware (SMK-S3) AmyAdapter FM architecture.
+ * Targets polyphonic instrument i1 (Synth 1, MIDI ch 0).
  */
 
 const DX7_ALGORITHMS_INFO = [
@@ -54,9 +56,8 @@ class Dx7MatrixEditor {
   setAlgorithm(algoId) {
     if (algoId < 1 || algoId > 32) return;
     this.currentAlgo = algoId;
-    // Send wire command to set FM algorithm in AMY
-    // AMY command 'o' sets algorithm on the active voice / osc
-    const wire = `v0w8o${algoId}Z`;
+    // Set algorithm on Synth 1
+    const wire = `i1o${algoId}Z`;
     if (window.amyAudioBridge) window.amyAudioBridge.sendWire(wire);
     if (window.esp32HardwareSync) window.esp32HardwareSync.sendWireIfConnected(wire);
   }
@@ -66,15 +67,18 @@ class Dx7MatrixEditor {
     if (!op) return;
     op[param] = value;
     
-    // Wire command to configure individual operator
-    // AMY maps FM ops to oscs: algo_source[0..5]
     let wire = "";
     if (param === 'ratio') {
-      wire = `v${opId}I${value.toFixed(3)}Z`;
+      // In AMY, frequency ratio is 'I'
+      const osc = 8 - opId; // Maps op 1..6 to voices 7..2
+      wire = `v${osc}I${value.toFixed(3)}Z`;
     } else if (param === 'amp') {
-      wire = `v${opId}a${value.toFixed(3)}Z`;
+      // In AMY, amplitude is 'a'
+      const osc = 8 - opId;
+      wire = `v${osc}a${value.toFixed(3)}Z`;
     } else if (param === 'feedback') {
-      wire = `v0b${value.toFixed(3)}Z`;
+      // Feedback on Synth 1
+      wire = `i1b${value.toFixed(3)}Z`;
     }
     
     if (wire.length > 0) {
@@ -85,3 +89,7 @@ class Dx7MatrixEditor {
 }
 
 window.dx7MatrixEditor = new Dx7MatrixEditor();
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { Dx7MatrixEditor, DX7_ALGORITHMS_INFO };
+}

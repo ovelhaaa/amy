@@ -436,6 +436,21 @@ main.workspace {
   box-shadow: 0 0 8px var(--accent-green);
 }
 
+/* Graphical Envelope Display */
+.envelope-canvas-box {
+  background: var(--bg-darker);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  height: 100px;
+  position: relative;
+  overflow: hidden;
+}
+
+.envelope-canvas-box canvas {
+  width: 100%;
+  height: 100%;
+}
+
 /* ══════════════════════════════════════════════════════════
    MACRO BAR (SMK-S3)
    ══════════════════════════════════════════════════════════ */
@@ -731,4 +746,24 @@ footer.performance-footer {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #384566;
+}
+
+/* ══════════════════════════════════════════════════════════
+   KEYBOARD SPLIT ZONES
+   ══════════════════════════════════════════════════════════ */
+.piano-key.zone-lower.white {
+  background: #102130 !important;
+  border-bottom: 3px solid var(--accent-cyan) !important;
+}
+.piano-key.zone-lower.black {
+  background: #061520 !important;
+  border-bottom: 3px solid var(--accent-cyan) !important;
+}
+.piano-key.zone-upper.white {
+  background: #11281e !important;
+  border-bottom: 3px solid var(--accent-green) !important;
+}
+.piano-key.zone-upper.black {
+  background: #061c12 !important;
+  border-bottom: 3px solid var(--accent-green) !important;
 }
