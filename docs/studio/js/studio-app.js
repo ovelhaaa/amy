@@ -44,6 +44,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 9. Setup Action Buttons, Recorder & Hardware Sync
   setupHeaderControls();
 
+  // 9b. Setup Performance HUD & Global DAW Shortcuts
+  setupPerformanceHud();
+  setupGlobalShortcuts();
+
   // 10. Setup Juno-106 Controls
   setupJunoControls();
 
@@ -431,31 +435,39 @@ function setupSequencerGrid() {
 }
 
 // ══════════════════════════════════════════════════════════
-// NAVIGATION TABS
+// NAVIGATION TABS & SWITCHING
 // ══════════════════════════════════════════════════════════
-function setupViewTabs() {
+function switchView(viewId) {
   const tabBtns = document.querySelectorAll('.tab-button');
   const viewContainers = document.querySelectorAll('.view-container');
+
+  tabBtns.forEach(b => b.classList.remove('active'));
+  viewContainers.forEach(c => c.classList.remove('active'));
+
+  const btn = document.querySelector(`.tab-button[data-view="${viewId}"]`);
+  if (btn) btn.classList.add('active');
+
+  const targetView = document.getElementById(viewId);
+  if (targetView) targetView.classList.add('active');
+
+  if (viewId === 'viewHardware') {
+    window.amyVisualizerEngine.currentOledScreen = "System";
+  } else if (viewId === 'viewSequencer') {
+    window.amyVisualizerEngine.currentOledScreen = "Sequencer";
+  } else if (viewId === 'viewMidi') {
+    window.amyVisualizerEngine.currentOledScreen = "MidiMonitor";
+  } else {
+    window.amyVisualizerEngine.currentOledScreen = "Home";
+  }
+}
+
+function setupViewTabs() {
+  const tabBtns = document.querySelectorAll('.tab-button');
 
   tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       const viewId = btn.dataset.view;
-      tabBtns.forEach(b => b.classList.remove('active'));
-      viewContainers.forEach(c => c.classList.remove('active'));
-
-      btn.classList.add('active');
-      const targetView = document.getElementById(viewId);
-      if (targetView) targetView.classList.add('active');
-
-      if (viewId === 'viewHardware') {
-        window.amyVisualizerEngine.currentOledScreen = "System";
-      } else if (viewId === 'viewSequencer') {
-        window.amyVisualizerEngine.currentOledScreen = "Sequencer";
-      } else if (viewId === 'viewMidi') {
-        window.amyVisualizerEngine.currentOledScreen = "MidiMonitor";
-      } else {
-        window.amyVisualizerEngine.currentOledScreen = "Home";
-      }
+      switchView(viewId);
     });
   });
 }
@@ -649,6 +661,188 @@ function setupHeaderControls() {
       reader.readAsArrayBuffer(file);
     } else {
       reader.readAsText(file);
+    }
+  });
+
+  // Connect Web Bluetooth MIDI (BLE MIDI)
+  const btnBle = document.getElementById('btnConnectBle');
+  if (btnBle && window.bleMidiManager) {
+    window.bleMidiManager.onStateChange = (connected, deviceName) => {
+      btnBle.innerText = connected ? `📶 ${deviceName || 'BLE CONECTADO'}` : '📶 BLUETOOTH MIDI';
+      btnBle.classList.toggle('btn-danger', connected);
+      btnBle.classList.toggle('btn-primary', !connected);
+    };
+
+    btnBle.addEventListener('click', async () => {
+      await window.bleMidiManager.toggleConnect();
+    });
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// FULLSCREEN PERFORMANCE HUD (LIVE STAGE VIEW)
+// ══════════════════════════════════════════════════════════
+function setupPerformanceHud() {
+  const overlay = document.getElementById('performanceHudOverlay');
+  const btnOpen = document.getElementById('btnPerformanceMode');
+  const btnClose = document.getElementById('btnCloseHud');
+  const btnPanic = document.getElementById('btnHudPanic');
+
+  const openHud = () => {
+    if (!overlay) return;
+    overlay.classList.add('active');
+    renderHudMacros();
+    renderHudScenes();
+
+    const bpmDisp = document.getElementById('hudBpmDisplay');
+    if (bpmDisp && window.amyStudioSequencer) {
+      bpmDisp.innerText = Math.round(window.amyStudioSequencer.bpm);
+    }
+
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  };
+
+  const closeHud = () => {
+    if (!overlay) return;
+    overlay.classList.remove('active');
+    if (document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+
+  btnOpen?.addEventListener('click', openHud);
+  btnClose?.addEventListener('click', closeHud);
+  btnPanic?.addEventListener('click', () => {
+    document.getElementById('btnPanic')?.click();
+  });
+}
+
+function renderHudMacros() {
+  const container = document.getElementById('hudMacrosContainer');
+  if (!container || !window.synthStateManager) return;
+  container.innerHTML = '';
+
+  const patch = window.synthStateManager.currentPatch;
+  const macros = patch.macros || [];
+
+  macros.forEach((m, idx) => {
+    const card = document.createElement('div');
+    card.className = 'hud-macro-card';
+    card.innerHTML = `
+      <span class="hud-macro-name">${m.name}</span>
+      <div class="knob-container" data-macro="${idx}" data-param="macro_${idx}" data-min="0" data-max="100" data-current="${m.val}" style="width: 54px; height: 54px;">
+        <div class="knob-pointer gold" style="transform: rotate(${-135 + (m.val / 100) * 270}deg);"></div>
+      </div>
+      <span class="hud-macro-val" id="hud_val_macro_${idx}">${Math.round(m.val)}%</span>
+    `;
+    container.appendChild(card);
+  });
+
+  setupKnobInteractions();
+}
+
+function renderHudScenes() {
+  const container = document.getElementById('hudScenesContainer');
+  if (!container || !window.sceneManager) return;
+  container.innerHTML = '';
+
+  const scenes = window.sceneManager.scenes || [];
+  const activeIdx = window.sceneManager.activeSceneIndex;
+
+  scenes.forEach((sc, idx) => {
+    const slot = document.createElement('div');
+    slot.className = `hud-scene-slot ${idx === activeIdx ? 'active' : ''}`;
+    slot.innerHTML = `
+      <span style="font-size: 8px; font-weight: 800; opacity: 0.8;">PAD ${idx + 1}</span>
+      <span class="hud-scene-name">${sc.name}</span>
+      <span style="font-size: 8px; font-family: monospace;">${sc.bpm} BPM</span>
+    `;
+
+    slot.addEventListener('click', () => {
+      window.sceneManager.selectScene(idx);
+      renderHudScenes();
+      const bpmDisp = document.getElementById('hudBpmDisplay');
+      if (bpmDisp) bpmDisp.innerText = sc.bpm;
+    });
+
+    container.appendChild(slot);
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+// GLOBAL KEYBOARD SHORTCUTS (DAW WORKFLOW)
+// ══════════════════════════════════════════════════════════
+function setupGlobalShortcuts() {
+  window.addEventListener('keydown', (e) => {
+    // Ignore keystrokes when typing in inputs or textareas
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    // 1. Space: Sequencer Play / Stop
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (window.amyStudioSequencer) {
+        window.amyStudioSequencer.toggle();
+        const btnPlay = document.getElementById('btnSeqPlay');
+        if (btnPlay) {
+          btnPlay.innerText = window.amyStudioSequencer.isPlaying ? '⏹ STOP' : '▶ PLAY';
+          btnPlay.classList.toggle('btn-danger', window.amyStudioSequencer.isPlaying);
+          btnPlay.classList.toggle('btn-primary', !window.amyStudioSequencer.isPlaying);
+        }
+      }
+      return;
+    }
+
+    // 2. Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z: Undo & Redo
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          window.synthStateManager.redo();
+        } else {
+          window.synthStateManager.undo();
+        }
+        return;
+      } else if (e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        window.synthStateManager.redo();
+        return;
+      }
+    }
+
+    // 3. Escape: Panic & Exit HUD
+    if (e.code === 'Escape') {
+      e.preventDefault();
+      const hud = document.getElementById('performanceHudOverlay');
+      if (hud && hud.classList.contains('active')) {
+        hud.classList.remove('active');
+        if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+      document.getElementById('btnPanic')?.click();
+      return;
+    }
+
+    // 4. Digits 1..9, 0: Instant Tab Switching
+    const tabMap = {
+      'Digit1': 'viewSynth',
+      'Digit2': 'viewAdditive',
+      'Digit3': 'viewJuno',
+      'Digit4': 'viewDx7',
+      'Digit5': 'viewSequencer',
+      'Digit6': 'viewSamples',
+      'Digit7': 'viewScenes',
+      'Digit8': 'viewEffects',
+      'Digit9': 'viewMacros',
+      'Digit0': 'viewPads'
+    };
+
+    if (tabMap[e.code]) {
+      e.preventDefault();
+      switchView(tabMap[e.code]);
+      return;
     }
   });
 }

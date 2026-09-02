@@ -41,6 +41,7 @@
   <script type="text/javascript" src="js/backup-manager.js"></script>
   <script type="text/javascript" src="js/midi-file-handler.js"></script>
   <script type="text/javascript" src="js/pad-bank.js"></script>
+  <script type="text/javascript" src="js/ble-midi.js"></script>
   <script type="text/javascript" src="js/hardware-sync.js"></script>
   <script type="text/javascript" src="js/studio-app.js"></script>
 </head>
@@ -78,6 +79,8 @@
     <!-- Right: Hardware Sync & Volume -->
     <div class="header-actions">
       <button id="btnConnectEsp32" class="btn btn-primary">🔌 CONECTAR ESP32</button>
+      <button id="btnConnectBle" class="btn" title="Conectar Teclado SMK25 ou ESP32 via Bluetooth Low Energy (BLE MIDI)">📶 BLUETOOTH MIDI</button>
+      <button id="btnPerformanceMode" class="btn btn-gold" title="Alternar para Modo Palco / Live View Fullscreen">⚡ MODO LIVE</button>
       <button id="btnUploadFlash" class="btn btn-gold">💾 GRAVAR FLASH</button>
       <button id="btnBackupSpiffs" class="btn btn-gold" title="Download de backup completo da Flash (.s3b)">📦 BACKUP (.S3B)</button>
       <label class="btn btn-gold" style="margin: 0; cursor: pointer;" title="Restaurar backup completo .s3b">
@@ -841,6 +844,48 @@
     </div>
 
   </footer>
+
+  <!-- ══════════════════════════════════════════════════════════
+       FULLSCREEN PERFORMANCE HUD / LIVE STAGE MODE
+       ══════════════════════════════════════════════════════════ -->
+  <div id="performanceHudOverlay" class="performance-hud-overlay">
+    <div class="hud-header">
+      <div class="hud-title">
+        <span>⚡ AMY STUDIO <span style="color: var(--accent-cyan);">LIVE HUD</span></span>
+        <span class="hud-tag">STAGE VIEW</span>
+      </div>
+
+      <div style="display: flex; gap: 16px; align-items: center;">
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--accent-cyan);">
+          TEMPO: <span id="hudBpmDisplay" style="font-weight: 700;">120</span> BPM
+        </div>
+        <button id="btnHudPanic" class="btn btn-danger" style="font-size: 11px;">🚨 PANIC</button>
+        <button id="btnCloseHud" class="btn" style="font-size: 11px;">✕ FECHAR HUD [ESC]</button>
+      </div>
+    </div>
+
+    <!-- Center Panoramic Visualizer -->
+    <div class="hud-visualizer-container">
+      <canvas id="hudOscilloscopeCanvas" style="flex: 1; height: 100%;"></canvas>
+      <canvas id="hudSpectrumCanvas" style="flex: 1; height: 100%;"></canvas>
+    </div>
+
+    <!-- 8 Giant Performance Macros -->
+    <div style="font-size: 11px; font-weight: 700; color: #94a3b8; letter-spacing: 0.5px;">
+      8 PERFORMANCE MACROS (KNOBS 1..8)
+    </div>
+    <div class="hud-macros-grid" id="hudMacrosContainer">
+      <!-- Rendered dynamically -->
+    </div>
+
+    <!-- 8 Live Scenes Grid -->
+    <div style="font-size: 11px; font-weight: 700; color: #94a3b8; letter-spacing: 0.5px;">
+      CENAS AO VIVO (PADS 1..8)
+    </div>
+    <div class="hud-scenes-grid" id="hudScenesContainer">
+      <!-- Rendered dynamically -->
+    </div>
+  </div>
 
 </body>
 </html>
