@@ -185,6 +185,7 @@ bool UsbMidiHost::findMidiInterface(usb_device_handle_t dev_handle) {
     while (p < end) {
         uint8_t len = p[0];
         uint8_t type = p[1];
+        if (len == 0) break; // Guard against malformed descriptor infinite loop
         
         if (type == USB_B_DESCRIPTOR_TYPE_INTERFACE) {
             const usb_intf_desc_t* intf = (const usb_intf_desc_t*)p;
@@ -198,6 +199,7 @@ bool UsbMidiHost::findMidiInterface(usb_device_handle_t dev_handle) {
                 // Search for bulk IN endpoint within this interface
                 const uint8_t* ep_ptr = p + len;
                 while (ep_ptr < end && ep_ptr[1] != USB_B_DESCRIPTOR_TYPE_INTERFACE) {
+                    if (ep_ptr[0] == 0) break; // Guard against malformed descriptor infinite loop
                     if (ep_ptr[1] == USB_B_DESCRIPTOR_TYPE_ENDPOINT) {
                         const usb_ep_desc_t* ep = (const usb_ep_desc_t*)ep_ptr;
                         if (USB_EP_DESC_GET_EP_DIR(ep) && 
@@ -236,29 +238,52 @@ void UsbMidiHost::startMidiIn() {
     err = usb_host_transfer_submit(in_transfer_);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to submit transfer");
+        usb_host_transfer_free(in_transfer_);
+        in_transfer_ = nullptr;
     }
 }
 
 void UsbMidiHost::transferCallback(usb_transfer_t* transfer) {
     UsbMidiHost* self = static_cast<UsbMidiHost*>(transfer->context);
     
+    // If device was disconnected or transfer cancelled, free transfer safely
+    if (!self->isDeviceConnected() || 
+        transfer->status == USB_TRANSFER_STATUS_CANCELED || 
+        transfer->status == USB_TRANSFER_STATUS_NO_DEVICE) {
+        usb_host_transfer_free(transfer);
+        self->in_transfer_ = nullptr;
+        return;
+    }
+
     if (transfer->status == USB_TRANSFER_STATUS_COMPLETED) {
         for (int i = 0; i < transfer->actual_num_bytes; i += 4) {
             self->parser_.processUsbMidiPacket(transfer->data_buffer + i);
         }
         
-        // Re-submit
+        // Re-submit if still connected
         if (self->isDeviceConnected()) {
             transfer->num_bytes = kTransferBufferSize;
-            usb_host_transfer_submit(transfer);
+            esp_err_t ret = usb_host_transfer_submit(transfer);
+            if (ret != ESP_OK) {
+                usb_host_transfer_free(transfer);
+                self->in_transfer_ = nullptr;
+            }
+        } else {
+            usb_host_transfer_free(transfer);
+            self->in_transfer_ = nullptr;
         }
     } else {
         // Re-submit on transient non-fatal errors if device is still connected
-        if (self->isDeviceConnected() && 
-            transfer->status != USB_TRANSFER_STATUS_CANCELED && 
-            transfer->status != USB_TRANSFER_STATUS_NO_DEVICE) {
+        if (self->isDeviceConnected()) {
             transfer->num_bytes = kTransferBufferSize;
-            usb_host_transfer_submit(transfer);
+            esp_err_t ret = usb_host_transfer_submit(transfer);
+            if (ret != ESP_OK) {
+                usb_host_transfer_free(transfer);
+                self->in_transfer_ = nullptr;
+            }
+        } else {
+            usb_host_transfer_free(transfer);
+            self->in_transfer_ = nullptr;
         }
     }
 }
@@ -291,10 +316,8 @@ void UsbMidiHost::handleDeviceDisconnection() {
     
     event_bus_.send(panic_event);
     
-    if (in_transfer_) {
-        usb_host_transfer_free(in_transfer_);
-        in_transfer_ = nullptr;
-    }
+    // Note: in_transfer_ is in flight and will be safely freed in transferCallback
+    // when it returns with status CANCELED / NO_DEVICE
     
     if (device_handle_) {
         usb_host_interface_release(client_handle_, device_handle_, midi_interface_num_);

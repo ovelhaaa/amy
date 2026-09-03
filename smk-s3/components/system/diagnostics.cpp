@@ -1,4 +1,5 @@
 #include "diagnostics.h"
+#include <algorithm>
 #include "esp_system.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -37,9 +38,9 @@ Diagnostics::Snapshot Diagnostics::takeSnapshot() const {
     esp_flash_get_size(NULL, &flash_size);
     s.flash_size = flash_size;
     
-    s.psram_size = esp_psram_get_size();
-    
-    s.render_load = 0.0f; // Could be computed based on average render time and budget
+    // Audio block budget at 48kHz with 256 frames: (256 * 1000000) / 48000 = ~5333.33 us
+    constexpr float kBlockBudgetUs = 5333.33f;
+    s.render_load = std::clamp(((float)s.avg_render_us / kBlockBudgetUs) * 100.0f, 0.0f, 100.0f);
     s.active_voices = counters_.active_voices.load();
     
     s.midi_parse_errors = counters_.midi_parse_errors.load();

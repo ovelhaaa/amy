@@ -1,4 +1,5 @@
 #include "midi_parser.h"
+#include "diagnostics.h"
 #include "esp_timer.h"
 #include <cmath>
 #include <algorithm>
@@ -182,6 +183,7 @@ void MidiParser::processByte(uint8_t byte) {
     } else {
         if (running_status_ == 0) {
             parse_errors_.fetch_add(1, std::memory_order_relaxed);
+            Diagnostics::instance().counters().midi_parse_errors.fetch_add(1, std::memory_order_relaxed);
             return;
         }
         

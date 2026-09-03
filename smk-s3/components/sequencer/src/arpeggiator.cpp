@@ -19,8 +19,10 @@ void Arpeggiator::setEnabled(bool enable, EventBus* event_bus) {
         if (event_bus != nullptr) {
             reset(*event_bus);
         } else {
+            portENTER_CRITICAL(&mux_);
             held_notes_.clear();
             latched_notes_.clear();
+            portEXIT_CRITICAL(&mux_);
         }
     }
 }
@@ -30,13 +32,16 @@ void Arpeggiator::setOctaves(uint8_t octaves) {
 }
 
 void Arpeggiator::setLatch(bool enable) {
+    portENTER_CRITICAL(&mux_);
     latch_ = enable;
     if (!latch_) {
         latched_notes_.clear();
     }
+    portEXIT_CRITICAL(&mux_);
 }
 
 void Arpeggiator::noteOn(uint8_t note, uint8_t velocity) {
+    portENTER_CRITICAL(&mux_);
     // Check if note already present
     auto it = std::find_if(held_notes_.begin(), held_notes_.end(), [note](const HeldNote& hn) {
         return hn.note == note;
@@ -51,9 +56,11 @@ void Arpeggiator::noteOn(uint8_t note, uint8_t velocity) {
     if (latch_) {
         latched_notes_ = held_notes_;
     }
+    portEXIT_CRITICAL(&mux_);
 }
 
 void Arpeggiator::noteOff(uint8_t note) {
+    portENTER_CRITICAL(&mux_);
     auto it = std::find_if(held_notes_.begin(), held_notes_.end(), [note](const HeldNote& hn) {
         return hn.note == note;
     });
@@ -61,9 +68,11 @@ void Arpeggiator::noteOff(uint8_t note) {
     if (it != held_notes_.end()) {
         held_notes_.erase(it);
     }
+    portEXIT_CRITICAL(&mux_);
 }
 
 void Arpeggiator::reset() {
+    portENTER_CRITICAL(&mux_);
     held_notes_.clear();
     latched_notes_.clear();
     pattern_len_ = 0;
@@ -71,6 +80,7 @@ void Arpeggiator::reset() {
     current_step_idx_ = 0;
     up_direction_ = true;
     last_played_note_ = -1;
+    portEXIT_CRITICAL(&mux_);
 }
 
 void Arpeggiator::reset(EventBus& event_bus) {
@@ -119,15 +129,18 @@ uint32_t Arpeggiator::getTicksPerStep() const {
 
 void Arpeggiator::generateArpPattern() {
     pattern_len_ = 0;
-    const auto& base_notes = (!held_notes_.empty()) ? held_notes_ : latched_notes_;
-    if (base_notes.empty()) return;
-
-    // Stack buffer for sorting base notes (max 16 held notes)
     std::array<HeldNote, 16> sorted_notes{};
-    size_t base_count = std::min(base_notes.size(), size_t(16));
+    size_t base_count = 0;
+
+    portENTER_CRITICAL(&mux_);
+    const auto& base_notes = (!held_notes_.empty()) ? held_notes_ : latched_notes_;
+    base_count = std::min(base_notes.size(), size_t(16));
     for (size_t i = 0; i < base_count; ++i) {
         sorted_notes[i] = base_notes[i];
     }
+    portEXIT_CRITICAL(&mux_);
+
+    if (base_count == 0) return;
 
     if (mode_ != ArpMode::AsPlayed) {
         std::sort(sorted_notes.begin(), sorted_notes.begin() + base_count, [](const HeldNote& a, const HeldNote& b) {

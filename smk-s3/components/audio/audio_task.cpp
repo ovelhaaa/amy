@@ -1,4 +1,5 @@
 #include "audio_task.h"
+#include "diagnostics.h"
 #include <esp_log.h>
 #include <esp_timer.h>
 
@@ -71,7 +72,14 @@ void AudioTask::taskRoutine(void* arg) {
         } else {
             ema_render_time = (ema_render_time * 15 + (render_time << 4)) / 16;
         }
-        _avg_render_us.store((uint32_t)(ema_render_time >> 4));
+        uint32_t avg_us = (uint32_t)(ema_render_time >> 4);
+        _avg_render_us.store(avg_us);
+
+        // Sync with Diagnostics subsystem
+        auto& diag = Diagnostics::instance().counters();
+        diag.max_render_us.store(_max_render_us.load(), std::memory_order_relaxed);
+        diag.avg_render_us.store(avg_us, std::memory_order_relaxed);
+        diag.frames_rendered.fetch_add(frames, std::memory_order_relaxed);
         
         // Write out blocks over I2S
         _output->write(buffer, frames);

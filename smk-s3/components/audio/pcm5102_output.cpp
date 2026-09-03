@@ -1,4 +1,5 @@
 #include "pcm5102_output.h"
+#include "diagnostics.h"
 #include <esp_log.h>
 #include <driver/gpio.h>
 #include <cstring>
@@ -117,15 +118,16 @@ bool PCM5102Output::write(const int16_t* interleaved_stereo, size_t frames) {
     
     size_t required_bytes = frames * 2 * sizeof(int16_t);
     size_t bytes_written = 0;
-    if (i2s_channel_write(_tx_handle, interleaved_stereo, required_bytes, &bytes_written, portMAX_DELAY) != ESP_OK) {
+    // Non-infinite timeout (20ms) to ensure high-priority audio task never freezes if I2S DMA stalls
+    esp_err_t res = i2s_channel_write(_tx_handle, interleaved_stereo, required_bytes, &bytes_written, pdMS_TO_TICKS(20));
+    
+    if (res != ESP_OK || bytes_written < required_bytes) {
+        _underruns++;
+        Diagnostics::instance().counters().audio_underruns.store(_underruns, std::memory_order_relaxed);
         return false;
     }
     
-    if (bytes_written < required_bytes) {
-        _underruns++;
-    }
     _frames_written += bytes_written / (2 * sizeof(int16_t));
-    
     return true;
 }
 

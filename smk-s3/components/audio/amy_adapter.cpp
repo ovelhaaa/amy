@@ -57,6 +57,11 @@ bool AmyAdapter::begin(uint32_t sample_rate_hz) {
     e.num_voices = 0;
     amy_add_event(&e);
 
+    // Set master bus volume headroom to avoid hard clipping on full polyphony + chorus
+    amy_event ev = amy_default_event();
+    ev.volume[0] = 0.85f;
+    amy_add_event(&ev);
+
     return true;
 }
 
@@ -96,8 +101,8 @@ void AmyAdapter::noteOff(uint8_t channel, uint8_t note) {
 void AmyAdapter::pitchBend(uint8_t channel, int16_t value) {
     amy_event e = amy_default_event();
     e.synth = (channel == 9) ? 10 : 1;
-    // MIDI Pitch Bend standard: 0..16383 (center 8192). Range: +/- 2 semitones
-    e.pitch_bend = ((float)(value - 8192)) / (6.0f * 8192.0f);
+    // MidiParser passes value centered at 0 (-8192..+8191). Range: +/- 2 semitones (+/- 1/6 octave)
+    e.pitch_bend = ((float)value) / (6.0f * 8192.0f);
     amy_add_event(&e);
 }
 
@@ -119,12 +124,33 @@ void AmyAdapter::controlChange(uint8_t channel, uint8_t controller, uint8_t valu
 void AmyAdapter::allNotesOff() {
     std::memset(active_notes_, 0, sizeof(active_notes_));
     active_voices_.store(0);
+
+    // Release sustain pedal for Synth 1 and Synth 10
+    amy_event ep = amy_default_event();
+    ep.synth = 1;
+    ep.pedal = 0;
+    amy_add_event(&ep);
+    ep.synth = 10;
+    amy_add_event(&ep);
+
+    // Release all active instrument voices in AMY
+    amy_event e = amy_default_event();
+    e.synth = 1;
+    e.velocity = 0.0f;
+    amy_add_event(&e);
+
+    e.synth = 10;
+    amy_add_event(&e);
+
+    // Immediately mute any sounding voices
     all_notes_off();
 }
 
 void AmyAdapter::panic() {
     allNotesOff();
-    amy_reset_oscs();
+    // Center pitch bend back to 0 on both main synth and drums
+    pitchBend(0, 0);
+    pitchBend(9, 0);
 }
 
 static inline int16_t applySoftClip(int32_t sample) {

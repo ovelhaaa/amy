@@ -103,7 +103,8 @@ const LUT *choose_from_lutset(float period, const LUT *lutset) {
             SAMPLE c0 = y0; \
             SAMPLE c1 = SHIFTR(y1 - ym1, 1); \
             SAMPLE c2 = ym1 - SHIFTL(y0, 1) - SHIFTR(y0, 1) + SHIFTL(y1, 1) - SHIFTR(y2, 1); \
-            SAMPLE c3 = SHIFTR(y2 - ym1, 1) + SHIFTL(y0 - y1, 1) + SHIFTR(y0 - y1, 1); \
+            SAMPLE y0_m_y1 = y0 - y1; \
+            SAMPLE c3 = SHIFTR(y2 - ym1, 1) + y0_m_y1 + SHIFTR(y0_m_y1, 1); \
             sample = c0 + MUL0_SS(frac, c1 + MUL0_SS(frac, c2 + MUL0_SS(frac, c3)));
 
 #define INTERP_CUBIC INTERP_HERMITE

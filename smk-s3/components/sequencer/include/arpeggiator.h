@@ -4,6 +4,7 @@
 #include <array>
 #include <algorithm>
 #include "event_bus.h"
+#include <freertos/FreeRTOS.h>
 
 namespace smk {
 
@@ -74,6 +75,7 @@ private:
     float                   gate_percent_ = 50.0f;
     float                   swing_percent_ = 0.0f;
     bool                    latch_ = false;
+    portMUX_TYPE            mux_ = portMUX_INITIALIZER_UNLOCKED;
 
     std::vector<HeldNote>   held_notes_;
     std::vector<HeldNote>   latched_notes_;

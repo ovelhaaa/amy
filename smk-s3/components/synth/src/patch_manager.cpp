@@ -69,13 +69,37 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
             return;
         }
 
-        float norm_val = std::clamp(physical_val / 127.0f, 0.0f, 1.0f);
+        float saved_val = 64.0f;
+        switch (active_bank_) {
+            case KnobBank::BankB_Oscillator:
+                if (knob_idx == 1) saved_val = (active_patch_.wave_type / 8.0f) * 127.0f;
+                break;
+            case KnobBank::BankC_FilterEnv:
+                switch (knob_idx) {
+                    case 0: saved_val = std::clamp((active_patch_.filter_cutoff - 20.0f) / 18000.0f * 127.0f, 0.0f, 127.0f); break;
+                    case 1: saved_val = std::clamp((active_patch_.filter_res - 0.5f) / 9.5f * 127.0f, 0.0f, 127.0f); break;
+                    case 3: saved_val = std::clamp((active_patch_.amp_attack - 1.0f) / 4999.0f * 127.0f, 0.0f, 127.0f); break;
+                    case 4: saved_val = std::clamp((active_patch_.amp_decay - 1.0f) / 4999.0f * 127.0f, 0.0f, 127.0f); break;
+                    case 5: saved_val = std::clamp(active_patch_.amp_sustain * 127.0f, 0.0f, 127.0f); break;
+                    case 6: saved_val = std::clamp((active_patch_.amp_release - 1.0f) / 4999.0f * 127.0f, 0.0f, 127.0f); break;
+                }
+                break;
+            case KnobBank::BankD_Effects:
+                if (knob_idx >= 1 && knob_idx <= 5) saved_val = (float)bank_b_fx_values_[knob_idx];
+                break;
+            case KnobBank::BankE_Sequencer:
+                if (knob_idx == 0 && clock_manager_) saved_val = std::clamp((clock_manager_->bpm() - 30.0f) / 270.0f * 127.0f, 0.0f, 127.0f);
+                break;
+            default: break;
+        }
+
         const char* param_name = "PARAM";
         const char* bank_label = "BANK B";
         float effective_val = physical_val;
 
         uint8_t takeover_id = static_cast<uint8_t>(active_bank_) * 8 + knob_idx;
-        TakeoverStatus status = soft_takeover_.update(takeover_id, physical_val, physical_val, effective_val);
+        TakeoverStatus status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
+        float norm_val = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
 
     switch (active_bank_) {
         case KnobBank::BankB_Oscillator:
@@ -239,7 +263,7 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
     }
 
     if (ui_manager_) {
-        ui_manager_->triggerParameterOverlay(param_name, bank_label, effective_val, 64.0f, "", status);
+        ui_manager_->triggerParameterOverlay(param_name, bank_label, effective_val, saved_val, "", status);
     }
     return;
 }
