@@ -499,7 +499,10 @@ static void app_init_task(void* arg) {
                     amy_adapter->pitchBend(event.channel, (int16_t)event.value);
                     break;
                 case smk::EventType::Modulation:
-                    patch_manager->setMacro(2, (float)event.value, true);
+                    amy_adapter->controlChange(event.channel, 1, (uint8_t)event.value);
+                    if (ui_manager) {
+                        ui_manager->triggerParameterOverlay("MODULATION", "PERFORM", (float)event.value, 0.0f, "", smk::TakeoverStatus::Captured);
+                    }
                     break;
                 case smk::EventType::ControlChange:
                     if (event.id >= 1 && event.id <= 8) {

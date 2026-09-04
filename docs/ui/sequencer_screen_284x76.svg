@@ -1,0 +1,189 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 284 76" width="852" height="228" shape-rendering="crispEdges">
+  <defs>
+    <style>
+      .txt-mono { font-family: 'Courier New', Courier, monospace; font-weight: bold; }
+      .txt-tiny { font-size: 6px; }
+      .txt-small { font-size: 7px; }
+      .txt-label { font-size: 6px; letter-spacing: 0.5px; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="284" height="76" fill="#000000"/>
+
+  <!-- ── 1. HEADER (y=0..12) ── -->
+  <rect x="0" y="0" width="284" height="12" fill="#141419"/>
+  <line x1="0" y1="12" x2="284" y2="12" stroke="#42424d" stroke-width="1"/>
+
+  <text x="3" y="9" fill="#ffffff" class="txt-mono txt-small">SEQ P01</text>
+  
+  <!-- Transport Badge -->
+  <rect x="58" y="2" width="36" height="8" fill="#0d381e"/>
+  <text x="63" y="8" fill="#00e676" class="txt-mono txt-tiny">PLAY &gt;</text>
+
+  <text x="100" y="9" fill="#ffb300" class="txt-mono txt-small">120 BPM</text>
+  <text x="144" y="9" fill="#bdbdbd" class="txt-mono txt-tiny">SW:54%</text>
+  
+  <text x="188" y="9" fill="#00e5ff" class="txt-mono txt-small">TRK:BD [PG1: 1-8]</text>
+
+  <!-- ── 2. 4-TRACK DRUM GRID (y=13..54) ── -->
+  <!-- Track Labels (x=2..24) -->
+  <!-- BD (Selected) -->
+  <rect x="2" y="14" width="22" height="9" fill="#00e5ff"/>
+  <text x="8" y="21" fill="#000000" class="txt-mono txt-small">BD</text>
+  
+  <!-- SD -->
+  <text x="8" y="31" fill="#ffffff" class="txt-mono txt-small">SD</text>
+  
+  <!-- CH -->
+  <text x="8" y="41" fill="#ffffff" class="txt-mono txt-small">CH</text>
+  
+  <!-- OH -->
+  <text x="8" y="51" fill="#ffffff" class="txt-mono txt-small">OH</text>
+
+  <!-- Steps: 16 columns grouped in 4-step measures (x=28..278) -->
+  <!-- Measure dividers: after step 3, step 7, step 11 -->
+  <!-- Step width: 12, height: 8. Spacing: 14. Extra gap at 4-step: 4px -->
+  
+  <!-- ROW 0: BD (y=14) -->
+  <g transform="translate(0, 14)">
+    <!-- Active Triggers on 0, 4, 8, 12, 14 -->
+    <rect x="28" y="0" width="12" height="8" fill="#ffb300"/>
+    <rect x="42" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="56" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="70" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+
+    <rect x="88" y="0" width="12" height="8" fill="#ffb300"/>
+    <rect x="102" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="116" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="130" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+
+    <rect x="148" y="0" width="12" height="8" fill="#ffb300"/>
+    <rect x="162" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="176" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="190" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+
+    <rect x="208" y="0" width="12" height="8" fill="#ffb300"/>
+    <rect x="222" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="236" y="0" width="12" height="8" fill="#ffb300"/>
+    <rect x="250" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+  </g>
+
+  <!-- ROW 1: SD (y=24) -->
+  <g transform="translate(0, 24)">
+    <rect x="28" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="42" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="56" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="70" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+
+    <!-- SD on step 4 (Measure 2 beat 1) with P-LOCK -->
+    <rect x="88" y="0" width="12" height="8" fill="#00e5ff"/>
+    <rect x="96" y="1" width="3" height="2" fill="#ffb300"/> <!-- P-Lock pip -->
+    <rect x="102" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="116" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="130" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+
+    <rect x="148" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="162" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="176" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="190" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+
+    <!-- SD on step 12 -->
+    <rect x="208" y="0" width="12" height="8" fill="#00e5ff"/>
+    <rect x="222" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="236" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="250" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+  </g>
+
+  <!-- ROW 2: CH (y=34, 16th notes running) -->
+  <g transform="translate(0, 34)">
+    <rect x="28" y="0" width="12" height="8" fill="#00e676"/>
+    <rect x="42" y="0" width="12" height="8" fill="#00e676"/>
+    <rect x="56" y="0" width="12" height="8" fill="#00e676"/>
+    <rect x="70" y="0" width="12" height="8" fill="#00e676"/>
+
+    <rect x="88" y="0" width="12" height="8" fill="#00e676"/>
+    <rect x="102" y="0" width="12" height="8" fill="#00e676"/>
+    <rect x="116" y="0" width="12" height="8" fill="#00e676"/>
+    <rect x="130" y="0" width="12" height="8" fill="#00e676"/>
+
+    <rect x="148" y="0" width="12" height="8" fill="#00e676"/>
+    <rect x="162" y="0" width="12" height="8" fill="#00e676"/>
+    <rect x="176" y="0" width="12" height="8" fill="#00e676"/>
+    <rect x="190" y="0" width="12" height="8" fill="#00e676"/>
+
+    <rect x="208" y="0" width="12" height="8" fill="#00e676"/>
+    <rect x="222" y="0" width="12" height="8" fill="#00e676"/>
+    <rect x="236" y="0" width="12" height="8" fill="#00e676"/>
+    <rect x="250" y="0" width="12" height="8" fill="#00e676"/>
+  </g>
+
+  <!-- ROW 3: OH (y=44) -->
+  <g transform="translate(0, 44)">
+    <rect x="28" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="42" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="56" y="0" width="12" height="8" fill="#e0e0e0"/>
+    <rect x="70" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+
+    <rect x="88" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="102" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="116" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="130" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+
+    <rect x="148" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="162" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="176" y="0" width="12" height="8" fill="#e0e0e0"/>
+    <rect x="190" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+
+    <rect x="208" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="222" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="236" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+    <rect x="250" y="0" width="12" height="8" fill="#262630" stroke="#42424d" stroke-width="1"/>
+  </g>
+
+  <!-- Playhead Indicator Frame around Step 4 (x=87, y=13..53) -->
+  <rect x="87" y="13" width="14" height="40" fill="none" stroke="#ffffff" stroke-width="1"/>
+
+  <!-- ── 3. BOTTOM PAD MATRIX & HELP (y=56..75) ── -->
+  <line x1="0" y1="56" x2="284" y2="56" stroke="#42424d" stroke-width="1"/>
+
+  <!-- 8 Pad triggers corresponding to SMK25 8 pads -->
+  <g transform="translate(4, 58)">
+    <!-- P1 (Active trigger) -->
+    <rect x="0" y="0" width="20" height="15" fill="#00e5ff"/>
+    <text x="4" y="10" fill="#000000" class="txt-mono txt-small">P1</text>
+
+    <!-- P2 (Empty) -->
+    <rect x="23" y="0" width="20" height="15" fill="#141419" stroke="#42424d" stroke-width="1"/>
+    <text x="27" y="10" fill="#757575" class="txt-mono txt-small">P2</text>
+
+    <!-- P3 (Empty) -->
+    <rect x="46" y="0" width="20" height="15" fill="#141419" stroke="#42424d" stroke-width="1"/>
+    <text x="50" y="10" fill="#757575" class="txt-mono txt-small">P3</text>
+
+    <!-- P4 (Empty) -->
+    <rect x="69" y="0" width="20" height="15" fill="#141419" stroke="#42424d" stroke-width="1"/>
+    <text x="73" y="10" fill="#757575" class="txt-mono txt-small">P4</text>
+
+    <!-- P5 (Active trigger + PLock) -->
+    <rect x="92" y="0" width="20" height="15" fill="#00e5ff"/>
+    <rect x="107" y="2" width="4" height="3" fill="#ffb300"/>
+    <text x="96" y="10" fill="#000000" class="txt-mono txt-small">P5</text>
+
+    <!-- P6 (Empty) -->
+    <rect x="115" y="0" width="20" height="15" fill="#141419" stroke="#42424d" stroke-width="1"/>
+    <text x="119" y="10" fill="#757575" class="txt-mono txt-small">P6</text>
+
+    <!-- P7 (Empty) -->
+    <rect x="138" y="0" width="20" height="15" fill="#141419" stroke="#42424d" stroke-width="1"/>
+    <text x="142" y="10" fill="#757575" class="txt-mono txt-small">P7</text>
+
+    <!-- P8 (Empty) -->
+    <rect x="161" y="0" width="20" height="15" fill="#141419" stroke="#42424d" stroke-width="1"/>
+    <text x="165" y="10" fill="#757575" class="txt-mono txt-small">P8</text>
+  </g>
+
+  <!-- Shortcuts -->
+  <text x="194" y="65" fill="#ff3344" class="txt-mono txt-tiny">REC: MOTION-REC</text>
+  <text x="194" y="73" fill="#bdbdbd" class="txt-mono txt-tiny">PAD-B: PG/MUTE</text>
+</svg>

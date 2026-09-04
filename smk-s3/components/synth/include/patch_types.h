@@ -39,11 +39,11 @@ struct MacroConfig {
 };
 
 constexpr uint32_t kPatchMagic = 0x534D4B31; // "SMK1"
-constexpr uint16_t kPatchFormatVersion = 2;
+constexpr uint16_t kPatchFormatVersion = 3;
 
 struct PatchHeader {
     uint32_t magic;          // 0x534D4B31
-    uint16_t format_version; // Version 2
+    uint16_t format_version; // Version 3
     uint16_t data_size;      // Payload data size
     uint32_t crc32;          // Checksum of patch data
 };
@@ -57,6 +57,8 @@ struct SynthPatch {
     int8_t      transpose;    // Transpose in semitones (-24..+24)
     uint8_t     voice_count;  // Max polyphony voices (e.g. 8)
     uint8_t     wave_type;    // 0=SINE, 1=SAW_DOWN, 2=SAW_UP, 3=TRIANGLE, 4=SQUARE, 5=NOISE, 6=KS, 7=PCM, 8=ALGO
+    uint8_t     mono_mode;    // 0=Polyphonic, 1=Monophonic Legato
+    uint16_t    portamento_ms;// Portamento glide time in milliseconds
     float       base_freq;
     float       filter_cutoff;
     float       filter_res;

@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 284 76" width="852" height="228" shape-rendering="crispEdges">
+  <defs>
+    <style>
+      .txt-mono { font-family: 'Courier New', Courier, monospace; font-weight: bold; }
+      .txt-tiny { font-size: 6px; }
+      .txt-small { font-size: 7px; }
+      .txt-large { font-size: 13px; letter-spacing: 0.5px; }
+      .txt-label { font-size: 6px; letter-spacing: 0.5px; }
+    </style>
+  </defs>
+
+  <!-- Dimmed Background Content -->
+  <g opacity="0.25">
+    <rect width="284" height="76" fill="#000000"/>
+    <rect x="0" y="0" width="284" height="13" fill="#141419"/>
+    <text x="3" y="9" fill="#ffffff" class="txt-mono txt-small">042 GLASS HORIZON</text>
+    <text x="96" y="9" fill="#00e5ff" class="txt-mono txt-small">[POLY]</text>
+    <text x="128" y="9" fill="#ffb300" class="txt-mono txt-small">120.0 BPM</text>
+    <line x1="0" y1="13" x2="284" y2="13" stroke="#42424d" stroke-width="1"/>
+    <!-- Columns mockup -->
+    <g transform="translate(1, 15)">
+      <text x="17" y="7" text-anchor="middle" fill="#00e5ff" class="txt-mono txt-label">BRITE</text>
+      <rect x="6" y="39" width="22" height="19" fill="#141419" stroke="#42424d" stroke-width="1"/>
+    </g>
+    <g transform="translate(36, 15)">
+      <text x="17" y="7" text-anchor="middle" fill="#00e5ff" class="txt-mono txt-label">RESO</text>
+      <rect x="6" y="39" width="22" height="19" fill="#141419" stroke="#42424d" stroke-width="1"/>
+    </g>
+  </g>
+
+  <!-- ── FLOATING HUD MODAL (x=46, y=8, w=192, h=60) ── -->
+  <!-- Outer Glow / Shadow -->
+  <rect x="45" y="7" width="194" height="62" fill="#000000" opacity="0.6"/>
+  
+  <!-- Modal Card -->
+  <rect x="46" y="8" width="192" height="60" fill="#101017" stroke="#00e5ff" stroke-width="1.5"/>
+
+  <!-- Modal Header -->
+  <text x="54" y="19" fill="#ffffff" class="txt-mono txt-small">CUTOFF (SYNTH A)</text>
+  
+  <!-- Soft Takeover Pill -->
+  <rect x="164" y="11" width="66" height="10" fill="#3a3000" stroke="#ffb300" stroke-width="0.8"/>
+  <text x="168" y="18" fill="#ffea00" class="txt-mono txt-tiny">TAKEOVER: &gt;</text>
+
+  <!-- Large Value Display -->
+  <text x="54" y="36" fill="#00e5ff" class="txt-mono txt-large">1.24 kHz</text>
+  <text x="122" y="35" fill="#8c8c9e" class="txt-mono txt-tiny">(SAVED: 850 Hz)</text>
+
+  <!-- High-Precision Slider with Ghost Needle (x=54..226, w=172, h=14) -->
+  <rect x="54" y="44" width="174" height="14" fill="#181822" stroke="#42424d" stroke-width="1"/>
+  
+  <!-- Current Knob Value Fill (62%) -->
+  <rect x="56" y="46" width="108" height="10" fill="#00e5ff"/>
+  
+  <!-- Ghost Needle: Saved Patch Value at 45% (x=54 + 174*0.45 = 132) -->
+  <line x1="132" y1="41" x2="132" y2="61" stroke="#ffea00" stroke-width="2" stroke-dasharray="2 1"/>
+  <!-- Little triangle indicator pointing to saved point -->
+  <polygon points="130,41 134,41 132,44" fill="#ffea00"/>
+  <polygon points="130,61 134,61 132,58" fill="#ffea00"/>
+
+  <text x="136" y="43" fill="#ffea00" class="txt-mono txt-tiny">LOCK</text>
+</svg>

@@ -25,6 +25,7 @@ public:
     void setFilter(uint8_t osc_id, float cutoff_hz, float resonance);
     void setOscillatorWaveform(uint8_t osc_id, uint8_t wave_type);
     void setEnvelope(uint8_t osc_id, float attack_ms, float decay_ms, float sustain_level, float release_ms);
+    void setPortamento(uint8_t synth_id, uint16_t portamento_ms);
     void loadPreset(uint8_t synth_id, uint16_t preset_id, uint8_t num_voices = 8);
     void sendAmyMessage(const char* message);
 
@@ -51,12 +52,21 @@ public:
     static constexpr size_t kRawScopeBufferSize = 512; // stereo samples (256 frames * 2)
     void getScopeSamples(int16_t* dest, size_t max_count, size_t* out_count = nullptr) const override;
 
+    // Monophonic Legato
+    void setMonoMode(bool enable) { mono_mode_ = enable; mono_stack_size_ = 0; }
+    bool isMonoMode() const { return mono_mode_; }
+
 private:
     std::atomic<uint32_t> active_voices_{0};
     std::atomic<bool> soft_limiter_enabled_{true};
     std::atomic<float> master_gain_{1.0f};
     uint8_t active_notes_[16][128]{};
     int16_t scope_buffer_[kRawScopeBufferSize]{};
+
+    static constexpr size_t kMonoStackCap = 16;
+    uint8_t mono_stack_[kMonoStackCap]{};
+    uint8_t mono_stack_size_{0};
+    bool mono_mode_{false};
 };
 
 } // namespace smk

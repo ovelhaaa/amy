@@ -120,4 +120,22 @@ private:
     size_t sample_count_{0};
 };
 
+enum class ParametricGlyph : uint8_t {
+    Lowpass,
+    Resonance,
+    Attack,
+    Release,
+    SineWave,
+    DelayTaps,
+    ReverbCloud,
+    DriveSaturation,
+    GenericBipolar,
+    GenericLevel
+};
+
+class GlyphRenderer {
+public:
+    static void drawGlyph(DisplayDriver& display, int16_t x, int16_t y, ParametricGlyph glyph, uint16_t color);
+};
+
 } // namespace smk

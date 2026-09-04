@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 128" width="640" height="512" shape-rendering="crispEdges">
+  <defs>
+    <style>
+      .txt-mono { font-family: 'Courier New', Courier, monospace; font-weight: bold; }
+      .txt-micro { font-size: 5px; }
+      .txt-tiny { font-size: 6px; }
+      .txt-small { font-size: 7px; }
+      .txt-medium { font-size: 8px; }
+    </style>
+  </defs>
+
+  <!-- Canvas Background -->
+  <rect width="160" height="128" fill="#000000"/>
+
+  <!-- ── 1. HEADER BANNER (y=0..17) ── -->
+  <rect x="0" y="0" width="160" height="17" fill="#181822"/>
+  <line x1="0" y1="17" x2="160" y2="17" stroke="#42424d" stroke-width="1"/>
+
+  <!-- Line 1: Patch Name & LEDs -->
+  <text x="3" y="7" fill="#ffffff" class="txt-mono txt-small">P042 GLASS HORIZON</text>
+  <rect x="144" y="3" width="5" height="5" fill="#00e676"/>
+  <rect x="151" y="3" width="5" height="5" fill="#ffee55"/>
+
+  <!-- Line 2: Mode, BPM & Active Knob Bank -->
+  <text x="3" y="14" fill="#00e5ff" class="txt-mono txt-micro">[POLY]</text>
+  <text x="30" y="14" fill="#ffb300" class="txt-mono txt-micro">120 BPM</text>
+  <text x="75" y="14" fill="#e0e0e0" class="txt-mono txt-micro">BANK A: MACROS</text>
+
+  <!-- ── 2. LIVE AUDIO OSCILLOSCOPE (y=19..44) ── -->
+  <rect x="3" y="19" width="154" height="24" fill="#061206" stroke="#264d26" stroke-width="1"/>
+  <!-- Grid Lines inside Scope -->
+  <line x1="3" y1="31" x2="157" y2="31" stroke="#122b12" stroke-width="0.5"/>
+  <line x1="41" y1="19" x2="41" y2="43" stroke="#122b12" stroke-width="0.5"/>
+  <line x1="80" y1="19" x2="80" y2="43" stroke="#122b12" stroke-width="0.5"/>
+  <line x1="119" y1="19" x2="119" y2="43" stroke="#122b12" stroke-width="0.5"/>
+  
+  <!-- Waveform Path -->
+  <path d="M 4 31 Q 12 21 22 31 T 42 31 T 62 23 T 78 39 T 98 31 T 118 21 T 138 31 T 156 31" fill="none" stroke="#00e676" stroke-width="1.2" shape-rendering="geometricPrecision"/>
+
+  <!-- 8 Polyphony Voice Dots (y=45) -->
+  <g transform="translate(4, 45)">
+    <rect x="0" y="0" width="5" height="3" fill="#00e5ff"/>
+    <rect x="7" y="0" width="5" height="3" fill="#00e5ff"/>
+    <rect x="14" y="0" width="5" height="3" fill="#00e5ff"/>
+    <rect x="21" y="0" width="5" height="3" fill="#00e5ff"/>
+    <rect x="28" y="0" width="5" height="3" fill="#2a2a33"/>
+    <rect x="35" y="0" width="5" height="3" fill="#2a2a33"/>
+    <rect x="42" y="0" width="5" height="3" fill="#2a2a33"/>
+    <rect x="49" y="0" width="5" height="3" fill="#2a2a33"/>
+  </g>
+  <text x="60" y="48" fill="#8c8c9e" class="txt-mono txt-micro">VOICES: 04/12</text>
+
+  <!-- ── 3. 2x4 KNOB MATRIX (y=50..116) ── -->
+  <!-- ROW 1 (Knobs 1 to 4) -->
+  <!-- Knob 1: BRTE -->
+  <g transform="translate(2, 51)">
+    <rect x="0" y="0" width="37" height="31" fill="#12121a" stroke="#333342" stroke-width="1"/>
+    <text x="18" y="7" text-anchor="middle" fill="#00e5ff" class="txt-mono txt-micro">BRTE</text>
+    <path d="M 6 15 L 18 15 Q 24 15 28 22" fill="none" stroke="#00e5ff" stroke-width="1" shape-rendering="geometricPrecision"/>
+    <text x="18" y="27" text-anchor="middle" fill="#ffffff" class="txt-mono txt-tiny">78</text>
+  </g>
+
+  <!-- Knob 2: RESO -->
+  <g transform="translate(41, 51)">
+    <rect x="0" y="0" width="37" height="31" fill="#12121a" stroke="#333342" stroke-width="1"/>
+    <text x="18" y="7" text-anchor="middle" fill="#00e5ff" class="txt-mono txt-micro">RESO</text>
+    <path d="M 6 22 L 18 13 L 22 22 L 28 22" fill="none" stroke="#00e5ff" stroke-width="1" shape-rendering="geometricPrecision"/>
+    <text x="18" y="27" text-anchor="middle" fill="#ffffff" class="txt-mono txt-tiny">42</text>
+  </g>
+
+  <!-- Knob 3: ATK -->
+  <g transform="translate(80, 51)">
+    <rect x="0" y="0" width="37" height="31" fill="#12121a" stroke="#333342" stroke-width="1"/>
+    <text x="18" y="7" text-anchor="middle" fill="#00e5ff" class="txt-mono txt-micro">ATK</text>
+    <line x1="7" y1="22" x2="28" y2="13" stroke="#00e5ff" stroke-width="1.2" shape-rendering="geometricPrecision"/>
+    <text x="18" y="27" text-anchor="middle" fill="#ffffff" class="txt-mono txt-tiny">12ms</text>
+  </g>
+
+  <!-- Knob 4: REL -->
+  <g transform="translate(119, 51)">
+    <rect x="0" y="0" width="38" height="31" fill="#12121a" stroke="#333342" stroke-width="1"/>
+    <text x="19" y="7" text-anchor="middle" fill="#00e5ff" class="txt-mono txt-micro">REL</text>
+    <path d="M 7 13 Q 16 22 28 22" fill="none" stroke="#00e5ff" stroke-width="1" shape-rendering="geometricPrecision"/>
+    <text x="19" y="27" text-anchor="middle" fill="#ffffff" class="txt-mono txt-tiny">640m</text>
+  </g>
+
+  <!-- ROW 2 (Knobs 5 to 8) -->
+  <!-- Knob 5: CHOR -->
+  <g transform="translate(2, 84)">
+    <rect x="0" y="0" width="37" height="31" fill="#12121a" stroke="#333342" stroke-width="1"/>
+    <text x="18" y="7" text-anchor="middle" fill="#ffb300" class="txt-mono txt-micro">CHOR</text>
+    <path d="M 7 17 Q 12 12 18 17 T 28 17" fill="none" stroke="#ffb300" stroke-width="1" shape-rendering="geometricPrecision"/>
+    <text x="18" y="27" text-anchor="middle" fill="#ffffff" class="txt-mono txt-tiny">35%</text>
+  </g>
+
+  <!-- Knob 6: DLY -->
+  <g transform="translate(41, 84)">
+    <rect x="0" y="0" width="37" height="31" fill="#12121a" stroke="#333342" stroke-width="1"/>
+    <text x="18" y="7" text-anchor="middle" fill="#ffb300" class="txt-mono txt-micro">DLY-T</text>
+    <line x1="10" y1="21" x2="10" y2="13" stroke="#ffb300" stroke-width="1.2"/>
+    <line x1="18" y1="21" x2="18" y2="16" stroke="#ffb300" stroke-width="1"/>
+    <line x1="26" y1="21" x2="26" y2="19" stroke="#ffb300" stroke-width="0.8"/>
+    <text x="18" y="27" text-anchor="middle" fill="#ffffff" class="txt-mono txt-tiny">1/8d</text>
+  </g>
+
+  <!-- Knob 7: REVB -->
+  <g transform="translate(80, 84)">
+    <rect x="0" y="0" width="37" height="31" fill="#12121a" stroke="#333342" stroke-width="1"/>
+    <text x="18" y="7" text-anchor="middle" fill="#ffb300" class="txt-mono txt-micro">REVB</text>
+    <g fill="#ffb300">
+      <circle cx="10" cy="17" r="1.3" shape-rendering="geometricPrecision"/>
+      <circle cx="17" cy="14" r="1" shape-rendering="geometricPrecision"/>
+      <circle cx="24" cy="18" r="0.8" shape-rendering="geometricPrecision"/>
+    </g>
+    <text x="18" y="27" text-anchor="middle" fill="#ffffff" class="txt-mono txt-tiny">50%</text>
+  </g>
+
+  <!-- Knob 8: DRV -->
+  <g transform="translate(119, 84)">
+    <rect x="0" y="0" width="38" height="31" fill="#12121a" stroke="#333342" stroke-width="1"/>
+    <text x="19" y="7" text-anchor="middle" fill="#ff3344" class="txt-mono txt-micro">DRV</text>
+    <path d="M 8 21 C 15 21 18 13 28 13" fill="none" stroke="#ff3344" stroke-width="1.2" shape-rendering="geometricPrecision"/>
+    <text x="19" y="27" text-anchor="middle" fill="#ffffff" class="txt-mono txt-tiny">+6dB</text>
+  </g>
+
+  <!-- ── 4. BOTTOM FOOTER STATUS STRIP (y=117..127) ── -->
+  <line x1="0" y1="117" x2="160" y2="117" stroke="#333342" stroke-width="1"/>
+  <text x="3" y="125" fill="#8c8c9e" class="txt-mono txt-micro">CPU: 28%  |  UNDR: 0  |  KNOB-B: SW</text>
+</svg>

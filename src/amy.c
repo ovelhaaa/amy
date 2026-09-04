@@ -1727,7 +1727,7 @@ AMY_IRAM_ATTR void hold_and_modify(uint16_t osc) {
     ctrl_inputs[COEF_EG0] = S2F(compute_breakpoint_scale(osc, 0, 0));
     ctrl_inputs[COEF_EG1] = S2F(compute_breakpoint_scale(osc, 1, 0));
     ctrl_inputs[COEF_MOD] = S2F(compute_mod_scale(osc));
-    ctrl_inputs[COEF_BEND] = amy_global.pitch_bend;
+    ctrl_inputs[COEF_BEND] = (synth[osc]->wave == PCM || synth[osc]->wave == PCM_LEFT || synth[osc]->wave == PCM_RIGHT) ? 0.0f : amy_global.pitch_bend;
     ctrl_inputs[COEF_EXT0] = cv_inputs[0];
     ctrl_inputs[COEF_EXT1] = cv_inputs[1];
 

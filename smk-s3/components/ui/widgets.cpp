@@ -228,4 +228,58 @@ void OscilloscopeWidget::draw(DisplayDriver& display) {
     }
 }
 
+// --- GlyphRenderer ---
+void GlyphRenderer::drawGlyph(DisplayDriver& display, int16_t x, int16_t y, ParametricGlyph glyph, uint16_t color) {
+    switch (glyph) {
+        case ParametricGlyph::Lowpass:
+            display.drawHLine(x, y, 9, color);
+            display.drawLine(x + 8, y, x + 15, y + 8, color);
+            break;
+        case ParametricGlyph::Resonance:
+            display.drawHLine(x, y + 8, 5, color);
+            display.drawLine(x + 4, y + 8, x + 8, y, color);
+            display.drawLine(x + 8, y, x + 11, y + 8, color);
+            display.drawHLine(x + 11, y + 8, 5, color);
+            break;
+        case ParametricGlyph::Attack:
+            display.drawLine(x, y + 8, x + 15, y, color);
+            break;
+        case ParametricGlyph::Release:
+            display.drawLine(x, y, x + 5, y + 5, color);
+            display.drawLine(x + 5, y + 5, x + 15, y + 8, color);
+            break;
+        case ParametricGlyph::SineWave:
+            display.drawLine(x, y + 4, x + 4, y, color);
+            display.drawLine(x + 4, y, x + 8, y + 4, color);
+            display.drawLine(x + 8, y + 4, x + 12, y + 8, color);
+            display.drawLine(x + 12, y + 8, x + 15, y + 4, color);
+            break;
+        case ParametricGlyph::DelayTaps:
+            display.drawVLine(x + 2, y, 9, color);
+            display.drawVLine(x + 7, y + 3, 6, color);
+            display.drawVLine(x + 12, y + 5, 4, color);
+            break;
+        case ParametricGlyph::ReverbCloud:
+            display.drawPixel(x + 2, y + 4, color);
+            display.drawPixel(x + 6, y + 2, color);
+            display.drawPixel(x + 10, y + 5, color);
+            display.drawPixel(x + 14, y + 3, color);
+            display.drawPixel(x + 8, y + 7, color);
+            break;
+        case ParametricGlyph::DriveSaturation:
+            display.drawLine(x, y + 8, x + 4, y + 6, color);
+            display.drawLine(x + 4, y + 6, x + 11, y + 2, color);
+            display.drawLine(x + 11, y + 2, x + 15, y, color);
+            break;
+        case ParametricGlyph::GenericBipolar:
+            display.drawHLine(x, y + 4, 16, color);
+            display.drawVLine(x + 8, y + 1, 7, color);
+            break;
+        case ParametricGlyph::GenericLevel:
+        default:
+            display.drawHLine(x, y + 4, 16, color);
+            break;
+    }
+}
+
 } // namespace smk

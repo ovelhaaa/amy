@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 128" width="640" height="512" shape-rendering="crispEdges">
+  <defs>
+    <style>
+      .txt-mono { font-family: 'Courier New', Courier, monospace; font-weight: bold; }
+      .txt-micro { font-size: 5px; }
+      .txt-tiny { font-size: 6px; }
+      .txt-small { font-size: 7px; }
+      .txt-large { font-size: 14px; letter-spacing: 0.5px; }
+    </style>
+  </defs>
+
+  <!-- Dimmed Background Content -->
+  <g opacity="0.2">
+    <rect width="160" height="128" fill="#000000"/>
+    <rect x="0" y="0" width="160" height="17" fill="#181822"/>
+    <text x="3" y="7" fill="#ffffff" class="txt-mono txt-small">P042 GLASS HORIZON</text>
+    <rect x="3" y="19" width="154" height="24" fill="#061206" stroke="#264d26" stroke-width="1"/>
+  </g>
+
+  <!-- ── FLOATING HUD MODAL (x=8, y=22, w=144, h=84) ── -->
+  <rect x="6" y="20" width="148" height="88" fill="#000000" opacity="0.7"/>
+  <rect x="8" y="22" width="144" height="84" fill="#101018" stroke="#00e5ff" stroke-width="1.5"/>
+
+  <!-- Header -->
+  <text x="14" y="34" fill="#ffffff" class="txt-mono txt-small">CUTOFF (SYNTH A)</text>
+
+  <!-- Takeover Badge -->
+  <rect x="82" y="26" width="64" height="11" fill="#3a3000" stroke="#ffea00" stroke-width="0.8"/>
+  <text x="86" y="34" fill="#ffea00" class="txt-mono txt-tiny">TAKEOVER: &gt;</text>
+
+  <!-- Large Numeric Value -->
+  <text x="14" y="54" fill="#00e5ff" class="txt-mono txt-large">1.24 kHz</text>
+
+  <!-- Secondary Info -->
+  <text x="14" y="66" fill="#8c8c9e" class="txt-mono txt-tiny">SAVED VALUE: 850 Hz</text>
+
+  <!-- Slider Bar with Ghost Needle -->
+  <rect x="14" y="72" width="132" height="16" fill="#181824" stroke="#42424d" stroke-width="1"/>
+  
+  <!-- Current Value Fill (62%) -->
+  <rect x="16" y="74" width="82" height="12" fill="#00e5ff"/>
+
+  <!-- Ghost Needle at Saved Value 45% (14 + 132*0.45 = 73) -->
+  <line x1="73" y1="69" x2="73" y2="91" stroke="#ffea00" stroke-width="2" stroke-dasharray="2 1"/>
+  <polygon points="71,69 75,69 73,72" fill="#ffea00"/>
+  <polygon points="71,91 75,91 73,88" fill="#ffea00"/>
+
+  <!-- Directional arrow indicating knob direction needed to capture -->
+  <text x="14" y="99" fill="#ffea00" class="txt-mono txt-micro">TURN KNOB RIGHT &gt; TO CAPTURE</text>
+</svg>

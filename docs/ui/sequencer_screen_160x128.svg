@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 128" width="640" height="512" shape-rendering="crispEdges">
+  <defs>
+    <style>
+      .txt-mono { font-family: 'Courier New', Courier, monospace; font-weight: bold; }
+      .txt-micro { font-size: 5px; }
+      .txt-tiny { font-size: 6px; }
+      .txt-small { font-size: 7px; }
+    </style>
+  </defs>
+
+  <!-- Canvas Background -->
+  <rect width="160" height="128" fill="#000000"/>
+
+  <!-- ── 1. HEADER (y=0..12) ── -->
+  <rect x="0" y="0" width="160" height="12" fill="#141419"/>
+  <line x1="0" y1="12" x2="160" y2="12" stroke="#42424d" stroke-width="1"/>
+
+  <text x="2" y="9" fill="#00e5ff" class="txt-mono txt-small">SEQ P01</text>
+  <rect x="52" y="2" width="34" height="8" fill="#0d381e"/>
+  <text x="56" y="8" fill="#00e676" class="txt-mono txt-tiny">PLAY &gt;</text>
+  <text x="96" y="9" fill="#ffb300" class="txt-mono txt-small">120 BPM</text>
+
+  <!-- ── 2. 4 MULTI-TRACK ROWS (y=14..68) ── -->
+  <!-- TRACK 0: BD (Selected) -->
+  <g transform="translate(0, 14)">
+    <text x="2" y="8" fill="#ffea00" class="txt-mono txt-small">BD</text>
+    <!-- 16 steps (6px wide, 9px high) -->
+    <!-- Measure 1 -->
+    <rect x="22" y="0" width="6" height="9" fill="#ffb300"/>
+    <rect x="30" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="38" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="46" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+
+    <!-- Measure 2 -->
+    <rect x="56" y="0" width="6" height="9" fill="#ffb300"/>
+    <rect x="64" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="72" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="80" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+
+    <!-- Measure 3 -->
+    <rect x="90" y="0" width="6" height="9" fill="#ffb300"/>
+    <rect x="98" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="106" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="114" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+
+    <!-- Measure 4 -->
+    <rect x="124" y="0" width="6" height="9" fill="#ffb300"/>
+    <rect x="132" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="140" y="0" width="6" height="9" fill="#ffb300"/>
+    <rect x="148" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+  </g>
+
+  <!-- TRACK 1: SD -->
+  <g transform="translate(0, 27)">
+    <text x="2" y="8" fill="#ffffff" class="txt-mono txt-small">SD</text>
+    <rect x="22" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="30" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="38" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="46" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+
+    <!-- SD on step 4 -->
+    <rect x="56" y="0" width="6" height="9" fill="#00e5ff"/>
+    <rect x="64" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="72" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="80" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+
+    <rect x="90" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="98" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="106" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="114" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+
+    <!-- SD on step 12 -->
+    <rect x="124" y="0" width="6" height="9" fill="#00e5ff"/>
+    <rect x="132" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="140" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="148" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+  </g>
+
+  <!-- TRACK 2: CH -->
+  <g transform="translate(0, 40)">
+    <text x="2" y="8" fill="#ffffff" class="txt-mono txt-small">CH</text>
+    <rect x="22" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="30" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="38" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="46" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="56" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="64" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="72" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="80" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="90" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="98" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="106" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="114" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="124" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="132" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="140" y="0" width="6" height="9" fill="#00e676"/>
+    <rect x="148" y="0" width="6" height="9" fill="#00e676"/>
+  </g>
+
+  <!-- TRACK 3: OH -->
+  <g transform="translate(0, 53)">
+    <text x="2" y="8" fill="#ffffff" class="txt-mono txt-small">OH</text>
+    <rect x="22" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="30" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="38" y="0" width="6" height="9" fill="#e0e0e0"/>
+    <rect x="46" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="56" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="64" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="72" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="80" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="90" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="98" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="106" y="0" width="6" height="9" fill="#e0e0e0"/>
+    <rect x="114" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="124" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="132" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="140" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+    <rect x="148" y="0" width="6" height="9" fill="#202028" stroke="#383844" stroke-width="0.8"/>
+  </g>
+
+  <!-- Active Cursor Outline on Step 4 -->
+  <rect x="55" y="13" width="8" height="50" fill="none" stroke="#ffffff" stroke-width="1"/>
+
+  <!-- ── 3. DETAILED STEP EDITOR (y=68..116) ── -->
+  <line x1="0" y1="68" x2="160" y2="68" stroke="#42424d" stroke-width="1"/>
+  <text x="2" y="76" fill="#ffb300" class="txt-mono txt-tiny">EDIT: BD [PAGE 1: STEPS 1-8]</text>
+
+  <!-- 8 Step Pad Boxes for Selected Track (x=3..157, 19px each) -->
+  <g transform="translate(2, 80)">
+    <!-- S1 (Active) -->
+    <rect x="0" y="0" width="17" height="26" fill="#00e5ff"/>
+    <text x="3" y="12" fill="#000000" class="txt-mono txt-small">01</text>
+    <rect x="2" y="18" width="13" height="6" fill="#00838f"/>
+
+    <!-- S2 -->
+    <rect x="20" y="0" width="17" height="26" fill="#12121a" stroke="#42424d" stroke-width="1"/>
+    <text x="23" y="12" fill="#757575" class="txt-mono txt-small">02</text>
+
+    <!-- S3 -->
+    <rect x="40" y="0" width="17" height="26" fill="#12121a" stroke="#42424d" stroke-width="1"/>
+    <text x="43" y="12" fill="#757575" class="txt-mono txt-small">03</text>
+
+    <!-- S4 -->
+    <rect x="60" y="0" width="17" height="26" fill="#12121a" stroke="#42424d" stroke-width="1"/>
+    <text x="63" y="12" fill="#757575" class="txt-mono txt-small">04</text>
+
+    <!-- S5 (Active) -->
+    <rect x="80" y="0" width="17" height="26" fill="#00e5ff"/>
+    <text x="83" y="12" fill="#000000" class="txt-mono txt-small">05</text>
+    <rect x="82" y="18" width="13" height="6" fill="#00838f"/>
+
+    <!-- S6 -->
+    <rect x="100" y="0" width="17" height="26" fill="#12121a" stroke="#42424d" stroke-width="1"/>
+    <text x="103" y="12" fill="#757575" class="txt-mono txt-small">06</text>
+
+    <!-- S7 -->
+    <rect x="120" y="0" width="17" height="26" fill="#12121a" stroke="#42424d" stroke-width="1"/>
+    <text x="123" y="12" fill="#757575" class="txt-mono txt-small">07</text>
+
+    <!-- S8 -->
+    <rect x="140" y="0" width="17" height="26" fill="#12121a" stroke="#42424d" stroke-width="1"/>
+    <text x="143" y="12" fill="#757575" class="txt-mono txt-small">08</text>
+  </g>
+
+  <!-- Playhead Indicator on S5 -->
+  <rect x="84" y="108" width="13" height="3" fill="#ffea00"/>
+
+  <!-- ── 4. FOOTER HINT (y=116..128) ── -->
+  <line x1="0" y1="116" x2="160" y2="116" stroke="#42424d" stroke-width="1"/>
+  <text x="2" y="124" fill="#ffee55" class="txt-mono txt-micro">PADS: TOGGLE STEP | REC: MOTION</text>
+</svg>

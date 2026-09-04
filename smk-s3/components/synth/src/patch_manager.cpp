@@ -204,20 +204,46 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     param_name = "CHORUS DEPTH";
                     if (amy_adapter_) amy_adapter_->setChorus(norm_val, 0.5f, norm_val * 0.7f);
                     break;
-                case 1:
-                    param_name = "DELAY TIME";
+                case 1: {
+                    param_name = "DELAY SYNC";
                     bank_b_fx_values_[1] = static_cast<uint8_t>(effective_val);
-                    if (amy_adapter_) amy_adapter_->setDelay(10.0f + norm_val * 990.0f, (float)bank_b_fx_values_[2] / 127.0f * 0.95f, (float)bank_b_fx_values_[3] / 127.0f);
+                    float delay_ms = 10.0f + norm_val * 990.0f;
+                    if (clock_manager_ && clock_manager_->bpm() >= 30.0f) {
+                        float beat_ms = 60000.0f / clock_manager_->bpm();
+                        static const float kDivMultipliers[7] = { 0.25f, 0.3333f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f };
+                        int div_idx = std::clamp(static_cast<int>(norm_val * 6.99f), 0, 6);
+                        delay_ms = std::min(beat_ms * kDivMultipliers[div_idx], 1200.0f);
+                    }
+                    if (amy_adapter_) amy_adapter_->setDelay(delay_ms, (float)bank_b_fx_values_[2] / 127.0f * 0.95f, (float)bank_b_fx_values_[3] / 127.0f);
                     break;
+                }
                 case 2:
                     param_name = "DELAY FEEDBACK";
                     bank_b_fx_values_[2] = static_cast<uint8_t>(effective_val);
-                    if (amy_adapter_) amy_adapter_->setDelay(10.0f + (float)bank_b_fx_values_[1] / 127.0f * 990.0f, norm_val * 0.95f, (float)bank_b_fx_values_[3] / 127.0f);
+                    if (amy_adapter_) {
+                        float delay_ms = 10.0f + (float)bank_b_fx_values_[1] / 127.0f * 990.0f;
+                        if (clock_manager_ && clock_manager_->bpm() >= 30.0f) {
+                            float beat_ms = 60000.0f / clock_manager_->bpm();
+                            static const float kDivMultipliers[7] = { 0.25f, 0.3333f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f };
+                            int div_idx = std::clamp(static_cast<int>((float)bank_b_fx_values_[1] / 127.0f * 6.99f), 0, 6);
+                            delay_ms = std::min(beat_ms * kDivMultipliers[div_idx], 1200.0f);
+                        }
+                        amy_adapter_->setDelay(delay_ms, norm_val * 0.95f, (float)bank_b_fx_values_[3] / 127.0f);
+                    }
                     break;
                 case 3:
                     param_name = "DELAY MIX";
                     bank_b_fx_values_[3] = static_cast<uint8_t>(effective_val);
-                    if (amy_adapter_) amy_adapter_->setDelay(10.0f + (float)bank_b_fx_values_[1] / 127.0f * 990.0f, (float)bank_b_fx_values_[2] / 127.0f * 0.95f, norm_val);
+                    if (amy_adapter_) {
+                        float delay_ms = 10.0f + (float)bank_b_fx_values_[1] / 127.0f * 990.0f;
+                        if (clock_manager_ && clock_manager_->bpm() >= 30.0f) {
+                            float beat_ms = 60000.0f / clock_manager_->bpm();
+                            static const float kDivMultipliers[7] = { 0.25f, 0.3333f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f };
+                            int div_idx = std::clamp(static_cast<int>((float)bank_b_fx_values_[1] / 127.0f * 6.99f), 0, 6);
+                            delay_ms = std::min(beat_ms * kDivMultipliers[div_idx], 1200.0f);
+                        }
+                        amy_adapter_->setDelay(delay_ms, (float)bank_b_fx_values_[2] / 127.0f * 0.95f, norm_val);
+                    }
                     break;
                 case 4:
                     param_name = "REVERB SIZE";
@@ -482,12 +508,21 @@ void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     // 1. Load built-in AMY preset (Juno presets 0..127, DX7 presets 128..255, PCM presets 256+)
     amy_adapter_->loadPreset(1, patch.engine_patch, patch.voice_count > 0 ? patch.voice_count : 8);
 
-    // 2. Set clean default effect levels (prevent noise leak / stale reverb accumulation)
+    // 2. Configure Monophonic Legato with Portamento if patch has mono_mode enabled
+    if (patch.mono_mode) {
+        amy_adapter_->setMonoMode(true);
+        amy_adapter_->setPortamento(1, patch.portamento_ms > 0 ? patch.portamento_ms : 60);
+    } else {
+        amy_adapter_->setMonoMode(false);
+        amy_adapter_->setPortamento(1, 0);
+    }
+
+    // 3. Set clean default effect levels (prevent noise leak / stale reverb accumulation)
     amy_adapter_->setReverb(0.7f, 0.7f, 0.0f);
     amy_adapter_->setChorus(0.0f, 0.0f, 0.0f);
     amy_adapter_->setDelay(0.0f, 0.0f, 0.0f);
 
-    // 3. Update UI macro status without destructively overriding preset internals
+    // 4. Update UI macro status without destructively overriding preset internals
     if (ui_manager_) {
         uint8_t m_vals[8];
         for (int i = 0; i < 8; ++i) m_vals[i] = static_cast<uint8_t>(patch.macros[i].current_val);
@@ -525,17 +560,13 @@ void PatchManager::applyMacroToEngine(uint8_t macro_idx, float effective_val) {
                     amy_adapter_->setFilter(1, target_val, active_patch_.filter_res);
                 }
                 break;
-            case 3: // Amp Attack
+            case 3: // Amp Attack (Enabled across all presets)
                 active_patch_.amp_attack = target_val;
-                if (active_patch_.engine_patch == 0) {
-                    amy_adapter_->setEnvelope(1, target_val, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
-                }
+                amy_adapter_->setEnvelope(1, target_val, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
                 break;
-            case 4: // Amp Release
+            case 4: // Amp Release (Enabled across all presets)
                 active_patch_.amp_release = target_val;
-                if (active_patch_.engine_patch == 0) {
-                    amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, target_val);
-                }
+                amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, target_val);
                 break;
             case 5: // Motion (Chorus)
                 {

@@ -115,28 +115,39 @@ void HomeScreen::update() {
 
 namespace {
 namespace compact_layout {
-    constexpr int16_t kHeaderH = 22;
+    constexpr int16_t kHeaderH = 18;
     constexpr int16_t kScopeX = 3;
-    constexpr int16_t kScopeY = 25;
+    constexpr int16_t kScopeY = 19;
     constexpr int16_t kScopeW = 154;
-    constexpr int16_t kScopeH = 30;
-    constexpr int16_t kVoiceY = 57;
-    constexpr int16_t kGaugeY = 66;
-    constexpr int16_t kGaugeW = 18;
-    constexpr int16_t kGaugeH = 59;
+    constexpr int16_t kScopeH = 24;
+    constexpr int16_t kVoiceY = 45;
 }
 namespace wide_layout {
-    constexpr int16_t kHeaderDividerY = 23;
-    constexpr int16_t kScopeX = 140;
+    constexpr int16_t kHeaderDividerY = 13;
+    constexpr int16_t kScopeX = 174;
     constexpr int16_t kScopeY = 2;
-    constexpr int16_t kScopeW = 50;
-    constexpr int16_t kScopeH = 18;
-    constexpr int16_t kVoiceX = 195;
-    constexpr int16_t kVoiceY = 4;
-    constexpr int16_t kUsbX = 242;
+    constexpr int16_t kScopeW = 44;
+    constexpr int16_t kScopeH = 9;
+    constexpr int16_t kVoiceX = 222;
+    constexpr int16_t kVoiceY = 3;
+    constexpr int16_t kUsbX = 264;
     constexpr int16_t kUsbY = 3;
-    constexpr int16_t kMidiX = 272;
+    constexpr int16_t kMidiX = 276;
     constexpr int16_t kMidiY = 3;
+}
+
+ParametricGlyph getKnobGlyph(int index) {
+    switch (index) {
+        case 0: return ParametricGlyph::Lowpass;
+        case 1: return ParametricGlyph::Resonance;
+        case 2: return ParametricGlyph::Attack;
+        case 3: return ParametricGlyph::Release;
+        case 4: return ParametricGlyph::SineWave;
+        case 5: return ParametricGlyph::DelayTaps;
+        case 6: return ParametricGlyph::ReverbCloud;
+        case 7: return ParametricGlyph::DriveSaturation;
+        default: return ParametricGlyph::GenericLevel;
+    }
 }
 } // anonymous namespace
 
@@ -146,99 +157,169 @@ void HomeScreen::render(DisplayDriver& display) {
     int16_t dw = display.width();
 
     if (dw <= 160) {
-        // ── 160x128 (1.8" Display) High-Visibility UI Layout ──
+        // ── 160x128 (1.8" Display) 2x4 Matrix Layout ──
 
-        // Top Header Banner (Dark Gray background, y=0..22)
+        // 1. Header Banner (Dark Gray background, y=0..17)
         display.fillRect(0, 0, 160, compact_layout::kHeaderH, DisplayDriver::kColorDarkGray);
         
-        // Line 1: Patch number & FULL patch name (up to 20 chars) in high contrast white
+        // Line 1: Patch number & FULL patch name (up to 18 chars)
         const char* name = (patch_name_[0] != '\0') ? patch_name_ : "DEFAULT PATCH";
         char p_str[36];
-        snprintf(p_str, sizeof(p_str), "P%03u %-18.18s", patch_number_, name);
-        FontRenderer::drawString(display, 3, 3, p_str, DisplayDriver::kColorWhite, DisplayDriver::kColorDarkGray, FontType::Font5x7);
+        snprintf(p_str, sizeof(p_str), "P%03u %-14.14s", patch_number_, name);
+        FontRenderer::drawString(display, 3, 2, p_str, DisplayDriver::kColorWhite, DisplayDriver::kColorDarkGray, FontType::Font5x7);
 
         // Status Indicators on top right (USB & MIDI LEDs)
         uint16_t usb_col = usb_connected_ ? DisplayDriver::kColorGreen : DisplayDriver::kColorRed;
-        display.fillRect(144, 3, 6, 6, usb_col);
+        display.fillRect(144, 3, 5, 5, usb_col);
         if (midi_active_) {
-            display.fillRect(152, 3, 6, 6, DisplayDriver::kColorYellow);
+            display.fillRect(151, 3, 5, 5, DisplayDriver::kColorYellow);
         }
 
         // Line 2: Synth Mode, BPM, Knob Bank
         char b_str[36];
-        const char* s_mode = (synth_mode_[0] != '\0') ? synth_mode_ : "SYNTH";
-        snprintf(b_str, sizeof(b_str), "[%s] %.0fBPM %-14.14s", s_mode, bpm_ > 0 ? bpm_ : 120.0f, knob_bank_);
-        FontRenderer::drawString(display, 3, 12, b_str, DisplayDriver::kColorAmber, DisplayDriver::kColorDarkGray, FontType::Font5x7);
+        const char* s_mode = (synth_mode_[0] != '\0') ? synth_mode_ : "POLY";
+        snprintf(b_str, sizeof(b_str), "[%s] %.0fBPM %-10.10s", s_mode, bpm_ > 0 ? bpm_ : 120.0f, knob_bank_);
+        FontRenderer::drawString(display, 3, 10, b_str, DisplayDriver::kColorAmber, DisplayDriver::kColorDarkGray, FontType::Font5x7);
 
         display.drawHLine(0, compact_layout::kHeaderH, 160, DisplayDriver::kColorMidGray);
 
-        // Live Audio Oscilloscope
+        // 2. Live Audio Oscilloscope (154x24 px)
         OscilloscopeWidget scope(compact_layout::kScopeX, compact_layout::kScopeY,
                                  compact_layout::kScopeW, compact_layout::kScopeH);
         scope.setSamples(scope_samples_, scope_sample_count_);
         scope.setActive(active_voices_ > 0 || midi_active_);
         scope.draw(display);
 
-        // 8 Polyphony Voice Indicator Dots (y=57)
+        // 3. 8 Polyphony Voice Indicator Dots (y=45)
         for (uint8_t v = 0; v < max_voices_ && v < 8; ++v) {
             uint16_t voice_col = (v < active_voices_) ? DisplayDriver::kColorCyan : DisplayDriver::kColorDarkGray;
-            display.fillRect(4 + v * 8, compact_layout::kVoiceY, 6, 4, voice_col);
+            display.fillRect(4 + v * 7, compact_layout::kVoiceY, 5, 3, voice_col);
         }
+        char v_str[16];
+        snprintf(v_str, sizeof(v_str), "VOICES: %02u/%02u", active_voices_, max_voices_ > 0 ? max_voices_ : 12);
+        FontRenderer::drawString(display, 64, 44, v_str, DisplayDriver::kColorLightGray, DisplayDriver::kColorBlack, FontType::Font3x5);
 
-        display.drawHLine(0, 64, dw, DisplayDriver::kColorMidGray);
+        // 4. 2x4 Knob Matrix (y=50..115)
+        // Row 1: Knobs 0..3 (y=50, h=31)
+        // Row 2: Knobs 4..7 (y=83, h=31)
+        uint16_t theme_color = (bank_view_ == HomeKnobBankView::BankB_Engine) ? DisplayDriver::kColorAmber : DisplayDriver::kColorCyan;
 
-        // 8 Gauges adaptively positioned across 160px (y=66..126)
         for (int i = 0; i < 8; ++i) {
-            int16_t gx = 2 + i * 19;
-            BarGauge g(gx, compact_layout::kGaugeY, compact_layout::kGaugeW, compact_layout::kGaugeH, gauges_[i].label());
-            if (bank_view_ == HomeKnobBankView::BankB_Engine) {
-                g.setValue(engine_values_[i]);
-                g.setColors(DisplayDriver::kColorAmber, DisplayDriver::kColorWhite);
-            } else {
-                g.setValue(macro_values_[i]);
-                g.setColors(DisplayDriver::kColorCyan, DisplayDriver::kColorWhite);
-            }
-            g.draw(display);
+            int row = i / 4;
+            int col = i % 4;
+            int16_t bx = 2 + col * 39;
+            int16_t by = 50 + row * 33;
+            int16_t bw = (col == 3) ? 38 : 37;
+            int16_t bh = 31;
+
+            // Box boundary
+            display.fillRect(bx, by, bw, bh, DisplayDriver::kColorBlack);
+            display.drawRect(bx, by, bw, bh, DisplayDriver::kColorDarkGray);
+
+            // Label
+            const char* lbl = gauges_[i].label();
+            int16_t lw = FontRenderer::stringWidth(lbl, FontType::Font3x5);
+            FontRenderer::drawString(display, bx + (bw - lw) / 2, by + 2, lbl, theme_color, DisplayDriver::kColorBlack, FontType::Font3x5);
+
+            // Parametric Glyph
+            GlyphRenderer::drawGlyph(display, bx + (bw - 16) / 2, by + 10, getKnobGlyph(i), theme_color);
+
+            // Value text
+            uint8_t val = (bank_view_ == HomeKnobBankView::BankB_Engine) ? engine_values_[i] : macro_values_[i];
+            char vbuf[8];
+            snprintf(vbuf, sizeof(vbuf), "%u", val);
+            int16_t vw = FontRenderer::stringWidth(vbuf, FontType::Font5x7);
+            FontRenderer::drawString(display, bx + (bw - vw) / 2, by + 21, vbuf, DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
         }
+
+        // 5. Footer Status Strip (y=117..127)
+        display.drawHLine(0, 116, 160, DisplayDriver::kColorDarkGray);
+        char foot_buf[48];
+        snprintf(foot_buf, sizeof(foot_buf), "CPU:%.0f%% | UNDR:%u | %s", cpu_load_, 0, knob_bank_);
+        FontRenderer::drawString(display, 3, 119, foot_buf, DisplayDriver::kColorLightGray, DisplayDriver::kColorBlack, FontType::Font3x5);
         return;
     }
 
     // ── 284x76 Panoramic Layout ──
-    char header_str[48];
-    snprintf(header_str, sizeof(header_str), "%03u %-12.12s [%s] %.0fBPM", 
-             patch_number_, patch_name_, synth_mode_, bpm_);
-    FontRenderer::drawString(display, 2, 2, header_str, DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
 
-    // Live Audio Oscilloscope Box (Center Header: x=140, y=2, w=50, h=18)
+    // 1. Header Line 1: Patch info, Mode, BPM (y=0..12)
+    char patch_buf[32];
+    snprintf(patch_buf, sizeof(patch_buf), "%03u %-14.14s", patch_number_, patch_name_);
+    FontRenderer::drawString(display, 3, 3, patch_buf, DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
+
+    char mode_buf[16];
+    snprintf(mode_buf, sizeof(mode_buf), "[%s]", synth_mode_);
+    FontRenderer::drawString(display, 96, 3, mode_buf, DisplayDriver::kColorCyan, DisplayDriver::kColorBlack, FontType::Font5x7);
+
+    char bpm_buf[16];
+    snprintf(bpm_buf, sizeof(bpm_buf), "%.1fBPM", bpm_ > 0 ? bpm_ : 120.0f);
+    FontRenderer::drawString(display, 128, 3, bpm_buf, DisplayDriver::kColorAmber, DisplayDriver::kColorBlack, FontType::Font5x7);
+
+    // Mini Live Audio Scope in Header (x=174, y=2, w=44, h=9)
     OscilloscopeWidget scope_pan(wide_layout::kScopeX, wide_layout::kScopeY,
                                  wide_layout::kScopeW, wide_layout::kScopeH);
     scope_pan.setSamples(scope_samples_, scope_sample_count_);
     scope_pan.setActive(active_voices_ > 0 || midi_active_);
     scope_pan.draw(display);
 
-    // Voice Activity Meter (x=195..235)
+    // Voice Activity Meter (x=222..258)
     for (uint8_t v = 0; v < max_voices_ && v < 8; ++v) {
         uint16_t voice_col = (v < active_voices_) ? DisplayDriver::kColorCyan : DisplayDriver::kColorDarkGray;
-        display.fillRect(wide_layout::kVoiceX + v * 5, wide_layout::kVoiceY, 4, 14, voice_col);
+        display.fillRect(wide_layout::kVoiceX + v * 5, wide_layout::kVoiceY, 3, 7, voice_col);
     }
 
-    // USB & MIDI Indicators (x=242..280)
+    // USB & MIDI Indicators (x=264..282)
     uint16_t usb_col = usb_connected_ ? DisplayDriver::kColorGreen : DisplayDriver::kColorRed;
     display.fillRect(wide_layout::kUsbX, wide_layout::kUsbY, 5, 5, usb_col);
-    FontRenderer::drawString(display, 249, 2, "USB", DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
+    FontRenderer::drawString(display, 270, 2, "U", DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font3x5);
 
     if (midi_active_) {
         display.fillRect(wide_layout::kMidiX, wide_layout::kMidiY, 5, 5, DisplayDriver::kColorYellow);
     }
 
-    // Header Line 2: Active Knob Bank
-    uint16_t bank_col = (bank_view_ == HomeKnobBankView::BankB_Engine) ? DisplayDriver::kColorAmber : DisplayDriver::kColorCyan;
-    FontRenderer::drawString(display, 2, 14, knob_bank_, bank_col, DisplayDriver::kColorBlack, FontType::Font5x7);
     display.drawHLine(0, wide_layout::kHeaderDividerY, display.width(), DisplayDriver::kColorMidGray);
 
-    // Render 8 Bar Gauges for Macros
+    // 2. 8 Discrete Macro Channels (x=0..283, y=14..75, ~35px each)
+    uint16_t theme_color = (bank_view_ == HomeKnobBankView::BankB_Engine) ? DisplayDriver::kColorAmber : DisplayDriver::kColorCyan;
+
     for (int i = 0; i < 8; ++i) {
-        gauges_[i].draw(display);
+        int16_t cx = 1 + i * 35;
+        if (i > 0) {
+            display.drawVLine(cx - 1, 14, 62, DisplayDriver::kColorDarkGray);
+        }
+
+        // Label at top of channel
+        const char* lbl = gauges_[i].label();
+        int16_t lw = FontRenderer::stringWidth(lbl, FontType::Font3x5);
+        FontRenderer::drawString(display, cx + (34 - lw) / 2, 16, lbl, theme_color, DisplayDriver::kColorBlack, FontType::Font3x5);
+
+        // Parametric Glyph
+        GlyphRenderer::drawGlyph(display, cx + (34 - 16) / 2, 24, getKnobGlyph(i), theme_color);
+
+        // Formatted Numeric Value
+        uint8_t val = (bank_view_ == HomeKnobBankView::BankB_Engine) ? engine_values_[i] : macro_values_[i];
+        char vbuf[8];
+        snprintf(vbuf, sizeof(vbuf), "%u", val);
+        int16_t vw = FontRenderer::stringWidth(vbuf, FontType::Font5x7);
+        FontRenderer::drawString(display, cx + (34 - vw) / 2, 35, vbuf, DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
+
+        // Vertical Bar Gauge (y=45..71, h=26)
+        int16_t bar_x = cx + 8;
+        int16_t bar_y = 45;
+        int16_t bar_w = 18;
+        int16_t bar_h = 26;
+        display.drawRect(bar_x, bar_y, bar_w, bar_h, DisplayDriver::kColorDarkGray);
+
+        float norm = (float)val / 127.0f;
+        int16_t fill_h = (int16_t)((bar_h - 2) * norm);
+        int16_t empty_h = (bar_h - 2) - fill_h;
+
+        if (empty_h > 0) {
+            display.fillRect(bar_x + 1, bar_y + 1, bar_w - 2, empty_h, DisplayDriver::kColorBlack);
+        }
+        if (fill_h > 0) {
+            display.fillRect(bar_x + 1, bar_y + 1 + empty_h, bar_w - 2, fill_h, theme_color);
+        }
     }
 }
 

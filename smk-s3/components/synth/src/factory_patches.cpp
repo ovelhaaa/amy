@@ -319,7 +319,20 @@ static void buildPatchFromDescriptor(const PatchDescriptor& desc, SynthPatch& ou
     out.engine_patch = desc.engine_patch;
     out.wave_type = desc.wave_type;
     out.transpose = desc.transpose;
-    out.voice_count = desc.voice_count;
+
+    // Smart Mono Legato with Portamento for Bass and Lead presets
+    bool is_bass = (strstr(desc.category, "BASS") != nullptr);
+    bool is_lead = (strstr(desc.category, "LEAD") != nullptr);
+    if (is_bass || is_lead) {
+        out.mono_mode = 1;
+        out.voice_count = 1;
+        out.portamento_ms = is_bass ? 50 : 75;
+    } else {
+        out.mono_mode = 0;
+        out.voice_count = desc.voice_count;
+        out.portamento_ms = 0;
+    }
+
     out.base_freq = 440.0f;
     out.filter_cutoff = desc.filter_cutoff;
     out.filter_res = desc.filter_res;

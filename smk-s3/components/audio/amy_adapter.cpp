@@ -23,7 +23,7 @@ AmyAdapter::~AmyAdapter() {
 }
 
 bool AmyAdapter::begin(uint32_t sample_rate_hz) {
-    ESP_LOGI(TAG, "Initializing AMY Synth Engine (Dedicated Audio Core 1 + SRAM Internal Cache)");
+    ESP_LOGI(TAG, "Initializing AMY Synth Engine (Dedicated Audio Core 1 + Dual Bus Architecture)");
     
     amy_config_t config = amy_default_config();
     config.audio = AMY_AUDIO_IS_NONE;
@@ -44,23 +44,53 @@ bool AmyAdapter::begin(uint32_t sample_rate_hz) {
     config.ram_caps_sysex = MALLOC_CAP_SPIRAM;
     config.overload_threshold = 0.95f;
     config.overload_ms = 500;
-    config.max_oscs = 200;
+    config.max_oscs = 120; // Aligned with app_config.h kMaxOscillators (120 oscs)
     
     active_voices_.store(0);
     std::memset(active_notes_, 0, sizeof(active_notes_));
 
     amy_start(config);
 
-    // Release unused upstream synth 2 (DX7 ch2 placeholder) to maximize clean oscillator headroom for Synth 1 & GM Drums
+    // Release unused upstream synth 2 (DX7 ch2 placeholder) and synth 0 (bleep placeholder)
     amy_event e = amy_default_event();
     e.synth = 2;
     e.num_voices = 0;
     amy_add_event(&e);
 
-    // Set master bus volume headroom to avoid hard clipping on full polyphony + chorus
+    e = amy_default_event();
+    e.synth = 0;
+    e.num_voices = 0;
+    amy_add_event(&e);
+
+    // Configure Synth 1 (Main Synth): Bus 0 with 4ms voice-stealing micro-fade
+    amy_event e1 = amy_default_event();
+    e1.synth = 1;
+    e1.bus = 0;
+    e1.synth_delay_ms = 4;
+    amy_add_event(&e1);
+
+    // Configure Synth 10 (GM Drums): Bus 1 with punchy dry mix
+    amy_event e10 = amy_default_event();
+    e10.synth = 10;
+    e10.bus = 1;
+    amy_add_event(&e10);
+
+    // Master bus volume headroom
     amy_event ev = amy_default_event();
-    ev.volume[0] = 0.85f;
+    ev.volume[0] = 0.85f; // Synth bus
+    ev.volume[1] = 0.90f; // Drum bus
     amy_add_event(&ev);
+
+    // Set Bus 1 (Drum Bus) tailored 3-band EQ and zero FX sends (keeps kick/snare punchy and dry)
+    amy_event drum_eq = amy_default_event();
+    drum_eq.bus = 1;
+    drum_eq.eq_l = 2.5f;   // +2.5dB solid low end for kick
+    drum_eq.eq_m = 0.8f;   // Clean mid scoop
+    drum_eq.eq_h = 1.8f;   // +1.8dB crisp top end for snare/hi-hat
+    drum_eq.reverb_level = 0.0f;
+    drum_eq.chorus_level = 0.0f;
+    drum_eq.echo_level = 0.0f;
+    amy_add_event(&drum_eq);
 
     return true;
 }
@@ -72,13 +102,56 @@ void AmyAdapter::noteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
         if (active_notes_[channel][note] < 255) {
             active_notes_[channel][note]++;
         }
-        active_voices_++;
-        amy_event e = amy_default_event();
-        // Synth 10 is GM Drums (channel 9); all other channels route to main synth (synth 1)
-        e.synth = (channel == 9) ? 10 : 1;
-        e.midi_note = (float)note;
-        e.velocity = (float)velocity / 127.0f;
-        amy_add_event(&e);
+
+        // Synth 10 is GM Drums (channel 9)
+        if (channel == 9) {
+            active_voices_++;
+            amy_event e = amy_default_event();
+            e.synth = 10;
+            e.midi_note = (float)note;
+            e.velocity = (float)velocity / 127.0f;
+            amy_add_event(&e);
+            return;
+        }
+
+        // Main Synth (Synth 1)
+        if (mono_mode_) {
+            // Remove note if already in stack (Last-Note Priority)
+            int found = -1;
+            for (int i = 0; i < mono_stack_size_; ++i) {
+                if (mono_stack_[i] == note) { found = i; break; }
+            }
+            if (found >= 0) {
+                for (int i = found; i < mono_stack_size_ - 1; ++i) {
+                    mono_stack_[i] = mono_stack_[i + 1];
+                }
+                mono_stack_size_--;
+            }
+            if (mono_stack_size_ < kMonoStackCap) {
+                mono_stack_[mono_stack_size_++] = note;
+            }
+
+            active_voices_.store(1, std::memory_order_relaxed);
+
+            amy_event e = amy_default_event();
+            e.synth = 1;
+            e.midi_note = (float)note;
+            if (mono_stack_size_ == 1) {
+                // Initial note onset: trigger attack envelope
+                e.velocity = (float)velocity / 127.0f;
+            } else {
+                // Legato glide: do not set velocity so envelope doesn't re-trigger or cut
+            }
+            amy_add_event(&e);
+        } else {
+            // Polyphonic Mode
+            active_voices_++;
+            amy_event e = amy_default_event();
+            e.synth = 1;
+            e.midi_note = (float)note;
+            e.velocity = (float)velocity / 127.0f;
+            amy_add_event(&e);
+        }
     } else {
         noteOff(channel, note);
     }
@@ -89,18 +162,66 @@ void AmyAdapter::noteOff(uint8_t channel, uint8_t note) {
     note &= 0x7F;
     if (active_notes_[channel][note] > 0) {
         active_notes_[channel][note]--;
-        if (active_voices_ > 0) active_voices_--;
     }
-    amy_event e = amy_default_event();
-    e.synth = (channel == 9) ? 10 : 1;
-    e.midi_note = (float)note;
-    e.velocity = 0.0f;
-    amy_add_event(&e);
+
+    if (channel == 9) {
+        if (active_voices_ > 0) active_voices_--;
+        amy_event e = amy_default_event();
+        e.synth = 10;
+        e.midi_note = (float)note;
+        e.velocity = 0.0f;
+        amy_add_event(&e);
+        return;
+    }
+
+    // Main Synth (Synth 1)
+    if (mono_mode_) {
+        int found = -1;
+        for (int i = 0; i < mono_stack_size_; ++i) {
+            if (mono_stack_[i] == note) { found = i; break; }
+        }
+        if (found < 0) return; // Note not in stack
+
+        bool was_top = (found == mono_stack_size_ - 1);
+
+        for (int i = found; i < mono_stack_size_ - 1; ++i) {
+            mono_stack_[i] = mono_stack_[i + 1];
+        }
+        mono_stack_size_--;
+
+        if (mono_stack_size_ == 0) {
+            // All keys released: trigger voice release
+            active_voices_.store(0, std::memory_order_relaxed);
+            amy_event e = amy_default_event();
+            e.synth = 1;
+            e.midi_note = (float)note;
+            e.velocity = 0.0f;
+            amy_add_event(&e);
+        } else if (was_top) {
+            // Active note was released, but older note(s) still held down:
+            // Glide smoothly back to previous held note without re-triggering attack envelope
+            uint8_t prev_note = mono_stack_[mono_stack_size_ - 1];
+            amy_event e = amy_default_event();
+            e.synth = 1;
+            e.midi_note = (float)prev_note;
+            amy_add_event(&e);
+        }
+        // If was not top, the currently sounding note continues playing uninterrupted
+    } else {
+        // Polyphonic Mode
+        if (active_voices_ > 0) active_voices_--;
+        amy_event e = amy_default_event();
+        e.synth = 1;
+        e.midi_note = (float)note;
+        e.velocity = 0.0f;
+        amy_add_event(&e);
+    }
 }
 
 void AmyAdapter::pitchBend(uint8_t channel, int16_t value) {
+    if (channel == 9) return; // Drum channel does not respond to pitch bend
     amy_event e = amy_default_event();
-    e.synth = (channel == 9) ? 10 : 1;
+    e.synth = 1;
     // MidiParser passes value centered at 0 (-8192..+8191). Range: +/- 2 semitones (+/- 1/6 octave)
     e.pitch_bend = ((float)value) / (6.0f * 8192.0f);
     amy_add_event(&e);
@@ -124,6 +245,7 @@ void AmyAdapter::controlChange(uint8_t channel, uint8_t controller, uint8_t valu
 void AmyAdapter::allNotesOff() {
     std::memset(active_notes_, 0, sizeof(active_notes_));
     active_voices_.store(0);
+    mono_stack_size_ = 0;
 
     // Release sustain pedal for Synth 1 and Synth 10
     amy_event ep = amy_default_event();
@@ -153,21 +275,6 @@ void AmyAdapter::panic() {
     pitchBend(9, 0);
 }
 
-static inline int16_t applySoftClip(int32_t sample) {
-    constexpr int32_t kLinearThresh = 24576; // ~75% of full scale
-    constexpr int32_t kMaxVal = 32760;
-    if (sample > kLinearThresh) {
-        int32_t diff = sample - kLinearThresh;
-        int32_t headroom = kMaxVal - kLinearThresh;
-        return (int16_t)(kLinearThresh + (diff * headroom) / (diff + headroom));
-    } else if (sample < -kLinearThresh) {
-        int32_t diff = -sample - kLinearThresh;
-        int32_t headroom = kMaxVal - kLinearThresh;
-        return (int16_t)(-kLinearThresh - (diff * headroom) / (diff + headroom));
-    }
-    return (int16_t)sample;
-}
-
 void AmyAdapter::setMasterGain(float gain) {
     if (gain < 0.0f) gain = 0.0f;
     if (gain > 2.0f) gain = 2.0f;
@@ -179,24 +286,18 @@ int16_t* AmyAdapter::render() {
     amy_render(0, AMY_OSCS, 0);
     int16_t* buf = amy_fill_buffer();
     if (buf) {
-        bool limiter = soft_limiter_enabled_.load(std::memory_order_relaxed);
         float gain = master_gain_.load(std::memory_order_relaxed);
-        bool apply_gain = (gain != 1.0f);
         size_t total_samples = AMY_BLOCK_SIZE * AMY_NCHANS;
 
-        if (limiter || apply_gain) {
+        // Apply fast fixed-point master gain only if non-unity
+        // (Soft-clipping is handled natively by AMY's lookup table in internal DRAM)
+        if (gain != 1.0f) {
+            int32_t q8_gain = static_cast<int32_t>(gain * 256.0f);
             for (size_t i = 0; i < total_samples; ++i) {
-                int32_t s = buf[i];
-                if (apply_gain) {
-                    s = (int32_t)((float)s * gain);
-                }
-                if (limiter) {
-                    s = applySoftClip(s);
-                } else {
-                    if (s > 32767) s = 32767;
-                    if (s < -32768) s = -32768;
-                }
-                buf[i] = (int16_t)s;
+                int32_t s = (static_cast<int32_t>(buf[i]) * q8_gain) >> 8;
+                if (s > 32767) s = 32767;
+                else if (s < -32768) s = -32768;
+                buf[i] = static_cast<int16_t>(s);
             }
         }
 
@@ -254,6 +355,7 @@ void AmyAdapter::setFilter(uint8_t synth_id, float cutoff_hz, float resonance) {
     amy_event e = amy_default_event();
     e.synth = (synth_id == 0) ? 1 : synth_id;
     e.filter_freq_coefs[COEF_CONST] = cutoff_hz;
+    e.filter_freq_coefs[COEF_VEL] = 1.5f; // Dynamic velocity tracking: harder velocity opens filter
     e.resonance = resonance;
     amy_add_event(&e);
 }
@@ -280,12 +382,23 @@ void AmyAdapter::setEnvelope(uint8_t synth_id, float attack_ms, float decay_ms, 
     amy_add_event(&e);
 }
 
+void AmyAdapter::setPortamento(uint8_t synth_id, uint16_t portamento_ms) {
+    amy_event e = amy_default_event();
+    e.synth = (synth_id == 0) ? 1 : synth_id;
+    e.portamento_ms = portamento_ms;
+    amy_add_event(&e);
+}
+
 void AmyAdapter::loadPreset(uint8_t synth_id, uint16_t preset_id, uint8_t num_voices) {
     allNotesOff();
+    mono_mode_ = (num_voices == 1);
+    mono_stack_size_ = 0;
     amy_event e = amy_default_event();
     e.synth = (synth_id == 0) ? 1 : synth_id;
     e.patch_number = preset_id;
     e.num_voices = (num_voices > 0) ? num_voices : 8;
+    e.bus = 0; // Synth bus
+    e.synth_delay_ms = 4; // 4ms smooth micro-fade on voice stealing
     amy_add_event(&e);
 }
 
@@ -323,6 +436,7 @@ void AmyAdapter::setFmAlgorithm(uint8_t synth_id, uint8_t algo_id) {
 
 void AmyAdapter::setChorus(float depth, float rate, float level) {
     amy_event e = amy_default_event();
+    e.bus = 0; // Target Synth bus 0 only
     e.chorus_level = level;
     e.chorus_depth = depth;
     e.chorus_lfo_freq = rate;
@@ -331,6 +445,7 @@ void AmyAdapter::setChorus(float depth, float rate, float level) {
 
 void AmyAdapter::setReverb(float room_size, float damp, float mix) {
     amy_event e = amy_default_event();
+    e.bus = 0; // Target Synth bus 0 only
     e.reverb_level = mix;
     e.reverb_liveness = room_size;
     e.reverb_damping = damp;
@@ -339,6 +454,7 @@ void AmyAdapter::setReverb(float room_size, float damp, float mix) {
 
 void AmyAdapter::setDelay(float delay_ms, float feedback, float mix) {
     amy_event e = amy_default_event();
+    e.bus = 0; // Target Synth bus 0 only
     e.echo_level = mix;
     e.echo_delay_ms = delay_ms;
     e.echo_feedback = feedback;
