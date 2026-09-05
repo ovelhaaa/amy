@@ -98,6 +98,11 @@ public:
     virtual int16_t width() const = 0;
     virtual int16_t height() const = 0;
 
+    // Optional hardware adjustments
+    virtual void setOffsets(uint16_t x_offset, uint16_t y_offset) {}
+    virtual void setOrientation(bool swap_xy, bool mirror_x, bool mirror_y) {}
+    virtual void setInvert(bool invert) {}
+
     // Dirty rectangle tracking
     void markDirty(int16_t x, int16_t y, int16_t w, int16_t h);
     void invalidate();

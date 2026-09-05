@@ -42,15 +42,14 @@ struct SequencerContext {
 
 static void onClockTick(uint32_t tick_count, void* ctx) {
     auto* s_ctx = static_cast<SequencerContext*>(ctx);
-    if (s_ctx->arpeggiator && s_ctx->event_bus) {
-        s_ctx->arpeggiator->processTick(tick_count, *s_ctx->event_bus);
-    }
-    if (s_ctx->sequencer && s_ctx->event_bus) {
-        s_ctx->sequencer->processTick(tick_count, *s_ctx->event_bus);
-    }
-    if (s_ctx->scene_manager && (tick_count % 24 == 0)) {
-        s_ctx->scene_manager->processPendingTransition();
-    }
+    // The timer publishes ticks only. Note generation/reset and scene changes
+    // run on the control task, so a timer cannot refill notes during Panic.
+    smk::SynthEvent event{};
+    event.type = smk::EventType::Clock;
+    event.source = smk::EventSource::Internal;
+    event.value = static_cast<int32_t>(tick_count);
+    event.timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
+    s_ctx->event_bus->send(event);
 }
 
 static void app_init_task(void* arg) {
@@ -83,6 +82,12 @@ static void app_init_task(void* arg) {
 
     // 3. Create EventBus
     smk::EventBus* event_bus = new smk::EventBus(smk::config::kEventQueueCapacity);
+    if (!event_bus->ready()) {
+        ESP_LOGE(TAG, "Event bus allocation failed; dependent initialization stopped");
+        delete event_bus;
+        vTaskDelete(nullptr);
+        return;
+    }
 
     // 4. Create PCM5102Output
     smk::PCM5102Output* pcm_out = new smk::PCM5102Output(
@@ -95,8 +100,10 @@ static void app_init_task(void* arg) {
     // 5. Initialize PCM5102 output
     if (!pcm_out->begin()) {
         ESP_LOGE(TAG, "Failed to initialize PCM5102 output");
-    } else {
-        pcm_out->start();
+        delete pcm_out;
+        delete event_bus;
+        vTaskDelete(nullptr);
+        return;
     }
 
     // 6. Create AmyAdapter
@@ -105,30 +112,55 @@ static void app_init_task(void* arg) {
     // 7. Initialize AMY adapter
     if (!amy_adapter->begin(smk::config::kSampleRateHz)) {
         ESP_LOGE(TAG, "Failed to initialize AMY engine");
+        pcm_out->stop();
+        delete amy_adapter;
+        delete pcm_out;
+        delete event_bus;
+        vTaskDelete(nullptr);
+        return;
     }
 
     // 8. Start AudioTask
-    smk::AudioTask::start(amy_adapter, pcm_out, smk::config::kAudioTaskCore, smk::config::kAudioTaskPriority);
+    if (!amy_adapter->startWorker(smk::config::kSynthTaskCore, smk::config::kSynthTaskPriority,
+                                  smk::config::kSynthTaskStackSize) ||
+        !pcm_out->start() ||
+        !smk::AudioTask::start(amy_adapter, pcm_out, smk::config::kAudioTaskCore,
+                              smk::config::kAudioTaskPriority, smk::config::kAudioTaskStackSize)) {
+        ESP_LOGE(TAG, "Audio start failed; dependent initialization stopped");
+        pcm_out->stop();
+        delete amy_adapter;
+        delete pcm_out;
+        delete event_bus;
+        vTaskDelete(nullptr);
+        return;
+    }
 
-    // 9. Initialize UI Subsystem for 1.8" (160x128) ST7735 Display
-    smk::ST7735Config st7735_cfg = {
+    // 9. Initialize UI Subsystem for 2.25" (284x76) ST7789 Widescreen Display
+    smk::ST7789Config st7789_cfg = {
         .mosi_pin = smk::config::kDisplayMosi,
         .sclk_pin = smk::config::kDisplaySclk,
         .cs_pin   = smk::config::kDisplayCs,
         .dc_pin   = smk::config::kDisplayDc,
         .rst_pin  = smk::config::kDisplayRst,
         .bl_pin   = smk::config::kDisplayBl,
-        .width    = 160,
-        .height   = 128,
-        .x_offset = 0,
-        .y_offset = 0
+        .width    = smk::config::kDisplayWidth,
+        .height   = smk::config::kDisplayHeight,
+        .x_offset = smk::config::kDisplayXOffset,
+        .y_offset = smk::config::kDisplayYOffset,
+        .swap_xy  = smk::config::kDisplaySwapXy,
+        .mirror_x = smk::config::kDisplayMirrorX,
+        .mirror_y = smk::config::kDisplayMirrorY,
+        .invert_color = smk::config::kDisplayInvertColor,
+        .bl_active_low = smk::config::kDisplayBlActiveLow,
+        .spi_host = SPI2_HOST,
+        .clock_speed_hz = 40 * 1000 * 1000
     };
 
-    smk::DisplayDriver* display_driver = new smk::ST7735DisplayDriver(st7735_cfg);
+    smk::DisplayDriver* display_driver = new smk::ST7789DisplayDriver(st7789_cfg);
     if (!display_driver->begin()) {
-        ESP_LOGE(TAG, "ST7735 1.8\" Display initialization failed; using DummyDisplayDriver fallback");
+        ESP_LOGE(TAG, "ST7789 2.25\" Display initialization failed; using DummyDisplayDriver fallback");
         delete display_driver;
-        display_driver = new smk::DummyDisplayDriver(160, 128);
+        display_driver = new smk::DummyDisplayDriver(smk::config::kDisplayWidth, smk::config::kDisplayHeight);
         display_driver->begin();
     }
 
@@ -155,6 +187,7 @@ static void app_init_task(void* arg) {
 
     if (ui_manager) {
         ui_manager->sequencerScreen().setSequencer(step_sequencer);
+        ui_manager->sequencerScreen().setClockManager(clock_manager);
     }
 
     smk::PadManager* pad_manager = new smk::PadManager();
@@ -229,6 +262,7 @@ static void app_init_task(void* arg) {
     console->setUsbMidiHost(midi_host);
     console->setAmyAdapter(amy_adapter);
     console->setActiveProfilePointer(&active_profile);
+    console->setEventBus(event_bus);
     if (!console->begin()) {
         ESP_LOGE(TAG, "Failed to initialize Console");
     }
@@ -239,36 +273,69 @@ static void app_init_task(void* arg) {
     TickType_t last_status_time = xTaskGetTickCount();
     const TickType_t status_interval = pdMS_TO_TICKS(5000);
 
+    int64_t bank_b_save_press_us = 0;
+    bool learning_was_active = false;
+    bool audio_fault_reported = false;
+
     while (true) {
+        if (amy_adapter->takeRecoveryRequest()) {
+            // A lost release in the AMY mailbox also resets application-owned
+            // held notes, arpeggiator and sequencer through the common path.
+            smk::SynthEvent panic{};
+            panic.type = smk::EventType::Panic;
+            panic.source = smk::EventSource::Internal;
+            panic.timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
+            event_bus->send(panic);
+        }
+        if (smk::AudioTask::failed() && !audio_fault_reported) {
+            ESP_LOGE(TAG, "Audio output stopped after a render/write failure; reboot required");
+            audio_fault_reported = true;
+            smk::SynthEvent panic{};
+            panic.type = smk::EventType::Panic;
+            panic.source = smk::EventSource::Internal;
+            event_bus->send(panic);
+        }
+        const bool learning_now = midi_learn->isLearning();
+        if (learning_now && !learning_was_active) {
+            // Entering the wizard must release notes whose Note Off it may consume.
+            smk::SynthEvent panic{};
+            panic.type = smk::EventType::Panic;
+            panic.source = smk::EventSource::Internal;
+            event_bus->send(panic);
+        }
+        learning_was_active = learning_now;
         smk::SynthEvent event;
         if (event_bus->receive(event, 10)) {
+            if (audio_fault_reported && !smk::bypassMidiLearn(event)) continue;
             // Forward event to UI Manager (for MidiMonitor, Pad hit animations, etc.)
             if (ui_manager) {
                 ui_manager->processEvent(event);
             }
 
             // 1. Intercept incoming MIDI if MIDI Learn Wizard is active
-            if (midi_learn && midi_learn->isLearning()) {
+            if (midi_learn && midi_learn->isLearning() && !smk::bypassMidiLearn(event)) {
                 if (event.source == smk::EventSource::UsbMidi) {
-                    uint8_t msg_type = 0; // 0=Note, 1=CC, 2=PitchBend
-                    if (event.type == smk::EventType::ControlChange) msg_type = 1;
-                    else if (event.type == smk::EventType::PitchBend) msg_type = 2;
-
-                    if (midi_learn->processIncomingMidi(msg_type, event.channel, event.id, event.value)) {
+                    const uint8_t msg_type = event.type == smk::EventType::ControlChange ? 1 : 0;
+                    const auto action = smk::ProfileManager::matchBinding(active_profile, msg_type, event.channel, event.id);
+                    // Outside the transport-binding steps, Stop skips and Rec
+                    // cancels. During those steps they must remain learnable.
+                    if (event.type == smk::EventType::ControlChange && event.value > 0 &&
+                        midi_learn->currentStep() < smk::LearnStep::PressPlay) {
+                        if (action == smk::TargetAction::Stop) { midi_learn->skipStep(); continue; }
+                        if (action == smk::TargetAction::Rec) { midi_learn->cancel(); continue; }
+                    }
+                    if (midi_learn->processEvent(event)) {
                         if (ui_manager) {
                             char cap_buf[32];
                             snprintf(cap_buf, sizeof(cap_buf), "CAPTURADO #%u!", event.id);
                             ui_manager->midiLearnScreen().triggerFeedback(cap_buf, smk::DisplayDriver::kColorGreen);
                         }
                         if (midi_learn->isComplete()) {
-                            if (storage_manager) {
-                                storage_manager->saveProfile("smk25_custom", active_profile);
-                                ESP_LOGI(TAG, "Saved profile 'smk25_custom' to SPIFFS");
-                            }
+                            const bool saved = storage_manager && storage_manager->saveProfile("smk25_custom", active_profile);
                             if (ui_manager) {
-                                ui_manager->midiLearnScreen().triggerFeedback("SALVO NA FLASH!", smk::DisplayDriver::kColorGreen);
+                                ui_manager->midiLearnScreen().triggerFeedback(saved ? "SALVO NA FLASH!" : "FALHA AO SALVAR", saved ? smk::DisplayDriver::kColorGreen : smk::DisplayDriver::kColorRed);
                                 ui_manager->switchScreen(smk::ScreenId::Home);
-                                ui_manager->triggerParameterOverlay("MIDI LEARN", "PERFIL SALVO", 0.0f, 0.0f, "", smk::TakeoverStatus::Captured);
+                                ui_manager->triggerParameterOverlay("MIDI LEARN", saved ? "PERFIL SALVO" : "SAVE FAILED", 0.0f, 0.0f, "", smk::TakeoverStatus::Captured);
                             }
                         }
                     }
@@ -381,8 +448,8 @@ static void app_init_task(void* arg) {
                                     case 1: // Pad 2 (B): Next Patch
                                         if (patch_manager) patch_manager->nextPatch();
                                         break;
-                                    case 2: // Pad 3 (B): Toggle Active Knob Bank
-                                        if (patch_manager) patch_manager->nextKnobBank();
+                                    case 2: // Pad 3 (B): recover the primary performance view
+                                        if (ui_manager) ui_manager->switchScreen(smk::ScreenId::Home);
                                         break;
                                     case 3: // Pad 4 (B): Toggle Arpeggiator On/Off
                                         if (arpeggiator) {
@@ -407,15 +474,8 @@ static void app_init_task(void* arg) {
                                             }
                                         }
                                         break;
-                                    case 7: // Pad 8 (B): Quick Save Patch, Profile & Scenes
-                                        if (storage_manager && patch_manager) {
-                                            if (storage_manager->savePatch(patch_manager->activePatchId(), patch_manager->activePatch())) {
-                                                storage_manager->saveProfile("smk25_custom", active_profile);
-                                                if (scene_manager) scene_manager->saveAllToFlash();
-                                                ESP_LOGI(TAG, "Quick Saved Patch, Profile & Scenes to Flash");
-                                                if (ui_manager) ui_manager->triggerParameterOverlay("SAVED ALL", "SPIFFS", (float)patch_manager->activePatchId(), 0.0f, patch_manager->activePatch().name, smk::TakeoverStatus::Captured);
-                                            }
-                                        }
+                                    case 7: // Pad 8 (B): save only after a deliberate hold
+                                        bank_b_save_press_us = esp_timer_get_time();
                                         break;
                                     default:
                                         break;
@@ -423,7 +483,20 @@ static void app_init_task(void* arg) {
                             }
                         }
                     } else {
-                        if (pad_idx < 8) {
+                        if (pad_idx == 15 && bank_b_save_press_us != 0) {
+                            const int64_t held_us = esp_timer_get_time() - bank_b_save_press_us;
+                            bank_b_save_press_us = 0;
+                            if (held_us >= 1200000 && storage_manager && patch_manager) {
+                                if (storage_manager->savePatch(patch_manager->activePatchId(), patch_manager->activePatch())) {
+                                    storage_manager->saveProfile("smk25_custom", active_profile);
+                                    if (scene_manager) scene_manager->saveAllToFlash();
+                                    ESP_LOGI(TAG, "Saved patch, profile and scenes after long hold");
+                                    if (ui_manager) ui_manager->triggerParameterOverlay("SAVED", "PATCH+PROFILE+SCENES", (float)patch_manager->activePatchId(), 0.0f, patch_manager->activePatch().name, smk::TakeoverStatus::Captured);
+                                }
+                            } else if (ui_manager) {
+                                ui_manager->triggerParameterOverlay("SAVE CANCELLED", "HOLD PAD 16", 0.0f, 0.0f, "", smk::TakeoverStatus::Captured);
+                            }
+                        } else if (pad_idx < 8) {
                             if (ui_manager && ui_manager->activeScreenId() == smk::ScreenId::Sequencer && step_sequencer && !step_sequencer->isRecording()) {
                                 if (amy_adapter) amy_adapter->noteOff(9, step_sequencer->trackNote(step_sequencer->selectedTrack()));
                             } else if (pad_manager) {
@@ -447,8 +520,7 @@ static void app_init_task(void* arg) {
                                 midi_learn->startWizard();
                                 ui_manager->midiLearnScreen().triggerFeedback("WIZARD INICIADO!", smk::DisplayDriver::kColorGreen);
                             } else {
-                                if (step_sequencer->isPlaying()) step_sequencer->stop();
-                                else { clock_manager->start(); step_sequencer->play(); }
+                                if (!step_sequencer->isPlaying()) { clock_manager->start(); step_sequencer->play(); }
                             }
                         }
                         continue;
@@ -529,9 +601,7 @@ static void app_init_task(void* arg) {
                             }
                             break;
                         case smk::ButtonId::Play:
-                            if (step_sequencer->isPlaying()) {
-                                step_sequencer->stop();
-                            } else {
+                            if (!step_sequencer->isPlaying()) {
                                 clock_manager->start();
                                 step_sequencer->play();
                             }
@@ -574,7 +644,14 @@ static void app_init_task(void* arg) {
                     }
                     break;
                 case smk::EventType::Clock:
-                    if (clock_manager) clock_manager->onExternalTick();
+                    if (event.source == smk::EventSource::Internal) {
+                        const uint32_t tick = static_cast<uint32_t>(event.value);
+                        arpeggiator->processTick(tick, *event_bus);
+                        step_sequencer->processTick(tick, *event_bus);
+                        if (tick % 24 == 0) scene_manager->processPendingTransition();
+                    } else if (clock_manager) {
+                        clock_manager->onExternalTick();
+                    }
                     break;
                 case smk::EventType::TransportPlay:
                     if (step_sequencer && clock_manager) {
@@ -600,6 +677,11 @@ static void app_init_task(void* arg) {
                     arpeggiator->reset();
                     step_sequencer->stop();
                     amy_adapter->panic();
+                    bank_b_save_press_us = 0;
+                    smk::Diagnostics::instance().counters().panic_count.fetch_add(1, std::memory_order_relaxed);
+                    // AMY's asynchronous mailbox has its own generation gate;
+                    // new commands execute only after that owner's Panic.
+                    event_bus->acknowledgePanic();
                     break;
                 case smk::EventType::UsbConnect: {
                     uint16_t vid = event.id;

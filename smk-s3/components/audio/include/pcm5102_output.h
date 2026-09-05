@@ -27,6 +27,7 @@ private:
     int _data_pin;
     int _mute_pin;
     i2s_chan_handle_t _tx_handle;
+    bool _started = false;
     std::atomic<uint32_t> _underruns;
     std::atomic<uint32_t> _frames_written;
 };

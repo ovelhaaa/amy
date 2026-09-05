@@ -47,7 +47,7 @@ void MidiLearn::finishAndSave() {
             target_profile_->pads[i] = defaults.pads[i];
         }
     }
-    for (size_t i = 0; i < 4; ++i) {
+    for (size_t i = 0; i < kTransportBindingCount; ++i) {
         if (target_profile_->buttons[i].target_action == 0) {
             target_profile_->buttons[i] = defaults.buttons[i];
         }
@@ -186,6 +186,19 @@ void MidiLearn::advanceStep() {
     } else if (current_step_ != LearnStep::Idle) {
         ESP_LOGI(TAG, ">>> STEP [%u/%u]: %s <<<", static_cast<unsigned>(current_step_), static_cast<unsigned>(LearnStep::Complete), currentStepName());
     }
+}
+
+bool MidiLearn::processEvent(const SynthEvent& event) {
+    if (event.source != EventSource::UsbMidi || bypassMidiLearn(event)) return false;
+    uint8_t msg_type;
+    switch (event.type) {
+        case EventType::NoteOn: msg_type = 0; break;
+        case EventType::ControlChange:
+        case EventType::Modulation: msg_type = 1; break;
+        case EventType::PitchBend: msg_type = 2; break;
+        default: return false;
+    }
+    return processIncomingMidi(msg_type, event.channel, event.id, event.value);
 }
 
 bool MidiLearn::processIncomingMidi(uint8_t msg_type, uint8_t channel, uint16_t number, int32_t value) {

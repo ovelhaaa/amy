@@ -95,6 +95,14 @@ void HomeScreen::setKnobBankLabel(const char* bank_name) {
     if (bank_name) snprintf(knob_bank_, sizeof(knob_bank_), "%s", bank_name);
 }
 
+void HomeScreen::setObservedKnobBank(uint8_t bank) {
+    observed_knob_bank_ = bank <= 2 ? bank : 0;
+}
+
+void HomeScreen::setObservedPadBank(uint8_t bank) {
+    observed_pad_bank_ = bank <= 2 ? bank : 0;
+}
+
 void HomeScreen::setActiveVoices(uint8_t active_count, uint8_t max_voices) {
     active_voices_ = active_count;
     max_voices_ = max_voices;
@@ -124,16 +132,36 @@ namespace compact_layout {
 }
 namespace wide_layout {
     constexpr int16_t kHeaderDividerY = 13;
-    constexpr int16_t kScopeX = 174;
-    constexpr int16_t kScopeY = 2;
-    constexpr int16_t kScopeW = 44;
-    constexpr int16_t kScopeH = 9;
-    constexpr int16_t kVoiceX = 222;
+    constexpr int16_t kRightMargin = 2;
+    constexpr int16_t kFieldGap = 4;
+    constexpr int16_t kBadgeW = 8;
+    constexpr int16_t kVoiceW = 32;
+    constexpr int16_t kTempoW = 40;
+    constexpr int16_t kControlW = 48;
     constexpr int16_t kVoiceY = 3;
-    constexpr int16_t kUsbX = 264;
-    constexpr int16_t kUsbY = 3;
-    constexpr int16_t kMidiX = 276;
-    constexpr int16_t kMidiY = 3;
+    constexpr int16_t kMidiY  = 3;
+    constexpr int16_t kUsbY   = 3;
+}
+
+// A one-pixel overdraw makes the bank value bold without changing shared fonts.
+void drawHeaderBank(DisplayDriver& display, int16_t x, char label, char value) {
+    FontRenderer::drawChar(display, x, 4, label, DisplayDriver::kColorCyan,
+                           DisplayDriver::kColorBlack, FontType::Font3x5);
+    for (int16_t offset = 0; offset <= 1; ++offset) {
+        FontRenderer::drawChar(display, x + 4 + offset, 3, value, DisplayDriver::kColorWhite,
+                               DisplayDriver::kColorBlack, FontType::Font5x7);
+    }
+}
+
+// Fit a header field before drawing: black glyph backgrounds are transparent,
+// so drawing the next field cannot erase text that overflowed into its area.
+void fitHeaderText(char* text, int16_t width, FontType font) {
+    const int16_t pitch = FontRenderer::stringWidth("M", font);
+    const size_t capacity = width > 0 ? static_cast<size_t>(width / pitch) : 0;
+    if (strlen(text) > capacity) {
+        if (capacity > 0) text[capacity - 1] = '~';
+        text[capacity] = '\0';
+    }
 }
 
 ParametricGlyph getKnobGlyph(int index) {
@@ -242,40 +270,70 @@ void HomeScreen::render(DisplayDriver& display) {
 
     // ── 284x76 Panoramic Layout ──
 
-    // 1. Header Line 1: Patch info, Mode, BPM (y=0..12)
-    char patch_buf[32];
-    snprintf(patch_buf, sizeof(patch_buf), "%03u %-14.14s", patch_number_, patch_name_);
+    // 1. Header: patch, observed controller banks, tempo, voices, MIDI/USB.
+    const int16_t usb_x = dw - wide_layout::kRightMargin - wide_layout::kBadgeW;
+    const int16_t midi_x = usb_x - wide_layout::kFieldGap - wide_layout::kBadgeW;
+    const int16_t voice_x = midi_x - wide_layout::kFieldGap - wide_layout::kVoiceW;
+    const int16_t bpm_x = voice_x - wide_layout::kFieldGap - wide_layout::kTempoW;
+    const int16_t control_x = bpm_x - wide_layout::kFieldGap - wide_layout::kControlW;
+
+    char patch_buf[40];
+    // Factory names already contain the formatted ID. Strip that exact prefix
+    // only for display, retaining musical identifiers such as A11 and DX7.
+    char number_prefix[8];
+    snprintf(number_prefix, sizeof(number_prefix), "%03u ", patch_number_);
+    const size_t prefix_length = strlen(number_prefix);
+    const char* display_name = patch_name_;
+    if (strncmp(display_name, number_prefix, prefix_length) == 0) {
+        display_name += prefix_length;
+    }
+    snprintf(patch_buf, sizeof(patch_buf), "%03u %s", patch_number_, display_name);
+    // Factory names are space-padded; padding must not trigger truncation.
+    size_t patch_length = strlen(patch_buf);
+    while (patch_length > 0 && patch_buf[patch_length - 1] == ' ') {
+        patch_buf[--patch_length] = '\0';
+    }
+    fitHeaderText(patch_buf, control_x - wide_layout::kFieldGap - 3, FontType::Font5x7);
     FontRenderer::drawString(display, 3, 3, patch_buf, DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
 
-    char mode_buf[16];
-    snprintf(mode_buf, sizeof(mode_buf), "[%s]", synth_mode_);
-    FontRenderer::drawString(display, 96, 3, mode_buf, DisplayDriver::kColorCyan, DisplayDriver::kColorBlack, FontType::Font5x7);
+    const char knob_bank = observed_knob_bank_ == 1 ? 'A' : (observed_knob_bank_ == 2 ? 'B' : '?');
+    const char pad_bank = observed_pad_bank_ == 1 ? 'A' : (observed_pad_bank_ == 2 ? 'B' : '?');
+    char control_buf[16];
+    snprintf(control_buf, sizeof(control_buf), "%.5s", synth_mode_);
+    FontRenderer::drawString(display, control_x, 4, control_buf, DisplayDriver::kColorCyan, DisplayDriver::kColorBlack, FontType::Font3x5);
+    drawHeaderBank(display, control_x + 24, 'K', knob_bank);
+    drawHeaderBank(display, control_x + 37, 'P', pad_bank);
 
     char bpm_buf[16];
-    snprintf(bpm_buf, sizeof(bpm_buf), "%.1fBPM", bpm_ > 0 ? bpm_ : 120.0f);
-    FontRenderer::drawString(display, 128, 3, bpm_buf, DisplayDriver::kColorAmber, DisplayDriver::kColorBlack, FontType::Font5x7);
+    // Three digits fit beside the small unit. Reject invalid display values and
+    // bound the formatting width without modifying the actual transport tempo.
+    const float display_bpm = std::isfinite(bpm_) && bpm_ > 0 ? fminf(bpm_, 999.0f) : 120.0f;
+    snprintf(bpm_buf, sizeof(bpm_buf), "%.0f", display_bpm);
+    // Doubled bitmap pixels give the number a bold, 10-pixel-high stroke.
+    FontRenderer::drawString(display, bpm_x, 1, bpm_buf, DisplayDriver::kColorWhite,
+                             DisplayDriver::kColorBlack, FontType::Font3x5, 2);
+    const int16_t unit_x = bpm_x + FontRenderer::stringWidth(bpm_buf, FontType::Font3x5, 2) + 2;
+    FontRenderer::drawString(display, unit_x, 6, "BPM", DisplayDriver::kColorAmber,
+                             DisplayDriver::kColorBlack, FontType::Font3x5);
 
-    // Mini Live Audio Scope in Header (x=174, y=2, w=44, h=9)
-    OscilloscopeWidget scope_pan(wide_layout::kScopeX, wide_layout::kScopeY,
-                                 wide_layout::kScopeW, wide_layout::kScopeH);
-    scope_pan.setSamples(scope_samples_, scope_sample_count_);
-    scope_pan.setActive(active_voices_ > 0 || midi_active_);
-    scope_pan.draw(display);
-
-    // Voice Activity Meter (x=222..258)
+    // Voice activity: eight 3px bars with 1px spacing, before the badges.
     for (uint8_t v = 0; v < max_voices_ && v < 8; ++v) {
         uint16_t voice_col = (v < active_voices_) ? DisplayDriver::kColorCyan : DisplayDriver::kColorDarkGray;
-        display.fillRect(wide_layout::kVoiceX + v * 5, wide_layout::kVoiceY, 3, 7, voice_col);
+        display.fillRect(voice_x + v * 4, wide_layout::kVoiceY, 3, 7, voice_col);
     }
 
-    // USB & MIDI Indicators (x=264..282)
-    uint16_t usb_col = usb_connected_ ? DisplayDriver::kColorGreen : DisplayDriver::kColorRed;
-    display.fillRect(wide_layout::kUsbX, wide_layout::kUsbY, 5, 5, usb_col);
-    FontRenderer::drawString(display, 270, 2, "U", DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font3x5);
-
+    // MIDI and USB badges anchored to the right edge.
     if (midi_active_) {
-        display.fillRect(wide_layout::kMidiX, wide_layout::kMidiY, 5, 5, DisplayDriver::kColorYellow);
+        display.fillRect(midi_x, wide_layout::kMidiY, 8, 7, DisplayDriver::kColorYellow);
+        FontRenderer::drawString(display, midi_x + 2, wide_layout::kMidiY + 1, "M", DisplayDriver::kColorBlack, DisplayDriver::kColorYellow, FontType::Font3x5);
+    } else {
+        display.fillRect(midi_x, wide_layout::kMidiY, 8, 7, DisplayDriver::kColorDarkGray);
+        FontRenderer::drawString(display, midi_x + 2, wide_layout::kMidiY + 1, "M", DisplayDriver::kColorMidGray, DisplayDriver::kColorDarkGray, FontType::Font3x5);
     }
+
+    uint16_t usb_col = usb_connected_ ? DisplayDriver::kColorGreen : DisplayDriver::kColorRed;
+    display.fillRect(usb_x, wide_layout::kUsbY, 8, 7, usb_col);
+    FontRenderer::drawString(display, usb_x + 2, wide_layout::kUsbY + 1, "U", DisplayDriver::kColorWhite, usb_col, FontType::Font3x5);
 
     display.drawHLine(0, wide_layout::kHeaderDividerY, display.width(), DisplayDriver::kColorMidGray);
 

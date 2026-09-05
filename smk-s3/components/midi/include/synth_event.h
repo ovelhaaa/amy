@@ -55,4 +55,23 @@ struct SynthEvent {
     uint32_t timestamp_us;  // microsecond timestamp from esp_timer_get_time()
 };
 
+// These events must reach the application even while MIDI Learn consumes input.
+constexpr bool isReleaseEvent(const SynthEvent& event) {
+    return event.type == EventType::NoteOff ||
+           (event.type == EventType::NoteOn && event.value == 0) ||
+           event.type == EventType::AllNotesOff ||
+           event.type == EventType::TransportStop ||
+           (event.type == EventType::ButtonPress && event.id == static_cast<uint16_t>(ButtonId::Stop)) ||
+           (event.type == EventType::ControlChange &&
+            ((event.id == 64 && event.value < 64) || event.id == 120 || event.id == 123));
+}
+
+constexpr bool isUsbLifecycleEvent(const SynthEvent& event) {
+    return event.type == EventType::UsbConnect || event.type == EventType::UsbDisconnect;
+}
+
+constexpr bool bypassMidiLearn(const SynthEvent& event) {
+    return event.type == EventType::Panic || isReleaseEvent(event) || isUsbLifecycleEvent(event);
+}
+
 } // namespace smk

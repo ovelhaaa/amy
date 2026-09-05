@@ -126,19 +126,10 @@ void MidiParser::processUsbMidiPacket(const uint8_t* packet) {
             break;
         case 0xE: // Pitch Bend
             {
-                int32_t raw_bend = (((int32_t)data2 << 7) | data1) - 8192;
-                // Single-pole IIR filter for touch strip smoothing & anti-jitter
-                if (raw_bend == 0) {
-                    // Fast release decay back to deadband center
-                    smoothed_pitch_bend_ = (smoothed_pitch_bend_ * 3) / 4;
-                    if (std::abs(smoothed_pitch_bend_) < 32) {
-                        smoothed_pitch_bend_ = 0;
-                    }
-                } else {
-                    // Exponential moving average smoothing
-                    smoothed_pitch_bend_ = smoothed_pitch_bend_ + ((raw_bend - smoothed_pitch_bend_) * 5) / 8;
-                }
-                emitEvent(EventType::PitchBend, channel, 0, smoothed_pitch_bend_);
+                // Preserve the target: event-driven smoothing never settles
+                // after the controller sends its last (center) message.
+                const int32_t bend = (((int32_t)data2 << 7) | data1) - 8192;
+                emitEvent(EventType::PitchBend, channel, 0, bend);
             }
             break;
         case 0xC: // Program Change

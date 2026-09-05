@@ -18,8 +18,13 @@ struct ST7789Config {
     int bl_pin;
     int16_t width{284};
     int16_t height{76};
-    uint16_t x_offset{0};
-    uint16_t y_offset{0};
+    uint16_t x_offset{18};
+    uint16_t y_offset{82};
+    bool swap_xy{true};
+    bool mirror_x{true};
+    bool mirror_y{false};
+    bool invert_color{false};
+    bool bl_active_low{true};
     spi_host_device_t spi_host{SPI2_HOST};
     int clock_speed_hz{40 * 1000 * 1000};
 };
@@ -39,6 +44,10 @@ public:
 
     int16_t width() const override { return config_.width; }
     int16_t height() const override { return config_.height; }
+
+    void setOffsets(uint16_t x_offset, uint16_t y_offset) override;
+    void setOrientation(bool swap_xy, bool mirror_x, bool mirror_y) override;
+    void setInvert(bool invert) override;
 
 private:
     ST7789Config config_;

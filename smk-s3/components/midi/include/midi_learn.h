@@ -1,5 +1,6 @@
 #pragma once
 #include "controller_profile.h"
+#include "synth_event.h"
 #include <cstdint>
 #include <cstddef>
 
@@ -65,10 +66,11 @@ public:
     void reset() { current_step_ = LearnStep::Idle; }
     
     bool processIncomingMidi(uint8_t msg_type, uint8_t channel, uint16_t number, int32_t value);
+    bool processEvent(const SynthEvent& event);
     
     LearnStep currentStep() const { return current_step_; }
     uint8_t currentStepNumber() const { return static_cast<uint8_t>(current_step_); }
-    uint8_t totalSteps() const { return static_cast<uint8_t>(LearnStep::Complete); }
+    uint8_t totalSteps() const { return static_cast<uint8_t>(LearnStep::Complete) - 1; }
     const char* currentStepName() const;
     const char* currentStepHint() const;
     bool isLearning() const { return current_step_ != LearnStep::Idle && current_step_ != LearnStep::Complete; }

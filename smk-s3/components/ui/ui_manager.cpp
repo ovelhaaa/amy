@@ -103,9 +103,26 @@ void UIManager::processEvent(const SynthEvent& event) {
     // Trigger visual MIDI Activity on HomeScreen (LED and oscilloscope pulse)
     home_screen_.setMidiActivity(true);
 
-    // Handle Pad hits if PadScreen is active or for visualization
-    if (event.type == EventType::NoteOn && event.id >= 36 && event.id <= 43) {
-        pad_screen_.triggerPadHit(event.id - 36, event.value);
+    // The SMK25 bank-selector buttons are silent. Infer the active physical
+    // bank only from the distinct messages emitted by a control in that bank.
+    if (event.source == EventSource::UsbMidi) {
+        if (event.type == EventType::ControlChange && event.channel == 0) {
+            if (event.id >= 21 && event.id <= 28) {
+                home_screen_.setObservedKnobBank(1);
+            } else if (event.id >= 29 && event.id <= 36) {
+                home_screen_.setObservedKnobBank(2);
+            }
+        } else if (event.type == EventType::NoteOn && event.channel == 9 && event.value > 0) {
+            if (event.id >= 36 && event.id <= 43) {
+                home_screen_.setObservedPadBank(1);
+                pad_screen_.setObservedInputBank(1);
+                pad_screen_.triggerPadHit(event.id - 36, event.value);
+            } else if (event.id >= 44 && event.id <= 51) {
+                home_screen_.setObservedPadBank(2);
+                pad_screen_.setObservedInputBank(2);
+                pad_screen_.triggerPadHit(event.id - 44, event.value);
+            }
+        }
     }
 }
 

@@ -122,7 +122,7 @@ void MidiLearnScreen::render(DisplayDriver& display) {
             bool blink = (blink_phase_ / 15) % 2 == 0;
             uint16_t play_col = blink ? DisplayDriver::kColorGreen : DisplayDriver::kColorYellow;
             FontRenderer::drawString(display, 4, 94, ">> PRESSIONE PLAY <<", play_col, DisplayDriver::kColorBlack, FontType::Font5x7);
-            FontRenderer::drawString(display, 4, 110, "ou Pad 1 para Iniciar", DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
+            FontRenderer::drawString(display, 4, 110, "PLAY inicia o assistente", DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
         }
         return;
     }
@@ -173,12 +173,12 @@ void MidiLearnScreen::render(DisplayDriver& display) {
         FontRenderer::drawString(display, 4, 18, "MAPEAMENTO CONCLUIDO COM SUCESSO!", DisplayDriver::kColorGreen, DisplayDriver::kColorBlack, FontType::Font5x7);
         FontRenderer::drawString(display, 4, 32, "Perfil 'smk25_custom' gravado na memoria Flash SPIFFS.", DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
         display.drawHLine(0, 56, dw, DisplayDriver::kColorMidGray);
-        FontRenderer::drawString(display, 2, 62, "PLAY: Reiniciar Wizard  |  OCT+/OCT-: Voltar para Home", DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
+        FontRenderer::drawString(display, 2, 62, "PLAY: Reiniciar  |  Pad B3: Home  |  B5/B6: Paginas", DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
     } else {
-        FontRenderer::drawString(display, 4, 18, "Pressione o botao PLAY (ou Pad 1) para iniciar o mapeamento", DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
-        FontRenderer::drawString(display, 4, 32, "O assistente mapeara: Teclado, Pitch, Mod, 16 Knobs (A/B), Pads e Botoes.", DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
+        FontRenderer::drawString(display, 4, 18, "PLAY inicia o mapeamento MIDI.", DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
+        FontRenderer::drawString(display, 4, 32, "Teclas, Pitch, Mod, Knobs A/B, Pads A/B e transporte.", DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
         display.drawHLine(0, 56, dw, DisplayDriver::kColorMidGray);
-        FontRenderer::drawString(display, 2, 62, "PLAY: Iniciar Wizard  |  OCT+/OCT-: Trocar Pagina", DisplayDriver::kColorCyan, DisplayDriver::kColorBlack, FontType::Font5x7);
+        FontRenderer::drawString(display, 2, 62, "PLAY: Iniciar  |  Pad B3: Home  |  B5/B6: Paginas", DisplayDriver::kColorCyan, DisplayDriver::kColorBlack, FontType::Font5x7);
     }
 }
 

@@ -67,6 +67,7 @@ public:
     void setSynthEngine(SynthEngine* engine) {
         synth_engine_ = engine;
     }
+    DisplayDriver& display() { return display_; }
 
 private:
     static void uiTaskRoutine(void* arg);

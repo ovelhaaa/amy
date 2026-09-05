@@ -78,7 +78,7 @@ void SystemScreen::render(DisplayDriver& display) {
 
     // Bottom border line
     display.drawHLine(0, 64, dw, DisplayDriver::kColorMidGray);
-    FontRenderer::drawString(display, 2, 66, "PRESS OCT+ & OCT- TO RETURN TO HOME", DisplayDriver::kColorLightGray, DisplayDriver::kColorBlack, FontType::Font5x7);
+    FontRenderer::drawString(display, 2, 66, "PAD B3: HOME | PAD B5/B6: PAGES", DisplayDriver::kColorLightGray, DisplayDriver::kColorBlack, FontType::Font5x7);
 }
 
 } // namespace smk

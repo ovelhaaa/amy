@@ -7,6 +7,7 @@
 namespace smk {
 
 class StepSequencer;
+class ClockManager;
 
 class SequencerScreen : public ScreenBase {
 public:
@@ -18,6 +19,7 @@ public:
     const char* name() const override { return "Sequencer"; }
 
     void setSequencer(const StepSequencer* seq) { sequencer_ = seq; }
+    void setClockManager(const ClockManager* clock) { clock_manager_ = clock; }
 
     void setPatternNumber(uint8_t pat);
     void setBpm(float bpm);
@@ -36,6 +38,7 @@ public:
 
 private:
     const StepSequencer* sequencer_{nullptr};
+    const ClockManager* clock_manager_{nullptr};
 
     uint8_t pattern_num_{1};
     float bpm_{124.0f};

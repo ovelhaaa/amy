@@ -52,7 +52,6 @@ private:
     
     std::atomic<uint32_t> parse_errors_{0};
     std::atomic<VelocityCurve> velocity_curve_{VelocityCurve::Linear};
-    int32_t smoothed_pitch_bend_ = 0;
 };
 
 } // namespace smk

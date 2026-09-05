@@ -17,6 +17,7 @@ class MidiLearn;      // Forward declaration
 class PadManager;     // Forward declaration
 class UsbMidiHost;    // Forward declaration
 class AmyAdapter;     // Forward declaration
+class EventBus;
 struct ControllerProfile; // Forward declaration
 
 class Console {
@@ -36,11 +37,13 @@ public:
     void setUsbMidiHost(UsbMidiHost* midi_host);
     void setAmyAdapter(AmyAdapter* adapter);
     void setActiveProfilePointer(ControllerProfile* prof_ptr);
+    void setEventBus(EventBus* event_bus);
     
     // Register additional commands
     void registerCommand(const char* name, const char* help, esp_console_cmd_func_t func);
     
 private:
+    static EventBus* s_event_bus;
     static int cmdStatus(int argc, char** argv);
     static int cmdAudioStatus(int argc, char** argv);
     static int cmdPanic(int argc, char** argv);
@@ -85,6 +88,11 @@ private:
     static int cmdSwing(int argc, char** argv);
     static int cmdLimiter(int argc, char** argv);
     static int cmdClockSource(int argc, char** argv);
+    static int cmdDisplayTest(int argc, char** argv);
+    static int cmdDisplayOffset(int argc, char** argv);
+    static int cmdDisplayRot(int argc, char** argv);
+    static int cmdDisplayInv(int argc, char** argv);
+    static int cmdDisplayBl(int argc, char** argv);
     static int cmdHelp(int argc, char** argv);
     
     static UIManager*      s_ui_manager;

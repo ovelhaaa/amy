@@ -46,7 +46,7 @@ bool ST7789DisplayDriver::begin() {
         ledc_channel.channel        = LEDC_CHANNEL_0;
         ledc_channel.intr_type      = LEDC_INTR_DISABLE;
         ledc_channel.timer_sel      = LEDC_TIMER_0;
-        ledc_channel.duty           = 255; // Start at full brightness
+        ledc_channel.duty           = config_.bl_active_low ? 0 : 255; // 0 = GND = full brightness for active-low BL
         ledc_channel.hpoint         = 0;
         ledc_channel_config(&ledc_channel);
     }
@@ -93,7 +93,9 @@ bool ST7789DisplayDriver::begin() {
 
     esp_lcd_panel_reset(panel_handle_);
     esp_lcd_panel_init(panel_handle_);
-    esp_lcd_panel_invert_color(panel_handle_, true);
+    esp_lcd_panel_invert_color(panel_handle_, config_.invert_color);
+    esp_lcd_panel_swap_xy(panel_handle_, config_.swap_xy);
+    esp_lcd_panel_mirror(panel_handle_, config_.mirror_x, config_.mirror_y);
     esp_lcd_panel_set_gap(panel_handle_, config_.x_offset, config_.y_offset);
     esp_lcd_panel_disp_on_off(panel_handle_, true);
 
@@ -119,7 +121,8 @@ bool ST7789DisplayDriver::begin() {
 void ST7789DisplayDriver::setBrightness(uint8_t value) {
     brightness_ = value;
     if (config_.bl_pin >= 0) {
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, value);
+        uint32_t duty = config_.bl_active_low ? (255 - value) : value;
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
     }
 }
@@ -180,6 +183,37 @@ void ST7789DisplayDriver::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h
         for (int16_t iy = y1; iy < y2; ++iy) {
             esp_lcd_panel_draw_bitmap(panel_handle_, x1, iy, x2, iy + 1, &framebuffer_[iy * config_.width + x1]);
         }
+    }
+}
+
+void ST7789DisplayDriver::setOffsets(uint16_t x_offset, uint16_t y_offset) {
+    config_.x_offset = x_offset;
+    config_.y_offset = y_offset;
+    if (panel_handle_) {
+        esp_lcd_panel_set_gap(panel_handle_, x_offset, y_offset);
+        invalidate();
+        flush();
+    }
+}
+
+void ST7789DisplayDriver::setOrientation(bool swap_xy, bool mirror_x, bool mirror_y) {
+    config_.swap_xy = swap_xy;
+    config_.mirror_x = mirror_x;
+    config_.mirror_y = mirror_y;
+    if (panel_handle_) {
+        esp_lcd_panel_swap_xy(panel_handle_, swap_xy);
+        esp_lcd_panel_mirror(panel_handle_, mirror_x, mirror_y);
+        invalidate();
+        flush();
+    }
+}
+
+void ST7789DisplayDriver::setInvert(bool invert) {
+    config_.invert_color = invert;
+    if (panel_handle_) {
+        esp_lcd_panel_invert_color(panel_handle_, invert);
+        invalidate();
+        flush();
     }
 }
 

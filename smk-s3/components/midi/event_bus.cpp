@@ -1,91 +1,142 @@
 #include "event_bus.h"
 #include "diagnostics.h"
+#include <algorithm>
+#include <new>
+#include <cstdlib>
+#ifdef ESP_PLATFORM
+#include <esp_heap_caps.h>
+#endif
 
 namespace smk {
 
-EventBus::EventBus(size_t capacity) {
-    queue_ = xQueueCreate(capacity, sizeof(SynthEvent));
+EventBus::EventBus(size_t capacity) : capacity_(capacity) {
+    if (capacity_ == 0 || capacity_ > SIZE_MAX / sizeof(Entry)) return;
+#ifdef ESP_PLATFORM
+    // ISR-accessed queue storage must not spill into PSRAM.
+    entries_ = static_cast<Entry*>(heap_caps_malloc(capacity_ * sizeof(Entry), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+#else
+    entries_ = static_cast<Entry*>(std::malloc(capacity_ * sizeof(Entry)));
+#endif
+    if (!entries_) return;
+    for (size_t i = 0; i < capacity_; ++i) new (&entries_[i]) Entry{};
+    (void)Diagnostics::instance(); // Initialize before any ISR can update counters.
+    wake_ = xSemaphoreCreateBinary();
+    release_reserve_ = std::min(size_t(32), std::max(size_t(1), capacity_ / 4));
 }
 
 EventBus::~EventBus() {
-    if (queue_) {
-        vQueueDelete(queue_);
+    if (wake_) vSemaphoreDelete(wake_);
+    std::free(entries_);
+}
+
+void EventBus::countDropLocked(bool overflow) {
+    auto& counters = Diagnostics::instance().counters();
+    counters.events_dropped.fetch_add(1, std::memory_order_relaxed);
+    if (overflow) {
+        overflow_count_.fetch_add(1, std::memory_order_relaxed);
+        counters.event_queue_overflows.fetch_add(1, std::memory_order_relaxed);
     }
+}
+
+void EventBus::panicLocked(const SynthEvent& event) {
+    ++generation_;
+    panic_event_ = event;
+    panic_event_.type = EventType::Panic;
+    panic_pending_ = true;
+    panic_delivered_ = false;
+}
+
+bool EventBus::enqueueLocked(const SynthEvent& event) {
+    if (event.type == EventType::Panic) {
+        panicLocked(event);
+        return true;
+    }
+    if (event.type == EventType::UsbDisconnect) panicLocked(event);
+
+    if (panic_pending_ && !isUsbLifecycleEvent(event)) {
+        countDropLocked(false);
+        return false;
+    }
+
+    const bool critical = isReleaseEvent(event) || isUsbLifecycleEvent(event);
+    const size_t limit = critical ? capacity_ : capacity_ - release_reserve_;
+    if (count_ >= limit) {
+        countDropLocked(true);
+        // A lost release becomes an explicit fail-safe reset. Never move a
+        // Note Off ahead of its queued Note On, or evict another release.
+        if (isReleaseEvent(event)) panicLocked(event);
+        return false;
+    }
+    entries_[(head_ + count_) % capacity_] = {event, generation_};
+    ++count_;
+    return true;
 }
 
 bool EventBus::send(const SynthEvent& event) {
-    if (!queue_) return false;
-    
-    BaseType_t res = xQueueSend(queue_, &event, 0);
-    if (res != pdTRUE) {
-        // Queue full. Check if incoming event is critical
-        if (event.type == EventType::NoteOff || 
-            event.type == EventType::AllNotesOff || 
-            event.type == EventType::Panic) {
-            // Drop oldest message to make room, but avoid dropping another critical message
-            SynthEvent discarded_ev;
-            if (xQueueReceive(queue_, &discarded_ev, 0) == pdTRUE) {
-                if (discarded_ev.type == EventType::NoteOff || 
-                    discarded_ev.type == EventType::AllNotesOff || 
-                    discarded_ev.type == EventType::Panic) {
-                    // Do not discard an already queued critical event; put it back
-                    xQueueSendToFront(queue_, &discarded_ev, 0);
-                    overflow_count_.fetch_add(1, std::memory_order_relaxed);
-                    Diagnostics::instance().counters().event_queue_overflows.fetch_add(1, std::memory_order_relaxed);
-                    return false;
-                }
-            }
-            res = xQueueSendToFront(queue_, &event, 0);
-            if (res != pdTRUE) {
-                res = xQueueSend(queue_, &event, 0);
-            }
-            overflow_count_.fetch_add(1, std::memory_order_relaxed);
-            Diagnostics::instance().counters().event_queue_overflows.fetch_add(1, std::memory_order_relaxed);
-            return (res == pdTRUE);
-        }
-        overflow_count_.fetch_add(1, std::memory_order_relaxed);
-        Diagnostics::instance().counters().event_queue_overflows.fetch_add(1, std::memory_order_relaxed);
-        return false;
-    }
-    return true;
+    if (!ready()) return false;
+    portENTER_CRITICAL(&mux_);
+    const bool accepted = enqueueLocked(event);
+    portEXIT_CRITICAL(&mux_);
+    xSemaphoreGive(wake_);
+    return accepted;
 }
 
-bool EventBus::sendFromISR(const SynthEvent& event, BaseType_t* pxHigherPriorityTaskWoken) {
-    if (!queue_) return false;
-    BaseType_t res = xQueueSendFromISR(queue_, &event, pxHigherPriorityTaskWoken);
-    if (res != pdTRUE) {
-        if (event.type == EventType::NoteOff || 
-            event.type == EventType::AllNotesOff || 
-            event.type == EventType::Panic) {
-            SynthEvent discarded_ev;
-            if (xQueueReceiveFromISR(queue_, &discarded_ev, pxHigherPriorityTaskWoken) == pdTRUE) {
-                if (discarded_ev.type == EventType::NoteOff || 
-                    discarded_ev.type == EventType::AllNotesOff || 
-                    discarded_ev.type == EventType::Panic) {
-                    xQueueSendToFrontFromISR(queue_, &discarded_ev, pxHigherPriorityTaskWoken);
-                    overflow_count_.fetch_add(1, std::memory_order_relaxed);
-                    return false;
-                }
-            }
-            res = xQueueSendToFrontFromISR(queue_, &event, pxHigherPriorityTaskWoken);
-            overflow_count_.fetch_add(1, std::memory_order_relaxed);
-            return (res == pdTRUE);
-        }
-        overflow_count_.fetch_add(1, std::memory_order_relaxed);
-        return false;
-    }
-    return true;
-}
-
-bool EventBus::receive(SynthEvent& event, uint32_t timeout_ms) {
-    if (!queue_) return false;
-    TickType_t ticks = timeout_ms == 0 ? 0 : pdMS_TO_TICKS(timeout_ms);
-    return xQueueReceive(queue_, &event, ticks) == pdTRUE;
+bool EventBus::sendFromISR(const SynthEvent& event, BaseType_t* woken) {
+    if (!ready()) return false;
+    portENTER_CRITICAL_ISR(&mux_);
+    const bool accepted = enqueueLocked(event);
+    portEXIT_CRITICAL_ISR(&mux_);
+    xSemaphoreGiveFromISR(wake_, woken);
+    return accepted;
 }
 
 bool EventBus::tryReceive(SynthEvent& event) {
-    if (!queue_) return false;
-    return xQueueReceive(queue_, &event, 0) == pdTRUE;
+    if (!ready()) return false;
+    // Each critical section copies at most one entry. USB lifecycle events
+    // survive resets; stale musical events cannot restart a silenced voice.
+    for (size_t i = 0; i <= capacity_; ++i) {
+        portENTER_CRITICAL(&mux_);
+        if (panic_pending_ && !panic_delivered_) {
+            event = panic_event_;
+            panic_delivered_ = true;
+            delivered_generation_ = generation_;
+            portEXIT_CRITICAL(&mux_);
+            return true;
+        }
+        if (count_ == 0) {
+            portEXIT_CRITICAL(&mux_);
+            return false;
+        }
+        const Entry entry = entries_[head_];
+        head_ = (head_ + 1) % capacity_;
+        --count_;
+        const bool valid = isUsbLifecycleEvent(entry.event) ||
+                           (!panic_pending_ && entry.generation == generation_);
+        if (!valid) countDropLocked(false);
+        portEXIT_CRITICAL(&mux_);
+        if (valid) {
+            event = entry.event;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool EventBus::receive(SynthEvent& event, uint32_t timeout_ms) {
+    if (tryReceive(event)) return true;
+    if (!ready() || timeout_ms == 0) return false;
+    // Semaphore is only a wake hint; entries and Panic live under mux_.
+    xSemaphoreTake(wake_, pdMS_TO_TICKS(timeout_ms));
+    return tryReceive(event);
+}
+
+void EventBus::acknowledgePanic() {
+    portENTER_CRITICAL(&mux_);
+    if (panic_delivered_ && delivered_generation_ == generation_) {
+        panic_pending_ = false;
+        panic_delivered_ = false;
+    }
+    portEXIT_CRITICAL(&mux_);
 }
 
 uint32_t EventBus::overflowCount() const {
@@ -93,8 +144,10 @@ uint32_t EventBus::overflowCount() const {
 }
 
 size_t EventBus::pendingCount() const {
-    if (!queue_) return 0;
-    return uxQueueMessagesWaiting(queue_);
+    portENTER_CRITICAL(&mux_);
+    const size_t result = count_ + (panic_pending_ && !panic_delivered_ ? 1 : 0);
+    portEXIT_CRITICAL(&mux_);
+    return result;
 }
 
 } // namespace smk

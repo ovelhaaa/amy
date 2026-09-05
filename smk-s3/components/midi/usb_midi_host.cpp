@@ -306,15 +306,7 @@ void UsbMidiHost::handleDeviceDisconnection() {
     disconnect_evt.timestamp_us = (uint32_t)esp_timer_get_time();
     event_bus_.send(disconnect_evt);
 
-    SynthEvent panic_event;
-    panic_event.type = EventType::Panic;
-    panic_event.source = EventSource::UsbMidi;
-    panic_event.channel = 0;
-    panic_event.id = 0;
-    panic_event.value = 0;
-    panic_event.timestamp_us = (uint32_t)esp_timer_get_time();
-    
-    event_bus_.send(panic_event);
+    // EventBus latches Panic even if the disconnect notification cannot fit.
     
     // Note: in_transfer_ is in flight and will be safely freed in transferCallback
     // when it returns with status CANCELED / NO_DEVICE

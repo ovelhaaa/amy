@@ -6,6 +6,7 @@ namespace smk {
 
 constexpr uint32_t kProfileMagic = 0x53334D31; // "S3M1"
 constexpr uint16_t kProfileFormatVersion = 2;
+constexpr size_t kTransportBindingCount = 3;
 
 enum class TargetAction : uint16_t {
     Unmapped     = 0,
@@ -77,7 +78,8 @@ struct ControllerProfile {
     MidiBinding modulation;
     MidiBinding knobs[16];  // 16 physical knobs (0..7 Bank A, 8..15 Bank B)
     MidiBinding pads[16];   // 16 pads (0..7 Bank A, 8..15 Bank B)
-    MidiBinding buttons[4]; // Play, Stop, Rec, BT
+    // Play, Stop and Rec emit MIDI. BT does not and is intentionally unmapped.
+    MidiBinding buttons[4];
     uint32_t    crc32;
 };
 

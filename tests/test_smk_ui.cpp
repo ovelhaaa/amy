@@ -284,6 +284,93 @@ void testMultiScreenRendering() {
     printf("  -> Multi-Screen rendering across both aspect ratios passed without memory errors.\n");
 }
 
+void testHomeHeaderSeparation() {
+    printf("[TEST] Home header field separation and right-aligned MIDI/USB...\n");
+    DummyDisplayDriver display(284, 76);
+    assert(display.begin());
+    HomeScreen home;
+    home.setUsbConnected(true);
+    home.setMidiActivity(true);
+    home.setActiveVoices(8, 8);
+    home.setBpm(300);
+    home.setObservedKnobBank(2);
+    home.setObservedPadBank(1);
+
+    for (const char* name : {"A11 Brass Set 1", "MMMMMMMMMMMMMMMMMMMMMMM"}) {
+        home.setPatchInfo(65535, name, "LAYERED");
+        home.render(display);
+        const auto* pixels = display.framebuffer();
+        auto check_text_region = [&](int left, int right, uint16_t foreground) {
+            bool has_text = false;
+            for (int y = 3; y < 10; ++y) {
+                for (int x = left; x < right; ++x) {
+                    const auto pixel = pixels[y * 284 + x];
+                    assert(pixel == DisplayDriver::kColorBlack || pixel == foreground);
+                    has_text |= pixel == foreground;
+                }
+            }
+            assert(has_text);
+        };
+        check_text_region(3, 126, DisplayDriver::kColorWhite);
+        check_text_region(130, 150, DisplayDriver::kColorCyan);
+        check_text_region(154, 158, DisplayDriver::kColorCyan);
+        check_text_region(158, 164, DisplayDriver::kColorWhite);
+        check_text_region(167, 171, DisplayDriver::kColorCyan);
+        check_text_region(171, 177, DisplayDriver::kColorWhite);
+        check_text_region(182, 206, DisplayDriver::kColorWhite);
+        check_text_region(208, 222, DisplayDriver::kColorAmber);
+        for (int left : {126, 178, 222, 258, 270}) {
+            for (int y = 3; y < 10; ++y) {
+                for (int x = left; x < left + 4; ++x) {
+                    assert(pixels[y * 284 + x] == DisplayDriver::kColorBlack);
+                }
+            }
+        }
+        assert(pixels[3 * 284 + 262] == DisplayDriver::kColorYellow);
+        assert(pixels[3 * 284 + 274] == DisplayDriver::kColorGreen);
+        assert(pixels[3 * 284 + 281] == DisplayDriver::kColorGreen);
+        assert(pixels[3 * 284 + 282] == DisplayDriver::kColorBlack);
+        assert(pixels[3 * 284 + 283] == DisplayDriver::kColorBlack);
+    }
+    home.setUsbConnected(false);
+    home.setMidiActivity(false);
+    home.render(display);
+    assert(display.framebuffer()[3 * 284 + 262] == DisplayDriver::kColorDarkGray);
+    assert(display.framebuffer()[3 * 284 + 274] == DisplayDriver::kColorRed);
+}
+
+void testHomePatchNumberPrefix() {
+    printf("[TEST] Home removes only the matching formatted patch-number prefix...\n");
+    struct Case { uint16_t id; const char* name; const char* expected; };
+    const Case cases[] = {
+        {0, "000 A11 Brass Set 1    ", "000 A11 Brass Set 1"},
+        {0, "A11 Brass Set 1", "000 A11 Brass Set 1"},
+        {42, "042 DX7 BRASS", "042 DX7 BRASS"},
+        {42, "041 DX7 BRASS", "042 041 DX7 BRASS"},
+        {0, "000Lead", "000 000Lead"},
+        {0, "000", "000 000"},
+        {0, "00", "000 00"},
+        {0, "", "000 "},
+        {1000, "1000 LEAD", "1000 LEAD"},
+        {65535, "65535 LEAD", "65535 LEAD"},
+    };
+    DummyDisplayDriver actual(284, 76), expected(284, 76);
+    assert(actual.begin());
+    assert(expected.begin());
+    HomeScreen home;
+    for (const auto& c : cases) {
+        home.setPatchInfo(c.id, c.name, "SYNTH");
+        home.render(actual);
+        expected.fillScreen(DisplayDriver::kColorBlack);
+        FontRenderer::drawString(expected, 3, 3, c.expected, DisplayDriver::kColorWhite);
+        for (int y = 3; y < 10; ++y) {
+            for (int x = 3; x < 126; ++x) {
+                assert(actual.framebuffer()[y * 284 + x] == expected.framebuffer()[y * 284 + x]);
+            }
+        }
+    }
+}
+
 int main() {
     printf("====================================================\n");
     printf("=== Running SMK-S3 UI Subsystem Unit Tests ===\n");
@@ -295,6 +382,8 @@ int main() {
     testOscilloscopeWidget();
     testWidgets();
     testMultiScreenRendering();
+    testHomeHeaderSeparation();
+    testHomePatchNumberPrefix();
 
     printf("\n=== ALL UI SUBSYSTEM UNIT TESTS PASSED SUCCESSFULLY! ===\n");
     return 0;

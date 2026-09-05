@@ -28,6 +28,9 @@ Please ensure your connections match the configurable placeholders in `app_confi
 ## 3. Test Steps
 
 ### Test 1: Boot & Initialization
+For the AMY oscillator-allocation regression, also follow
+[the detailed boot analysis and hardware checks](amy_boot_allocation.md).
+
 1. Power on the ESP32-S3 and open the serial monitor.
 2. **Expected Observation**: 
    - You should see the project header (`SMK-S3 Synth`), version, and system information (flash size, PSRAM size, etc.).
@@ -78,4 +81,8 @@ Please ensure your connections match the configurable placeholders in `app_confi
    - `Audio Load` should be a stable decimal fraction (`< 1.0`), well below `0.95`.
 
 ## 4. Reporting Issues
+
+For the MIDI/Panic and audio lifecycle regression checks, see
+[ESP32-S3 stability fixes and hardware procedure](stability_fixes.md).
+
 If any test fails, note the step number, the serial console output at the time of failure, and the observable hardware behavior. This will guide the debugging phase.

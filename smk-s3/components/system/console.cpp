@@ -13,6 +13,7 @@
 #include "pad_bank.h"
 #include "usb_midi_host.h"
 #include "amy_adapter.h"
+#include "event_bus.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_console.h"
@@ -38,6 +39,7 @@ PadManager*     Console::s_pad_manager     = nullptr;
 ControllerProfile* Console::s_active_profile_ptr = nullptr;
 UsbMidiHost*    Console::s_midi_host       = nullptr;
 AmyAdapter*     Console::s_amy_adapter     = nullptr;
+EventBus*       Console::s_event_bus       = nullptr;
 
 static ControllerProfile s_fallback_profile = ProfileManager::createDefaultSmk25Profile();
 
@@ -55,6 +57,7 @@ void Console::setPadManager(PadManager* pad_mgr) { s_pad_manager = pad_mgr; }
 void Console::setActiveProfilePointer(ControllerProfile* prof_ptr) { s_active_profile_ptr = prof_ptr; }
 void Console::setUsbMidiHost(UsbMidiHost* midi_host) { s_midi_host = midi_host; }
 void Console::setAmyAdapter(AmyAdapter* adapter) { s_amy_adapter = adapter; }
+void Console::setEventBus(EventBus* event_bus) { s_event_bus = event_bus; }
 
 bool Console::begin() {
     uart_config_t uart_config = {};
@@ -124,6 +127,11 @@ bool Console::begin() {
     registerCommand("swing", "Set/get global swing percent <50..75>", cmdSwing);
     registerCommand("limiter", "Enable/disable master soft-limiter <on|off>", cmdLimiter);
     registerCommand("clock_source", "Set/get clock sync source <internal|usb>", cmdClockSource);
+    registerCommand("display_test", "Run visual test pattern on display", cmdDisplayTest);
+    registerCommand("display_offset", "Set CGRAM display gap offset <x> <y>", cmdDisplayOffset);
+    registerCommand("display_rot", "Set display orientation <swap_xy 0|1> <mirror_x 0|1> <mirror_y 0|1>", cmdDisplayRot);
+    registerCommand("display_inv", "Set display color inversion <0|1>", cmdDisplayInv);
+    registerCommand("display_bl", "Set display brightness level <0..255>", cmdDisplayBl);
     registerCommand("help", "List available commands", cmdHelp);
 
     xTaskCreatePinnedToCore(consoleTask, "console_task", 8192, this, 2, &task_handle_, 0);
@@ -150,15 +158,18 @@ int Console::cmdAudioStatus(int argc, char** argv) {
     ESP_LOGI(TAG, "Max Render Us: %lu", counters.max_render_us.load());
     ESP_LOGI(TAG, "Avg Render Us: %lu", counters.avg_render_us.load());
     ESP_LOGI(TAG, "Frames Rendered: %lu", counters.frames_rendered.load());
+    ESP_LOGI(TAG, "Synth: PCM gaps=%lu, command drops=%lu, queue high-water=%lu, panics applied=%lu",
+             counters.synth_pcm_starvations.load(), counters.synth_commands_dropped.load(),
+             counters.synth_queue_high_water.load(), counters.synth_panics.load());
+    ESP_LOGI(TAG, "Synth max command wait: %lu us", counters.synth_max_command_wait_us.load());
     return 0;
 }
 
 int Console::cmdPanic(int argc, char** argv) {
-    ESP_LOGW(TAG, "Panic triggered! Silencing synth engine and resetting sequencers.");
-    if (s_arpeggiator) s_arpeggiator->reset();
-    if (s_sequencer) s_sequencer->stop();
-    if (s_amy_adapter) s_amy_adapter->panic();
-    return 0;
+    SynthEvent event{};
+    event.type = EventType::Panic;
+    event.source = EventSource::Console;
+    return s_event_bus && s_event_bus->send(event) ? 0 : 1;
 }
 
 int Console::cmdMemory(int argc, char** argv) {
@@ -688,6 +699,80 @@ int Console::cmdClockSource(int argc, char** argv) {
     return 0;
 }
 
+int Console::cmdDisplayTest(int argc, char** argv) {
+    if (!s_ui_manager) {
+        ESP_LOGE(TAG, "UIManager not initialized");
+        return 1;
+    }
+    DisplayDriver& d = s_ui_manager->display();
+    ESP_LOGI(TAG, "Running Display Test pattern on %dx%d display...", d.width(), d.height());
+
+    // Draw calibration pattern: nested borders and diagonal cross
+    d.fillScreen(DisplayDriver::kColorBlack);
+    d.drawRect(0, 0, d.width(), d.height(), DisplayDriver::kColorRed);
+    d.drawRect(1, 1, d.width() - 2, d.height() - 2, DisplayDriver::kColorGreen);
+    d.drawRect(2, 2, d.width() - 4, d.height() - 4, DisplayDriver::kColorBlue);
+    d.drawLine(0, 0, d.width() - 1, d.height() - 1, DisplayDriver::kColorYellow);
+    d.drawLine(0, d.height() - 1, d.width() - 1, 0, DisplayDriver::kColorCyan);
+    d.invalidate();
+    d.flush();
+    ESP_LOGI(TAG, "Calibration pattern rendered. UI will resume automatically.");
+    return 0;
+}
+
+int Console::cmdDisplayOffset(int argc, char** argv) {
+    if (!s_ui_manager) return 1;
+    if (argc < 3) {
+        ESP_LOGI(TAG, "Usage: display_offset <x_offset> <y_offset>");
+        return 1;
+    }
+    uint16_t x = static_cast<uint16_t>(atoi(argv[1]));
+    uint16_t y = static_cast<uint16_t>(atoi(argv[2]));
+    s_ui_manager->display().setOffsets(x, y);
+    ESP_LOGI(TAG, "Display offsets updated to X=%u, Y=%u", x, y);
+    return 0;
+}
+
+int Console::cmdDisplayRot(int argc, char** argv) {
+    if (!s_ui_manager) return 1;
+    if (argc < 4) {
+        ESP_LOGI(TAG, "Usage: display_rot <swap_xy 0|1> <mirror_x 0|1> <mirror_y 0|1>");
+        return 1;
+    }
+    bool swap = atoi(argv[1]) != 0;
+    bool mx = atoi(argv[2]) != 0;
+    bool my = atoi(argv[3]) != 0;
+    s_ui_manager->display().setOrientation(swap, mx, my);
+    ESP_LOGI(TAG, "Display orientation updated: swap_xy=%d, mirror_x=%d, mirror_y=%d", swap, mx, my);
+    return 0;
+}
+
+int Console::cmdDisplayInv(int argc, char** argv) {
+    if (!s_ui_manager) return 1;
+    if (argc < 2) {
+        ESP_LOGI(TAG, "Usage: display_inv <0|1>");
+        return 1;
+    }
+    bool inv = atoi(argv[1]) != 0;
+    s_ui_manager->display().setInvert(inv);
+    ESP_LOGI(TAG, "Display color invert set to: %d", inv);
+    return 0;
+}
+
+int Console::cmdDisplayBl(int argc, char** argv) {
+    if (!s_ui_manager) return 1;
+    if (argc < 2) {
+        ESP_LOGI(TAG, "Usage: display_bl <0..255>");
+        return 1;
+    }
+    int val = atoi(argv[1]);
+    if (val < 0) val = 0;
+    if (val > 255) val = 255;
+    s_ui_manager->display().setBrightness(static_cast<uint8_t>(val));
+    ESP_LOGI(TAG, "Display brightness set to: %d", val);
+    return 0;
+}
+
 int Console::cmdHelp(int argc, char** argv) {
     ESP_LOGI(TAG, "--- Available Commands ---");
     ESP_LOGI(TAG, " status        - Show system status snapshot");
@@ -772,7 +857,7 @@ void Console::consoleTask(void* arg) {
                         if (has_alias) {
                             esp_console_run(alias_buf, &ret);
                         } else if (s_amy_adapter != nullptr) {
-                            // Forward directly to AMY wire engine
+                            // Adapter copies this line before the console reuses it.
                             s_amy_adapter->sendAmyMessage(line_buf);
                         } else {
                             ESP_LOGW(TAG, "Unrecognized command: '%s'. Type 'help' for available commands.", line_buf);

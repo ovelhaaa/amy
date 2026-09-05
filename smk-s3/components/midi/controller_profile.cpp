@@ -30,11 +30,11 @@ ControllerProfile ProfileManager::createDefaultSmk25Profile() {
     // Modulation: CC #1
     prof.modulation = { 1, 0xFF, 1, (uint16_t)TargetAction::Modulation, 0, 127, 0 };
 
-    // Knobs: 
+    // Knobs: channel 1 (zero-based channel 0 in the MIDI parser).
     // Bank A (Knobs 1..8):  CC #21 .. CC #28
     // Bank B (Knobs 9..16): CC #29 .. CC #36
     for (uint8_t i = 0; i < 16; ++i) {
-        prof.knobs[i] = { 1, 0xFF, (uint16_t)(21 + i), (uint16_t)((uint16_t)TargetAction::Knob1 + i), 0, 127, 0 };
+        prof.knobs[i] = { 1, 0, (uint16_t)(21 + i), (uint16_t)((uint16_t)TargetAction::Knob1 + i), 0, 127, 0 };
     }
 
     // Pads: Note #36 .. Note #43 (Bank A -> Pad1..Pad8), Note #44 .. Note #51 (Bank B -> Pad9..Pad16) on Channel 10 (idx 9)
@@ -42,11 +42,10 @@ ControllerProfile ProfileManager::createDefaultSmk25Profile() {
         prof.pads[i] = { 0, 9, (uint16_t)(36 + i), (uint16_t)((uint16_t)TargetAction::Pad1 + i), 0, 127, 0 };
     }
 
-    // Buttons (Play, Stop, Rec, BT)
-    prof.buttons[0] = { 1, 0xFF, 114, (uint16_t)TargetAction::Play, 0, 127, 0 };
-    prof.buttons[1] = { 1, 0xFF, 115, (uint16_t)TargetAction::Stop, 0, 127, 0 };
-    prof.buttons[2] = { 1, 0xFF, 117, (uint16_t)TargetAction::Rec,  0, 127, 0 };
-    prof.buttons[3] = { 1, 0xFF, 118, (uint16_t)TargetAction::Bt,   0, 127, 0 };
+    // Transport: channel 1 (zero-based channel 0). BT has no MIDI binding.
+    prof.buttons[0] = { 1, 0, 114, (uint16_t)TargetAction::Play, 0, 127, 0 };
+    prof.buttons[1] = { 1, 0, 115, (uint16_t)TargetAction::Stop, 0, 127, 0 };
+    prof.buttons[2] = { 1, 0, 117, (uint16_t)TargetAction::Rec,  0, 127, 0 };
 
     prof.crc32 = calculateProfileCrc32(prof);
     return prof;
@@ -58,21 +57,29 @@ TargetAction ProfileManager::matchBinding(const ControllerProfile& profile, uint
     }
 
     if (msg_type == 1) { // CC
-        if (profile.modulation.msg_type == 1 && profile.modulation.number == number) {
+        if (profile.modulation.msg_type == 1 &&
+            (profile.modulation.channel == 0xFF || profile.modulation.channel == channel) &&
+            profile.modulation.number == number) {
             return TargetAction::Modulation;
         }
         for (uint8_t i = 0; i < 16; ++i) {
-            if (profile.knobs[i].msg_type == 1 && profile.knobs[i].number == number) {
+            if (profile.knobs[i].msg_type == 1 &&
+                (profile.knobs[i].channel == 0xFF || profile.knobs[i].channel == channel) &&
+                profile.knobs[i].number == number) {
                 return static_cast<TargetAction>(profile.knobs[i].target_action);
             }
         }
-        for (uint8_t i = 0; i < 4; ++i) {
-            if (profile.buttons[i].msg_type == 1 && profile.buttons[i].number == number) {
+        for (size_t i = 0; i < kTransportBindingCount; ++i) {
+            if (profile.buttons[i].msg_type == 1 &&
+                (profile.buttons[i].channel == 0xFF || profile.buttons[i].channel == channel) &&
+                profile.buttons[i].number == number) {
                 return static_cast<TargetAction>(profile.buttons[i].target_action);
             }
         }
         for (uint8_t i = 0; i < 16; ++i) {
-            if (profile.pads[i].msg_type == 1 && profile.pads[i].number == number) {
+            if (profile.pads[i].msg_type == 1 &&
+                (profile.pads[i].channel == 0xFF || profile.pads[i].channel == channel) &&
+                profile.pads[i].number == number) {
                 return static_cast<TargetAction>(profile.pads[i].target_action);
             }
         }
@@ -85,7 +92,7 @@ TargetAction ProfileManager::matchBinding(const ControllerProfile& profile, uint
                 return static_cast<TargetAction>(profile.pads[i].target_action);
             }
         }
-        for (uint8_t i = 0; i < 4; ++i) {
+        for (size_t i = 0; i < kTransportBindingCount; ++i) {
             if (profile.buttons[i].msg_type == 0 && profile.buttons[i].channel != 0xFF && profile.buttons[i].channel == channel && profile.buttons[i].number == number) {
                 return static_cast<TargetAction>(profile.buttons[i].target_action);
             }

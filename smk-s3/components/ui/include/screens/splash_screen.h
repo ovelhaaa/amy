@@ -23,9 +23,8 @@ public:
 
 private:
     uint32_t start_time_ms_{0};
-    uint32_t duration_ms_{1500}; // 1.5s splash duration with fast transition to Home
+    uint32_t duration_ms_{2500}; // Brief welcome; MIDI can still dismiss early.
     bool is_finished_{false};
-    uint8_t anim_frame_{0};
 };
 
 } // namespace smk

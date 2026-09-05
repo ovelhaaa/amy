@@ -11,6 +11,11 @@ struct DiagnosticCounters {
     std::atomic<uint32_t> max_render_us{0};
     std::atomic<uint32_t> avg_render_us{0};
     std::atomic<uint32_t> frames_rendered{0};
+    std::atomic<uint32_t> synth_pcm_starvations{0};
+    std::atomic<uint32_t> synth_commands_dropped{0};
+    std::atomic<uint32_t> synth_queue_high_water{0};
+    std::atomic<uint32_t> synth_panics{0};
+    std::atomic<uint32_t> synth_max_command_wait_us{0};
     
     // MIDI
     std::atomic<uint32_t> midi_parse_errors{0};

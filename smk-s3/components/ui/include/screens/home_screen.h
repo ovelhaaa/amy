@@ -30,6 +30,8 @@ public:
     void setHomeKnobBankView(HomeKnobBankView view);
     HomeKnobBankView homeKnobBankView() const { return bank_view_; }
     void setKnobBankLabel(const char* bank_name);
+    void setObservedKnobBank(uint8_t bank);
+    void setObservedPadBank(uint8_t bank);
     void setActiveVoices(uint8_t active_count, uint8_t max_voices = 8);
     void setCpuLoad(float load_percent);
     void setWaveformSamples(const int16_t* samples, size_t count);
@@ -42,6 +44,8 @@ private:
     bool usb_connected_{true};
     bool midi_active_{false};
     char knob_bank_[24]{"BANK A: MACROS"};
+    uint8_t observed_knob_bank_{0}; // 0 = unknown, 1 = A, 2 = B
+    uint8_t observed_pad_bank_{0};  // 0 = unknown, 1 = A, 2 = B
     HomeKnobBankView bank_view_{HomeKnobBankView::BankA_Macros};
     uint8_t macro_values_[8]{62, 78, 31, 45, 8, 67, 34, 22};
     uint8_t engine_values_[8]{64, 40, 50, 45, 20, 30, 40, 15};

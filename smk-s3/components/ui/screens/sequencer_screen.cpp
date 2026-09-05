@@ -1,5 +1,6 @@
 #include "sequencer_screen.h"
 #include "font_renderer.h"
+#include "clock_manager.h"
 #include "step_sequencer.h"
 #include "esp_timer.h"
 #include <cstdio>
@@ -42,8 +43,13 @@ void SequencerScreen::setTrackPlockMask(uint8_t track_idx, uint16_t mask) {
 void SequencerScreen::update() {
     if (sequencer_) {
         pattern_num_ = sequencer_->currentPattern() + 1;
-        bpm_ = 120.0f; // Maintained via clock manager or synth engine
-        swing_ = static_cast<uint8_t>(sequencer_->swing());
+        if (clock_manager_) {
+            bpm_ = clock_manager_->bpm();
+            swing_ = clock_manager_->swing();
+        } else {
+            // Keep the sequencer's swing as a safe fallback until a clock is wired.
+            swing_ = static_cast<uint8_t>(sequencer_->swing());
+        }
         is_playing_ = sequencer_->isPlaying();
         is_recording_ = sequencer_->isRecording();
         selected_track_ = sequencer_->selectedTrack();
@@ -325,4 +331,3 @@ void SequencerScreen::render(DisplayDriver& display) {
 }
 
 } // namespace smk
-
