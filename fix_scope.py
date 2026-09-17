@@ -13,7 +13,7 @@ replacement = """        // Scope
         int16_t scope_y = kHeaderHeight + kMargin + 2 * (kMacroTileHeight + kMacroTileGapY) + kMargin;
         int16_t scope_h = 56;
         OscilloscopeWidget scope(kMargin, scope_y, dw - kMargin * 2, scope_h);
-        scope.setSamples(scopesamples_, scopesample_count_);
+        scope.setSamples(scope_samples_, scope_sample_count_);
         scope.setActive(active_voices_ > 0 || midi_active_);
         scope.setColors(ColorAccentPrimary, ColorSurfaceElev);
         scope.draw(display);"""

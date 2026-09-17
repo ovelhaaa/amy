@@ -15,6 +15,7 @@ squares = {
     'parameter_screen.cpp': """
     if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
         using namespace theme;
+        const bool is_captured = takeover_ == TakeoverStatus::Captured;
 
         // Darkened background for overlay
         display.fillRect(0, 0, dw, dh, dimColor(ColorBackground, 0.9f));
@@ -26,7 +27,7 @@ squares = {
         int16_t box_y = (dh - box_h) / 2;
 
         display.fillChamferRect(box_x, box_y, box_w, box_h, 4, ColorSurfaceElev);
-        display.drawChamferRect(box_x, box_y, box_w, box_h, 4, is_captured_ ? ColorAccentPrimary : ColorSurface);
+        display.drawChamferRect(box_x, box_y, box_w, box_h, 4, is_captured ? ColorAccentPrimary : ColorSurface);
 
         // Parameter name
         char title_upper[32];
@@ -48,7 +49,7 @@ squares = {
         }
 
         int16_t val_w = FontRenderer::stringWidth(val_buf, FontType::FontDisplay, 1);
-        uint16_t val_color = is_captured_ ? ColorTextPrimary : ColorTextSecondary;
+        uint16_t val_color = is_captured ? ColorTextPrimary : ColorTextSecondary;
         FontRenderer::drawString(display, box_x + (box_w - val_w) / 2, box_y + 46, val_buf, val_color, ColorSurfaceElev, FontType::FontDisplay, 1);
 
         // Visual Bar
@@ -62,7 +63,7 @@ squares = {
         // Fill portion
         int16_t fill_w = (current_val_ * bar_w) / 127;
         if (fill_w > 0) {
-            display.fillChamferRect(bar_x, bar_y, fill_w, bar_h, 2, is_captured_ ? ColorAccentPrimary : ColorDivider);
+            display.fillChamferRect(bar_x, bar_y, fill_w, bar_h, 2, is_captured ? ColorAccentPrimary : ColorDivider);
         }
 
         // Saved/Preset indicator
@@ -72,7 +73,7 @@ squares = {
         display.drawPixel(saved_x + 1, bar_y - 4, ColorAccentSecondary);
 
         // Takeover guidance
-        if (!is_captured_) {
+        if (!is_captured) {
             char takeover_buf[32];
             snprintf(takeover_buf, sizeof(takeover_buf), "%s TO CAPTURE", current_val_ < saved_val_ ? "TURN ->" : "<- TURN");
             int16_t t_w = FontRenderer::stringWidth(takeover_buf, FontType::Font3x5, 1);
@@ -207,7 +208,7 @@ squares = {
         }
 
         int16_t grid_y = kHeaderHeight + 24;
-        int16_t step_w = 12;
+        int16_t step_w = 10;
         int16_t step_h = 16;
         int16_t step_gap = 2;
         int16_t track_gap = 4;
@@ -238,7 +239,7 @@ squares = {
             int16_t start_x = 24;
             for (int step = 0; step < 16; ++step) {
                 // Group by 4 visually by adding a small gap
-                int16_t group_gap = (step / 4) * 4;
+                int16_t group_gap = (step / 4) * 2;
                 int16_t sx = start_x + step * (step_w + step_gap) + group_gap;
 
                 bool active = step_active_[track][step];

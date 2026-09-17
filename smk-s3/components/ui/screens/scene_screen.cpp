@@ -44,31 +44,32 @@ void SceneScreen::update() {
 
 void SceneScreen::render(DisplayDriver& display) {
     display.fillScreen(DisplayDriver::kColorBlack);
-    int16_t dw = display.if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
+    int16_t dw = display.width();
+    int16_t dh = display.height();
+
+    if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
         using namespace theme;
+        components::HeaderWidget::draw(display, "SCENES", "1-8",
+                                       false, false, ColorAccentPrimary);
 
-        components::HeaderWidget::draw(display, "SCENES", "1-8", false, false, ColorAccentPrimary);
+        constexpr int16_t scene_w = 98;
+        constexpr int16_t scene_h = 42;
+        const int16_t start_x = (dw - (2 * scene_w + kMargin)) / 2;
+        const int16_t start_y = kHeaderHeight + 20;
 
-        int16_t scene_w = 98;
-        int16_t scene_h = 42;
-        int16_t start_x = (dw - (2 * scene_w + kMargin)) / 2;
-        int16_t start_y = kHeaderHeight + 20;
-
-        for (int i = 0; i < 8; ++i) {
-            int16_t col = i % 2;
-            int16_t row = i / 2;
-            int16_t x = start_x + col * (scene_w + kMargin);
-            int16_t y = start_y + row * (scene_h + kMargin);
-
-            bool is_active = (i == active_scene_);
-            bool is_queued = (i == queued_scene_);
+        for (uint8_t i = 0; i < 8; ++i) {
+            const int16_t col = i % 2;
+            const int16_t row = i / 2;
+            const int16_t x = start_x + col * (scene_w + kMargin);
+            const int16_t y = start_y + row * (scene_h + kMargin);
+            const bool is_active = i == active_scene_index_;
+            const bool is_queued = i == pending_scene_index_;
 
             uint16_t bg_color = ColorSurface;
             uint16_t border_color = ColorDivider;
-
             if (is_active) {
-                bg_color = dimColor(ColorAccentPrimary, 0.2f);
-                border_color = ColorAccentPrimary;
+                bg_color = ColorAccentPrimary;
+                border_color = ColorTextPrimary;
             } else if (is_queued) {
                 border_color = ColorAccentSecondary;
             }
@@ -76,124 +77,26 @@ void SceneScreen::render(DisplayDriver& display) {
             display.fillChamferRect(x, y, scene_w, scene_h, 2, bg_color);
             display.drawChamferRect(x, y, scene_w, scene_h, 2, border_color);
 
-            // Queue animation pulse indicator
-            if (is_queued && (elapsed_ms_ % 500) < 250) {
-                display.drawChamferRect(x - 1, y - 1, scene_w + 2, scene_h + 2, 3, ColorAccentSecondary);
-            }
-
-            // Number
             char num_str[4];
-            snprintf(num_str, sizeof(num_str), "%02d", i + 1);
-            FontRenderer::drawString(display, x + 6, y + 6, num_str, is_active ? ColorAccentPrimary : (is_queued ? ColorAccentSecondary : ColorTextSecondary), bg_color, FontType::Font5x7, 1);
+            snprintf(num_str, sizeof(num_str), "%02u", i + 1);
+            FontRenderer::drawString(display, x + 6, y + 6, num_str,
+                                     is_active ? ColorBackground
+                                               : (is_queued ? ColorAccentSecondary
+                                                            : ColorTextSecondary),
+                                     bg_color, FontType::Font5x7, 1);
+            FontRenderer::drawString(display, x + 26, y + 6, scene_names_[i],
+                                     is_active ? ColorBackground : ColorTextSecondary,
+                                     bg_color, FontType::Font5x7, 1);
 
-            // Name
-            const char* name = scenes_[i].name;
-            if (!name || name[0] == '\0') name = "EMPTY";
-            FontRenderer::drawString(display, x + 26, y + 6, name, is_active ? ColorTextPrimary : ColorTextSecondary, bg_color, FontType::Font5x7, 1);
-
-            // Metadata (Patch / Pattern)
             char meta_str[32];
-            snprintf(meta_str, sizeof(meta_str), "P%03u  PAT %u", scenes_[i].patch_number, scenes_[i].pattern_number);
-            FontRenderer::drawString(display, x + 6, y + 24, meta_str, ColorTextMuted, bg_color, FontType::Font3x5, 1);
+            snprintf(meta_str, sizeof(meta_str), "P%03u  PAT %u",
+                     scene_patches_[i], scene_patterns_[i] + 1);
+            FontRenderer::drawString(display, x + 6, y + 24, meta_str,
+                                     is_active ? ColorSurface : ColorTextMuted,
+                                     bg_color, FontType::Font3x5, 1);
         }
-    } else if (dw <= 160) {#include "ui_components.h"
-#include "screens/scene_screen.h"
-#include "display_layout.h"
-#include "font_renderer.h"
-#include "scene_manager.h"
-#include <cstdio>
-#include <cstring>
-
-namespace smk {
-
-SceneScreen::SceneScreen() {
-    const char* default_names[8] = {
-        "01:INTRO",
-        "02:VERSE",
-        "03:PRE-CH",
-        "04:CHORUS",
-        "05:BRIDGE",
-        "06:SOLO",
-        "07:BRKDWN",
-        "08:OUTRO"
-    };
-
-    for (size_t i = 0; i < 8; ++i) {
-        snprintf(scene_names_[i], sizeof(scene_names_[i]), "%s", default_names[i]);
-    }
-}
-
-void SceneScreen::update() {
-    if (scene_mgr_) {
-        active_scene_index_ = scene_mgr_->activeSceneIndex();
-        pending_scene_index_ = scene_mgr_->pendingSceneIndex();
-
-        for (uint8_t i = 0; i < 8; ++i) {
-            const auto& sc = scene_mgr_->scene(i);
-            snprintf(scene_names_[i], sizeof(scene_names_[i]), "%s", sc.name);
-            scene_patches_[i] = sc.patch_id;
-            scene_bpms_[i] = sc.bpm;
-            scene_arps_[i] = sc.arp_enabled;
-            scene_patterns_[i] = sc.drum_pattern;
-        }
-    }
-}
-
-void SceneScreen::render(DisplayDriver& display) {
-    display.fillScreen(DisplayDriver::kColorBlack);
-    int16_t dw = display.width();
-    int16_t dh = display.height();
-
-    if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
-        display.fillRect(0, 0, dw, 30, DisplayDriver::kColorDarkGray);
-        FontRenderer::drawString(display, 4, 4, "SCENES", DisplayDriver::kColorAmber,
-                                 DisplayDriver::kColorDarkGray, FontType::Font5x7, 2);
-        char state[24];
-        if (pending_scene_index_ >= 0) {
-            snprintf(state, sizeof(state), "ACTIVE %u > CUE %u", active_scene_index_ + 1,
-                     pending_scene_index_ + 1);
-        } else {
-            snprintf(state, sizeof(state), "ACTIVE %u", active_scene_index_ + 1);
-        }
-        const int16_t state_w = FontRenderer::stringWidth(state, FontType::Font3x5);
-        FontRenderer::drawString(display, dw - state_w - 5, 21, state,
-                                 DisplayDriver::kColorCyan, DisplayDriver::kColorDarkGray,
-                                 FontType::Font3x5);
-
-        for (uint8_t i = 0; i < 8; ++i) {
-            const int16_t x = 4 + (i % 2) * 118;
-            const int16_t y = 36 + (i / 2) * 42;
-            constexpr int16_t card_w = 114;
-            constexpr int16_t card_h = 36;
-            const bool active = i == active_scene_index_;
-            const bool queued = i == pending_scene_index_;
-            const uint16_t fill = active ? DisplayDriver::kColorCyan
-                : (queued ? DisplayDriver::kColorAmber : DisplayDriver::kColorBlack);
-            const uint16_t foreground = active || queued ? DisplayDriver::kColorBlack
-                                                         : DisplayDriver::kColorWhite;
-            display.fillRect(x, y, card_w, card_h, fill);
-            display.drawRect(x, y, card_w, card_h,
-                             active || queued ? DisplayDriver::kColorWhite : DisplayDriver::kColorMidGray);
-            char name[17];
-            snprintf(name, sizeof(name), "%.15s", scene_names_[i]);
-            FontRenderer::drawString(display, x + 5, y + 5, name, foreground, fill,
-                                     FontType::Font5x7);
-            char detail[28];
-            snprintf(detail, sizeof(detail), "P%02u  %.0fBPM  PAT%u", scene_patches_[i],
-                     scene_bpms_[i], scene_patterns_[i] + 1);
-            FontRenderer::drawString(display, x + 5, y + 20, detail,
-                                     active || queued ? DisplayDriver::kColorBlack
-                                                      : DisplayDriver::kColorLightGray,
-                                     fill, FontType::Font3x5);
-        }
-        display.drawHLine(0, 208, dw, DisplayDriver::kColorDarkGray);
-        FontRenderer::drawString(display, 4, 218, "PADS 1-8: SELECT SCENE",
-                                 DisplayDriver::kColorYellow, DisplayDriver::kColorBlack,
-                                 FontType::Font3x5);
         return;
     }
-
-    // ── 160x128 (1.8" Display Layout) ──
     if (dw <= 160) {
         // Header
         char hdr[32];

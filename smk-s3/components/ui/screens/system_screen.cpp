@@ -17,111 +17,67 @@ void SystemScreen::render(DisplayDriver& display) {
     int16_t dw = display.width();
     int16_t dh = display.height();
 
-    auto snaif (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
-        using namespace theme;
-        components::HeaderWidget::draw(display, "SYSTEM", "", false, false, ColorAccentSecondary);
-
-        int16_t box_w = 210;
-        int16_t box_h = 180;
-        int16_t box_x = (dw - box_w) / 2;
-        int16_t box_y = kHeaderHeight + kMargin;
-
-        display.fillChamferRect(box_x, box_y, box_w, box_h, 4, ColorSurfaceElev);
-
-        for (int i = 0; i < 7; ++i) {
-            int16_t y = box_y + 12 + i * 22;
-            bool selected = (i == selected_item_);
-
-            if (selected) {
-                display.fillChamferRect(box_x + 4, y - 4, box_w - 8, 20, 2, ColorSurface);
-                display.drawVLine(box_x + 6, y - 2, 16, ColorAccentPrimary);
-            }
-
-            FontRenderer::drawString(display, box_x + 16, y, item_names_[i], selected ? ColorTextPrimary : ColorTextSecondary, selected ? ColorSurface : ColorSurfaceElev, FontType::Font5x7, 1);
-            FontRenderer::drawString(display, box_x + 130, y, item_values_[i], selected ? ColorAccentPrimary : ColorTextMuted, selected ? ColorSurface : ColorSurfaceElev, FontType::Font5x7, 1);
-        }
-    } else if (dw <= 160) {#include "ui_components.h"
-#include "system_screen.h"
-#include "display_layout.h"
-#include "font_renderer.h"
-#include "diagnostics.h"
-#include <cstdio>
-
-namespace smk {
-
-void SystemScreen::update() {
-    // Polled on refresh
-}
-
-void SystemScreen::render(DisplayDriver& display) {
-    display.fillScreen(DisplayDriver::kColorBlack);
-    int16_t dw = display.width();
-    int16_t dh = display.height();
-
     auto snap = Diagnostics::instance().takeSnapshot();
 
     if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
-        display.fillRect(0, 0, dw, 30, DisplayDriver::kColorDarkGray);
-        FontRenderer::drawString(display, 4, 4, "SYSTEM", DisplayDriver::kColorCyan,
-                                 DisplayDriver::kColorDarkGray, FontType::Font5x7, 2);
-        char version[24];
-        snprintf(version, sizeof(version), "FW %s", snap.firmware_version ? snap.firmware_version : "0.1.0");
-        const int16_t version_w = FontRenderer::stringWidth(version, FontType::Font3x5);
-        FontRenderer::drawString(display, dw - version_w - 5, 21, version,
-                                 DisplayDriver::kColorLightGray, DisplayDriver::kColorDarkGray,
-                                 FontType::Font3x5);
+        using namespace theme;
+        components::HeaderWidget::draw(display, "SYSTEM", "",
+                                       false, false, ColorAccentSecondary);
 
-        auto draw_card = [&display](int16_t x, int16_t y, const char* label,
-                                    const char* line1, const char* line2, uint16_t color) {
-            constexpr int16_t card_w = 113;
-            constexpr int16_t card_h = 50;
-            display.drawRect(x, y, card_w, card_h, DisplayDriver::kColorDarkGray);
-            FontRenderer::drawString(display, x + 5, y + 5, label, color,
-                                     DisplayDriver::kColorBlack, FontType::Font3x5);
-            FontRenderer::drawString(display, x + 5, y + 18, line1, DisplayDriver::kColorWhite,
-                                     DisplayDriver::kColorBlack, FontType::Font5x7);
-            FontRenderer::drawString(display, x + 5, y + 34, line2, DisplayDriver::kColorLightGray,
-                                     DisplayDriver::kColorBlack, FontType::Font3x5);
-        };
-
-        char line1[32];
-        char line2[32];
-        snprintf(line1, sizeof(line1), "%s", snap.usb_connected ? "CONNECTED" : "NO DEVICE");
-        snprintf(line2, sizeof(line2), "DC %lu  RC %lu", snap.usb_disconnects, snap.usb_reconnects);
-        draw_card(4, 36, "USB MIDI", line1, line2,
-                  snap.usb_connected ? DisplayDriver::kColorGreen : DisplayDriver::kColorRed);
-
-        snprintf(line1, sizeof(line1), "UNDERRUN %lu", snap.audio_underruns);
-        snprintf(line2, sizeof(line2), "AVG %.1f  MAX %.1fms", snap.avg_render_us / 1000.0f,
+        char cpu_value[32];
+        char memory_value[32];
+        char audio_value[32];
+        char midi_value[32];
+        char usb_value[32];
+        char control_value[32];
+        snprintf(cpu_value, sizeof(cpu_value), "%luMHz / %.1f%% / V%lu",
+                 static_cast<unsigned long>(snap.cpu_freq_mhz), snap.render_load,
+                 static_cast<unsigned long>(snap.active_voices));
+        snprintf(memory_value, sizeof(memory_value), "%luK / %.1fM",
+                 static_cast<unsigned long>(snap.free_internal_ram / 1024),
+                 snap.free_psram / (1024.0f * 1024.0f));
+        snprintf(audio_value, sizeof(audio_value), "UND %lu / MAX %.1fms",
+                 static_cast<unsigned long>(snap.audio_underruns),
                  snap.max_render_us / 1000.0f);
-        draw_card(123, 36, "AUDIO", line1, line2,
-                  snap.audio_underruns == 0 ? DisplayDriver::kColorGreen : DisplayDriver::kColorRed);
+        snprintf(midi_value, sizeof(midi_value), "ERR %lu / Q %lu",
+                 static_cast<unsigned long>(snap.midi_parse_errors),
+                 static_cast<unsigned long>(snap.event_queue_overflows));
+        snprintf(usb_value, sizeof(usb_value), "%s / DC %lu",
+                 snap.usb_connected ? "CONNECTED" : "NO DEVICE",
+                 static_cast<unsigned long>(snap.usb_disconnects));
+        snprintf(control_value, sizeof(control_value), "%.10s / SW %u / %s",
+                 vel_curve_, swing_, limiter_ ? "LIM" : "NO LIM");
 
-        snprintf(line1, sizeof(line1), "INT %luK", static_cast<unsigned long>(snap.free_internal_ram / 1024));
-        snprintf(line2, sizeof(line2), "PSRAM %.1fM", snap.free_psram / (1024.0f * 1024.0f));
-        draw_card(4, 92, "MEMORY", line1, line2, DisplayDriver::kColorCyan);
+        const char* item_names_[] = {
+            "ENGINE", "MEMORY", "AUDIO", "MIDI", "USB", "CONTROL"
+        };
+        const char* item_values_[] = {
+            cpu_value, memory_value, audio_value, midi_value, usb_value, control_value
+        };
+        const size_t row_count = sizeof(item_names_) / sizeof(item_names_[0]);
 
-        snprintf(line1, sizeof(line1), "CPU %luMHz", snap.cpu_freq_mhz);
-        snprintf(line2, sizeof(line2), "DSP %.1f%%  V %lu", snap.render_load, snap.active_voices);
-        draw_card(123, 92, "ENGINE", line1, line2, DisplayDriver::kColorAmber);
+        constexpr int16_t box_x = kMargin;
+        const int16_t box_y = kHeaderHeight + kMargin;
+        const int16_t box_w = dw - 2 * kMargin;
+        constexpr int16_t row_h = 30;
+        display.fillChamferRect(box_x, box_y, box_w,
+                                static_cast<int16_t>(row_count * row_h + 8),
+                                4, ColorSurfaceElev);
 
-        snprintf(line1, sizeof(line1), "ERROR %lu", snap.midi_parse_errors);
-        snprintf(line2, sizeof(line2), "QUEUE %lu", snap.event_queue_overflows);
-        draw_card(4, 148, "EVENTS", line1, line2,
-                  (snap.midi_parse_errors + snap.event_queue_overflows) == 0
-                      ? DisplayDriver::kColorGreen : DisplayDriver::kColorRed);
-
-        snprintf(line1, sizeof(line1), "PANIC %lu", snap.panic_count);
-        snprintf(line2, sizeof(line2), "VEL %.10s SW %u", vel_curve_, swing_);
-        draw_card(123, 148, "CONTROL", line1, line2, DisplayDriver::kColorYellow);
-
-        display.drawHLine(0, 207, dw, DisplayDriver::kColorDarkGray);
-        FontRenderer::drawString(display, 4, 216, "PAD B3: HOME  B5/B6: PAGES",
-                                 DisplayDriver::kColorLightGray, DisplayDriver::kColorBlack,
-                                 FontType::Font3x5);
+        for (size_t i = 0; i < row_count; ++i) {
+            const int16_t y = box_y + 8 + static_cast<int16_t>(i * row_h);
+            FontRenderer::drawString(display, box_x + 8, y, item_names_[i],
+                                     ColorTextSecondary, ColorSurfaceElev,
+                                     FontType::Font3x5, 1);
+            FontRenderer::drawString(display, box_x + 72, y, item_values_[i],
+                                     ColorTextPrimary, ColorSurfaceElev,
+                                     FontType::Font5x7, 1);
+            if (i + 1 < row_count) {
+                display.drawHLine(box_x + 8, y + 20, box_w - 16, ColorDivider);
+            }
+        }
         return;
     }
-
     if (dw <= 160) {
         FontRenderer::drawString(display, 2, 2, "SYSTEM DIAGNOSTICS", DisplayDriver::kColorCyan, DisplayDriver::kColorBlack, FontType::Font5x7);
         display.drawHLine(0, 11, dw, DisplayDriver::kColorMidGray);

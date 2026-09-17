@@ -6,9 +6,9 @@ squares = {
         using namespace theme;
         display.fillScreen(ColorBackground);
 
-        uint16_t logo_color = dimColor(ColorAccentPrimary, current_opacity_);
-        uint16_t text_color = dimColor(ColorTextPrimary, current_opacity_);
-        uint16_t dim_text = dimColor(ColorTextMuted, current_opacity_);
+        uint16_t logo_color = ColorAccentPrimary;
+        uint16_t text_color = ColorTextPrimary;
+        uint16_t dim_text = ColorTextMuted;
 
         // Draw monogram / logo mark
         int16_t mark_y = 60;
@@ -24,7 +24,7 @@ squares = {
         FontRenderer::drawString(display, (dw - title_width) / 2, 114, "SMK-S3", text_color, ColorBackground, FontType::FontDisplay, 1);
 
         const int16_t credit_width = FontRenderer::stringWidth("POWERED BY AMY", FontType::Font3x5, 1);
-        FontRenderer::drawString(display, (dw - credit_width) / 2, 146, "POWERED BY AMY", dimColor(ColorAccentSecondary, current_opacity_), ColorBackground, FontType::Font3x5, 1);
+        FontRenderer::drawString(display, (dw - credit_width) / 2, 146, "POWERED BY AMY", ColorAccentSecondary, ColorBackground, FontType::Font3x5, 1);
 
         const int16_t ready_width = FontRenderer::stringWidth("USB MIDI / I2S AUDIO", FontType::Font3x5, 1);
         FontRenderer::drawString(display, (dw - ready_width) / 2, 210, "USB MIDI / I2S AUDIO", dim_text, ColorBackground, FontType::Font3x5, 1);
@@ -32,6 +32,7 @@ squares = {
     'parameter_screen.cpp': """
     if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
         using namespace theme;
+        const bool is_captured = takeover_ == TakeoverStatus::Captured;
 
         // Darkened background for overlay
         display.fillRect(0, 0, dw, dh, ColorBackground); // simplified since dimColor not available globally
@@ -43,7 +44,7 @@ squares = {
         int16_t box_y = (dh - box_h) / 2;
 
         display.fillChamferRect(box_x, box_y, box_w, box_h, 4, ColorSurfaceElev);
-        display.drawChamferRect(box_x, box_y, box_w, box_h, 4, is_captured_ ? ColorAccentPrimary : ColorSurface);
+        display.drawChamferRect(box_x, box_y, box_w, box_h, 4, is_captured ? ColorAccentPrimary : ColorSurface);
 
         // Parameter name
         char title_upper[32];
@@ -65,7 +66,7 @@ squares = {
         }
 
         int16_t val_w = FontRenderer::stringWidth(val_buf, FontType::FontDisplay, 1);
-        uint16_t val_color = is_captured_ ? ColorTextPrimary : ColorTextSecondary;
+        uint16_t val_color = is_captured ? ColorTextPrimary : ColorTextSecondary;
         FontRenderer::drawString(display, box_x + (box_w - val_w) / 2, box_y + 46, val_buf, val_color, ColorSurfaceElev, FontType::FontDisplay, 1);
 
         // Visual Bar
@@ -79,7 +80,7 @@ squares = {
         // Fill portion
         int16_t fill_w = (current_val_ * bar_w) / 127;
         if (fill_w > 0) {
-            display.fillChamferRect(bar_x, bar_y, fill_w, bar_h, 2, is_captured_ ? ColorAccentPrimary : ColorDivider);
+            display.fillChamferRect(bar_x, bar_y, fill_w, bar_h, 2, is_captured ? ColorAccentPrimary : ColorDivider);
         }
 
         // Saved/Preset indicator
@@ -89,7 +90,7 @@ squares = {
         display.drawPixel(saved_x + 1, bar_y - 4, ColorAccentSecondary);
 
         // Takeover guidance
-        if (!is_captured_) {
+        if (!is_captured) {
             char takeover_buf[32];
             snprintf(takeover_buf, sizeof(takeover_buf), "%s TO CAPTURE", current_val_ < saved_val_ ? "TURN ->" : "<- TURN");
             int16_t t_w = FontRenderer::stringWidth(takeover_buf, FontType::Font3x5, 1);

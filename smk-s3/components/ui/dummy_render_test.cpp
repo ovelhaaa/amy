@@ -17,9 +17,14 @@ void savePPM(DummyDisplayDriver& driver, const char* filename) {
     int w = driver.width();
     int h = driver.height();
     fprintf(f, "P6\n%d %d\n255\n", w, h);
+    const uint16_t* framebuffer = driver.framebuffer();
+    if (!framebuffer) {
+        fclose(f);
+        return;
+    }
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
-            uint16_t c = driver.pixel(x, y);
+            uint16_t c = framebuffer[y * w + x];
             uint8_t r = ((c >> 11) & 0x1F) * 255 / 31;
             uint8_t g = ((c >> 5) & 0x3F) * 255 / 63;
             uint8_t b = (c & 0x1F) * 255 / 31;
@@ -44,20 +49,21 @@ int main() {
     // 2. Home Screen
     HomeScreen home;
     home.setPatchInfo(12, "Deep Bass", "POLY");
-    home.setHomeKnobBankView(HomeKnobBankView::BankB_Engine);
+    home.setHomeKnobBankView(HomeScreen::HomeKnobBankView::BankB_Engine);
     driver.fillScreen(0);
     home.render(driver);
     savePPM(driver, "home_screen.ppm");
 
     // 3. Parameter Screen
     ParameterScreen param;
-    param.setParameter("CUTOFF", 74, 90, "Hz");
-    param.setTakeoverState(false);
+    param.showParameter("CUTOFF", "SYNTH", 74, 90, "Hz",
+                        TakeoverStatus::ApproachingFromBelow);
     driver.fillScreen(0);
     param.render(driver);
     savePPM(driver, "parameter_takeover.ppm");
 
-    param.setTakeoverState(true);
+    param.showParameter("CUTOFF", "SYNTH", 74, 90, "Hz",
+                        TakeoverStatus::Captured);
     driver.fillScreen(0);
     param.render(driver);
     savePPM(driver, "parameter_captured.ppm");

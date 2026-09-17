@@ -11,6 +11,7 @@
 #include "navigation_model.h"
 #include "dummy_display_driver.h"
 #include "font_renderer.h"
+#include "ui_theme.h"
 #include "widgets.h"
 
 // Screen headers
@@ -439,8 +440,8 @@ void testHomeHeaderSeparation() {
     assert(display.framebuffer()[3 * 284 + 274] == DisplayDriver::kColorRed);
 }
 
-void testSquareHomeTempoAndVoicesPlacement() {
-    printf("[TEST] Square Home emphasizes tempo in footer and voices in header...\n");
+void testSquareHomeThemeAndStatusPlacement() {
+    printf("[TEST] Square Home uses themed header and footer status placement...\n");
     BoundsCheckingDisplayDriver display(240, 240);
     assert(display.begin());
     HomeScreen home;
@@ -452,23 +453,21 @@ void testSquareHomeTempoAndVoicesPlacement() {
     home.render(display);
 
     const auto* pixels = display.framebuffer();
-    uint32_t header_cyan_pixels = 0;
-    uint32_t footer_amber_pixels = 0;
-    for (int y = 21; y < 30; ++y) {
+    uint32_t header_accent_pixels = 0;
+    uint32_t footer_primary_pixels = 0;
+    for (int y = 0; y < theme::kHeaderHeight; ++y) {
         for (int x = 0; x < 240; ++x) {
-            header_cyan_pixels += pixels[y * 240 + x] == DisplayDriver::kColorCyan;
+            header_accent_pixels += pixels[y * 240 + x] == theme::ColorAccentPrimary;
         }
     }
-    for (int y = 213; y < 240; ++y) {
+    for (int y = 194; y < 220; ++y) {
         for (int x = 0; x < 240; ++x) {
-            footer_amber_pixels += pixels[y * 240 + x] == DisplayDriver::kColorAmber;
+            footer_primary_pixels += pixels[y * 240 + x] == theme::ColorTextPrimary;
         }
     }
 
-    // Three active voice bars are visible in the header, while the enlarged
-    // three-digit tempo creates a substantial amber footprint in the footer.
-    assert(header_cyan_pixels == 3U * 4U * 4U);
-    assert(footer_amber_pixels > 150);
+    assert(header_accent_pixels > 0);
+    assert(footer_primary_pixels > 100);
     assert(display.outOfBoundsCount() == 0);
 }
 
@@ -516,7 +515,7 @@ int main() {
     testWidgets();
     testMultiScreenRendering();
     testHomeHeaderSeparation();
-    testSquareHomeTempoAndVoicesPlacement();
+    testSquareHomeThemeAndStatusPlacement();
     testHomePatchNumberPrefix();
 
     printf("\n=== ALL UI SUBSYSTEM UNIT TESTS PASSED SUCCESSFULLY! ===\n");

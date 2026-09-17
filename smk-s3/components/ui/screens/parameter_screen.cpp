@@ -1,4 +1,5 @@
 #include "ui_theme.h"
+#include "ui_components.h"
 #include "parameter_screen.h"
 #include "display_layout.h"
 #include "font_renderer.h"
@@ -6,7 +7,6 @@
 #include <cstdio>
 #include <cstring>
 
-#include "ui_components.h"
 namespace smk {
 
 ParameterScreen::ParameterScreen()
@@ -86,224 +86,92 @@ void ParameterScreen::render(DisplayDriver& display) {
             break;
         case TakeoverStatus::Captured:
         default:
-        if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
+            break;
+    }
+
+    if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
         using namespace theme;
+        const bool is_captured = takeover_ == TakeoverStatus::Captured;
 
-        // Darkened background for overlay
-        display.fillRect(0, 0, dw, dh, ColorBackground); // simplified since dimColor not available globally
+        display.fillRect(0, 0, dw, dh, ColorBackground);
 
-        // Container box
-        int16_t box_w = 200;
-        int16_t box_h = 160;
-        int16_t box_x = (dw - box_w) / 2;
-        int16_t box_y = (dh - box_h) / 2;
+        constexpr int16_t box_w = 200;
+        constexpr int16_t box_h = 160;
+        const int16_t box_x = (dw - box_w) / 2;
+        const int16_t box_y = (dh - box_h) / 2;
 
         display.fillChamferRect(box_x, box_y, box_w, box_h, 4, ColorSurfaceElev);
-        display.drawChamferRect(box_x, box_y, box_w, box_h, 4, is_captured_ ? ColorAccentPrimary : ColorSurface);
+        display.drawChamferRect(box_x, box_y, box_w, box_h, 4,
+                                is_captured ? ColorAccentPrimary : ColorSurface);
 
-        // Parameter name
         char title_upper[32];
         snprintf(title_upper, sizeof(title_upper), "%s", param_name_);
         for (char* p = title_upper; *p; ++p) {
             if (*p >= 'a' && *p <= 'z') *p -= 32;
         }
 
-        int16_t title_w = FontRenderer::stringWidth(title_upper, FontType::Font5x7, 1);
-        FontRenderer::drawString(display, box_x + (box_w - title_w) / 2, box_y + 16, title_upper, ColorTextSecondary, ColorSurfaceElev, FontType::Font5x7, 1);
+        const int16_t title_w = FontRenderer::stringWidth(title_upper, FontType::Font5x7, 1);
+        FontRenderer::drawString(display, box_x + (box_w - title_w) / 2, box_y + 16,
+                                 title_upper, ColorTextSecondary, ColorSurfaceElev,
+                                 FontType::Font5x7, 1);
         display.drawHLine(box_x + 20, box_y + 30, box_w - 40, ColorDivider);
 
-        // Current Value
-        char val_buf[16];
+        char val_buf[24];
         if (unit_str_[0] != '\0') {
-            snprintf(val_buf, sizeof(val_buf), "%d %s", (int)current_val_, unit_str_);
+            snprintf(val_buf, sizeof(val_buf), "%.1f %s", current_val_, unit_str_);
         } else {
-            snprintf(val_buf, sizeof(val_buf), "%d", (int)current_val_);
+            snprintf(val_buf, sizeof(val_buf), "%.1f", current_val_);
         }
+        const int16_t val_w = FontRenderer::stringWidth(val_buf, FontType::FontDisplay, 1);
+        const uint16_t val_color = is_captured ? ColorTextPrimary : ColorTextSecondary;
+        FontRenderer::drawString(display, box_x + (box_w - val_w) / 2, box_y + 46,
+                                 val_buf, val_color, ColorSurfaceElev,
+                                 FontType::FontDisplay, 1);
 
-        int16_t val_w = FontRenderer::stringWidth(val_buf, FontType::FontDisplay, 1);
-        uint16_t val_color = is_captured_ ? ColorTextPrimary : ColorTextSecondary;
-        FontRenderer::drawString(display, box_x + (box_w - val_w) / 2, box_y + 46, val_buf, val_color, ColorSurfaceElev, FontType::FontDisplay, 1);
-
-        // Visual Bar
-        int16_t bar_w = box_w - 40;
-        int16_t bar_h = 8;
-        int16_t bar_x = box_x + 20;
-        int16_t bar_y = box_y + 90;
-
+        constexpr int16_t bar_w = box_w - 40;
+        constexpr int16_t bar_h = 8;
+        const int16_t bar_x = box_x + 20;
+        const int16_t bar_y = box_y + 90;
         display.fillChamferRect(bar_x, bar_y, bar_w, bar_h, 2, ColorSurface);
 
-        // Fill portion
-        int16_t fill_w = (current_val_ * bar_w) / 127;
+        const float current_norm = std::max(0.0f, std::min(1.0f, current_val_ / 127.0f));
+        const int16_t fill_w = static_cast<int16_t>(current_norm * bar_w);
         if (fill_w > 0) {
-            display.fillChamferRect(bar_x, bar_y, fill_w, bar_h, 2, is_captured_ ? ColorAccentPrimary : ColorDivider);
+            display.fillChamferRect(bar_x, bar_y, fill_w, bar_h, 2,
+                                    is_captured ? ColorAccentPrimary : ColorDivider);
         }
 
-        // Saved/Preset indicator
-        int16_t saved_x = bar_x + (saved_val_ * bar_w) / 127;
+        const float saved_norm = std::max(0.0f, std::min(1.0f, saved_val_ / 127.0f));
+        const int16_t saved_x = bar_x + static_cast<int16_t>(saved_norm * bar_w);
         display.drawVLine(saved_x, bar_y - 4, bar_h + 8, ColorAccentSecondary);
         display.drawPixel(saved_x - 1, bar_y - 4, ColorAccentSecondary);
         display.drawPixel(saved_x + 1, bar_y - 4, ColorAccentSecondary);
 
-        // Takeover guidance
-        if (!is_captured_) {
+        if (!is_captured) {
             char takeover_buf[32];
-            snprintf(takeover_buf, sizeof(takeover_buf), "%s TO CAPTURE", current_val_ < saved_val_ ? "TURN ->" : "<- TURN");
-            int16_t t_w = FontRenderer::stringWidth(takeover_buf, FontType::Font3x5, 1);
-            FontRenderer::drawString(display, box_x + (box_w - t_w) / 2, box_y + 116, takeover_buf, ColorStateWarning, ColorSurfaceElev, FontType::Font3x5, 1);
+            snprintf(takeover_buf, sizeof(takeover_buf), "%s TO CAPTURE",
+                     current_val_ < saved_val_ ? "TURN ->" : "<- TURN");
+            const int16_t takeover_w =
+                FontRenderer::stringWidth(takeover_buf, FontType::Font3x5, 1);
+            FontRenderer::drawString(display, box_x + (box_w - takeover_w) / 2,
+                                     box_y + 116, takeover_buf, ColorStateWarning,
+                                     ColorSurfaceElev, FontType::Font3x5, 1);
         } else {
-            int16_t s_w = FontRenderer::stringWidth("SAVED POSITION", FontType::Font3x5, 1);
-            FontRenderer::drawString(display, box_x + (box_w - s_w) / 2, box_y + 116, "SAVED POSITION", ColorTextMuted, ColorSurfaceElev, FontType::Font3x5, 1);
-
-            // Draw small saved value below indicator
-            char sv_buf[8];
-            snprintf(sv_buf, sizeof(sv_buf), "%d", (int)saved_val_);
-            int16_t sv_w = FontRenderer::stringWidth(sv_buf, FontType::Font3x5, 1);
-            FontRenderer::drawString(display, saved_x - sv_w/2, bar_y + 12, sv_buf, ColorAccentSecondary, ColorSurfaceElev, FontType::Font3x5, 1);
+            const int16_t saved_label_w =
+                FontRenderer::stringWidth("SAVED POSITION", FontType::Font3x5, 1);
+            FontRenderer::drawString(display, box_x + (box_w - saved_label_w) / 2,
+                                     box_y + 116, "SAVED POSITION", ColorTextMuted,
+                                     ColorSurfaceElev, FontType::Font3x5, 1);
+            char saved_buf[16];
+            snprintf(saved_buf, sizeof(saved_buf), "%.1f", saved_val_);
+            const int16_t saved_w =
+                FontRenderer::stringWidth(saved_buf, FontType::Font3x5, 1);
+            FontRenderer::drawString(display, saved_x - saved_w / 2, bar_y + 12,
+                                     saved_buf, ColorAccentSecondary, ColorSurfaceElev,
+                                     FontType::Font3x5, 1);
         }
-    } else if (dw <= 160) {#include "parameter_screen.h"
-#include "display_layout.h"
-#include "font_renderer.h"
-#include "esp_timer.h"
-#include <cstdio>
-#include <cstring>
-
-namespace smk {
-
-ParameterScreen::ParameterScreen()
-    : progress_bar_(12, 48, 260, 16, DisplayDriver::kColorGreen, DisplayDriver::kColorWhite) {
-}
-
-void ParameterScreen::onEnter() {
-    resetTimer();
-    expired_ = false;
-}
-
-void ParameterScreen::resetTimer() {
-    active_start_ms_ = (uint32_t)(esp_timer_get_time() / 1000);
-}
-
-bool ParameterScreen::isExpired() const {
-    return expired_;
-}
-
-void ParameterScreen::showParameter(const char* name, const char* target_layer,
-                                     float current_val, float saved_val, 
-                                     const char* unit_str, TakeoverStatus takeover) {
-    if (name) snprintf(param_name_, sizeof(param_name_), "%s", name);
-    if (target_layer) snprintf(target_layer_, sizeof(target_layer_), "%s", target_layer);
-    if (unit_str) snprintf(unit_str_, sizeof(unit_str_), "%s", unit_str);
-
-    current_val_ = current_val;
-    saved_val_ = saved_val;
-    takeover_ = takeover;
-
-    float norm = current_val / 127.0f; // Default assumption for 0..127 range
-    progress_bar_.setValue(norm);
-    resetTimer();
-    expired_ = false;
-}
-
-void ParameterScreen::update() {
-    uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
-    if (now - active_start_ms_ >= timeout_ms_) {
-        expired_ = true;
-    }
-}
-
-void ParameterScreen::render(DisplayDriver& display) {
-    int16_t dw = display.width();
-    int16_t dh = display.height();
-
-    // Draw overlay border box
-    display.fillRect(4, 4, dw - 8, dh - 8, DisplayDriver::kColorBlack);
-    display.drawRect(4, 4, dw - 8, dh - 8, DisplayDriver::kColorCyan);
-
-    // Title line: PARAMETER (LAYER)
-    char title_buf[64];
-    snprintf(title_buf, sizeof(title_buf), "%s (%s)", param_name_, target_layer_);
-    FontRenderer::drawString(display, 8, 8, title_buf, DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
-
-    // Soft takeover status indicator
-    const char* takeover_str = "[LOCKED *]";
-    const char* guide_hint = "CAPTURED";
-    uint16_t takeover_color = DisplayDriver::kColorGreen;
-
-    switch (takeover_) {
-        case TakeoverStatus::ApproachingFromBelow:
-            takeover_str = "[TAKEOVER: <]";
-            guide_hint = "TURN RIGHT > TO CAPTURE";
-            takeover_color = DisplayDriver::kColorYellow;
-            break;
-        case TakeoverStatus::ApproachingFromAbove:
-            takeover_str = "[TAKEOVER: >]";
-            guide_hint = "TURN LEFT < TO CAPTURE";
-            takeover_color = DisplayDriver::kColorYellow;
-            break;
-        case TakeoverStatus::Decoupled:
-            takeover_str = "[DECOUPLED]";
-            guide_hint = "TURN TO MATCH PRESET";
-            takeover_color = DisplayDriver::kColorRed;
-            break;
-        case TakeoverStatus::Captured:
-        default:
-            break;
-    }
-
-    if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
-        display.fillScreen(DisplayDriver::kColorBlack);
-        display.fillRect(6, 6, dw - 12, dh - 12, DisplayDriver::kColorBlack);
-        display.drawRect(6, 6, dw - 12, dh - 12, DisplayDriver::kColorCyan);
-
-        char square_title[40];
-        snprintf(square_title, sizeof(square_title), "%.18s", param_name_);
-        FontRenderer::drawString(display, 16, 16, square_title, DisplayDriver::kColorWhite,
-                                 DisplayDriver::kColorBlack, FontType::Font5x7, 2);
-        char target[32];
-        snprintf(target, sizeof(target), "TARGET: %.20s", target_layer_);
-        FontRenderer::drawString(display, 16, 36, target, DisplayDriver::kColorAmber,
-                                 DisplayDriver::kColorBlack, FontType::Font3x5);
-
-        char value_buf[24];
-        snprintf(value_buf, sizeof(value_buf), "%.1f", current_val_);
-        FontRenderer::drawString(display, 20, 61, value_buf, DisplayDriver::kColorCyan,
-                                 DisplayDriver::kColorBlack, FontType::Font8x12, 3);
-        const int16_t unit_x = 20 + FontRenderer::stringWidth(value_buf, FontType::Font8x12, 3) + 5;
-        if (unit_x < dw - 24) {
-            FontRenderer::drawString(display, unit_x, 84, unit_str_, DisplayDriver::kColorLightGray,
-                                     DisplayDriver::kColorBlack, FontType::Font5x7);
-        }
-
-        constexpr int16_t bar_x = 20;
-        constexpr int16_t bar_y = 116;
-        constexpr int16_t bar_w = 200;
-        constexpr int16_t bar_h = 14;
-        display.drawRect(bar_x, bar_y, bar_w, bar_h, DisplayDriver::kColorMidGray);
-        const float current_norm = std::max(0.0f, std::min(1.0f, current_val_ / 127.0f));
-        const int16_t fill_w = static_cast<int16_t>((bar_w - 2) * current_norm);
-        if (fill_w > 0) {
-            display.fillRect(bar_x + 1, bar_y + 1, fill_w, bar_h - 2, DisplayDriver::kColorCyan);
-        }
-        const float saved_norm = std::max(0.0f, std::min(1.0f, saved_val_ / 127.0f));
-        const int16_t saved_x = bar_x + 1 + static_cast<int16_t>((bar_w - 2) * saved_norm);
-        display.drawVLine(saved_x, bar_y - 3, bar_h + 6, DisplayDriver::kColorYellow);
-
-        char saved_buf[32];
-        snprintf(saved_buf, sizeof(saved_buf), "SAVED %.1f %s", saved_val_, unit_str_);
-        FontRenderer::drawString(display, 20, 142, saved_buf, DisplayDriver::kColorLightGray,
-                                 DisplayDriver::kColorBlack, FontType::Font5x7);
-
-        display.fillRect(16, 170, dw - 32, 24, takeover_color == DisplayDriver::kColorGreen
-                                               ? DisplayDriver::kColorDimGreen
-                                               : DisplayDriver::kColorDarkGray);
-        display.drawRect(16, 170, dw - 32, 24, takeover_color);
-        const int16_t takeover_w = FontRenderer::stringWidth(takeover_str, FontType::Font5x7);
-        FontRenderer::drawString(display, (dw - takeover_w) / 2, 179, takeover_str,
-                                 takeover_color, DisplayDriver::kColorBlack, FontType::Font5x7);
-        FontRenderer::drawString(display, 16, 207, guide_hint, takeover_color,
-                                 DisplayDriver::kColorBlack, FontType::Font3x5);
         return;
     }
-
     if (dw <= 160) {
         // ── 160x128 Compact Centered HUD Modal (x=8, y=20, w=144, h=88) ──
         int16_t mx = 8;
