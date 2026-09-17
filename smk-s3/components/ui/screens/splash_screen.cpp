@@ -1,6 +1,7 @@
 #include "splash_screen.h"
 #include "display_layout.h"
 #include "font_renderer.h"
+#include "ui_theme.h"
 #include "esp_timer.h"
 #include <cmath>
 
@@ -80,19 +81,31 @@ void SplashScreen::render(DisplayDriver& display) {
     const uint16_t muted = dimColor(cyan, 0.25f);
 
     if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
-        const int16_t title_width = FontRenderer::stringWidth("SMK-S3", FontType::Font5x7, 3);
-        FontRenderer::drawString(display, (dw - title_width) / 2, 34, "SMK-S3",
-                                 white, black, FontType::Font5x7, 3);
-        const int16_t subtitle_width = FontRenderer::stringWidth("STANDALONE SYNTHESIZER", FontType::Font3x5);
-        FontRenderer::drawString(display, (dw - subtitle_width) / 2, 66,
-                                 "STANDALONE SYNTHESIZER", cyan, black, FontType::Font3x5);
-        drawWaveMark(display, (dw - 44) / 2, 88, elapsed, cyan, muted);
-        const int16_t credit_width = FontRenderer::stringWidth("POWERED BY AMY", FontType::Font5x7);
-        FontRenderer::drawString(display, (dw - credit_width) / 2, 140, "POWERED BY AMY",
-                                 DisplayDriver::kColorAmber, black, FontType::Font5x7);
-        const int16_t ready_width = FontRenderer::stringWidth("USB MIDI / I2S AUDIO", FontType::Font3x5);
-        FontRenderer::drawString(display, (dw - ready_width) / 2, 171,
-                                 "USB MIDI / I2S AUDIO", gray, black, FontType::Font3x5);
+        using namespace theme;
+        display.fillScreen(ColorBackground);
+
+        uint16_t logo_color = dimColor(ColorAccentPrimary, current_opacity_);
+        uint16_t text_color = dimColor(ColorTextPrimary, current_opacity_);
+        uint16_t dim_text = dimColor(ColorTextMuted, current_opacity_);
+
+        // Draw monogram / logo mark
+        int16_t mark_y = 60;
+        int16_t mark_size = 40;
+        int16_t mark_x = (dw - mark_size) / 2;
+
+        display.drawRect(mark_x, mark_y, mark_size, mark_size, logo_color);
+        display.drawRect(mark_x+1, mark_y+1, mark_size-2, mark_size-2, logo_color);
+        display.fillRect(mark_x + 8, mark_y + 8, 12, 12, logo_color);
+        display.fillRect(mark_x + 20, mark_y + 20, 12, 12, logo_color);
+
+        const int16_t title_width = FontRenderer::stringWidth("SMK-S3", FontType::FontDisplay, 1);
+        FontRenderer::drawString(display, (dw - title_width) / 2, 114, "SMK-S3", text_color, ColorBackground, FontType::FontDisplay, 1);
+
+        const int16_t credit_width = FontRenderer::stringWidth("POWERED BY AMY", FontType::Font3x5, 1);
+        FontRenderer::drawString(display, (dw - credit_width) / 2, 146, "POWERED BY AMY", dimColor(ColorAccentSecondary, current_opacity_), ColorBackground, FontType::Font3x5, 1);
+
+        const int16_t ready_width = FontRenderer::stringWidth("USB MIDI / I2S AUDIO", FontType::Font3x5, 1);
+        FontRenderer::drawString(display, (dw - ready_width) / 2, 210, "USB MIDI / I2S AUDIO", dim_text, ColorBackground, FontType::Font3x5, 1);
     } else if (dw <= 160) {
         FontRenderer::drawString(display, (dw - 108) / 2, 12, "SMK-S3",
                                  white, black, FontType::Font5x7, 3);

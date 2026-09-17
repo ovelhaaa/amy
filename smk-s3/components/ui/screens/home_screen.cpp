@@ -1,6 +1,249 @@
 #include "home_screen.h"
 #include "display_layout.h"
 #include "font_renderer.h"
+#include "ui_theme.h"
+#include "ui_components.h"
+#include <cstdio>
+#include <cstring>
+
+#include <cmath>
+
+namespace smk {
+
+HomeScreen::HomeScreen()
+    : gauges_{
+        BarGauge(2, 26, 32, 48, "CHAR"),
+        BarGauge(37, 26, 32, 48, "BRTE"),
+        BarGauge(72, 26, 32, 48, "MOTN"),
+        BarGauge(107, 26, 32, 48, "SHAP"),
+        BarGauge(142, 26, 32, 48, "ATK"),
+        BarGauge(177, 26, 32, 48, "REL"),
+        BarGauge(212, 26, 32, 48, "SPCE"),
+        BarGauge(247, 26, 32, 48, "DRV")
+    } {
+}
+
+void HomeScreen::onEnter() {
+    setHomeKnobBankView(bank_view_);
+}
+
+void HomeScreen::setHomeKnobBankView(HomeKnobBankView view) {
+    bank_view_ = view;
+    static const char* kBankALabels[8] = { "CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV" };
+    static const char* kBankBLabels[8] = { "CUTOFF", "RES", "ENV", "DCAY", "CHOR", "DLAY", "REVB", "DRV" };
+
+    if (bank_view_ == HomeKnobBankView::BankB_Engine) {
+        snprintf(knob_bank_, sizeof(knob_bank_), "BANK B: ENGINE");
+        for (int i = 0; i < 8; ++i) {
+            gauges_[i].setLabel(kBankBLabels[i]);
+            gauges_[i].setValue(engine_values_[i]);
+            gauges_[i].setColors(DisplayDriver::kColorAmber, DisplayDriver::kColorWhite);
+        }
+    } else {
+        snprintf(knob_bank_, sizeof(knob_bank_), "BANK A: MACROS");
+        for (int i = 0; i < 8; ++i) {
+            gauges_[i].setLabel(kBankALabels[i]);
+            gauges_[i].setValue(macro_values_[i]);
+            gauges_[i].setColors(DisplayDriver::kColorCyan, DisplayDriver::kColorWhite);
+        }
+    }
+}
+
+void HomeScreen::setPatchInfo(uint16_t number, const char* name, const char* mode) {
+    patch_number_ = number;
+    if (name) snprintf(patch_name_, sizeof(patch_name_), "%s", name);
+    if (mode) snprintf(synth_mode_, sizeof(synth_mode_), "%s", mode);
+}
+
+void HomeScreen::setBpm(float bpm) {
+    bpm_ = bpm;
+}
+
+void HomeScreen::setUsbConnected(bool connected) {
+    usb_connected_ = connected;
+}
+
+void HomeScreen::setMidiActivity(bool active) {
+    midi_active_ = active;
+    if (active) {
+        midi_activity_timer_ = 5; // ~150ms at 30 FPS
+    }
+}
+
+void HomeScreen::setMacroValues(const uint8_t values[8]) {
+    if (!values) return;
+    for (int i = 0; i < 8; ++i) {
+        macro_values_[i] = values[i];
+    }
+    if (bank_view_ == HomeKnobBankView::BankA_Macros) {
+        for (int i = 0; i < 8; ++i) {
+            gauges_[i].setValue(macro_values_[i]);
+        }
+    }
+}
+
+void HomeScreen::setEngineValues(const uint8_t values[8]) {
+    if (!values) return;
+    for (int i = 0; i < 8; ++i) {
+        engine_values_[i] = values[i];
+    }
+    if (bank_view_ == HomeKnobBankView::BankB_Engine) {
+        for (int i = 0; i < 8; ++i) {
+            gauges_[i].setValue(engine_values_[i]);
+        }
+    }
+}
+
+void HomeScreen::setKnobBankLabel(const char* bank_name) {
+    if (bank_name) snprintf(knob_bank_, sizeof(knob_bank_), "%s", bank_name);
+}
+
+void HomeScreen::setObservedKnobBank(uint8_t bank) {
+    observed_knob_bank_ = bank <= 2 ? bank : 0;
+}
+
+void HomeScreen::setObservedPadBank(uint8_t bank) {
+    observed_pad_bank_ = bank <= 2 ? bank : 0;
+}
+
+void HomeScreen::setActiveVoices(uint8_t active_count, uint8_t max_voices) {
+    active_voices_ = active_count;
+    max_voices_ = max_voices;
+}
+
+void HomeScreen::setCpuLoad(float load_percent) {
+    cpu_load_ = load_percent;
+}
+
+void HomeScreen::update() {
+    if (midi_activity_timer_ > 0) {
+        midi_activity_timer_--;
+        if (midi_activity_timer_ == 0) {
+            midi_active_ = false;
+        }
+    }
+}
+
+namespace {
+namespace compact_layout {
+    constexpr int16_t kHeaderH = 18;
+    constexpr int16_t kScopeX = 3;
+    constexpr int16_t kScopeY = 19;
+    constexpr int16_t kScopeW = 154;
+    constexpr int16_t kScopeH = 24;
+    constexpr int16_t kVoiceY = 45;
+}
+namespace wide_layout {
+    constexpr int16_t kHeaderDividerY = 13;
+    constexpr int16_t kRightMargin = 2;
+    constexpr int16_t kFieldGap = 4;
+    constexpr int16_t kBadgeW = 8;
+    constexpr int16_t kVoiceW = 32;
+    constexpr int16_t kTempoW = 40;
+    constexpr int16_t kControlW = 48;
+    constexpr int16_t kVoiceY = 3;
+    constexpr int16_t kMidiY  = 3;
+    constexpr int16_t kUsbY   = 3;
+}
+
+// A one-pixel overdraw makes the bank value bold without changing shared fonts.
+void drawHeaderBank(DisplayDriver& display, int16_t x, char label, char value) {
+    FontRenderer::drawChar(display, x, 4, label, DisplayDriver::kColorCyan,
+                           DisplayDriver::kColorBlack, FontType::Font3x5);
+    for (int16_t offset = 0; offset <= 1; ++offset) {
+        FontRenderer::drawChar(display, x + 4 + offset, 3, value, DisplayDriver::kColorWhite,
+                               DisplayDriver::kColorBlack, FontType::Font5x7);
+    }
+}
+
+// Fit a header field before drawing: black glyph backgrounds are transparent,
+// so drawing the next field cannot erase text that overflowed into its area.
+void fitHeaderText(char* text, int16_t width, FontType font) {
+    const int16_t pitch = FontRenderer::stringWidth("M", font);
+    const size_t capacity = width > 0 ? static_cast<size_t>(width / pitch) : 0;
+    if (strlen(text) > capacity) {
+        if (capacity > 0) text[capacity - 1] = '~';
+        text[capacity] = '\0';
+    }
+}
+
+ParametricGlyph getKnobGlyph(int index) {
+    switch (index) {
+        case 0: return ParametricGlyph::Lowpass;
+        case 1: return ParametricGlyph::Resonance;
+        case 2: return ParametricGlyph::Attack;
+        case 3: return ParametricGlyph::Release;
+        case 4: return ParametricGlyph::SineWave;
+        case 5: return ParametricGlyph::DelayTaps;
+        case 6: return ParametricGlyph::ReverbCloud;
+        case 7: return ParametricGlyph::DriveSaturation;
+        default: return ParametricGlyph::GenericLevel;
+    }
+}
+} // anonymous namespace
+
+void HomeScreen::render(DisplayDriver& display) {
+    display.fillScreen(DisplayDriver::kColorBlack);
+
+    int16_t dw = display.width();
+    int16_t dh = display.height();
+
+    if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
+        using namespace theme;
+
+        char patch_buf[40];
+        snprintf(patch_buf, sizeof(patch_buf), "P%03u %.20s", patch_number_, patch_name_[0] != '\0' ? patch_name_ : "DEFAULT");
+
+        char subtitle[32];
+        const char knob_bank = observed_knob_bank_ == 1 ? 'A' : (observed_knob_bank_ == 2 ? 'B' : '?');
+        const char pad_bank = observed_pad_bank_ == 1 ? 'A' : (observed_pad_bank_ == 2 ? 'B' : '?');
+        snprintf(subtitle, sizeof(subtitle), "%s  K:%c P:%c", synth_mode_[0] != '\0' ? synth_mode_ : "POLY", knob_bank, pad_bank);
+
+        uint16_t theme_color = bank_view_ == HomeKnobBankView::BankB_Engine ? ColorBankB : ColorBankA;
+
+        components::HeaderWidget::draw(display, patch_buf, subtitle, midi_active_, usb_connected_, theme_color);
+
+        // Macros
+        for (int i = 0; i < 8; ++i) {
+            int16_t col = i % 4;
+            int16_t row = i / 4;
+            int16_t x = kMargin + col * (kMacroTileWidth + kMacroTileGapX);
+            int16_t y = kHeaderHeight + kMargin + row * (kMacroTileHeight + kMacroTileGapY);
+
+            const char* label = gauges_[i].label();
+            uint8_t value = bank_view_ == HomeKnobBankView::BankB_Engine ? engine_values_[i] : macro_values_[i];
+
+            components::MacroTile::draw(display, x, y, label, getKnobGlyph(i), value, theme_color);
+        }
+
+        // Scope
+        int16_t scope_y = kHeaderHeight + kMargin + 2 * (kMacroTileHeight + kMacroTileGapY) + kMargin;
+        int16_t scope_h = 56;
+        OscilloscopeWidget scope(kMargin, scope_y, dw - kMargin * 2, scope_h);
+        scope.setSamples(scope_samples_, scope_sample_count_);
+        scope.setActive(active_voices_ > 0 || midi_active_);
+        scope.setColors(ColorAccentPrimary, ColorSurfaceElev);
+        scope.draw(display);
+
+        // Footer: Tempo & Voices
+        int16_t footer_y = scope_y + scope_h + kMargin;
+
+        char bpm_val[8];
+        snprintf(bpm_val, sizeof(bpm_val), "%u", static_cast<uint16_t>(bpm_));
+        FontRenderer::drawString(display, kMargin, footer_y, bpm_val, ColorTextPrimary, ColorBackground, FontType::FontDisplay, 1);
+
+        int16_t bpm_w = FontRenderer::stringWidth(bpm_val, FontType::FontDisplay, 1);
+        FontRenderer::drawString(display, kMargin + bpm_w + 4, footer_y + 14, "BPM", ColorTextMuted, ColorBackground, FontType::Font3x5, 1);
+
+        char voice_buf[16];
+        snprintf(voice_buf, sizeof(voice_buf), "V: %u/%u", active_voices_, max_voices_ > 0 ? max_voices_ : 12);
+        int16_t voice_w = FontRenderer::stringWidth(voice_buf, FontType::Font3x5, 1);
+        FontRenderer::drawString(display, dw - kMargin - voice_w, footer_y + 14, voice_buf, ColorTextSecondary, ColorBackground, FontType::Font3x5, 1);
+    } else if (dw <= 160) {
+#include "display_layout.h"
+#include "font_renderer.h"
+#include "ui_theme.h"
+#include "ui_components.h"
 #include <cstdio>
 #include <cstring>
 
@@ -274,7 +517,7 @@ void HomeScreen::render(DisplayDriver& display) {
         }
 
         OscilloscopeWidget scope(4, 162, dw - 8, 45);
-        scope.setSamples(scope_samples_, scope_sample_count_);
+        scope.setSamples(scopesamples_, scopesample_count_);
         scope.setActive(active_voices_ > 0 || midi_active_);
         scope.draw(display);
 
@@ -333,7 +576,7 @@ void HomeScreen::render(DisplayDriver& display) {
         // 2. Live Audio Oscilloscope (154x24 px)
         OscilloscopeWidget scope(compact_layout::kScopeX, compact_layout::kScopeY,
                                  compact_layout::kScopeW, compact_layout::kScopeH);
-        scope.setSamples(scope_samples_, scope_sample_count_);
+        scope.setSamples(scopesamples_, scopesample_count_);
         scope.setActive(active_voices_ > 0 || midi_active_);
         scope.draw(display);
 
@@ -502,14 +745,14 @@ void HomeScreen::render(DisplayDriver& display) {
 
 void HomeScreen::setWaveformSamples(const int16_t* samples, size_t count) {
     if (!samples || count == 0) {
-        scope_sample_count_ = 0;
+        scopesample_count_ = 0;
         return;
     }
-    size_t n = (count < sizeof(scope_samples_) / sizeof(scope_samples_[0])) ? count : sizeof(scope_samples_) / sizeof(scope_samples_[0]);
+    size_t n = (count < sizeof(scopesamples_) / sizeof(scopesamples_[0])) ? count : sizeof(scopesamples_) / sizeof(scopesamples_[0]);
     for (size_t i = 0; i < n; ++i) {
-        scope_samples_[i] = samples[i];
+        scopesamples_[i] = samples[i];
     }
-    scope_sample_count_ = n;
+    scopesample_count_ = n;
 }
 
 } // namespace smk

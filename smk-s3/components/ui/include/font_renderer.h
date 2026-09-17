@@ -9,7 +9,8 @@ namespace smk {
 enum class FontType : uint8_t {
     Font3x5,
     Font5x7,
-    Font8x12
+    Font8x12,
+    FontDisplay // High-visibility font for large values
 };
 
 class FontRenderer {

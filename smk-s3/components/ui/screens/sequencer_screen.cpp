@@ -1,3 +1,197 @@
+#include "ui_theme.h"
+#include "ui_components.h"
+#include "sequencer_screen.h"
+#include "display_layout.h"
+#include "font_renderer.h"
+#include "clock_manager.h"
+#include "step_sequencer.h"
+#include "esp_timer.h"
+#include <cstdio>
+#include <cstring>
+
+namespace smk {
+
+SequencerScreen::SequencerScreen() {}
+
+void SequencerScreen::setPatternNumber(uint8_t pat) { pattern_num_ = pat; }
+void SequencerScreen::setBpm(float bpm) { bpm_ = bpm; }
+void SequencerScreen::setSwing(uint8_t swing) { swing_ = swing; }
+
+void SequencerScreen::setCurrentStep(uint8_t step) {
+    current_step_ = step % 16;
+}
+
+void SequencerScreen::setTrackMask(uint8_t track_idx, uint16_t mask) {
+    if (track_idx < 4) track_masks_[track_idx] = mask;
+}
+
+void SequencerScreen::setTrackMute(uint8_t track_idx, bool mute) {
+    if (track_idx < 4) track_mutes_[track_idx] = mute;
+}
+
+void SequencerScreen::setTrackName(uint8_t track_idx, const char* name) {
+    if (track_idx < 4 && name) {
+        snprintf(track_names_[track_idx], sizeof(track_names_[track_idx]), "%s", name);
+    }
+}
+
+void SequencerScreen::setTrackName(const char* name) {
+    setTrackName(0, name);
+}
+
+void SequencerScreen::setTrackPlockMask(uint8_t track_idx, uint16_t mask) {
+    if (track_idx < 4) track_plock_masks_[track_idx] = mask;
+}
+
+void SequencerScreen::update() {
+    if (sequencer_) {
+        pattern_num_ = sequencer_->currentPattern() + 1;
+        if (clock_manager_) {
+            bpm_ = clock_manager_->bpm();
+            swing_ = clock_manager_->swing();
+        } else {
+            // Keep the sequencer's swing as a safe fallback until a clock is wired.
+            swing_ = static_cast<uint8_t>(sequencer_->swing());
+        }
+        is_playing_ = sequencer_->isPlaying();
+        is_recording_ = sequencer_->isRecording();
+        selected_track_ = sequencer_->selectedTrack();
+        step_page_ = sequencer_->stepPage();
+        current_step_ = sequencer_->currentStep();
+
+        const auto& chain = sequencer_->patternChain();
+        chain_enabled_ = chain.enabled;
+        chain_length_ = chain.length;
+        chain_index_ = chain.current_index;
+        for (uint8_t i = 0; i < chain_length_ && i < 16; ++i) {
+            chain_patterns_[i] = chain.patterns[i];
+        }
+
+        for (uint8_t t = 0; t < 4; ++t) {
+            track_masks_[t] = sequencer_->getTrackStepMask(t);
+            track_plock_masks_[t] = sequencer_->getTrackPlockMask(t);
+            track_mutes_[t] = sequencer_->isTrackMuted(t);
+            snprintf(track_names_[t], sizeof(track_names_[t]), "%s", sequencer_->trackName(t));
+        }
+    }
+}
+
+namespace {
+namespace compact_layout {
+    constexpr int16_t kHeaderDividerY = 11;
+    constexpr int16_t kTrackStartRowY = 14;
+    constexpr int16_t kTrackRowH = 13;
+    constexpr int16_t kMidDividerY = 70;
+    constexpr int16_t kPadBoxY = 85;
+    constexpr int16_t kPadBoxW = 17;
+    constexpr int16_t kPadBoxH = 24;
+}
+namespace wide_layout {
+    constexpr int16_t kHeaderDividerY = 12;
+    constexpr int16_t kTrackStartRowY = 14;
+    constexpr int16_t kTrackRowH = 10;
+    constexpr int16_t kStepBoxW = 12;
+    constexpr int16_t kStepBoxH = 8;
+    constexpr int16_t kGridDividerY = 56;
+    constexpr int16_t kPadMatrixY = 58;
+    constexpr int16_t kPadBoxW = 20;
+    constexpr int16_t kPadBoxH = 15;
+    constexpr int16_t kPadPitchX = 23;
+    constexpr int16_t kShortcutsX = 192;
+}
+} // anonymous namespace
+
+void SequencerScreen::render(DisplayDriver& display) {
+    display.fillScreen(DisplayDriver::kColorBlack);
+    int16_t dw = display.if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
+        using namespace theme;
+
+        char subtitle[32];
+        snprintf(subtitle, sizeof(subtitle), "PAT %d", current_pattern_);
+        components::HeaderWidget::draw(display, "SEQUENCER", subtitle, false, false, ColorAccentPrimary);
+
+        // Transport state
+        int16_t transport_y = kHeaderHeight + 6;
+        if (is_playing_) {
+            display.fillChamferRect(dw - 36, transport_y, 24, 12, 2, is_recording_ ? ColorStateRecord : ColorStatePlay);
+            FontRenderer::drawChar(display, dw - 28, transport_y + 3, is_recording_ ? 'R' : 'P', ColorBackground, is_recording_ ? ColorStateRecord : ColorStatePlay, FontType::Font5x7, 1);
+        }
+
+        int16_t grid_y = kHeaderHeight + 24;
+        int16_t step_w = 12;
+        int16_t step_h = 16;
+        int16_t step_gap = 2;
+        int16_t track_gap = 4;
+
+        // 4 Tracks x 16 Steps
+        for (int track = 0; track < 4; ++track) {
+            int16_t ty = grid_y + track * (step_h + track_gap);
+
+            // Track header/mute
+            bool muted = track_muted_[track];
+            bool selected = (track == selected_track_);
+
+            uint16_t track_color = selected ? ColorAccentPrimary : ColorTextSecondary;
+            if (muted) track_color = ColorStateMuted;
+
+            char t_str[4];
+            snprintf(t_str, sizeof(t_str), "T%d", track + 1);
+            FontRenderer::drawString(display, 4, ty + 4, t_str, track_color, ColorBackground, FontType::Font5x7, 1);
+
+            if (selected) {
+                display.drawVLine(2, ty, step_h, ColorAccentPrimary);
+            }
+            if (muted) {
+                display.drawHLine(4, ty + 7, 12, ColorStateMuted); // strike-through
+            }
+
+            // Steps
+            int16_t start_x = 24;
+            for (int step = 0; step < 16; ++step) {
+                // Group by 4 visually by adding a small gap
+                int16_t group_gap = (step / 4) * 4;
+                int16_t sx = start_x + step * (step_w + step_gap) + group_gap;
+
+                bool active = step_active_[track][step];
+                bool is_current = (step == current_step_ && is_playing_);
+                bool has_plock = step_has_plock_[track][step];
+
+                uint16_t bg_color = ColorSurface;
+                if (active) bg_color = selected ? ColorAccentPrimary : ColorTextMuted;
+                if (muted && active) bg_color = ColorStateMuted;
+
+                if (is_current) {
+                    display.fillRect(sx, ty, step_w, step_h, ColorTextPrimary);
+                } else {
+                    display.fillChamferRect(sx, ty, step_w, step_h, 1, bg_color);
+
+                    // P-lock indicator
+                    if (has_plock) {
+                        display.drawHLine(sx + 2, ty + step_h - 3, step_w - 4, ColorAccentSecondary);
+                    }
+                }
+            }
+        }
+
+        // Bottom: 8 pads
+        int16_t pads_y = grid_y + 4 * (step_h + track_gap) + 12;
+        display.drawHLine(0, pads_y - 6, dw, ColorDivider);
+
+        int16_t pad_w = 26;
+        int16_t pad_h = 26;
+        int16_t px_start = (dw - (8 * pad_w + 7 * 2)) / 2;
+        if (px_start < 2) px_start = 2; // safety
+
+        for (int i = 0; i < 8; ++i) {
+            int16_t px = px_start + i * (pad_w + 2);
+            bool pad_active = (hit_frames_[i] > 0);
+
+            display.fillChamferRect(px, pads_y, pad_w, pad_h, 2, pad_active ? ColorAccentPrimary : ColorSurfaceElev);
+            char p_str[2];
+            snprintf(p_str, sizeof(p_str), "%d", i+1);
+            FontRenderer::drawString(display, px + 8, pads_y + 10, p_str, pad_active ? ColorBackground : ColorTextMuted, pad_active ? ColorAccentPrimary : ColorSurfaceElev, FontType::Font5x7, 1);
+        }
+    } else if (dw <= 160) {#include "ui_components.h"
 #include "sequencer_screen.h"
 #include "display_layout.h"
 #include "font_renderer.h"

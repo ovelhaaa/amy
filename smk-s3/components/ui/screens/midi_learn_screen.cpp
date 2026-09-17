@@ -1,3 +1,73 @@
+#include "ui_theme.h"
+#include "ui_components.h"
+#include "midi_learn_screen.h"
+#include "display_layout.h"
+#include "font_renderer.h"
+#include "esp_timer.h"
+#include <cstdio>
+#include <cstring>
+#include <algorithm>
+
+namespace smk {
+
+MidiLearnScreen::MidiLearnScreen() {}
+
+void MidiLearnScreen::setMidiLearn(MidiLearn* learn) {
+    midi_learn_ = learn;
+}
+
+void MidiLearnScreen::triggerFeedback(const char* msg, uint16_t color) {
+    if (msg) snprintf(feedback_msg_, sizeof(feedback_msg_), "%s", msg);
+    feedback_color_ = color;
+    feedback_timer_ms_ = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+}
+
+void MidiLearnScreen::update() {
+    blink_phase_++;
+}
+
+void MidiLearnScreen::render(DisplayDriver& display) {
+    display.fillScreen(DisplayDriver::kColorBlack);
+    int16_t dw = display.width();
+    int16_t dh = display.height();
+
+    uint32_t now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+    bool feedback_active = (now_ms - feedback_timer_ms_ < 1500) && (feedback_msg_[0] != '\0');
+
+    bool is_learning = midi_learn_ && midi_learn_->isLearning();
+    bool is_complete = midi_learn_ && midi_learn_->isComplete();
+    uint8_t cur_step = midi_learn_ ? midi_learn_->currentStepNumber() : 0;
+    uint8_t total_steps = miif (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
+        using namespace theme;
+        components::HeaderWidget::draw(display, "MIDI LEARN", state_str, false, false, ColorAccentSecondary);
+
+        int16_t box_y = kHeaderHeight + 20;
+        int16_t box_w = 200;
+        int16_t box_h = 140;
+        int16_t box_x = (dw - box_w) / 2;
+
+        display.fillChamferRect(box_x, box_y, box_w, box_h, 4, ColorSurfaceElev);
+
+        // Target parameter
+        FontRenderer::drawString(display, box_x + 10, box_y + 10, "TARGET:", ColorTextSecondary, ColorSurfaceElev, FontType::Font5x7, 1);
+        FontRenderer::drawString(display, box_x + 10, box_y + 24, target_name_, ColorTextPrimary, ColorSurfaceElev, FontType::Font5x7, 1);
+
+        display.drawHLine(box_x + 10, box_y + 40, box_w - 20, ColorDivider);
+
+        // CC mapping
+        FontRenderer::drawString(display, box_x + 10, box_y + 50, "MAPPED CC:", ColorTextSecondary, ColorSurfaceElev, FontType::Font5x7, 1);
+        char cc_buf[16];
+        if (mapped_cc_ != 255) {
+            snprintf(cc_buf, sizeof(cc_buf), "%u", mapped_cc_);
+        } else {
+            snprintf(cc_buf, sizeof(cc_buf), "NONE");
+        }
+        FontRenderer::drawString(display, box_x + 10, box_y + 64, cc_buf, ColorAccentPrimary, ColorSurfaceElev, FontType::FontDisplay, 1);
+
+        // Instructions
+        FontRenderer::drawString(display, box_x + 10, box_y + 110, "TURN HARDWARE KNOB", ColorTextMuted, ColorSurfaceElev, FontType::Font3x5, 1);
+        FontRenderer::drawString(display, box_x + 10, box_y + 120, "OR SEND MIDI CC", ColorTextMuted, ColorSurfaceElev, FontType::Font3x5, 1);
+    } else if (dw <= 160) {#include "ui_components.h"
 #include "midi_learn_screen.h"
 #include "display_layout.h"
 #include "font_renderer.h"

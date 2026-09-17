@@ -124,13 +124,17 @@ enum class ParametricGlyph : uint8_t {
     Lowpass,
     Resonance,
     Attack,
+    Decay,
     Release,
     SineWave,
     DelayTaps,
     ReverbCloud,
     DriveSaturation,
     GenericBipolar,
-    GenericLevel
+    GenericLevel,
+    Chorus,
+    Modulation,
+    Shape
 };
 
 class GlyphRenderer {

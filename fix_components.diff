@@ -1,0 +1,10 @@
+<<<<<<< SEARCH
+#include "ui_theme.h"
+
+namespace smk {
+=======
+#include "ui_theme.h"
+#include <cstdio>
+
+namespace smk {
+>>>>>>> REPLACE

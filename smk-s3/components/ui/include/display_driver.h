@@ -89,6 +89,8 @@ public:
     virtual void drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color);
     virtual void drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
     virtual void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
+    virtual void fillChamferRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color);
+    virtual void drawChamferRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color);
     virtual void drawBitmap(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t* pixels);
 
     virtual void flush() = 0;
