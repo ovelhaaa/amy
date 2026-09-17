@@ -12,6 +12,7 @@
 #include "dummy_display_driver.h"
 #include "font_renderer.h"
 #include "widgets.h"
+#include "ui_theme.h"
 
 // Screen headers
 #include "screens/home_screen.h"

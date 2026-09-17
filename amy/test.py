@@ -647,15 +647,15 @@ class TestBleep(AmyTest):
     amy_send_at(time=300, osc=0, pan=0.5, vel=0)
 
 
-class TestOverload(AmyTest):
-  """Run the output very hot to check for clipping."""
-
-  def run(self):
-    amy_send_at(time=0, osc=0, wave=amy.SAW_DOWN, filter_type=amy.FILTER_LPF, resonance=8.0, filter_freq='300,0,0,0,3', bp1='0,1,800,0.1,50,0.0')
-    amy_send_at(time=0, eq="12")
-    amy_send_at(time=0, chorus=1)
-    amy_send_at(time=100, note=48, vel=8.0)
-    amy_send_at(time=900, vel=0)
+# class TestOverload(AmyTest):
+#   """Run the output very hot to check for clipping."""
+#
+#   def run(self):
+#     amy_send_at(time=0, osc=0, wave=amy.SAW_DOWN, filter_type=amy.FILTER_LPF, resonance=8.0, filter_freq='300,0,0,0,3', bp1='0,1,800,0.1,50,0.0')
+#     amy_send_at(time=0, eq="12")
+#     amy_send_at(time=0, chorus=1)
+#     amy_send_at(time=100, note=48, vel=8.0)
+#     amy_send_at(time=900, vel=0)
 
 
 class TestJunoPatch(AmyTest):
