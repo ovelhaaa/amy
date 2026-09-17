@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" role="img" aria-labelledby="title desc">
+  <title id="title">SMK-S3 — tela principal 240 por 240</title>
+  <desc id="desc">Conceito de tela principal com oito macros em uma matriz quatro por dois, estados USB e MIDI, osciloscópio e informações de performance.</desc>
+  <defs>
+    <style>
+      .ui { font-family: "Cascadia Mono", "JetBrains Mono", monospace; }
+      .micro { font-size: 6px; letter-spacing: .7px; }
+      .small { font-size: 8px; letter-spacing: .35px; }
+      .body { font-size: 10px; }
+      .value { font-size: 17px; font-weight: 700; }
+    </style>
+    <filter id="cyan-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="1.2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="screen"><rect width="240" height="240" rx="3"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#screen)" class="ui">
+    <rect width="240" height="240" fill="#05080a"/>
+
+    <rect width="240" height="31" fill="#11181d"/>
+    <rect y="30" width="240" height="1" fill="#52616a"/>
+    <text x="7" y="11" class="micro" fill="#00e5ff">PATCH 042</text>
+    <text x="7" y="24" class="body" fill="#f4f7f8">A11 BRASS SET</text>
+    <text x="151" y="11" class="micro" fill="#a9b6bc">POLY</text>
+    <text x="151" y="24" class="small" fill="#ffb000">120 BPM</text>
+    <rect x="200" y="6" width="15" height="9" rx="2" fill="#f3c400"/>
+    <text x="207.5" y="13" text-anchor="middle" class="micro" fill="#05080a">M</text>
+    <rect x="218" y="6" width="15" height="9" rx="2" fill="#28d17c"/>
+    <text x="225.5" y="13" text-anchor="middle" class="micro" fill="#05080a">U</text>
+    <text x="200" y="25" class="micro" fill="#00e5ff">V 06/08</text>
+
+    <text x="7" y="39" class="micro" fill="#7e9099">MACROS A · PERFORMANCE</text>
+
+    <g transform="translate(4 43)">
+      <rect width="55" height="59" rx="3" fill="#0e171c" stroke="#00e5ff" stroke-width="1.5" filter="url(#cyan-glow)"/>
+      <text x="5" y="11" class="small" fill="#00e5ff">CUTOFF</text>
+      <text x="27.5" y="35" text-anchor="middle" class="value" fill="#f4f7f8">74</text>
+      <rect x="5" y="48" width="45" height="4" rx="2" fill="#243039"/>
+      <rect x="5" y="48" width="33" height="4" rx="2" fill="#00e5ff"/>
+      <circle cx="38" cy="50" r="3" fill="#f4f7f8"/>
+    </g>
+    <g transform="translate(63 43)">
+      <rect width="55" height="59" rx="3" fill="#0e171c" stroke="#28363e"/>
+      <text x="5" y="11" class="small" fill="#00e5ff">RESO</text>
+      <text x="27.5" y="35" text-anchor="middle" class="value" fill="#f4f7f8">38</text>
+      <rect x="5" y="48" width="45" height="4" rx="2" fill="#243039"/>
+      <rect x="5" y="48" width="14" height="4" rx="2" fill="#00e5ff"/>
+    </g>
+    <g transform="translate(122 43)">
+      <rect width="55" height="59" rx="3" fill="#0e171c" stroke="#28363e"/>
+      <text x="5" y="11" class="small" fill="#ffb000">SHAPE</text>
+      <text x="27.5" y="35" text-anchor="middle" class="value" fill="#f4f7f8">61</text>
+      <rect x="5" y="48" width="45" height="4" rx="2" fill="#243039"/>
+      <rect x="5" y="48" width="22" height="4" rx="2" fill="#ffb000"/>
+    </g>
+    <g transform="translate(181 43)">
+      <rect width="55" height="59" rx="3" fill="#0e171c" stroke="#28363e"/>
+      <text x="5" y="11" class="small" fill="#ffb000">ATTACK</text>
+      <text x="27.5" y="35" text-anchor="middle" class="value" fill="#f4f7f8">09</text>
+      <rect x="5" y="48" width="45" height="4" rx="2" fill="#243039"/>
+      <rect x="5" y="48" width="4" height="4" rx="2" fill="#ffb000"/>
+    </g>
+
+    <g transform="translate(4 106)">
+      <rect width="55" height="59" rx="3" fill="#0e171c" stroke="#28363e"/>
+      <text x="5" y="11" class="small" fill="#00e5ff">DECAY</text>
+      <text x="27.5" y="35" text-anchor="middle" class="value" fill="#f4f7f8">48</text>
+      <rect x="5" y="48" width="45" height="4" rx="2" fill="#243039"/>
+      <rect x="5" y="48" width="17" height="4" rx="2" fill="#00e5ff"/>
+    </g>
+    <g transform="translate(63 106)">
+      <rect width="55" height="59" rx="3" fill="#0e171c" stroke="#28363e"/>
+      <text x="5" y="11" class="small" fill="#00e5ff">SUSTAIN</text>
+      <text x="27.5" y="35" text-anchor="middle" class="value" fill="#f4f7f8">96</text>
+      <rect x="5" y="48" width="45" height="4" rx="2" fill="#243039"/>
+      <rect x="5" y="48" width="34" height="4" rx="2" fill="#00e5ff"/>
+    </g>
+    <g transform="translate(122 106)">
+      <rect width="55" height="59" rx="3" fill="#0e171c" stroke="#28363e"/>
+      <text x="5" y="11" class="small" fill="#ffb000">RELEASE</text>
+      <text x="27.5" y="35" text-anchor="middle" class="value" fill="#f4f7f8">42</text>
+      <rect x="5" y="48" width="45" height="4" rx="2" fill="#243039"/>
+      <rect x="5" y="48" width="15" height="4" rx="2" fill="#ffb000"/>
+    </g>
+    <g transform="translate(181 106)">
+      <rect width="55" height="59" rx="3" fill="#0e171c" stroke="#28363e"/>
+      <text x="5" y="11" class="small" fill="#ffb000">DRIVE</text>
+      <text x="27.5" y="35" text-anchor="middle" class="value" fill="#f4f7f8">27</text>
+      <rect x="5" y="48" width="45" height="4" rx="2" fill="#243039"/>
+      <rect x="5" y="48" width="10" height="4" rx="2" fill="#ffb000"/>
+    </g>
+
+    <rect x="4" y="171" width="232" height="44" rx="3" fill="#091015" stroke="#28363e"/>
+    <text x="9" y="181" class="micro" fill="#7e9099">AUDIO OUT · −12 dB</text>
+    <path d="M8 197 C16 197 17 186 25 186 S34 208 42 208 S51 187 59 187 S68 205 76 205 S85 191 93 191 S102 202 110 202 S119 193 127 193 S136 201 144 201 S153 194 161 194 S170 200 178 200 S187 195 195 195 S204 199 212 199 S221 197 232 197" fill="none" stroke="#28d17c" stroke-width="1.5"/>
+    <line x1="8" y1="197" x2="232" y2="197" stroke="#1b2a31"/>
+
+    <rect y="221" width="240" height="19" fill="#11181d"/>
+    <rect x="7" y="227" width="4" height="4" rx="1" fill="#00e5ff"/>
+    <text x="16" y="232" class="small" fill="#f4f7f8">HOME</text>
+    <text x="83" y="232" class="small" fill="#7e9099">KNOB A</text>
+    <text x="157" y="232" class="small" fill="#7e9099">CPU 31%</text>
+    <circle cx="228" cy="229" r="3" fill="#28d17c"/>
+  </g>
+</svg>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" role="img" aria-labelledby="title desc">
+  <title id="title">SMK-S3 — Home de performance</title>
+  <desc id="desc">Variação da tela inicial priorizando patch, cena, andamento, transporte e leitura rápida no palco.</desc>
+  <defs>
+    <style>
+      .ui{font-family:"Cascadia Mono","JetBrains Mono",monospace}.micro{font-size:6px;letter-spacing:.7px}.small{font-size:8px;letter-spacing:.35px}.body{font-size:11px}.title{font-size:17px;font-weight:700}.hero{font-size:31px;font-weight:700}
+    </style>
+    <clipPath id="screen"><rect width="240" height="240" rx="3"/></clipPath>
+  </defs>
+  <g clip-path="url(#screen)" class="ui">
+    <rect width="240" height="240" fill="#05080a"/>
+    <rect width="240" height="27" fill="#11181d"/>
+    <text x="7" y="11" class="micro" fill="#00e5ff">PERFORMANCE</text>
+    <text x="7" y="22" class="small" fill="#f4f7f8">PATCH 042</text>
+    <rect x="160" y="7" width="22" height="11" rx="2" fill="#18343d"/><text x="171" y="15" text-anchor="middle" class="micro" fill="#00e5ff">ARP</text>
+    <rect x="185" y="7" width="22" height="11" rx="2" fill="#183b28"/><text x="196" y="15" text-anchor="middle" class="micro" fill="#28d17c">PLAY</text>
+    <rect x="210" y="7" width="23" height="11" rx="2" fill="#28d17c"/><text x="221.5" y="15" text-anchor="middle" class="micro" fill="#05080a">USB</text>
+
+    <text x="8" y="49" class="title" fill="#f4f7f8">A11 BRASS SET</text>
+    <text x="8" y="64" class="small" fill="#7e9099">LAYER A+B · SCENE 03</text>
+    <rect x="8" y="75" width="105" height="64" rx="4" fill="#0e171c"/>
+    <text x="16" y="90" class="micro" fill="#7e9099">TEMPO</text>
+    <text x="16" y="124" class="hero" fill="#f4f7f8">120</text>
+    <text x="79" y="123" class="small" fill="#ffb000">BPM</text>
+    <rect x="119" y="75" width="113" height="64" rx="4" fill="#0e171c" stroke="#00e5ff"/>
+    <text x="127" y="90" class="micro" fill="#7e9099">CENA ATIVA</text>
+    <text x="127" y="120" class="hero" fill="#00e5ff">03</text>
+    <text x="177" y="109" class="small" fill="#f4f7f8">CHORUS</text>
+    <text x="177" y="121" class="small" fill="#a9b6bc">PRONTA</text>
+
+    <rect x="8" y="146" width="224" height="34" rx="4" fill="#091015"/>
+    <text x="14" y="157" class="micro" fill="#7e9099">SAÍDA · −12 dB</text>
+    <path d="M13 169 C22 169 23 157 32 157 S43 175 52 175 S63 158 72 158 S83 172 92 172 S103 161 112 161 S123 170 132 170 S143 163 152 163 S163 169 172 169 S183 164 192 164 S203 168 227 167" fill="none" stroke="#28d17c" stroke-width="1.5"/>
+
+    <text x="8" y="193" class="micro" fill="#7e9099">MACROS A</text>
+    <g transform="translate(8 199)">
+      <rect width="24" height="20" rx="2" fill="#12313a"/><rect x="4" y="14" width="16" height="3" rx="1.5" fill="#00e5ff"/>
+      <rect x="28" width="24" height="20" rx="2" fill="#11181d"/><rect x="32" y="14" width="8" height="3" rx="1.5" fill="#00e5ff"/>
+      <rect x="56" width="24" height="20" rx="2" fill="#11181d"/><rect x="60" y="14" width="12" height="3" rx="1.5" fill="#ffb000"/>
+      <rect x="84" width="24" height="20" rx="2" fill="#11181d"/><rect x="88" y="14" width="4" height="3" rx="1.5" fill="#ffb000"/>
+      <rect x="112" width="24" height="20" rx="2" fill="#11181d"/><rect x="116" y="14" width="10" height="3" rx="1.5" fill="#00e5ff"/>
+      <rect x="140" width="24" height="20" rx="2" fill="#11181d"/><rect x="144" y="14" width="17" height="3" rx="1.5" fill="#00e5ff"/>
+      <rect x="168" width="24" height="20" rx="2" fill="#11181d"/><rect x="172" y="14" width="9" height="3" rx="1.5" fill="#ffb000"/>
+      <rect x="196" width="24" height="20" rx="2" fill="#11181d"/><rect x="200" y="14" width="6" height="3" rx="1.5" fill="#ffb000"/>
+    </g>
+    <rect y="226" width="240" height="14" fill="#11181d"/>
+    <text x="7" y="236" class="micro" fill="#00e5ff">PAD B3 HOME</text><text x="91" y="236" class="micro" fill="#7e9099">B5 ‹ PÁG</text><text x="156" y="236" class="micro" fill="#7e9099">B6 PÁG ›</text><circle cx="230" cy="233" r="3" fill="#28d17c"/>
+  </g>
+</svg>

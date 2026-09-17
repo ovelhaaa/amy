@@ -1,4 +1,5 @@
 #include "parameter_screen.h"
+#include "display_layout.h"
 #include "font_renderer.h"
 #include "esp_timer.h"
 #include <cstdio>
@@ -84,6 +85,61 @@ void ParameterScreen::render(DisplayDriver& display) {
         case TakeoverStatus::Captured:
         default:
             break;
+    }
+
+    if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
+        display.fillScreen(DisplayDriver::kColorBlack);
+        display.fillRect(6, 6, dw - 12, dh - 12, DisplayDriver::kColorBlack);
+        display.drawRect(6, 6, dw - 12, dh - 12, DisplayDriver::kColorCyan);
+
+        char square_title[40];
+        snprintf(square_title, sizeof(square_title), "%.18s", param_name_);
+        FontRenderer::drawString(display, 16, 16, square_title, DisplayDriver::kColorWhite,
+                                 DisplayDriver::kColorBlack, FontType::Font5x7, 2);
+        char target[32];
+        snprintf(target, sizeof(target), "TARGET: %.20s", target_layer_);
+        FontRenderer::drawString(display, 16, 36, target, DisplayDriver::kColorAmber,
+                                 DisplayDriver::kColorBlack, FontType::Font3x5);
+
+        char value_buf[24];
+        snprintf(value_buf, sizeof(value_buf), "%.1f", current_val_);
+        FontRenderer::drawString(display, 20, 61, value_buf, DisplayDriver::kColorCyan,
+                                 DisplayDriver::kColorBlack, FontType::Font8x12, 3);
+        const int16_t unit_x = 20 + FontRenderer::stringWidth(value_buf, FontType::Font8x12, 3) + 5;
+        if (unit_x < dw - 24) {
+            FontRenderer::drawString(display, unit_x, 84, unit_str_, DisplayDriver::kColorLightGray,
+                                     DisplayDriver::kColorBlack, FontType::Font5x7);
+        }
+
+        constexpr int16_t bar_x = 20;
+        constexpr int16_t bar_y = 116;
+        constexpr int16_t bar_w = 200;
+        constexpr int16_t bar_h = 14;
+        display.drawRect(bar_x, bar_y, bar_w, bar_h, DisplayDriver::kColorMidGray);
+        const float current_norm = std::max(0.0f, std::min(1.0f, current_val_ / 127.0f));
+        const int16_t fill_w = static_cast<int16_t>((bar_w - 2) * current_norm);
+        if (fill_w > 0) {
+            display.fillRect(bar_x + 1, bar_y + 1, fill_w, bar_h - 2, DisplayDriver::kColorCyan);
+        }
+        const float saved_norm = std::max(0.0f, std::min(1.0f, saved_val_ / 127.0f));
+        const int16_t saved_x = bar_x + 1 + static_cast<int16_t>((bar_w - 2) * saved_norm);
+        display.drawVLine(saved_x, bar_y - 3, bar_h + 6, DisplayDriver::kColorYellow);
+
+        char saved_buf[32];
+        snprintf(saved_buf, sizeof(saved_buf), "SAVED %.1f %s", saved_val_, unit_str_);
+        FontRenderer::drawString(display, 20, 142, saved_buf, DisplayDriver::kColorLightGray,
+                                 DisplayDriver::kColorBlack, FontType::Font5x7);
+
+        display.fillRect(16, 170, dw - 32, 24, takeover_color == DisplayDriver::kColorGreen
+                                               ? DisplayDriver::kColorDimGreen
+                                               : DisplayDriver::kColorDarkGray);
+        display.drawRect(16, 170, dw - 32, 24, takeover_color);
+        const int16_t takeover_w = FontRenderer::stringWidth(takeover_str, FontType::Font5x7);
+        FontRenderer::drawString(display, (dw - takeover_w) / 2, 179, takeover_str,
+                                 takeover_color, DisplayDriver::kColorBlack, FontType::Font5x7);
+        FontRenderer::drawString(display, 16, 207, guide_hint, takeover_color,
+                                 DisplayDriver::kColorBlack, FontType::Font3x5);
+        return;
     }
 
     if (dw <= 160) {

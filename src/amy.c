@@ -2314,6 +2314,15 @@ int next_delta_block = 0;
 struct delta *deltas_pool_alloc(int max_delta_pool_size, struct delta *tail) {
     struct delta *new_pool = (struct delta *)malloc_caps(max_delta_pool_size * sizeof(struct delta),
                                                          amy_global.config.ram_caps_synth);
+#if defined(AMY_DELTA_POOL_PSRAM_FALLBACK) && defined(ESP_PLATFORM)
+    // Keep the first/common block with the hot synth state in internal RAM.
+    // On the opt-in ESP32-S3 build, only overflow blocks fall back to PSRAM.
+    // Delta access occurs at event boundaries, not in oscillator sample loops.
+    if (new_pool == NULL) {
+        new_pool = (struct delta *)malloc_caps(max_delta_pool_size * sizeof(struct delta),
+                                               MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+#endif
     if (new_pool == NULL) return NULL;
     struct delta *d = new_pool;
     // Link all the deltas together

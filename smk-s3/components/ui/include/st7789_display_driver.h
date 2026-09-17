@@ -5,7 +5,10 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_lcd_panel_ops.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include <cstdint>
+#include <cstddef>
 
 namespace smk {
 
@@ -50,10 +53,26 @@ public:
     void setInvert(bool invert) override;
 
 private:
+    static constexpr int16_t kTransferRows = 16;
+    static constexpr TickType_t kTransferTimeoutTicks = pdMS_TO_TICKS(100);
+
+    static bool onColorTransferDone(esp_lcd_panel_io_handle_t panel_io,
+                                    esp_lcd_panel_io_event_data_t* event_data,
+                                    void* user_ctx);
+    bool transferRegion(int16_t x, int16_t y, int16_t w, int16_t h);
+    void reportTransferFailure(const char* operation, esp_err_t error);
+
     ST7789Config config_;
     esp_lcd_panel_io_handle_t io_handle_{nullptr};
     esp_lcd_panel_handle_t panel_handle_{nullptr};
     uint16_t* framebuffer_{nullptr};
+    uint16_t* transfer_buffer_{nullptr};
+    size_t transfer_buffer_pixels_{0};
+    StaticSemaphore_t transfer_done_storage_{};
+    SemaphoreHandle_t transfer_done_sem_{nullptr};
+    bool spi_bus_initialized_{false};
+    bool backlight_initialized_{false};
+    uint32_t transfer_failures_{0};
     uint8_t brightness_{255};
 };
 

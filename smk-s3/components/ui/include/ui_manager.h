@@ -1,6 +1,7 @@
 #pragma once
 
 #include "display_driver.h"
+#include "screen_id.h"
 #include "screens/home_screen.h"
 #include "screens/parameter_screen.h"
 #include "screens/system_screen.h"
@@ -19,17 +20,6 @@
 namespace smk {
 
 class SynthEngine;
-
-enum class ScreenId : uint8_t {
-    Splash,
-    Home,
-    System,
-    MidiMonitor,
-    Sequencer,
-    Pads,
-    MidiLearn,
-    Scenes
-};
 
 class UIManager {
 public:

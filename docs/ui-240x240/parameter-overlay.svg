@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" role="img" aria-labelledby="title desc">
+  <title id="title">SMK-S3 — overlay de parâmetro 240 por 240</title>
+  <desc id="desc">Overlay de edição do filtro com valor em destaque, posição salva e orientação de soft takeover.</desc>
+  <defs>
+    <style>
+      .ui { font-family: "Cascadia Mono", "JetBrains Mono", monospace; }
+      .micro { font-size: 6px; letter-spacing: .8px; }
+      .small { font-size: 8px; letter-spacing: .4px; }
+      .body { font-size: 11px; }
+      .hero { font-size: 50px; font-weight: 700; }
+    </style>
+    <filter id="yellow-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="1.6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="screen"><rect width="240" height="240" rx="3"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#screen)" class="ui">
+    <rect width="240" height="240" fill="#05080a"/>
+    <rect width="240" height="29" fill="#11181d"/>
+    <text x="7" y="11" class="micro" fill="#7e9099">PATCH 042 · A11 BRASS</text>
+    <text x="7" y="23" class="small" fill="#f4f7f8">MACRO 1 / FILTER</text>
+    <rect x="215" y="7" width="18" height="10" rx="2" fill="#28d17c"/>
+    <text x="224" y="14" text-anchor="middle" class="micro" fill="#05080a">USB</text>
+
+    <rect x="8" y="38" width="224" height="158" rx="6" fill="#0d151a" stroke="#33434c"/>
+    <rect x="8" y="38" width="4" height="158" rx="2" fill="#00e5ff"/>
+    <text x="24" y="59" class="small" fill="#00e5ff">FILTER CUTOFF</text>
+    <text x="24" y="75" class="micro" fill="#7e9099">SYNTH A · LOW PASS</text>
+
+    <text x="120" y="125" text-anchor="middle" class="hero" fill="#f4f7f8">74</text>
+    <text x="164" y="124" class="body" fill="#7e9099">%</text>
+
+    <rect x="25" y="139" width="190" height="7" rx="3.5" fill="#26343c"/>
+    <rect x="25" y="139" width="111" height="7" rx="3.5" fill="#00e5ff"/>
+    <circle cx="136" cy="142.5" r="6" fill="#f4f7f8" stroke="#00e5ff" stroke-width="2"/>
+    <line x1="118" y1="134" x2="118" y2="151" stroke="#ffb000" stroke-width="2"/>
+    <path d="M114 134 L118 130 L122 134" fill="none" stroke="#ffb000" stroke-width="1.5"/>
+
+    <text x="25" y="162" class="micro" fill="#7e9099">SALVO</text>
+    <text x="25" y="175" class="body" fill="#ffb000">62</text>
+    <text x="188" y="162" text-anchor="end" class="micro" fill="#7e9099">FÍSICO</text>
+    <text x="215" y="175" text-anchor="end" class="body" fill="#f4f7f8">74</text>
+
+    <rect x="24" y="181" width="192" height="1" fill="#28363e"/>
+    <path d="M61 188 L68 188 L65 185 M68 188 L65 191" fill="none" stroke="#f3c400" stroke-width="1.5" filter="url(#yellow-glow)"/>
+    <text x="76" y="191" class="small" fill="#f3c400">CAPTURADO · AO VIVO</text>
+
+    <text x="8" y="208" class="micro" fill="#7e9099">BANCO A</text>
+    <g transform="translate(8 214)">
+      <rect width="24" height="18" rx="2" fill="#12313a" stroke="#00e5ff"/>
+      <rect x="28" width="24" height="18" rx="2" fill="#11181d"/>
+      <rect x="56" width="24" height="18" rx="2" fill="#11181d"/>
+      <rect x="84" width="24" height="18" rx="2" fill="#11181d"/>
+      <rect x="112" width="24" height="18" rx="2" fill="#11181d"/>
+      <rect x="140" width="24" height="18" rx="2" fill="#11181d"/>
+      <rect x="168" width="24" height="18" rx="2" fill="#11181d"/>
+      <rect x="196" width="24" height="18" rx="2" fill="#11181d"/>
+      <rect x="4" y="11" width="16" height="3" rx="1.5" fill="#00e5ff"/>
+      <rect x="32" y="11" width="9" height="3" rx="1.5" fill="#52616a"/>
+      <rect x="60" y="11" width="13" height="3" rx="1.5" fill="#52616a"/>
+      <rect x="88" y="11" width="5" height="3" rx="1.5" fill="#52616a"/>
+      <rect x="116" y="11" width="18" height="3" rx="1.5" fill="#52616a"/>
+      <rect x="144" y="11" width="11" height="3" rx="1.5" fill="#52616a"/>
+      <rect x="172" y="11" width="14" height="3" rx="1.5" fill="#52616a"/>
+      <rect x="200" y="11" width="7" height="3" rx="1.5" fill="#52616a"/>
+    </g>
+  </g>
+</svg>

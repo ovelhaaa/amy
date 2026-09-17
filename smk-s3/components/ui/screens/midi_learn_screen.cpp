@@ -1,4 +1,5 @@
 #include "midi_learn_screen.h"
+#include "display_layout.h"
 #include "font_renderer.h"
 #include "esp_timer.h"
 #include <cstdio>
@@ -26,6 +27,7 @@ void MidiLearnScreen::update() {
 void MidiLearnScreen::render(DisplayDriver& display) {
     display.fillScreen(DisplayDriver::kColorBlack);
     int16_t dw = display.width();
+    int16_t dh = display.height();
 
     uint32_t now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
     bool feedback_active = (now_ms - feedback_timer_ms_ < 1500) && (feedback_msg_[0] != '\0');
@@ -34,6 +36,95 @@ void MidiLearnScreen::render(DisplayDriver& display) {
     bool is_complete = midi_learn_ && midi_learn_->isComplete();
     uint8_t cur_step = midi_learn_ ? midi_learn_->currentStepNumber() : 0;
     uint8_t total_steps = midi_learn_ ? midi_learn_->totalSteps() : 39;
+
+    if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
+        display.fillRect(0, 0, dw, 30, DisplayDriver::kColorDarkGray);
+        FontRenderer::drawString(display, 4, 4, "MIDI LEARN", DisplayDriver::kColorCyan,
+                                 DisplayDriver::kColorDarkGray, FontType::Font5x7, 2);
+        char state[20];
+        if (is_learning) {
+            snprintf(state, sizeof(state), "%02u/%02u", cur_step, total_steps);
+        } else {
+            snprintf(state, sizeof(state), "%s", is_complete ? "SAVED" : "READY");
+        }
+        const int16_t state_w = FontRenderer::stringWidth(state, FontType::Font5x7);
+        FontRenderer::drawString(display, dw - state_w - 6, 19, state,
+                                 is_complete ? DisplayDriver::kColorGreen : DisplayDriver::kColorAmber,
+                                 DisplayDriver::kColorDarkGray, FontType::Font5x7);
+
+        if (is_learning) {
+            display.drawRect(8, 40, dw - 16, 72, DisplayDriver::kColorCyan);
+            char step_name[36];
+            snprintf(step_name, sizeof(step_name), "%.17s",
+                     midi_learn_->currentStepName() ? midi_learn_->currentStepName() : "");
+            FontRenderer::drawString(display, 16, 51, step_name, DisplayDriver::kColorWhite,
+                                     DisplayDriver::kColorBlack, FontType::Font5x7, 2);
+            char hint[52];
+            snprintf(hint, sizeof(hint), "%.50s",
+                     midi_learn_->currentStepHint() ? midi_learn_->currentStepHint() : "");
+            FontRenderer::drawString(display, 16, 83, hint, DisplayDriver::kColorYellow,
+                                     DisplayDriver::kColorBlack, FontType::Font3x5);
+
+            display.drawRect(8, 124, dw - 16, 12, DisplayDriver::kColorMidGray);
+            const float progress = total_steps > 0 ? static_cast<float>(cur_step) / total_steps : 0.0f;
+            const int16_t fill_w = static_cast<int16_t>((dw - 20) * std::min(1.0f, progress));
+            if (fill_w > 0) display.fillRect(10, 126, fill_w, 8, DisplayDriver::kColorGreen);
+
+            display.fillRect(8, 146, dw - 16, 48, DisplayDriver::kColorDarkGray);
+            display.drawRect(8, 146, dw - 16, 48, DisplayDriver::kColorMidGray);
+            FontRenderer::drawString(display, 16, 154, "LAST CAPTURE", DisplayDriver::kColorCyan,
+                                     DisplayDriver::kColorDarkGray, FontType::Font3x5);
+            if (feedback_active) {
+                FontRenderer::drawString(display, 16, 170, feedback_msg_, feedback_color_,
+                                         DisplayDriver::kColorDarkGray, FontType::Font5x7);
+            } else if (midi_learn_->lastCapturedNumber() != 0xFFFF) {
+                char capture[48];
+                snprintf(capture, sizeof(capture), "ID %u  CH %u  VAL %ld",
+                         midi_learn_->lastCapturedNumber(), midi_learn_->lastCapturedChannel() + 1,
+                         static_cast<long>(midi_learn_->lastCapturedValue()));
+                FontRenderer::drawString(display, 16, 170, capture, DisplayDriver::kColorWhite,
+                                         DisplayDriver::kColorDarkGray, FontType::Font5x7);
+            } else {
+                FontRenderer::drawString(display, 16, 170, "WAITING FOR MIDI...",
+                                         DisplayDriver::kColorLightGray, DisplayDriver::kColorDarkGray,
+                                         FontType::Font5x7);
+            }
+            FontRenderer::drawString(display, 8, 211, "STOP: SKIP  REC: CANCEL",
+                                     DisplayDriver::kColorAmber, DisplayDriver::kColorBlack,
+                                     FontType::Font5x7);
+        } else if (is_complete) {
+            display.drawRect(8, 48, dw - 16, 100, DisplayDriver::kColorGreen);
+            FontRenderer::drawString(display, 22, 65, "MAPPING COMPLETE",
+                                     DisplayDriver::kColorGreen, DisplayDriver::kColorBlack,
+                                     FontType::Font5x7, 2);
+            FontRenderer::drawString(display, 22, 101, "PROFILE: smk25_custom",
+                                     DisplayDriver::kColorWhite, DisplayDriver::kColorBlack,
+                                     FontType::Font5x7);
+            FontRenderer::drawString(display, 8, 174, "PLAY: RESTART  PAD B3: HOME",
+                                     DisplayDriver::kColorYellow, DisplayDriver::kColorBlack,
+                                     FontType::Font5x7);
+        } else {
+            display.drawRect(8, 42, dw - 16, 118, DisplayDriver::kColorYellow);
+            FontRenderer::drawString(display, 18, 56, "MIDI INPUT MAP",
+                                     DisplayDriver::kColorYellow, DisplayDriver::kColorBlack,
+                                     FontType::Font5x7, 2);
+            FontRenderer::drawString(display, 18, 92, "KEYS / PITCH / MOD / TRANSPORT",
+                                     DisplayDriver::kColorWhite, DisplayDriver::kColorBlack,
+                                     FontType::Font3x5);
+            FontRenderer::drawString(display, 18, 108, "8 KNOBS + 8 PADS IN BANKS A/B",
+                                     DisplayDriver::kColorLightGray, DisplayDriver::kColorBlack,
+                                     FontType::Font3x5);
+            const bool blink = (blink_phase_ / 15) % 2 == 0;
+            FontRenderer::drawString(display, 38, 133, ">> PRESS PLAY <<",
+                                     blink ? DisplayDriver::kColorGreen : DisplayDriver::kColorYellow,
+                                     DisplayDriver::kColorBlack, FontType::Font5x7);
+            FontRenderer::drawString(display, 8, 184,
+                                     "ARP/SC/CH/BANK/BT/OCT ARE LOCAL",
+                                     DisplayDriver::kColorMidGray, DisplayDriver::kColorBlack,
+                                     FontType::Font3x5);
+        }
+        return;
+    }
 
     if (dw <= 160) {
         // ── 160x128 ST7735S Display Layout ──

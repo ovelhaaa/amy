@@ -7,6 +7,8 @@
 
 // Include UI headers
 #include "display_driver.h"
+#include "display_layout.h"
+#include "navigation_model.h"
 #include "dummy_display_driver.h"
 #include "font_renderer.h"
 #include "widgets.h"
@@ -19,6 +21,9 @@
 #include "screens/midi_monitor_screen.h"
 #include "screens/scene_screen.h"
 #include "screens/splash_screen.h"
+#include "screens/system_screen.h"
+#include "screens/midi_learn_screen.h"
+#include "diagnostics.h"
 #include "step_sequencer.h"
 #include "scene_manager.h"
 
@@ -34,9 +39,46 @@ const Scene& SceneManager::scene(uint8_t idx) const {
     static Scene s{};
     return s;
 }
+const char* MidiLearn::currentStepName() const { return "MOVE CONTROL"; }
+const char* MidiLearn::currentStepHint() const { return "SEND THE EXPECTED MIDI EVENT"; }
+Diagnostics& Diagnostics::instance() {
+    static Diagnostics diagnostics;
+    return diagnostics;
+}
+Diagnostics::Snapshot Diagnostics::takeSnapshot() const {
+    return Snapshot{0, 1200, 800, 48000, 128 * 1024, 4 * 1024 * 1024,
+                    96 * 1024, 3 * 1024 * 1024, 240, 16 * 1024 * 1024,
+                    8 * 1024 * 1024, 12.5f, 4, 0, 128, 0, 1, 2, 1, true, "test"};
+}
 }
 
 using namespace smk;
+
+class BoundsCheckingDisplayDriver : public DummyDisplayDriver {
+public:
+    BoundsCheckingDisplayDriver(int16_t width, int16_t height)
+        : DummyDisplayDriver(width, height) {}
+
+    void drawPixel(int16_t x, int16_t y, uint16_t color) override {
+        if (x < 0 || y < 0 || x >= width() || y >= height()) {
+            ++out_of_bounds_count_;
+            return;
+        }
+        DummyDisplayDriver::drawPixel(x, y, color);
+    }
+
+    void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) override {
+        if (w < 0 || h < 0 || x < 0 || y < 0 || x + w > width() || y + h > height()) {
+            ++out_of_bounds_count_;
+        }
+        DummyDisplayDriver::fillRect(x, y, w, h, color);
+    }
+
+    uint32_t outOfBoundsCount() const { return out_of_bounds_count_; }
+
+private:
+    uint32_t out_of_bounds_count_{0};
+};
 
 void testGeometryAndContract() {
     printf("[TEST] DisplayDriver Geometry and Pure-Virtual Contract...\n");
@@ -55,6 +97,23 @@ void testGeometryAndContract() {
     assert(custom_display.width() == 240);
     assert(custom_display.height() == 240);
     assert(custom_display.begin());
+
+    static_assert(classifyDisplayLayout(160, 128) == DisplayLayoutClass::Compact);
+    static_assert(classifyDisplayLayout(240, 240) == DisplayLayoutClass::Square);
+    static_assert(classifyDisplayLayout(284, 76) == DisplayLayoutClass::Widescreen);
+    static_assert(displayFrameIntervalMs(160, 128) == 33);
+    static_assert(displayFrameIntervalMs(284, 76) == 33);
+    static_assert(displayFrameIntervalMs(240, 240) == 66);
+
+    static_assert(nextPerformancePage(ScreenId::Home) == ScreenId::Sequencer);
+    static_assert(nextPerformancePage(ScreenId::Sequencer) == ScreenId::Pads);
+    static_assert(nextPerformancePage(ScreenId::Pads) == ScreenId::Scenes);
+    static_assert(nextPerformancePage(ScreenId::Scenes) == ScreenId::Home);
+    static_assert(previousPerformancePage(ScreenId::Home) == ScreenId::Scenes);
+    static_assert(previousPerformancePage(ScreenId::Sequencer) == ScreenId::Home);
+    static_assert(previousPerformancePage(ScreenId::Pads) == ScreenId::Sequencer);
+    static_assert(previousPerformancePage(ScreenId::Scenes) == ScreenId::Pads);
+    static_assert(nextPerformancePage(ScreenId::MidiLearn) == ScreenId::Home);
 
     printf("  -> Geometry contract verified for multiple display resolutions.\n");
 }
@@ -180,13 +239,16 @@ void testWidgets() {
 }
 
 void testMultiScreenRendering() {
-    printf("[TEST] Multi-Screen Rendering (160x128 Compact & 284x76 Wide)...\n");
+    printf("[TEST] Multi-Screen Rendering (160x128 Compact, 240x240 Square & 284x76 Wide)...\n");
 
     DummyDisplayDriver wide_display(284, 76);
     wide_display.begin();
 
     DummyDisplayDriver compact_display(160, 128);
     compact_display.begin();
+
+    BoundsCheckingDisplayDriver square_display(240, 240);
+    square_display.begin();
 
     // 1. HomeScreen
     {
@@ -202,6 +264,10 @@ void testMultiScreenRendering() {
         home.render(compact_display);
         assert(compact_display.isDirty());
         compact_display.flush();
+
+        home.render(square_display);
+        assert(square_display.isDirty());
+        square_display.flush();
     }
 
     // 2. SequencerScreen
@@ -216,6 +282,9 @@ void testMultiScreenRendering() {
 
         seq.render(compact_display);
         compact_display.flush();
+
+        seq.render(square_display);
+        square_display.flush();
     }
 
     // 3. ParameterScreen
@@ -228,6 +297,9 @@ void testMultiScreenRendering() {
 
         param.render(compact_display);
         compact_display.flush();
+
+        param.render(square_display);
+        square_display.flush();
     }
 
     // 4. PadScreen
@@ -241,6 +313,9 @@ void testMultiScreenRendering() {
 
         pad.render(compact_display);
         compact_display.flush();
+
+        pad.render(square_display);
+        square_display.flush();
     }
 
     // 5. MidiMonitorScreen
@@ -258,6 +333,9 @@ void testMultiScreenRendering() {
 
         mon.render(compact_display);
         compact_display.flush();
+
+        mon.render(square_display);
+        square_display.flush();
     }
 
     // 6. SceneScreen
@@ -268,6 +346,9 @@ void testMultiScreenRendering() {
 
         scene.render(compact_display);
         compact_display.flush();
+
+        scene.render(square_display);
+        square_display.flush();
     }
 
     // 7. SplashScreen
@@ -279,9 +360,28 @@ void testMultiScreenRendering() {
 
         splash.render(compact_display);
         compact_display.flush();
+
+        splash.render(square_display);
+        square_display.flush();
     }
 
-    printf("  -> Multi-Screen rendering across both aspect ratios passed without memory errors.\n");
+    // 8. SystemScreen
+    {
+        SystemScreen system;
+        system.setConfigInfo("LINEAR", 54, true);
+        system.render(square_display);
+        square_display.flush();
+    }
+
+    // 9. MidiLearnScreen (idle state)
+    {
+        MidiLearnScreen learn;
+        learn.render(square_display);
+        square_display.flush();
+    }
+
+    assert(square_display.outOfBoundsCount() == 0);
+    printf("  -> Multi-Screen rendering across all aspect ratios stayed inside display bounds.\n");
 }
 
 void testHomeHeaderSeparation() {
@@ -339,6 +439,39 @@ void testHomeHeaderSeparation() {
     assert(display.framebuffer()[3 * 284 + 274] == DisplayDriver::kColorRed);
 }
 
+void testSquareHomeTempoAndVoicesPlacement() {
+    printf("[TEST] Square Home emphasizes tempo in footer and voices in header...\n");
+    BoundsCheckingDisplayDriver display(240, 240);
+    assert(display.begin());
+    HomeScreen home;
+    home.setPatchInfo(7, "SQUARE TEST", "POLY");
+    home.setBpm(128.0f);
+    home.setActiveVoices(3, 8);
+    home.setObservedKnobBank(1);
+    home.setObservedPadBank(2);
+    home.render(display);
+
+    const auto* pixels = display.framebuffer();
+    uint32_t header_cyan_pixels = 0;
+    uint32_t footer_amber_pixels = 0;
+    for (int y = 21; y < 30; ++y) {
+        for (int x = 0; x < 240; ++x) {
+            header_cyan_pixels += pixels[y * 240 + x] == DisplayDriver::kColorCyan;
+        }
+    }
+    for (int y = 213; y < 240; ++y) {
+        for (int x = 0; x < 240; ++x) {
+            footer_amber_pixels += pixels[y * 240 + x] == DisplayDriver::kColorAmber;
+        }
+    }
+
+    // Three active voice bars are visible in the header, while the enlarged
+    // three-digit tempo creates a substantial amber footprint in the footer.
+    assert(header_cyan_pixels == 3U * 4U * 4U);
+    assert(footer_amber_pixels > 150);
+    assert(display.outOfBoundsCount() == 0);
+}
+
 void testHomePatchNumberPrefix() {
     printf("[TEST] Home removes only the matching formatted patch-number prefix...\n");
     struct Case { uint16_t id; const char* name; const char* expected; };
@@ -383,6 +516,7 @@ int main() {
     testWidgets();
     testMultiScreenRendering();
     testHomeHeaderSeparation();
+    testSquareHomeTempoAndVoicesPlacement();
     testHomePatchNumberPrefix();
 
     printf("\n=== ALL UI SUBSYSTEM UNIT TESTS PASSED SUCCESSFULLY! ===\n");

@@ -66,7 +66,7 @@ bool AmyAdapter::beginEngine(uint32_t sample_rate_hz) {
     config.features.chorus = 1;
     config.features.echo = 1;
     config.features.startup_bleep = 0;
-    config.ram_caps_events = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT; // High-speed SRAM for delta event queue
+    config.ram_caps_events = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT; // Oscillator state and normal events stay internal
     config.ram_caps_synth = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;  // High-speed SRAM for voice & osc states
     config.ram_caps_block = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;  // High-speed SRAM for rendering block buffers
     config.ram_caps_fbl = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;    // High-speed SRAM for bus mixing buffers

@@ -1,8 +1,8 @@
 # Perfil MIDI confirmado — M-VAVE SMK25 V2
 
-Este perfil usa apenas mensagens MIDI observáveis pelo ESP32-S3. Os seletores
-físicos `SC/CH`, `KNOB-B`, `PAD-B`, `Oct+`, `Oct-` e `BT` não emitem mensagens
-MIDI; o firmware não deve tratá-los como botões recebidos.
+Este perfil usa apenas mensagens MIDI observáveis pelo ESP32-S3. Os controles
+físicos `ARP`, `SC/CH`, `KNOB-B`, `PAD-B`, `BT`, `Oct+` e `Oct-` não emitem
+mensagens MIDI; o firmware não deve tratá-los como botões recebidos.
 
 ## Controles que chegam ao firmware
 
@@ -21,6 +21,12 @@ uma mensagem de um knob ou pad daquele banco. No boot, o estado é desconhecido.
 Na tela de pads, `PAD A` identifica os disparos 36–43 e `PAD B [SHORTCUTS]`
 identifica os comandos 44–51 observados mais recentemente; isso não pressupõe
 que a tecla física de seleção tenha enviado um evento.
+
+Os oito knobs e os oito pads enviam comandos nos dois bancos. Portanto, o
+perfil lógico contém 16 bindings de knob e 16 bindings de pad, mesmo existindo
+somente oito controles físicos de cada tipo. `ARP`, `SC/CH`, `BT`, `Oct+` e
+`Oct-` permanecem funções locais do controlador e não podem ser usados para
+navegação, modificadores ou confirmação no firmware.
 
 ## Atalhos do banco B de pads
 
@@ -80,7 +86,7 @@ Comandos executados na raiz, em PowerShell com G++ no PATH:
 
 ```powershell
 $ui = 'smk-s3/components/ui'
-g++ -std=c++17 -O2 -Itests/mock -I"$ui/include" -I"$ui/include/screens" -Ismk-s3/components/sequencer/include -Ismk-s3/components/synth/include -Ismk-s3/components/storage/include -Ismk-s3/components/midi/include -Ismk-s3/components/audio/include tests/test_smk_ui.cpp "$ui/display_driver.cpp" "$ui/dummy_display_driver.cpp" "$ui/font_renderer.cpp" "$ui/widgets.cpp" "$ui/screens/home_screen.cpp" "$ui/screens/sequencer_screen.cpp" "$ui/screens/parameter_screen.cpp" "$ui/screens/pad_screen.cpp" "$ui/screens/midi_monitor_screen.cpp" "$ui/screens/scene_screen.cpp" "$ui/screens/splash_screen.cpp" -o build/test_smk_ui.exe
+g++ -std=c++17 -O2 -Itests/mock -I"$ui/include" -I"$ui/include/screens" -Ismk-s3/components/sequencer/include -Ismk-s3/components/synth/include -Ismk-s3/components/storage/include -Ismk-s3/components/midi/include -Ismk-s3/components/audio/include -Ismk-s3/components/system/include tests/test_smk_ui.cpp "$ui/display_driver.cpp" "$ui/dummy_display_driver.cpp" "$ui/font_renderer.cpp" "$ui/widgets.cpp" "$ui/screens/home_screen.cpp" "$ui/screens/sequencer_screen.cpp" "$ui/screens/parameter_screen.cpp" "$ui/screens/pad_screen.cpp" "$ui/screens/midi_monitor_screen.cpp" "$ui/screens/scene_screen.cpp" "$ui/screens/splash_screen.cpp" "$ui/screens/system_screen.cpp" "$ui/screens/midi_learn_screen.cpp" -o build/test_smk_ui.exe
 ./build/test_smk_ui.exe
 C:/.platformio/penv/Scripts/pio.exe run -d smk-s3 -e esp32-s3-devkitc-1
 ```

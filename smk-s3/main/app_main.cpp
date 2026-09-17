@@ -135,7 +135,9 @@ static void app_init_task(void* arg) {
         return;
     }
 
-    // 9. Initialize UI Subsystem for 2.25" (284x76) ST7789 Widescreen Display
+    // 9. Initialize the configured ST7789 display profile.
+    ESP_LOGI(TAG, "Display profile: %s (%dx%d)", smk::config::kDisplayProfileName,
+             smk::config::kDisplayWidth, smk::config::kDisplayHeight);
     smk::ST7789Config st7789_cfg = {
         .mosi_pin = smk::config::kDisplayMosi,
         .sclk_pin = smk::config::kDisplaySclk,
@@ -158,7 +160,7 @@ static void app_init_task(void* arg) {
 
     smk::DisplayDriver* display_driver = new smk::ST7789DisplayDriver(st7789_cfg);
     if (!display_driver->begin()) {
-        ESP_LOGE(TAG, "ST7789 2.25\" Display initialization failed; using DummyDisplayDriver fallback");
+        ESP_LOGE(TAG, "ST7789 display initialization failed; using DummyDisplayDriver fallback");
         delete display_driver;
         display_driver = new smk::DummyDisplayDriver(smk::config::kDisplayWidth, smk::config::kDisplayHeight);
         display_driver->begin();

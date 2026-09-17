@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" role="img" aria-labelledby="title desc">
+  <title id="title">SMK-S3 — monitor MIDI 240 por 240</title>
+  <desc id="desc">Monitor de eventos MIDI com cinco eventos recentes, canal, nota, controlador, valor e estado da conexão USB.</desc>
+  <defs>
+    <style>
+      .ui { font-family: "Cascadia Mono", "JetBrains Mono", monospace; }
+      .micro { font-size: 6px; letter-spacing: .7px; }
+      .small { font-size: 8px; letter-spacing: .3px; }
+      .body { font-size: 10px; }
+      .event { font-size: 11px; font-weight: 700; }
+    </style>
+    <clipPath id="screen"><rect width="240" height="240" rx="3"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#screen)" class="ui">
+    <rect width="240" height="240" fill="#05080a"/>
+    <rect width="240" height="31" fill="#11181d"/>
+    <text x="7" y="12" class="micro" fill="#7e9099">DIAGNÓSTICO</text>
+    <text x="7" y="25" class="body" fill="#f4f7f8">MIDI MONITOR</text>
+    <circle cx="187" cy="16" r="3" fill="#f3c400"/>
+    <text x="195" y="19" class="small" fill="#f3c400">LIVE</text>
+    <rect x="218" y="9" width="15" height="12" rx="2" fill="#28d17c"/>
+    <text x="225.5" y="17" text-anchor="middle" class="micro" fill="#05080a">U</text>
+
+    <text x="7" y="43" class="micro" fill="#7e9099">DISPOSITIVO</text>
+    <text x="7" y="56" class="body" fill="#00e5ff">SMK25 V2</text>
+    <text x="173" y="43" class="micro" fill="#7e9099">PACOTES</text>
+    <text x="233" y="56" text-anchor="end" class="body" fill="#f4f7f8">012,847</text>
+
+    <g transform="translate(4 64)">
+      <rect width="232" height="25" rx="3" fill="#0e171c"/>
+      <rect width="3" height="25" rx="1.5" fill="#28d17c"/>
+      <text x="10" y="10" class="micro" fill="#7e9099">+000 ms · CH 01</text>
+      <text x="10" y="21" class="event" fill="#28d17c">NOTE ON</text>
+      <text x="92" y="20" class="body" fill="#f4f7f8">C4</text>
+      <text x="226" y="20" text-anchor="end" class="small" fill="#a9b6bc">VEL 108</text>
+    </g>
+    <g transform="translate(4 93)">
+      <rect width="232" height="25" rx="3" fill="#0b1216"/>
+      <rect width="3" height="25" rx="1.5" fill="#00e5ff"/>
+      <text x="10" y="10" class="micro" fill="#7e9099">+018 ms · CH 01</text>
+      <text x="10" y="21" class="event" fill="#00e5ff">NOTE ON</text>
+      <text x="92" y="20" class="body" fill="#f4f7f8">E4</text>
+      <text x="226" y="20" text-anchor="end" class="small" fill="#a9b6bc">VEL 096</text>
+    </g>
+    <g transform="translate(4 122)">
+      <rect width="232" height="25" rx="3" fill="#0e171c"/>
+      <rect width="3" height="25" rx="1.5" fill="#ffb000"/>
+      <text x="10" y="10" class="micro" fill="#7e9099">+041 ms · CH 01</text>
+      <text x="10" y="21" class="event" fill="#ffb000">CC 074</text>
+      <text x="92" y="20" class="small" fill="#f4f7f8">CUTOFF</text>
+      <text x="226" y="20" text-anchor="end" class="small" fill="#a9b6bc">VAL 074</text>
+    </g>
+    <g transform="translate(4 151)">
+      <rect width="232" height="25" rx="3" fill="#0b1216"/>
+      <rect width="3" height="25" rx="1.5" fill="#f3c400"/>
+      <text x="10" y="10" class="micro" fill="#7e9099">+067 ms · CH 01</text>
+      <text x="10" y="21" class="event" fill="#f3c400">PITCH</text>
+      <text x="92" y="20" class="small" fill="#f4f7f8">BEND</text>
+      <text x="226" y="20" text-anchor="end" class="small" fill="#a9b6bc">+1,240</text>
+    </g>
+    <g transform="translate(4 180)">
+      <rect width="232" height="25" rx="3" fill="#0e171c"/>
+      <rect width="3" height="25" rx="1.5" fill="#a9b6bc"/>
+      <text x="10" y="10" class="micro" fill="#7e9099">+092 ms · CH 01</text>
+      <text x="10" y="21" class="event" fill="#a9b6bc">NOTE OFF</text>
+      <text x="92" y="20" class="body" fill="#f4f7f8">C4</text>
+      <text x="226" y="20" text-anchor="end" class="small" fill="#a9b6bc">VEL 000</text>
+    </g>
+
+    <rect y="211" width="240" height="29" fill="#11181d"/>
+    <text x="7" y="222" class="micro" fill="#7e9099">ERROS</text>
+    <text x="7" y="234" class="body" fill="#28d17c">0</text>
+    <text x="56" y="222" class="micro" fill="#7e9099">DROP</text>
+    <text x="56" y="234" class="body" fill="#28d17c">0</text>
+    <text x="108" y="222" class="micro" fill="#7e9099">LATÊNCIA</text>
+    <text x="108" y="234" class="body" fill="#f4f7f8">1.8 ms</text>
+    <text x="233" y="228" text-anchor="end" class="small" fill="#00e5ff">PAD 6 · VOLTAR</text>
+  </g>
+</svg>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="420" viewBox="0 0 720 420" role="img" aria-labelledby="title desc">
+  <title id="title">Mapa proposto de navegação do SMK-S3</title>
+  <desc id="desc">Fluxo das páginas principais controlado pelos pads do banco B, overlays acionados pelos knobs, transporte global e controles locais silenciosos fora da navegação.</desc>
+  <defs><style>.ui{font-family:"Cascadia Mono","JetBrains Mono",monospace}.label{font-size:15px;font-weight:700}.small{font-size:11px}.micro{font-size:9px;letter-spacing:.4px}</style><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#7e9099"/></marker></defs>
+  <rect width="720" height="420" rx="10" fill="#05080a"/>
+  <text x="28" y="34" class="ui label" fill="#f4f7f8">NAVEGAÇÃO PROPOSTA · SMK25 V2</text><text x="28" y="53" class="ui micro" fill="#7e9099">AÇÕES CONFIÁVEIS USAM PLAY / STOP / REC E 16 KNOBS + 16 PADS LÓGICOS EM A/B</text>
+  <g class="ui">
+    <g transform="translate(30 105)"><rect width="120" height="64" rx="7" fill="#12313a" stroke="#00e5ff" stroke-width="2"/><text x="60" y="28" text-anchor="middle" class="label" fill="#00e5ff">HOME</text><text x="60" y="47" text-anchor="middle" class="micro" fill="#a9b6bc">PAD B3 DIRETO</text></g>
+    <g transform="translate(184 105)"><rect width="120" height="64" rx="7" fill="#0e171c" stroke="#33434c"/><text x="60" y="28" text-anchor="middle" class="label" fill="#f4f7f8">SEQ</text><text x="60" y="47" text-anchor="middle" class="micro" fill="#a9b6bc">16 PASSOS</text></g>
+    <g transform="translate(338 105)"><rect width="120" height="64" rx="7" fill="#0e171c" stroke="#33434c"/><text x="60" y="28" text-anchor="middle" class="label" fill="#f4f7f8">PADS</text><text x="60" y="47" text-anchor="middle" class="micro" fill="#a9b6bc">8 EM A + 8 EM B</text></g>
+    <g transform="translate(492 105)"><rect width="120" height="64" rx="7" fill="#0e171c" stroke="#33434c"/><text x="60" y="28" text-anchor="middle" class="label" fill="#f4f7f8">CENAS</text><text x="60" y="47" text-anchor="middle" class="micro" fill="#a9b6bc">1–8 DIRETO</text></g>
+    <path d="M150 137 H178" stroke="#7e9099" stroke-width="2" marker-end="url(#arrow)"/><path d="M304 137 H332" stroke="#7e9099" stroke-width="2" marker-end="url(#arrow)"/><path d="M458 137 H486" stroke="#7e9099" stroke-width="2" marker-end="url(#arrow)"/><text x="321" y="92" text-anchor="middle" class="micro" fill="#ffb000">PAD B6 › · PAD B5 ‹</text>
+    <path d="M552 169 C552 205 90 205 90 175" fill="none" stroke="#7e9099" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <g transform="translate(108 244)"><rect width="178" height="72" rx="7" fill="#10181d" stroke="#ffb000"/><text x="89" y="25" text-anchor="middle" class="label" fill="#ffb000">OVERLAY PARÂMETRO</text><text x="89" y="47" text-anchor="middle" class="small" fill="#a9b6bc">QUALQUER KNOB · RETORNO AUTO</text><text x="89" y="62" text-anchor="middle" class="micro" fill="#7e9099">NÃO MUDA A PÁGINA DE FUNDO</text></g>
+    <path d="M90 169 C90 216 168 214 190 238" fill="none" stroke="#00e5ff" stroke-width="2" marker-end="url(#arrow)"/><text x="113" y="217" class="micro" fill="#00e5ff">K1–K8</text>
+    <g transform="translate(326 244)"><rect width="178" height="72" rx="7" fill="#10181d" stroke="#52616a"/><text x="89" y="25" text-anchor="middle" class="label" fill="#f4f7f8">UTILIDADES</text><text x="89" y="47" text-anchor="middle" class="small" fill="#a9b6bc">SISTEMA · MIDI · MIDI LEARN</text><text x="89" y="62" text-anchor="middle" class="micro" fill="#7e9099">PAD B7 · HUB, FORA DO CICLO</text></g>
+    <path d="M398 169 V238" stroke="#7e9099" stroke-width="2" marker-end="url(#arrow)"/>
+    <g transform="translate(544 244)"><rect width="146" height="72" rx="7" fill="#10181d" stroke="#28d17c"/><text x="73" y="25" text-anchor="middle" class="label" fill="#28d17c">TRANSPORTE</text><text x="73" y="46" text-anchor="middle" class="small" fill="#f4f7f8">PLAY · STOP · REC</text><text x="73" y="62" text-anchor="middle" class="micro" fill="#7e9099">GLOBAL EM TODA TELA</text></g>
+    <path d="M552 169 C590 205 617 205 617 238" fill="none" stroke="#28d17c" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="30" y="350" width="660" height="43" rx="6" fill="#11181d"/><text x="47" y="368" class="small" fill="#f05b67">STOP LONGO: PANIC</text><text x="213" y="368" class="small" fill="#ffb000">PAD B8 LONGO: SALVAR</text><text x="426" y="368" class="small" fill="#00e5ff">PAD B3: HOME</text><text x="47" y="384" class="micro" fill="#7e9099">LOCAIS/SILENCIOSOS: ARP · SC/CH · KNOB-B · PAD-B · BT · OCT+ · OCT− — FORA DA NAVEGAÇÃO.</text>
+  </g>
+</svg>

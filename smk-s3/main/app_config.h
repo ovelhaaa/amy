@@ -2,6 +2,7 @@
 #include <cstdint>
 #include "synth_config.h"
 #include "audio_config.h"
+#include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 
 namespace smk::config {
@@ -26,6 +27,44 @@ constexpr int kDisplayCs    = 10; // Chip Select (CS)
 constexpr int kDisplayDc    = 9;  // Data / Command (DC / RS)
 constexpr int kDisplayRst   = 8;  // Reset (RES / RST)
 constexpr int kDisplayBl    = 7;  // Backlight (BLK / LED)
+#if defined(CONFIG_SMKS3_DISPLAY_PROFILE_SQUARE_240X240)
+constexpr const char* kDisplayProfileName = "square-240x240";
+constexpr int16_t  kDisplayWidth   = 240;
+constexpr int16_t  kDisplayHeight  = 240;
+constexpr uint16_t kDisplayXOffset = CONFIG_SMKS3_DISPLAY_SQUARE_X_OFFSET;
+constexpr uint16_t kDisplayYOffset = CONFIG_SMKS3_DISPLAY_SQUARE_Y_OFFSET;
+constexpr bool     kDisplaySwapXy  =
+#if defined(CONFIG_SMKS3_DISPLAY_SQUARE_SWAP_XY)
+    true;
+#else
+    false;
+#endif
+constexpr bool     kDisplayMirrorX =
+#if defined(CONFIG_SMKS3_DISPLAY_SQUARE_MIRROR_X)
+    true;
+#else
+    false;
+#endif
+constexpr bool     kDisplayMirrorY =
+#if defined(CONFIG_SMKS3_DISPLAY_SQUARE_MIRROR_Y)
+    true;
+#else
+    false;
+#endif
+constexpr bool     kDisplayInvertColor =
+#if defined(CONFIG_SMKS3_DISPLAY_SQUARE_INVERT_COLOR)
+    true;
+#else
+    false;
+#endif
+constexpr bool     kDisplayBlActiveLow =
+#if defined(CONFIG_SMKS3_DISPLAY_SQUARE_BL_ACTIVE_LOW)
+    true;
+#else
+    false;
+#endif
+#else
+constexpr const char* kDisplayProfileName = "wide-284x76";
 constexpr int16_t  kDisplayWidth   = 284;
 constexpr int16_t  kDisplayHeight  = 76;
 constexpr uint16_t kDisplayXOffset = 18; // ST7789 CGRAM X gap ((320 - 284) / 2)
@@ -35,6 +74,7 @@ constexpr bool     kDisplayMirrorX = true;  // 180-degree rotation (Landscape 90
 constexpr bool     kDisplayMirrorY = false; // 180-degree rotation (Landscape 90 deg)
 constexpr bool     kDisplayInvertColor = false; // Fixed: Normal colors
 constexpr bool     kDisplayBlActiveLow = true;  // Fixed: 2.25" panel uses negative LED backlight (active-low GND)
+#endif
 
 // ═══════════════════════════════════════════════
 // USB Host

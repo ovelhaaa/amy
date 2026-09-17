@@ -1,4 +1,6 @@
 #include "ui_manager.h"
+#include "display_layout.h"
+#include "navigation_model.h"
 #include "synth_engine.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -55,18 +57,11 @@ void UIManager::switchScreen(ScreenId screen_id) {
 }
 
 void UIManager::nextPage() {
-    // Navigation pages: 1=Home, 2=System, 3=MidiMonitor, 4=Sequencer, 5=Pads, 6=MidiLearn, 7=Scenes
-    uint8_t id = static_cast<uint8_t>(current_screen_id_);
-    if (id < 1 || id > 7) id = 1; // From splash or unknown -> Home
-    else id = (id == 7) ? 1 : (id + 1);
-    switchScreen(static_cast<ScreenId>(id));
+    switchScreen(nextPerformancePage(current_screen_id_));
 }
 
 void UIManager::previousPage() {
-    uint8_t id = static_cast<uint8_t>(current_screen_id_);
-    if (id < 1 || id > 7) id = 1;
-    else id = (id == 1) ? 7 : (id - 1);
-    switchScreen(static_cast<ScreenId>(id));
+    switchScreen(previousPerformancePage(current_screen_id_));
 }
 
 void UIManager::setPage(uint8_t page_idx) {
@@ -151,7 +146,12 @@ void UIManager::stopTask() {
 
 void UIManager::uiTaskRoutine(void* arg) {
     UIManager* self = static_cast<UIManager*>(arg);
-    const TickType_t frame_interval = pdMS_TO_TICKS(33); // ~30 FPS
+    const uint32_t frame_interval_ms =
+        displayFrameIntervalMs(self->display_.width(), self->display_.height());
+    const TickType_t frame_interval = pdMS_TO_TICKS(frame_interval_ms);
+    ESP_LOGI(TAG, "UI refresh interval: %lu ms (%dx%d)",
+             static_cast<unsigned long>(frame_interval_ms),
+             self->display_.width(), self->display_.height());
 
     while (self->running_) {
         TickType_t start_tick = xTaskGetTickCount();

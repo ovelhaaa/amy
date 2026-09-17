@@ -1,4 +1,5 @@
 #include "midi_monitor_screen.h"
+#include "display_layout.h"
 #include "font_renderer.h"
 #include <cstdio>
 
@@ -49,6 +50,55 @@ void MidiMonitorScreen::render(DisplayDriver& display) {
     int16_t lx = dw - 2 - FontRenderer::stringWidth(learn_str, FontType::Font5x7);
     FontRenderer::drawString(display, lx, 2, learn_str, learn_col, DisplayDriver::kColorBlack, FontType::Font5x7);
     display.drawHLine(0, 11, dw, DisplayDriver::kColorMidGray);
+
+    if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
+        display.fillRect(0, 0, dw, 30, DisplayDriver::kColorDarkGray);
+        FontRenderer::drawString(display, 4, 4, "MIDI MONITOR", DisplayDriver::kColorCyan,
+                                 DisplayDriver::kColorDarkGray, FontType::Font5x7, 2);
+        const char* square_learn = learn_active_ ? "LEARN ON" : "LEARN OFF";
+        const int16_t learn_w = FontRenderer::stringWidth(square_learn, FontType::Font3x5);
+        FontRenderer::drawString(display, dw - learn_w - 5, 21, square_learn, learn_col,
+                                 DisplayDriver::kColorDarkGray, FontType::Font3x5);
+
+        size_t rendered = 0;
+        for (size_t i = 0; i < kHistorySize && rendered < 6; ++i) {
+            const size_t idx = (head_ + kHistorySize - 1 - i) % kHistorySize;
+            if (!history_[idx].valid) continue;
+            const auto& event = history_[idx].event;
+            const int16_t y = 36 + static_cast<int16_t>(rendered * 29);
+            const uint16_t accent = rendered == 0 ? DisplayDriver::kColorCyan
+                                                   : DisplayDriver::kColorDarkGray;
+            display.fillRect(4, y, dw - 8, 25, DisplayDriver::kColorBlack);
+            display.drawRect(4, y, dw - 8, 25, accent);
+            display.fillRect(4, y, 4, 25, rendered == 0 ? DisplayDriver::kColorYellow
+                                                        : DisplayDriver::kColorMidGray);
+
+            char primary[32];
+            snprintf(primary, sizeof(primary), "%s  CH %02u", eventTypeToString(event.type),
+                     event.channel + 1);
+            FontRenderer::drawString(display, 13, y + 3, primary,
+                                     rendered == 0 ? DisplayDriver::kColorWhite
+                                                   : DisplayDriver::kColorLightGray,
+                                     DisplayDriver::kColorBlack, FontType::Font5x7);
+            char detail[48];
+            snprintf(detail, sizeof(detail), "ID %03u  VAL %05ld  %lums", event.id,
+                     static_cast<long>(event.value),
+                     static_cast<long>(event.timestamp_us / 1000));
+            FontRenderer::drawString(display, 13, y + 14, detail, DisplayDriver::kColorMidGray,
+                                     DisplayDriver::kColorBlack, FontType::Font3x5);
+            ++rendered;
+        }
+        if (rendered == 0) {
+            FontRenderer::drawString(display, 42, 108, "AGUARDANDO MIDI...",
+                                     DisplayDriver::kColorMidGray, DisplayDriver::kColorBlack,
+                                     FontType::Font5x7);
+        }
+        display.drawHLine(0, 214, dw, DisplayDriver::kColorDarkGray);
+        FontRenderer::drawString(display, 4, 222, "PAD B7: MIDI LEARN  B3: HOME",
+                                 DisplayDriver::kColorLightGray, DisplayDriver::kColorBlack,
+                                 FontType::Font3x5);
+        return;
+    }
 
     // Render history entries
     int y = 16;

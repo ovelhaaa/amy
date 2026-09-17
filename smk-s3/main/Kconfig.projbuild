@@ -1,0 +1,63 @@
+menu "SMK-S3 board configuration"
+
+    choice SMKS3_DISPLAY_PROFILE
+        prompt "Display profile"
+        default SMKS3_DISPLAY_PROFILE_WIDE_284X76
+        help
+            Select the logical panel geometry. The existing 284x76 panel remains
+            the default. The 240x240 profile is opt-in until its exact module,
+            offsets, orientation, color inversion and backlight polarity are
+            confirmed on hardware.
+
+        config SMKS3_DISPLAY_PROFILE_WIDE_284X76
+            bool "2.25 inch 284x76 ST7789 widescreen"
+
+        config SMKS3_DISPLAY_PROFILE_SQUARE_240X240
+            bool "1.54 inch 240x240 ST7789 square (experimental)"
+    endchoice
+
+    if SMKS3_DISPLAY_PROFILE_SQUARE_240X240
+
+        config SMKS3_DISPLAY_SQUARE_X_OFFSET
+            int "Square panel X offset"
+            range 0 320
+            default 0
+            help
+                Controller GRAM offset. Zero is a non-final placeholder; use the
+                value specified by the exact panel module.
+
+        config SMKS3_DISPLAY_SQUARE_Y_OFFSET
+            int "Square panel Y offset"
+            range 0 320
+            default 0
+            help
+                Controller GRAM offset. Zero is a non-final placeholder; use the
+                value specified by the exact panel module.
+
+        config SMKS3_DISPLAY_SQUARE_SWAP_XY
+            bool "Swap square panel X/Y axes"
+            default n
+
+        config SMKS3_DISPLAY_SQUARE_MIRROR_X
+            bool "Mirror square panel X axis"
+            default n
+
+        config SMKS3_DISPLAY_SQUARE_MIRROR_Y
+            bool "Mirror square panel Y axis"
+            default n
+
+        config SMKS3_DISPLAY_SQUARE_INVERT_COLOR
+            bool "Invert square panel colors"
+            default y
+            help
+                The validated 1.54 inch 240x240 module requires the ST7789
+                display-inversion command for the intended palette. Disable
+                this option for modules whose panel glass uses normal mode.
+
+        config SMKS3_DISPLAY_SQUARE_BL_ACTIVE_LOW
+            bool "Square panel backlight is active-low"
+            default n
+
+    endif
+
+endmenu

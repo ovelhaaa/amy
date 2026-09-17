@@ -1,4 +1,5 @@
 #include "pad_screen.h"
+#include "display_layout.h"
 #include "font_renderer.h"
 #include "esp_timer.h"
 #include <cstdio>
@@ -91,9 +92,61 @@ static const char* labelForInputBank(uint8_t bank, uint8_t pad_idx, const char* 
 void PadScreen::render(DisplayDriver& display) {
     display.fillScreen(DisplayDriver::kColorBlack);
     int16_t dw = display.width();
+    int16_t dh = display.height();
 
     uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
     bool hit_recent = (now - last_hit_time_ms_) < 200;
+
+    if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
+        display.fillRect(0, 0, dw, 30, DisplayDriver::kColorDarkGray);
+        const char* bank_text = observed_input_bank_ == 2 ? "PAD B: SHORTCUTS"
+            : (observed_input_bank_ == 1 ? bankModeToString(bank_mode_) : "PADS: SOURCE ?");
+        char clipped_bank[19];
+        snprintf(clipped_bank, sizeof(clipped_bank), "%.18s", bank_text);
+        FontRenderer::drawString(display, 4, 4, clipped_bank, DisplayDriver::kColorCyan,
+                                 DisplayDriver::kColorDarkGray, FontType::Font5x7, 2);
+
+        for (uint8_t i = 0; i < 8; ++i) {
+            const int16_t col = i % 2;
+            const int16_t row = i / 2;
+            const int16_t x = 4 + col * 118;
+            const int16_t y = 36 + row * 42;
+            constexpr int16_t pad_w = 114;
+            constexpr int16_t pad_h = 36;
+            const bool is_hit = hit_recent && last_hit_pad_ == i;
+            const uint16_t bg = is_hit ? DisplayDriver::kColorDimGreen : DisplayDriver::kColorBlack;
+            display.fillRect(x, y, pad_w, pad_h, bg);
+            display.drawRect(x, y, pad_w, pad_h,
+                             is_hit ? DisplayDriver::kColorYellow : DisplayDriver::kColorMidGray);
+            char badge[5];
+            snprintf(badge, sizeof(badge), "P%u", i + 1);
+            FontRenderer::drawString(display, x + 5, y + 5, badge,
+                                     is_hit ? DisplayDriver::kColorYellow : DisplayDriver::kColorCyan,
+                                     bg, FontType::Font5x7);
+            const char* label = labelForInputBank(observed_input_bank_, i, pad_labels_[i]);
+            char clipped_label[16];
+            snprintf(clipped_label, sizeof(clipped_label), "%.14s", label);
+            FontRenderer::drawString(display, x + 28, y + 5, clipped_label,
+                                     DisplayDriver::kColorWhite, bg, FontType::Font5x7);
+            if (is_hit) {
+                const int16_t velocity_w = static_cast<int16_t>((pad_w - 10) * last_hit_vel_ / 127U);
+                display.fillRect(x + 5, y + 26, velocity_w, 5, DisplayDriver::kColorYellow);
+            } else {
+                display.drawHLine(x + 5, y + 28, pad_w - 10, DisplayDriver::kColorDarkGray);
+            }
+        }
+
+        display.drawHLine(0, 208, dw, DisplayDriver::kColorDarkGray);
+        char footer[48];
+        if (hit_recent) {
+            snprintf(footer, sizeof(footer), "HIT P%u  VEL %u", last_hit_pad_ + 1, last_hit_vel_);
+        } else {
+            snprintf(footer, sizeof(footer), "A/B SAO INFERIDOS PELO MIDI RECEBIDO");
+        }
+        FontRenderer::drawString(display, 4, 218, footer, DisplayDriver::kColorLightGray,
+                                 DisplayDriver::kColorBlack, FontType::Font3x5);
+        return;
+    }
 
     // ── 160x128 Display Layout (2 Columns x 4 Rows, Full Pad Names) ──
     if (dw <= 160) {
