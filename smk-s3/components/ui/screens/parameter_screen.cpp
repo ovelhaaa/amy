@@ -25,7 +25,7 @@ bool ParameterScreen::isExpired() const {
 }
 
 void ParameterScreen::showParameter(const char* name, const char* target_layer,
-                                     float current_val, float saved_val, 
+                                     float current_val, float saved_val,
                                      const char* unit_str, TakeoverStatus takeover) {
     if (name) snprintf(param_name_, sizeof(param_name_), "%s", name);
     if (target_layer) snprintf(target_layer_, sizeof(target_layer_), "%s", target_layer);
