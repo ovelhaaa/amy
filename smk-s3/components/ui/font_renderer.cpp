@@ -207,24 +207,7 @@ void FontRenderer::drawChar(DisplayDriver& display, int16_t x, int16_t y, char c
     if (c < 32 || c > 126) c = ' ';
     uint8_t idx = (uint8_t)c - 32;
 
-    if (font == FontType::FontDisplay) {
-        // Implement Display font as 3x scaled 5x7 for now, which gives 15x21 text size.
-        // It's large, blocky, and readable for synth interfaces.
-        int char_w = 5;
-        int char_h = 7;
-        uint8_t eff_scale = scale * 3;
-        for (int col = 0; col < char_w; ++col) {
-            uint8_t line = font5x7[idx][col];
-            for (int row = 0; row < char_h; ++row) {
-                bool pixel_on = (line >> row) & 0x01;
-                uint16_t color = pixel_on ? fg_color : bg_color;
-
-                if (pixel_on || bg_color != 0x0000) {
-                    display.fillRect(x + col * eff_scale, y + row * eff_scale, eff_scale, eff_scale, color);
-                }
-            }
-        }
-    } else if (font == FontType::Font3x5) {
+    if (font == FontType::Font3x5) {
         int char_w = 3;
         int char_h = 5;
         for (int col = 0; col < char_w; ++col) {
@@ -268,9 +251,7 @@ void FontRenderer::drawString(DisplayDriver& display, int16_t x, int16_t y, cons
                              uint16_t fg_color, uint16_t bg_color, 
                              FontType font, uint8_t scale) {
     if (!str) return;
-    int char_w = (font == FontType::FontDisplay) ? (18 * scale) :
-                 (font == FontType::Font3x5) ? (4 * scale) :
-                 (font == FontType::Font8x12) ? (12 * scale) : (6 * scale);
+    int char_w = (font == FontType::Font3x5) ? (4 * scale) : ((font == FontType::Font8x12) ? (12 * scale) : (6 * scale));
     int16_t cur_x = x;
     
     while (*str) {
@@ -283,14 +264,11 @@ void FontRenderer::drawString(DisplayDriver& display, int16_t x, int16_t y, cons
 int16_t FontRenderer::stringWidth(const char* str, FontType font, uint8_t scale) {
     if (!str) return 0;
     size_t len = strlen(str);
-    int char_w = (font == FontType::FontDisplay) ? (18 * scale) :
-                 (font == FontType::Font3x5) ? (4 * scale) :
-                 (font == FontType::Font8x12) ? (12 * scale) : (6 * scale);
+    int char_w = (font == FontType::Font3x5) ? (4 * scale) : ((font == FontType::Font8x12) ? (12 * scale) : (6 * scale));
     return (int16_t)(len * char_w);
 }
 
 int16_t FontRenderer::fontHeight(FontType font, uint8_t scale) {
-    if (font == FontType::FontDisplay) return 21 * scale;
     if (font == FontType::Font3x5) return 5 * scale;
     if (font == FontType::Font8x12) return 14 * scale;
     return 7 * scale;

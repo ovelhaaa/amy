@@ -244,10 +244,6 @@ void GlyphRenderer::drawGlyph(DisplayDriver& display, int16_t x, int16_t y, Para
         case ParametricGlyph::Attack:
             display.drawLine(x, y + 8, x + 15, y, color);
             break;
-        case ParametricGlyph::Decay:
-            display.drawLine(x, y, x + 5, y + 8, color);
-            display.drawHLine(x + 5, y + 8, 10, color);
-            break;
         case ParametricGlyph::Release:
             display.drawLine(x, y, x + 5, y + 5, color);
             display.drawLine(x + 5, y + 5, x + 15, y + 8, color);
@@ -280,30 +276,6 @@ void GlyphRenderer::drawGlyph(DisplayDriver& display, int16_t x, int16_t y, Para
             display.drawVLine(x + 8, y + 1, 7, color);
             break;
         case ParametricGlyph::GenericLevel:
-            display.drawHLine(x, y + 4, 16, color);
-            break;
-        case ParametricGlyph::Chorus:
-            display.drawLine(x, y + 2, x + 4, y, color);
-            display.drawLine(x + 4, y, x + 8, y + 2, color);
-            display.drawLine(x + 8, y + 2, x + 12, y + 4, color);
-            display.drawLine(x + 12, y + 4, x + 15, y + 2, color);
-            display.drawLine(x, y + 6, x + 4, y + 4, color);
-            display.drawLine(x + 4, y + 4, x + 8, y + 6, color);
-            display.drawLine(x + 8, y + 6, x + 12, y + 8, color);
-            display.drawLine(x + 12, y + 8, x + 15, y + 6, color);
-            break;
-        case ParametricGlyph::Modulation:
-            display.drawLine(x, y + 4, x + 4, y, color);
-            display.drawLine(x + 4, y, x + 8, y + 4, color);
-            display.drawLine(x + 8, y + 4, x + 12, y + 8, color);
-            display.drawLine(x + 12, y + 8, x + 15, y + 4, color);
-            display.drawLine(x + 7, y + 1, x + 11, y + 5, color);
-            break;
-        case ParametricGlyph::Shape:
-            display.drawRect(x, y, 6, 6, color);
-            display.drawLine(x + 8, y + 4, x + 15, y, color);
-            display.drawLine(x + 8, y + 4, x + 15, y + 8, color);
-            break;
         default:
             display.drawHLine(x, y + 4, 16, color);
             break;

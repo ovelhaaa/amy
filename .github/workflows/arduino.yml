@@ -45,3 +45,12 @@ jobs:
           sketch-paths: |
             - examples/BillieJeanDrums
           enable-deltas-report: false
+      - name: Retry on failure
+        if: failure()
+        uses: arduino/compile-sketches@v1
+        with:
+          fqbn: ${{ matrix.fqbn }}
+          platforms: ${{ matrix.platforms }}
+          sketch-paths: |
+            - examples/BillieJeanDrums
+          enable-deltas-report: false

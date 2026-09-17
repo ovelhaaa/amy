@@ -1,5 +1,3 @@
-#include "ui_theme.h"
-#include "ui_components.h"
 #include "home_screen.h"
 #include "display_layout.h"
 #include "font_renderer.h"
@@ -189,64 +187,122 @@ void HomeScreen::render(DisplayDriver& display) {
     int16_t dh = display.height();
 
     if (classifyDisplayLayout(dw, dh) == DisplayLayoutClass::Square) {
-        using namespace theme;
+        // 240x240: information is grouped vertically instead of stretching the
+        // panoramic layout beyond the right edge.
+        display.fillRect(0, 0, dw, 30, DisplayDriver::kColorDarkGray);
 
         char patch_buf[40];
         snprintf(patch_buf, sizeof(patch_buf), "P%03u %.20s", patch_number_,
-                 patch_name_[0] != '\0' ? patch_name_ : "DEFAULT");
+                 patch_name_[0] != '\0' ? patch_name_ : "DEFAULT PATCH");
+        // Account for the 2x font scale while reserving the status badges.
+        fitHeaderText(patch_buf, (dw - 34) / 2, FontType::Font5x7);
+        FontRenderer::drawString(display, 4, 3, patch_buf, DisplayDriver::kColorWhite,
+                                 DisplayDriver::kColorDarkGray, FontType::Font5x7, 2);
 
-        char subtitle[32];
-        const char knob_bank = observed_knob_bank_ == 1 ? 'A'
-            : (observed_knob_bank_ == 2 ? 'B' : '?');
-        const char pad_bank = observed_pad_bank_ == 1 ? 'A'
-            : (observed_pad_bank_ == 2 ? 'B' : '?');
-        snprintf(subtitle, sizeof(subtitle), "%s  K:%c P:%c",
-                 synth_mode_[0] != '\0' ? synth_mode_ : "POLY", knob_bank, pad_bank);
+        const uint16_t usb_color = usb_connected_ ? DisplayDriver::kColorGreen : DisplayDriver::kColorRed;
+        display.fillRect(dw - 17, 4, 12, 9, usb_color);
+        FontRenderer::drawString(display, dw - 14, 6, "U", DisplayDriver::kColorWhite,
+                                 usb_color, FontType::Font3x5);
+        display.fillRect(dw - 31, 4, 12, 9,
+                         midi_active_ ? DisplayDriver::kColorYellow : DisplayDriver::kColorDarkGray);
+        FontRenderer::drawString(display, dw - 28, 6, "M",
+                                 midi_active_ ? DisplayDriver::kColorBlack : DisplayDriver::kColorMidGray,
+                                 midi_active_ ? DisplayDriver::kColorYellow : DisplayDriver::kColorDarkGray,
+                                 FontType::Font3x5);
+
+        const char knob_bank = observed_knob_bank_ == 1 ? 'A' : (observed_knob_bank_ == 2 ? 'B' : '?');
+        const char pad_bank = observed_pad_bank_ == 1 ? 'A' : (observed_pad_bank_ == 2 ? 'B' : '?');
+        // Keep polyphony visible in the header while reserving the lower strip
+        // for a glanceable tempo readout. Eight bounded bars avoid any extra
+        // data acquisition or work in the audio path.
+        char mode_buf[8];
+        snprintf(mode_buf, sizeof(mode_buf), "%.6s", synth_mode_[0] != '\0' ? synth_mode_ : "POLY");
+        FontRenderer::drawString(display, 4, 21, mode_buf, DisplayDriver::kColorAmber,
+                                 DisplayDriver::kColorDarkGray, FontType::Font3x5);
+
+        char voice_buf[16];
+        snprintf(voice_buf, sizeof(voice_buf), "V%u/%u", active_voices_,
+                 max_voices_ > 0 ? max_voices_ : 12);
+        const int16_t voice_text_x = 8 + FontRenderer::stringWidth(mode_buf, FontType::Font3x5);
+        FontRenderer::drawString(display, voice_text_x, 21, voice_buf,
+                                 DisplayDriver::kColorLightGray, DisplayDriver::kColorDarkGray,
+                                 FontType::Font3x5);
+        const int16_t voice_bar_x = voice_text_x +
+            FontRenderer::stringWidth(voice_buf, FontType::Font3x5) + 4;
+        for (uint8_t voice = 0; voice < max_voices_ && voice < 8; ++voice) {
+            display.fillRect(voice_bar_x + voice * 6, 22, 4, 4,
+                             voice < active_voices_ ? DisplayDriver::kColorCyan
+                                                    : DisplayDriver::kColorMidGray);
+        }
+
+        char bank_buf[16];
+        snprintf(bank_buf, sizeof(bank_buf), "K:%c P:%c", knob_bank, pad_bank);
+        const int16_t bank_x = dw - 4 - FontRenderer::stringWidth(bank_buf, FontType::Font3x5);
+        FontRenderer::drawString(display, bank_x, 21, bank_buf, DisplayDriver::kColorLightGray,
+                                 DisplayDriver::kColorDarkGray, FontType::Font3x5);
 
         const uint16_t theme_color = bank_view_ == HomeKnobBankView::BankB_Engine
-            ? ColorBankB : ColorBankA;
-        components::HeaderWidget::draw(display, patch_buf, subtitle, midi_active_,
-                                       usb_connected_, theme_color);
-
+            ? DisplayDriver::kColorAmber : DisplayDriver::kColorCyan;
         for (int i = 0; i < 8; ++i) {
             const int16_t col = i % 4;
             const int16_t row = i / 4;
-            const int16_t x = kMargin + col * (kMacroTileWidth + kMacroTileGapX);
-            const int16_t y = kHeaderHeight + kMargin
-                + row * (kMacroTileHeight + kMacroTileGapY);
+            const int16_t x = 4 + col * 59;
+            const int16_t y = 36 + row * 62;
+            constexpr int16_t card_w = 55;
+            constexpr int16_t card_h = 56;
+            display.drawRect(x, y, card_w, card_h, DisplayDriver::kColorDarkGray);
+
+            const char* label = gauges_[i].label();
+            const int16_t label_w = FontRenderer::stringWidth(label, FontType::Font3x5);
+            FontRenderer::drawString(display, x + (card_w - label_w) / 2, y + 4, label,
+                                     theme_color, DisplayDriver::kColorBlack, FontType::Font3x5);
+            GlyphRenderer::drawGlyph(display, x + 5, y + 15, getKnobGlyph(i), theme_color);
+
             const uint8_t value = bank_view_ == HomeKnobBankView::BankB_Engine
                 ? engine_values_[i] : macro_values_[i];
-            components::MacroTile::draw(display, x, y, gauges_[i].label(),
-                                        getKnobGlyph(i), value, theme_color);
+            char value_buf[8];
+            snprintf(value_buf, sizeof(value_buf), "%u", value);
+            const int16_t value_w = FontRenderer::stringWidth(value_buf, FontType::Font5x7, 2);
+            FontRenderer::drawString(display, x + card_w - value_w - 4, y + 17, value_buf,
+                                     DisplayDriver::kColorWhite, DisplayDriver::kColorBlack,
+                                     FontType::Font5x7, 2);
+            display.drawRect(x + 4, y + 45, card_w - 8, 6, DisplayDriver::kColorMidGray);
+            const int16_t fill_w = static_cast<int16_t>((card_w - 10) * value / 127U);
+            if (fill_w > 0) {
+                display.fillRect(x + 5, y + 46, fill_w, 4, theme_color);
+            }
         }
 
-        const int16_t scope_y = kHeaderHeight + kMargin
-            + 2 * (kMacroTileHeight + kMacroTileGapY) + kMargin;
-        constexpr int16_t scope_h = 56;
-        OscilloscopeWidget scope(kMargin, scope_y, dw - kMargin * 2, scope_h);
+        OscilloscopeWidget scope(4, 162, dw - 8, 45);
         scope.setSamples(scope_samples_, scope_sample_count_);
         scope.setActive(active_voices_ > 0 || midi_active_);
-        scope.setColors(ColorAccentPrimary, ColorSurfaceElev);
         scope.draw(display);
 
-        const int16_t footer_y = scope_y + scope_h + kMargin;
-        char bpm_val[8];
-        snprintf(bpm_val, sizeof(bpm_val), "%u", static_cast<uint16_t>(bpm_));
-        FontRenderer::drawString(display, kMargin, footer_y, bpm_val, ColorTextPrimary,
-                                 ColorBackground, FontType::FontDisplay, 1);
-        const int16_t bpm_w = FontRenderer::stringWidth(bpm_val, FontType::FontDisplay, 1);
-        FontRenderer::drawString(display, kMargin + bpm_w + 4, footer_y + 14, "BPM",
-                                 ColorTextMuted, ColorBackground, FontType::Font3x5, 1);
+        display.drawHLine(0, 212, dw, DisplayDriver::kColorDarkGray);
+        const float display_bpm = std::isfinite(bpm_) && bpm_ > 0
+            ? fminf(bpm_, 999.0f) : 120.0f;
+        char bpm_buf[8];
+        snprintf(bpm_buf, sizeof(bpm_buf), "%.0f", display_bpm);
+        constexpr uint8_t bpm_scale = 3;
+        constexpr uint8_t unit_scale = 2;
+        const int16_t bpm_w = FontRenderer::stringWidth(bpm_buf, FontType::Font5x7, bpm_scale);
+        const int16_t unit_w = FontRenderer::stringWidth("BPM", FontType::Font3x5, unit_scale);
+        const int16_t tempo_w = bpm_w + 5 + unit_w;
+        const int16_t bpm_x = (dw - tempo_w) / 2;
+        FontRenderer::drawString(display, bpm_x, 216, bpm_buf, DisplayDriver::kColorAmber,
+                                 DisplayDriver::kColorBlack, FontType::Font5x7, bpm_scale);
+        FontRenderer::drawString(display, bpm_x + bpm_w + 5, 226, "BPM",
+                                 DisplayDriver::kColorLightGray, DisplayDriver::kColorBlack,
+                                 FontType::Font3x5, unit_scale);
 
-        char voice_buf[16];
-        snprintf(voice_buf, sizeof(voice_buf), "V: %u/%u", active_voices_,
-                 max_voices_ > 0 ? max_voices_ : 12);
-        const int16_t voice_w = FontRenderer::stringWidth(voice_buf, FontType::Font3x5, 1);
-        FontRenderer::drawString(display, dw - kMargin - voice_w, footer_y + 14,
-                                 voice_buf, ColorTextSecondary, ColorBackground,
-                                 FontType::Font3x5, 1);
+        char cpu_buf[16];
+        snprintf(cpu_buf, sizeof(cpu_buf), "CPU %.0f%%", cpu_load_);
+        const int16_t cpu_x = dw - 4 - FontRenderer::stringWidth(cpu_buf, FontType::Font3x5);
+        FontRenderer::drawString(display, cpu_x, 234, cpu_buf, DisplayDriver::kColorMidGray,
+                                 DisplayDriver::kColorBlack, FontType::Font3x5);
         return;
     }
+
     if (dw <= 160) {
         // ── 160x128 (1.8" Display) 2x4 Matrix Layout ──
 

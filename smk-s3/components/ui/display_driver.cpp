@@ -65,55 +65,6 @@ void DisplayDriver::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_
     }
 }
 
-void DisplayDriver::fillChamferRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
-    if (w <= 0 || h <= 0) return;
-    if (r <= 0) {
-        fillRect(x, y, w, h, color);
-        return;
-    }
-    int16_t h_max = height();
-    int16_t y2 = std::min((int16_t)(y + h - 1), (int16_t)(h_max - 1));
-    int16_t y1 = std::max(y, (int16_t)0);
-
-    for (int16_t iy = y1; iy <= y2; ++iy) {
-        int16_t inset = 0;
-        if (iy < y + r) {
-            inset = r - (iy - y);
-        } else if (iy > y + h - 1 - r) {
-            inset = r - (y + h - 1 - iy);
-        }
-        drawHLine(x + inset, iy, w - inset * 2, color);
-    }
-}
-
-void DisplayDriver::drawChamferRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
-    if (w <= 0 || h <= 0) return;
-    if (r <= 0) {
-        drawRect(x, y, w, h, color);
-        return;
-    }
-
-    // Top and bottom edges
-    drawHLine(x + r, y, w - r * 2, color);
-    drawHLine(x + r, y + h - 1, w - r * 2, color);
-
-    // Left and right edges
-    drawVLine(x, y + r, h - r * 2, color);
-    drawVLine(x + w - 1, y + r, h - r * 2, color);
-
-    // Four chamfer corners (diagonal lines)
-    for (int16_t i = 1; i < r; ++i) {
-        // Top left
-        drawPixel(x + r - i, y + i, color);
-        // Top right
-        drawPixel(x + w - 1 - r + i, y + i, color);
-        // Bottom left
-        drawPixel(x + r - i, y + h - 1 - i, color);
-        // Bottom right
-        drawPixel(x + w - 1 - r + i, y + h - 1 - i, color);
-    }
-}
-
 void DisplayDriver::drawBitmap(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t* pixels) {
     if (!pixels || w <= 0 || h <= 0) return;
     int16_t w_max = width();
