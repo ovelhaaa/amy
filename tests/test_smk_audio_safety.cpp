@@ -20,6 +20,7 @@ struct Engine : SynthEngine {
     bool buffered = false;
     bool null_buffer = false;
     int stop_after = 5;
+    int16_t sample_value = 12000;
     std::array<int16_t, config::kBlockSize * 2> samples{};
     bool begin(uint32_t) override { return true; }
     void noteOn(uint8_t, uint8_t, uint8_t) override {}
@@ -32,7 +33,7 @@ struct Engine : SynthEngine {
         ++renders;
         assert(renders <= 6); // A write fault must not cause a busy render loop.
         if (renders == stop_after) AudioTask::stop();
-        samples.fill(12000);
+        samples.fill(sample_value);
         return null_buffer ? nullptr : samples.data();
     }
     uint16_t blockSize() const override { return config::kBlockSize; }
@@ -109,6 +110,16 @@ static void testTask() {
         if (i) assert(output.samples[i * 2] >= output.samples[(i - 1) * 2]);
     }
     assert(output.samples[config::kAudioFadeInFrames * 2] == 12000);
+
+    Engine negative_engine;
+    negative_engine.sample_value = -1;
+    Output negative_output;
+    assert(AudioTask::start(&negative_engine, &negative_output, 1, 24, 16384));
+    mock_task::run();
+    for (size_t i = 0; i < config::kAudioFadeInFrames; ++i) {
+        assert(negative_output.samples[i * 2] == 0);
+        assert(negative_output.samples[i * 2 + 1] == 0);
+    }
 
     Engine write_engine;
     Output bad_output;
