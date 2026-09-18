@@ -77,7 +77,10 @@ void AudioTask::taskRoutine(void* arg) {
             int32_t fade_q15 = (static_cast<int32_t>(fade_frame) << 15) / static_cast<int32_t>(config::kAudioFadeInFrames);
             for (uint8_t channel = 0; channel < 2; ++channel) {
                 const size_t index = frame * 2 + channel;
-                buffer[index] = static_cast<int16_t>((static_cast<int32_t>(buffer[index]) * fade_q15) >> 15);
+                const int32_t sample = buffer[index];
+                const int32_t magnitude = sample < 0 ? -sample : sample;
+                const int32_t scaled_magnitude = (magnitude * fade_q15) >> 15;
+                buffer[index] = static_cast<int16_t>(sample < 0 ? -scaled_magnitude : scaled_magnitude);
             }
         }
         
