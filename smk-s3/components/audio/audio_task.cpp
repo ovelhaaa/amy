@@ -73,10 +73,11 @@ void AudioTask::taskRoutine(void* arg) {
         }
         // Fixed work, no allocation: start both channels at zero gain.
         for (uint16_t frame = 0; frame < frames && fade_frame < config::kAudioFadeInFrames; ++frame, ++fade_frame) {
+            // Pre-compute fade scalar in Q15 to avoid integer division in the inner loop
+            int32_t fade_q15 = (static_cast<int32_t>(fade_frame) << 15) / static_cast<int32_t>(config::kAudioFadeInFrames);
             for (uint8_t channel = 0; channel < 2; ++channel) {
                 const size_t index = frame * 2 + channel;
-                buffer[index] = static_cast<int16_t>(static_cast<int32_t>(buffer[index]) *
-                    static_cast<int32_t>(fade_frame) / static_cast<int32_t>(config::kAudioFadeInFrames));
+                buffer[index] = static_cast<int16_t>((static_cast<int32_t>(buffer[index]) * fade_q15) >> 15);
             }
         }
         
