@@ -4,6 +4,7 @@
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
@@ -18,6 +19,24 @@ void amy_platform_deinit() {}
 namespace smk {
 
 static const char* TAG = "AMY_ADAPTER";
+static AmyAdapter* s_active_amy_adapter = nullptr;
+
+extern "C" void smk_bus_postprocess_hook(uint8_t bus, SAMPLE *buf, uint16_t len) {
+    if (bus == 0 && s_active_amy_adapter) {
+        float drive = s_active_amy_adapter->drive();
+        if (drive > 0.001f) {
+            float k = 1.0f + drive * 3.5f;
+            float comp = 1.0f / (1.0f + 0.45f * drive);
+            size_t total_samples = len * AMY_NCHANS;
+            for (size_t i = 0; i < total_samples; ++i) {
+                float x = S2F(buf[i]);
+                float driven = x * k;
+                float y = (driven / (1.0f + 0.5f * std::fabs(driven))) * comp;
+                buf[i] = F2S(y);
+            }
+        }
+    }
+}
 
 // Boot-only check: AMY can register a voice even when its osc allocation failed.
 // Verify each voice's ownership, not just the instrument's reported voice count.
@@ -47,11 +66,15 @@ static bool completeInstrumentAllocation(uint8_t synth_id, uint8_t expected_voic
 }
 
 void AmyAdapter::endEngine() {
+    if (s_active_amy_adapter == this) {
+        s_active_amy_adapter = nullptr;
+    }
     amy_stop();
 }
 
 bool AmyAdapter::beginEngine(uint32_t sample_rate_hz) {
     ESP_LOGI(TAG, "Initializing AMY Synth Engine (Dedicated Audio Core 1 + Dual Bus Architecture)");
+    s_active_amy_adapter = this;
     
     amy_config_t config = amy_default_config();
     config.audio = AMY_AUDIO_IS_NONE;
@@ -62,6 +85,7 @@ bool AmyAdapter::beginEngine(uint32_t sample_rate_hz) {
     // oscs those fragment the pool before the last Juno voice can be allocated.
     config.features.default_synths = 0;
     config.amy_external_midi_input_hook = juno_filter_midi_handler;
+    config.amy_external_bus_postprocess_hook = smk_bus_postprocess_hook;
     config.features.reverb = 1;
     config.features.chorus = 1;
     config.features.echo = 1;
@@ -383,12 +407,18 @@ uint32_t AmyAdapter::activeVoices() const {
     return active_voices_.load();
 }
 
-void AmyAdapter::executeFilter(uint8_t synth_id, float cutoff_hz, float resonance) {
+void AmyAdapter::executeFilter(uint8_t synth_id, float cutoff_hz, float resonance,
+                               float env_amount, float key_tracking, float vel_tracking, uint8_t filter_type) {
     amy_event e = amy_default_event();
     e.synth = (synth_id == 0) ? 1 : synth_id;
     e.filter_freq_coefs[COEF_CONST] = cutoff_hz;
-    e.filter_freq_coefs[COEF_VEL] = 1.5f; // Dynamic velocity tracking: harder velocity opens filter
+    e.filter_freq_coefs[COEF_NOTE] = key_tracking;
+    e.filter_freq_coefs[COEF_EG0] = env_amount;
+    e.filter_freq_coefs[COEF_VEL] = vel_tracking;
     e.resonance = resonance;
+    if (filter_type > 0) {
+        e.filter_type = filter_type;
+    }
     amy_add_event(&e);
 }
 
@@ -439,31 +469,67 @@ void AmyAdapter::executeMessage(const char* message) {
 }
 
 void AmyAdapter::executeFmModIndex(uint8_t synth_id, float mod_index) {
-    amy_event e = amy_default_event();
-    e.synth = (synth_id == 0) ? 1 : synth_id;
-    e.ratio = mod_index;
-    amy_add_event(&e);
+    uint8_t target = (synth_id == 0) ? 1 : synth_id;
+    uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
+    int num_v = instrument_get_num_voices(target, voices);
+    for (int v = 0; v < num_v; ++v) {
+        uint16_t base = voice_to_base_osc[voices[v]];
+        if (AMY_IS_SET(base) && synth[base]->wave == ALGO) {
+            for (uint8_t op = 1; op < MAX_ALGO_OPS; ++op) {
+                uint16_t op_osc = synth[base]->algo_source[op];
+                if (AMY_IS_SET(op_osc)) {
+                    synth[op_osc]->amp_coefs[COEF_CONST] = mod_index;
+                }
+            }
+        } else if (AMY_IS_SET(base) && AMY_IS_SET(synth[base]->mod_source)) {
+            synth[synth[base]->mod_source]->amp_coefs[COEF_CONST] = mod_index;
+        }
+    }
 }
 
 void AmyAdapter::executeFmFeedback(uint8_t synth_id, float feedback) {
-    amy_event e = amy_default_event();
-    e.synth = (synth_id == 0) ? 1 : synth_id;
-    e.feedback = feedback;
-    amy_add_event(&e);
+    uint8_t target = (synth_id == 0) ? 1 : synth_id;
+    uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
+    int num_v = instrument_get_num_voices(target, voices);
+    for (int v = 0; v < num_v; ++v) {
+        uint16_t base = voice_to_base_osc[voices[v]];
+        if (AMY_IS_SET(base)) {
+            synth[base]->feedback = feedback;
+        }
+    }
 }
 
 void AmyAdapter::executeFmRatio(uint8_t synth_id, float ratio) {
-    amy_event e = amy_default_event();
-    e.synth = (synth_id == 0) ? 1 : synth_id;
-    e.ratio = ratio;
-    amy_add_event(&e);
+    if (ratio <= 0.001f) ratio = 0.001f;
+    uint8_t target = (synth_id == 0) ? 1 : synth_id;
+    uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
+    int num_v = instrument_get_num_voices(target, voices);
+    for (int v = 0; v < num_v; ++v) {
+        uint16_t base = voice_to_base_osc[voices[v]];
+        if (AMY_IS_SET(base) && synth[base]->wave == ALGO) {
+            for (uint8_t op = 1; op < MAX_ALGO_OPS; ++op) {
+                uint16_t op_osc = synth[base]->algo_source[op];
+                if (AMY_IS_SET(op_osc)) {
+                    synth[op_osc]->logratio = log2f(ratio);
+                }
+            }
+        } else if (AMY_IS_SET(base) && AMY_IS_SET(synth[base]->mod_source)) {
+            synth[synth[base]->mod_source]->logratio = log2f(ratio);
+        }
+    }
 }
 
 void AmyAdapter::executeFmAlgorithm(uint8_t synth_id, uint8_t algo_id) {
-    amy_event e = amy_default_event();
-    e.synth = (synth_id == 0) ? 1 : synth_id;
-    e.algorithm = algo_id;
-    amy_add_event(&e);
+    if (algo_id > 32) return;
+    uint8_t target = (synth_id == 0) ? 1 : synth_id;
+    uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
+    int num_v = instrument_get_num_voices(target, voices);
+    for (int v = 0; v < num_v; ++v) {
+        uint16_t base = voice_to_base_osc[voices[v]];
+        if (AMY_IS_SET(base)) {
+            synth[base]->algorithm = algo_id;
+        }
+    }
 }
 
 void AmyAdapter::executeChorus(float depth, float rate, float level) {
@@ -475,6 +541,18 @@ void AmyAdapter::executeChorus(float depth, float rate, float level) {
     amy_add_event(&e);
 }
 
+void AmyAdapter::executeChorusMode(uint8_t mode) {
+    switch (mode) {
+        case 0: executeChorus(0.0f, 0.0f, 0.0f); break;
+        case 1: executeChorus(0.5f, 0.5f, 0.7f); break; // Classic
+        case 2: executeChorus(0.8f, 0.6f, 0.85f); break; // Juno
+        case 3: executeChorus(1.2f, 0.9f, 1.0f); break; // Ensemble
+        case 4: executeChorus(1.5f, 0.4f, 0.9f); break; // Wide
+        case 5: executeChorus(0.4f, 4.5f, 0.6f); break; // Vibrato
+        default: break;
+    }
+}
+
 void AmyAdapter::executeReverb(float room_size, float damp, float mix) {
     amy_event e = amy_default_event();
     e.bus = 0; // Target Synth bus 0 only
@@ -484,6 +562,11 @@ void AmyAdapter::executeReverb(float room_size, float damp, float mix) {
     amy_add_event(&e);
 }
 
+void AmyAdapter::executeReverbFreeze(bool freeze) {
+    reverb_freeze_.store(freeze, std::memory_order_relaxed);
+    config_reverb_freeze(0, freeze ? 1 : 0);
+}
+
 void AmyAdapter::executeDelay(float delay_ms, float feedback, float mix) {
     amy_event e = amy_default_event();
     e.bus = 0; // Target Synth bus 0 only
@@ -491,6 +574,91 @@ void AmyAdapter::executeDelay(float delay_ms, float feedback, float mix) {
     e.echo_delay_ms = delay_ms;
     e.echo_feedback = feedback;
     amy_add_event(&e);
+}
+
+void AmyAdapter::executeDrive(float drive) {
+    drive_level_.store(std::clamp(drive, 0.0f, 1.0f), std::memory_order_relaxed);
+}
+
+void AmyAdapter::executeMasterTone(float tone) {
+    tone = std::clamp(tone, -1.0f, 1.0f);
+    master_tone_.store(tone, std::memory_order_relaxed);
+    float eq_l = 1.0f;
+    float eq_h = 1.0f;
+    if (tone >= 0.0f) {
+        eq_l = 1.0f - 0.4f * tone;
+        eq_h = 1.0f + 0.6f * tone;
+    } else {
+        eq_l = 1.0f - 0.6f * tone;
+        eq_h = 1.0f + 0.4f * tone;
+    }
+    amy_event e = amy_default_event();
+    e.bus = 0;
+    e.eq_l = eq_l;
+    e.eq_h = eq_h;
+    amy_add_event(&e);
+}
+
+void AmyAdapter::executeOscDetune(uint8_t synth_id, float cents) {
+    uint8_t target = (synth_id == 0) ? 1 : synth_id;
+    uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
+    int num_v = instrument_get_num_voices(target, voices);
+    int oscs_per_v = instrument_get_oscs_per_voice(target);
+    if (oscs_per_v >= 2) {
+        for (int v = 0; v < num_v; ++v) {
+            uint16_t base = voice_to_base_osc[voices[v]];
+            if (AMY_IS_SET(base)) {
+                synth[base + 1]->logfreq_coefs[COEF_CONST] = cents / 1200.0f;
+            }
+        }
+    }
+}
+
+void AmyAdapter::executeSubOscLevel(uint8_t synth_id, float level) {
+    uint8_t target = (synth_id == 0) ? 1 : synth_id;
+    uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
+    int num_v = instrument_get_num_voices(target, voices);
+    int oscs_per_v = instrument_get_oscs_per_voice(target);
+    if (oscs_per_v >= 3) {
+        for (int v = 0; v < num_v; ++v) {
+            uint16_t base = voice_to_base_osc[voices[v]];
+            if (AMY_IS_SET(base)) {
+                synth[base + 2]->amp_coefs[COEF_CONST] = level;
+            }
+        }
+    }
+}
+
+void AmyAdapter::executeNoiseLevel(uint8_t synth_id, float level) {
+    uint8_t target = (synth_id == 0) ? 1 : synth_id;
+    uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
+    int num_v = instrument_get_num_voices(target, voices);
+    int oscs_per_v = instrument_get_oscs_per_voice(target);
+    if (oscs_per_v >= 4) {
+        for (int v = 0; v < num_v; ++v) {
+            uint16_t base = voice_to_base_osc[voices[v]];
+            if (AMY_IS_SET(base)) {
+                synth[base + 3]->amp_coefs[COEF_CONST] = level;
+            }
+        }
+    }
+}
+
+void AmyAdapter::executeOscMix(uint8_t synth_id, float mix) {
+    mix = std::clamp(mix, 0.0f, 1.0f);
+    uint8_t target = (synth_id == 0) ? 1 : synth_id;
+    uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
+    int num_v = instrument_get_num_voices(target, voices);
+    int oscs_per_v = instrument_get_oscs_per_voice(target);
+    if (oscs_per_v >= 2) {
+        for (int v = 0; v < num_v; ++v) {
+            uint16_t base = voice_to_base_osc[voices[v]];
+            if (AMY_IS_SET(base)) {
+                synth[base]->amp_coefs[COEF_CONST] = 1.0f - mix;
+                synth[base + 1]->amp_coefs[COEF_CONST] = mix;
+            }
+        }
+    }
 }
 
 void AmyAdapter::setSendLevels(uint8_t synth_id, float reverb_send, float chorus_send, float echo_send) {

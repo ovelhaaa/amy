@@ -27,12 +27,21 @@ idf_component_register(SRCS
     REQUIRES esp_timer esp_psram esp_driver_uart
 )
 
+if(CONFIG_SMKS3_AMY_BLOCK_SIZE_128)
+    set(SMKS3_BLOCK_SIZE 128)
+    set(SMKS3_BLOCK_BITS 7)
+else()
+    set(SMKS3_BLOCK_SIZE 256)
+    set(SMKS3_BLOCK_BITS 8)
+endif()
+
 target_compile_definitions(${COMPONENT_LIB} PUBLIC
-    BLOCK_SIZE_BITS=8
-    AMY_BLOCK_SIZE=256
+    BLOCK_SIZE_BITS=${SMKS3_BLOCK_BITS}
+    AMY_BLOCK_SIZE=${SMKS3_BLOCK_SIZE}
     AMY_SAMPLE_RATE=48000
     AMY_DELTA_POOL_PSRAM_FALLBACK=1
     ESP_PLATFORM=1
+    AMY_WAVETABLE=1
 )
 
 target_compile_options(${COMPONENT_LIB} PRIVATE

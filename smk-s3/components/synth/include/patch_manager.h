@@ -60,6 +60,10 @@ private:
     KnobBank       active_bank_    = KnobBank::BankA_Macros;
     SoftTakeover   soft_takeover_;
     std::array<uint8_t, 4> bank_b_fx_values_{0, 0, 40, 15}; // Chorus, Delay, Reverb, Drive
+    float          active_filter_env_amt_   = 0.0f;
+    float          active_filter_key_track_ = 0.0f;
+    float          active_filter_vel_track_ = 1.5f;
+    uint8_t        active_filter_type_      = 0;
 };
 
 } // namespace smk

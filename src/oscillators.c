@@ -824,7 +824,7 @@ void partial_note_off(uint16_t osc) {
 }
 
 
-#define MAX_KS_BUFFER_LEN 802 // 44100/55  -- 55Hz (A1) lowest we can go for KS
+#define MAX_KS_BUFFER_LEN ((AMY_SAMPLE_RATE / 55) + 2) // 55Hz (A1) lowest note for KS
 SAMPLE ** ks_buffer;
 uint8_t ks_polyphony_index;
 

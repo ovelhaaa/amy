@@ -219,7 +219,7 @@ void ParameterScreen::render(DisplayDriver& display) {
         snprintf(val_buf, sizeof(val_buf), "%.1f %s", current_val_, unit_str_);
         FontRenderer::drawString(display, mx + 8, my + 18, val_buf, DisplayDriver::kColorCyan, DisplayDriver::kColorBlack, FontType::Font8x12);
 
-        char saved_buf[32];
+        char saved_buf[96];
         snprintf(saved_buf, sizeof(saved_buf), "(SAVED: %.1f %s)  %s", saved_val_, unit_str_, guide_hint);
         FontRenderer::drawString(display, mx + 90, my + 21, saved_buf, DisplayDriver::kColorLightGray, DisplayDriver::kColorBlack, FontType::Font3x5);
 

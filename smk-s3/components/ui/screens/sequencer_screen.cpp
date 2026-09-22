@@ -205,6 +205,7 @@ void SequencerScreen::render(DisplayDriver& display) {
         // Header
         const char* state_str = is_recording_ ? "[REC]" : (is_playing_ ? "[PLAY]" : "[STOP]");
         uint16_t state_col = is_recording_ ? DisplayDriver::kColorRed : (is_playing_ ? DisplayDriver::kColorGreen : DisplayDriver::kColorLightGray);
+        (void)state_col;
 
         char header_buf[48];
         if (chain_enabled_ && chain_length_ > 0) {

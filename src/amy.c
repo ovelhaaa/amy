@@ -420,6 +420,12 @@ void config_reverb(uint8_t bus, float level, float liveness, float damping, floa
     amy_global.bus[bus]->reverb.xover_hz = xover_hz;
 }
 
+void config_reverb_freeze(uint8_t bus, uint8_t freeze) {
+    if (amy_global.bus[bus] && amy_global.bus[bus]->reverb.rev) {
+        amy_global.bus[bus]->reverb.rev->freeze = freeze;
+    }
+}
+
 
 int8_t check_init(amy_err_t (*fn)(), const char *name) {
     //fprintf(stderr,"starting %s: ", name);

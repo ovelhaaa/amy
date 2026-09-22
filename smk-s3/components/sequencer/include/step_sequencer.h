@@ -107,6 +107,15 @@ public:
     void toggleTrackSolo(uint8_t track_idx);
     bool isAnyTrackSolo() const;
 
+    // Pattern Length (1..16)
+    void setPatternLength(uint8_t length) { pattern_length_ = std::clamp(length, (uint8_t)1, (uint8_t)kMaxSteps); }
+    uint8_t patternLength() const { return pattern_length_; }
+
+    // Pattern Mutation & Generative Evolver
+    void mutatePattern(uint8_t track_idx, uint8_t probability_pct);
+    void undoMutation(uint8_t track_idx);
+    bool hasMutationUndo(uint8_t track_idx) const { return track_idx < kMaxTracks && has_mutation_backup_[track_idx]; }
+
     // Track metadata
     const char* trackName(uint8_t track_idx) const;
     uint8_t trackNote(uint8_t track_idx) const;
@@ -127,6 +136,7 @@ private:
     uint8_t                                                                            current_pattern_ = 0;
     uint8_t                                                                            selected_track_ = 0;
     uint8_t                                                                            step_page_ = 0; // 0=Steps 1..8, 1=Steps 9..16
+    uint8_t                                                                            pattern_length_ = kMaxSteps;
     float                                                                              swing_percent_ = 0.0f;
 
     PatternChain                                                                       chain_;
@@ -136,6 +146,9 @@ private:
     std::array<char[8], kMaxTracks>                                                    track_names_{"BD", "SD", "CH", "OH"};
     std::array<uint8_t, kMaxTracks>                                                    track_notes_{36, 38, 42, 46};
     std::array<uint8_t, kMaxTracks>                                                    track_channels_{9, 9, 9, 9};
+
+    std::array<std::array<StepData, kMaxSteps>, kMaxTracks>                            mutation_backup_{};
+    std::array<bool, kMaxTracks>                                                       has_mutation_backup_{false, false, false, false};
 
     std::array<int16_t, kMaxTracks>                                                    last_played_notes_;
     std::array<uint32_t, kMaxTracks>                                                   note_off_ticks_;

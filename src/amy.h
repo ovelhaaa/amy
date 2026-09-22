@@ -513,13 +513,40 @@ static inline int isnan_c11(float test)
 
 #define AMY_UNSET(var) var = AMY_UNSET_VALUE(var)
 
+#ifdef __cplusplus
+#include <cmath>
+#include <type_traits>
+extern "C++" {
+template<typename T>
+inline bool amy_is_unset_val(T v) {
+    if constexpr (std::is_floating_point<T>::value) {
+        return std::isnan(v);
+    } else if constexpr (std::is_same<T, uint32_t>::value) {
+        return v == UINT32_MAX;
+    } else if constexpr (std::is_same<T, int32_t>::value) {
+        return v == INT32_MIN;
+    } else if constexpr (std::is_same<T, uint16_t>::value) {
+        return v == UINT16_MAX;
+    } else if constexpr (std::is_same<T, int16_t>::value) {
+        return v == SHRT_MAX;
+    } else if constexpr (std::is_same<T, uint8_t>::value) {
+        return v == UINT8_MAX;
+    } else if constexpr (std::is_same<T, int8_t>::value) {
+        return v == SCHAR_MAX;
+    }
+    return false;
+}
+}
+#define AMY_IS_UNSET(var) amy_is_unset_val(var)
+#define AMY_IS_SET(var) (!amy_is_unset_val(var))
+#else
 #define AMY_IS_UNSET(var) _Generic((var), \
     float: isnan_c11(var), \
     default: var==AMY_UNSET_VALUE(var) \
 )
-//    char*: *(uint8_t *)var == 0,
 
 #define AMY_IS_SET(var) !AMY_IS_UNSET(var)
+#endif
 
 // Helpers to identify if param is in a range.
 #define PARAM_IS_COMBO_COEF(param, base)   ((param) >= (base) && (param) < (base) + NUM_COMBO_COEFS)
@@ -828,6 +855,7 @@ typedef struct reverb_params {
     SAMPLE lpfgain;
     SAMPLE liveness;
     float lfo_phase;
+    uint8_t freeze;
 } reverb_params_t;
 
 typedef struct reverb_state {
@@ -964,6 +992,7 @@ void * malloc_caps(uint32_t size, uint32_t flags);
 void * malloc_caps_block(uint32_t size, uint32_t flags);
 void amy_oom(const char *fmt, ...);
 void config_reverb(uint8_t bus, float level, float liveness, float damping, float xover_hz);
+void config_reverb_freeze(uint8_t bus, uint8_t freeze);
 void config_chorus(uint8_t bus, float level, uint16_t max_delay, float lfo_freq, float depth);
 void config_echo(uint8_t bus, float level, float delay_ms, float max_delay_ms, float feedback, float filter_coef);
 void osc_note_on(uint16_t osc, float initial_freq);
@@ -1171,6 +1200,7 @@ extern bool event_addresses_oscs(amy_event *e);
 // uint16_t, like every other voice index: a uint8_t here silently truncated
 // voice numbers once max_voices went over 255.
 extern uint16_t *osc_to_voice;
+extern uint16_t *voice_to_base_osc;
 
 extern struct delta **queue_for_patch_number(int patch_number);
 extern void update_num_oscs_for_patch_number(int patch_number);

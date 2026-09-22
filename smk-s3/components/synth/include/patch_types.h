@@ -39,16 +39,16 @@ struct MacroConfig {
 };
 
 constexpr uint32_t kPatchMagic = 0x534D4B31; // "SMK1"
-constexpr uint16_t kPatchFormatVersion = 3;
+constexpr uint16_t kPatchFormatVersion = 4;
 
 struct PatchHeader {
     uint32_t magic;          // 0x534D4B31
-    uint16_t format_version; // Version 3
+    uint16_t format_version; // Version 4
     uint16_t data_size;      // Payload data size
     uint32_t crc32;          // Checksum of patch data
 };
 
-struct SynthPatch {
+struct SynthPatchV3 {
     uint8_t     id;
     char        name[24];
     char        category[16];
@@ -70,7 +70,44 @@ struct SynthPatch {
     uint32_t    crc32;
 };
 
-// Helper function to calculate CRC32 checksum for a SynthPatch structure
+struct SynthPatch {
+    uint8_t     id;
+    char        name[24];
+    char        category[16];
+    char        author[16];
+    uint16_t    engine_patch; // AMY preset or patch ID (0..127 Juno, 128..255 DX7, 256+ PCM)
+    int8_t      transpose;    // Transpose in semitones (-24..+24)
+    uint8_t     voice_count;  // Max polyphony voices (e.g. 8)
+    uint8_t     wave_type;    // 0=SINE, 1=SAW_DOWN, 2=SAW_UP, 3=TRIANGLE, 4=SQUARE, 5=NOISE, 6=KS, 7=PCM, 8=ALGO
+    uint8_t     mono_mode;    // 0=Polyphonic, 1=Monophonic Legato
+    uint16_t    portamento_ms;// Portamento glide time in milliseconds
+    float       base_freq;
+    float       filter_cutoff;
+    float       filter_res;
+    float       amp_attack;
+    float       amp_decay;
+    float       amp_sustain;
+    float       amp_release;
+    MacroConfig macros[8];
+    // v4 fields:
+    float       filter_env_amount;   // Envelope amount to filter cutoff (-4.0 to +4.0)
+    float       filter_key_tracking; // Filter keyboard tracking (0.0 to 2.0)
+    float       filter_vel_tracking; // Filter velocity tracking (0.0 to 2.0)
+    uint8_t     filter_type;         // 0=LPF24, 1=BPF, 2=HPF, 3=LPF12
+    float       osc_mix;             // Sub/main osc mix (0.0 to 1.0)
+    float       osc_detune;          // Detune in cents (-100.0 to +100.0)
+    float       sub_level;           // Sub-oscillator level (0.0 to 1.0)
+    float       noise_level;         // Noise level (0.0 to 1.0)
+    float       drive_level;         // Saturation / drive level (0.0 to 3.0)
+    float       master_tone;         // Tilt EQ tone (-1.0 to +1.0)
+    uint8_t     chorus_mode;         // 0=Classic, 1=Juno, 2=Ensemble, 3=Wide, 4=Vibrato
+    uint8_t     reverb_freeze;       // 0=Normal, 1=Frozen reverb tank
+    uint8_t     reserved[6];         // Reserved padding
+    uint32_t    crc32;
+};
+
+// Helper functions to calculate CRC32 checksums
 uint32_t calculatePatchCrc32(const SynthPatch& patch);
+uint32_t calculatePatchV3Crc32(const SynthPatchV3& patch);
 
 } // namespace smk

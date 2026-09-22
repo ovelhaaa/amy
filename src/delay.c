@@ -235,42 +235,55 @@ void config_stereo_reverb(reverb_params_t *rev, float a_liveness, float crossove
     rev->lpfgain = F2S(1.f - damping);
 }
 
-// Delay 1 is 58.6435 ms
-#define DELAY1SAMPS 2586
-// Delay 2 is 69.4325 ms
-#define DELAY2SAMPS 3062
-// Delay 3 is 74.5234 ms
-#define DELAY3SAMPS 3286
-// Delay 4 is 86.1244 ms
-#define DELAY4SAMPS 3798
+static inline uint32_t enclosing_pow2(uint32_t val) {
+    uint32_t p = 1;
+    while (p <= val) p <<= 1;
+    return p;
+}
 
-// Power of 2 that encloses all the delays.
-#define DELAY_POW2 4096
+#define MS_TO_SAMPS(ms) ((int)roundf((ms) * ((float)AMY_SAMPLE_RATE / 1000.0f)))
 
-// Early reflections delays
-#define REF1SAMPS 3319  // 75.2546 ms
-#define REF2SAMPS 1920  // 43.5337 ms
-#define REF3SAMPS 1138  // 25.796 ms
-#define REF4SAMPS 855   // 19.392 ms
-#define REF5SAMPS 722   // 16.364 ms
-#define REF6SAMPS 602   // 13.645 ms
+// Reverb delay times in milliseconds (derived from original 44.1kHz Stautner-Puckette design)
+#define DELAY1_MS 58.6435f
+#define DELAY2_MS 69.4325f
+#define DELAY3_MS 74.5234f
+#define DELAY4_MS 86.1244f
 
+// Early reflections delays in milliseconds
+#define REF1_MS 75.2546f
+#define REF2_MS 43.5337f
+#define REF3_MS 25.7960f
+#define REF4_MS 19.3920f
+#define REF5_MS 16.3640f
+#define REF6_MS 13.6450f
 
 bool init_stereo_reverb(reverb_params_t *rev) {
     if (rev->delay_1 != NULL)
         return true;  // already initialised
 
-    rev->delay_1 = new_delay_line(DELAY_POW2, DELAY1SAMPS, amy_global.config.ram_caps_delay);
-    rev->delay_2 = new_delay_line(DELAY_POW2, DELAY2SAMPS, amy_global.config.ram_caps_delay);
-    rev->delay_3 = new_delay_line(DELAY_POW2, DELAY3SAMPS, amy_global.config.ram_caps_delay);
-    rev->delay_4 = new_delay_line(DELAY_POW2, DELAY4SAMPS, amy_global.config.ram_caps_delay);
+    int d1_s = MS_TO_SAMPS(DELAY1_MS);
+    int d2_s = MS_TO_SAMPS(DELAY2_MS);
+    int d3_s = MS_TO_SAMPS(DELAY3_MS);
+    int d4_s = MS_TO_SAMPS(DELAY4_MS);
 
-    rev->ref_1 = new_delay_line(4096, REF1SAMPS, amy_global.config.ram_caps_delay);
-    rev->ref_2 = new_delay_line(2048, REF2SAMPS, amy_global.config.ram_caps_delay);
-    rev->ref_3 = new_delay_line(2048, REF3SAMPS, amy_global.config.ram_caps_delay);
-    rev->ref_4 = new_delay_line(1024, REF4SAMPS, amy_global.config.ram_caps_delay);
-    rev->ref_5 = new_delay_line(1024, REF5SAMPS, amy_global.config.ram_caps_delay);
-    rev->ref_6 = new_delay_line(1024, REF6SAMPS, amy_global.config.ram_caps_delay);
+    int r1_s = MS_TO_SAMPS(REF1_MS);
+    int r2_s = MS_TO_SAMPS(REF2_MS);
+    int r3_s = MS_TO_SAMPS(REF3_MS);
+    int r4_s = MS_TO_SAMPS(REF4_MS);
+    int r5_s = MS_TO_SAMPS(REF5_MS);
+    int r6_s = MS_TO_SAMPS(REF6_MS);
+
+    rev->delay_1 = new_delay_line(enclosing_pow2(d1_s), d1_s, amy_global.config.ram_caps_delay);
+    rev->delay_2 = new_delay_line(enclosing_pow2(d2_s), d2_s, amy_global.config.ram_caps_delay);
+    rev->delay_3 = new_delay_line(enclosing_pow2(d3_s), d3_s, amy_global.config.ram_caps_delay);
+    rev->delay_4 = new_delay_line(enclosing_pow2(d4_s), d4_s, amy_global.config.ram_caps_delay);
+
+    rev->ref_1 = new_delay_line(enclosing_pow2(r1_s), r1_s, amy_global.config.ram_caps_delay);
+    rev->ref_2 = new_delay_line(enclosing_pow2(r2_s), r2_s, amy_global.config.ram_caps_delay);
+    rev->ref_3 = new_delay_line(enclosing_pow2(r3_s), r3_s, amy_global.config.ram_caps_delay);
+    rev->ref_4 = new_delay_line(enclosing_pow2(r4_s), r4_s, amy_global.config.ram_caps_delay);
+    rev->ref_5 = new_delay_line(enclosing_pow2(r5_s), r5_s, amy_global.config.ram_caps_delay);
+    rev->ref_6 = new_delay_line(enclosing_pow2(r6_s), r6_s, amy_global.config.ram_caps_delay);
 
     if (rev->delay_1 == NULL || rev->delay_2 == NULL || rev->delay_3 == NULL || rev->delay_4 == NULL ||
         rev->ref_1 == NULL || rev->ref_2 == NULL || rev->ref_3 == NULL ||
@@ -350,6 +363,11 @@ AMY_IRAM_ATTR void stereo_reverb(reverb_params_t *rev, SAMPLE *r_in, SAMPLE *l_i
     SAMPLE f3state = rev->f3state, f4state = rev->f4state;
     float lfo_phase = rev->lfo_phase;
     float lfo_step = (2.0f * (float)M_PI * 0.75f) / (float)AMY_SAMPLE_RATE;
+    uint8_t freeze = rev->freeze;
+    if (freeze) {
+        liveness = F2S(1.0f);
+        lpfgain = F2S(1.0f);
+    }
 
     while(n_samples--) {
         // Early echo reflections.
@@ -358,8 +376,13 @@ AMY_IRAM_ATTR void stereo_reverb(reverb_params_t *rev, SAMPLE *r_in, SAMPLE *l_i
         if (l_in)   in_l = *l_in++;
         else   in_l = in_r;
         SAMPLE r_acc, l_acc;
-        r_acc = MUL0_SS(F2S(0.0625f), in_r);
-        l_acc = MUL0_SS(F2S(0.0625f), in_l);
+        if (freeze) {
+            r_acc = 0;
+            l_acc = 0;
+        } else {
+            r_acc = MUL0_SS(F2S(0.0625f), in_r);
+            l_acc = MUL0_SS(F2S(0.0625f), in_l);
+        }
 
         DL_WRITE(e1, l_acc);
         SAMPLE d_out = DL_READ(e1);

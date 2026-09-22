@@ -143,7 +143,61 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
     size_t hdr_read = fread(&header, 1, sizeof(PatchHeader), f);
 
     if (hdr_read == sizeof(PatchHeader) && header.magic == kPatchMagic) {
-        if (header.format_version != kPatchFormatVersion) {
+        if (header.format_version == 3) {
+            SynthPatchV3 v3_patch = {};
+            size_t read_bytes = fread(&v3_patch, 1, sizeof(SynthPatchV3), f);
+            fclose(f);
+
+            if (read_bytes != sizeof(SynthPatchV3)) {
+                ESP_LOGE(TAG, "Corrupted v3 patch payload on slot #%d (bytes read %zu != %zu)", 
+                         slot_id, read_bytes, sizeof(SynthPatchV3));
+                return false;
+            }
+
+            uint32_t computed_crc = calculatePatchV3Crc32(v3_patch);
+            if (computed_crc != header.crc32 || computed_crc != v3_patch.crc32) {
+                ESP_LOGE(TAG, "v3 Patch CRC32 mismatch on slot #%d! Computed 0x%08X != Header 0x%08X",
+                         slot_id, computed_crc, header.crc32);
+                return false;
+            }
+
+            patch_out = {};
+            patch_out.id = v3_patch.id;
+            memcpy(patch_out.name, v3_patch.name, sizeof(patch_out.name));
+            memcpy(patch_out.category, v3_patch.category, sizeof(patch_out.category));
+            memcpy(patch_out.author, v3_patch.author, sizeof(patch_out.author));
+            patch_out.engine_patch = v3_patch.engine_patch;
+            patch_out.transpose = v3_patch.transpose;
+            patch_out.voice_count = v3_patch.voice_count;
+            patch_out.wave_type = v3_patch.wave_type;
+            patch_out.mono_mode = v3_patch.mono_mode;
+            patch_out.portamento_ms = v3_patch.portamento_ms;
+            patch_out.base_freq = v3_patch.base_freq;
+            patch_out.filter_cutoff = v3_patch.filter_cutoff;
+            patch_out.filter_res = v3_patch.filter_res;
+            patch_out.amp_attack = v3_patch.amp_attack;
+            patch_out.amp_decay = v3_patch.amp_decay;
+            patch_out.amp_sustain = v3_patch.amp_sustain;
+            patch_out.amp_release = v3_patch.amp_release;
+            memcpy(patch_out.macros, v3_patch.macros, sizeof(patch_out.macros));
+
+            patch_out.filter_env_amount = 0.0f;
+            patch_out.filter_key_tracking = 0.0f;
+            patch_out.filter_vel_tracking = 1.5f;
+            patch_out.filter_type = 0;
+            patch_out.osc_mix = 0.5f;
+            patch_out.osc_detune = 0.0f;
+            patch_out.sub_level = 0.0f;
+            patch_out.noise_level = 0.0f;
+            patch_out.drive_level = 0.0f;
+            patch_out.master_tone = 0.0f;
+            patch_out.chorus_mode = 0;
+            patch_out.reverb_freeze = 0;
+            patch_out.crc32 = calculatePatchCrc32(patch_out);
+
+            ESP_LOGI(TAG, "Loaded and migrated v3 Patch Slot #%d [%s] to v4", slot_id, patch_out.name);
+            return true;
+        } else if (header.format_version != kPatchFormatVersion) {
             ESP_LOGE(TAG, "Incompatible patch format version: %u on slot #%d", header.format_version, slot_id);
             fclose(f);
             return false;
@@ -173,17 +227,57 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
 
     // Legacy binary fallback read without header
     fseek(f, 0, SEEK_SET);
-    SynthPatch legacy_patch = {};
-    size_t legacy_read = fread(&legacy_patch, 1, sizeof(SynthPatch), f);
-    fclose(f);
-
-    if (legacy_read == sizeof(SynthPatch)) {
-        uint32_t computed_crc = calculatePatchCrc32(legacy_patch);
-        if (computed_crc == legacy_patch.crc32) {
-            patch_out = legacy_patch;
-            ESP_LOGI(TAG, "Loaded legacy Patch Slot #%d [%s] from Flash", slot_id, patch_out.name);
+    SynthPatch direct_patch = {};
+    size_t direct_read = fread(&direct_patch, 1, sizeof(SynthPatch), f);
+    if (direct_read == sizeof(SynthPatch)) {
+        uint32_t computed_crc = calculatePatchCrc32(direct_patch);
+        if (computed_crc == direct_patch.crc32) {
+            fclose(f);
+            patch_out = direct_patch;
+            ESP_LOGI(TAG, "Loaded unheadered Patch Slot #%d [%s] from Flash", slot_id, patch_out.name);
             return true;
         }
+    }
+
+    fseek(f, 0, SEEK_SET);
+    SynthPatchV3 legacy_v3 = {};
+    size_t v3_read = fread(&legacy_v3, 1, sizeof(SynthPatchV3), f);
+    fclose(f);
+    if (v3_read == sizeof(SynthPatchV3) && calculatePatchV3Crc32(legacy_v3) == legacy_v3.crc32) {
+        patch_out = {};
+        patch_out.id = legacy_v3.id;
+        memcpy(patch_out.name, legacy_v3.name, sizeof(patch_out.name));
+        memcpy(patch_out.category, legacy_v3.category, sizeof(patch_out.category));
+        memcpy(patch_out.author, legacy_v3.author, sizeof(patch_out.author));
+        patch_out.engine_patch = legacy_v3.engine_patch;
+        patch_out.transpose = legacy_v3.transpose;
+        patch_out.voice_count = legacy_v3.voice_count;
+        patch_out.wave_type = legacy_v3.wave_type;
+        patch_out.mono_mode = legacy_v3.mono_mode;
+        patch_out.portamento_ms = legacy_v3.portamento_ms;
+        patch_out.base_freq = legacy_v3.base_freq;
+        patch_out.filter_cutoff = legacy_v3.filter_cutoff;
+        patch_out.filter_res = legacy_v3.filter_res;
+        patch_out.amp_attack = legacy_v3.amp_attack;
+        patch_out.amp_decay = legacy_v3.amp_decay;
+        patch_out.amp_sustain = legacy_v3.amp_sustain;
+        patch_out.amp_release = legacy_v3.amp_release;
+        memcpy(patch_out.macros, legacy_v3.macros, sizeof(patch_out.macros));
+        patch_out.filter_env_amount = 0.0f;
+        patch_out.filter_key_tracking = 0.0f;
+        patch_out.filter_vel_tracking = 1.5f;
+        patch_out.filter_type = 0;
+        patch_out.osc_mix = 0.5f;
+        patch_out.osc_detune = 0.0f;
+        patch_out.sub_level = 0.0f;
+        patch_out.noise_level = 0.0f;
+        patch_out.drive_level = 0.0f;
+        patch_out.master_tone = 0.0f;
+        patch_out.chorus_mode = 0;
+        patch_out.reverb_freeze = 0;
+        patch_out.crc32 = calculatePatchCrc32(patch_out);
+        ESP_LOGI(TAG, "Loaded legacy v3 unheadered Patch Slot #%d [%s] from Flash", slot_id, patch_out.name);
+        return true;
     }
 
     ESP_LOGE(TAG, "Failed to load patch slot #%d: Invalid format or header", slot_id);

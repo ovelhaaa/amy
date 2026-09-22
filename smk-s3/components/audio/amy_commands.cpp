@@ -18,7 +18,8 @@ namespace {
 enum CommandType : uint8_t {
     NoteOn, NoteOff, Bend, CC, AllOff, Panic, Filter, Wave, Envelope,
     Portamento, Preset, Message, FmIndex, FmFeedback, FmRatio, FmAlgorithm,
-    Chorus, Reverb, Delay, Mono
+    Chorus, Reverb, Delay, Mono, Drive, MasterTone, ReverbFreeze, ChorusMode,
+    OscDetune, SubOsc, Noise, OscMix
 };
 struct Command {
     uint8_t type;
@@ -26,7 +27,7 @@ struct Command {
     uint16_t id;
     uint32_t generation;
     uint32_t timestamp_us;
-    union { float values[4]; char message[config::kSynthMessageBytes]; } data;
+    union { float values[8]; char message[config::kSynthMessageBytes]; } data;
 };
 bool release(const Command& c) {
     return c.type == NoteOff || c.type == AllOff ||
@@ -35,6 +36,30 @@ bool release(const Command& c) {
 }
 bool musical(const Command& c) {
     return c.type <= AllOff || c.type == Message;
+}
+bool is_continuous(uint8_t type) {
+    switch (type) {
+        case Bend:
+        case CC:
+        case Filter:
+        case FmIndex:
+        case FmFeedback:
+        case FmRatio:
+        case Chorus:
+        case Reverb:
+        case Delay:
+        case Drive:
+        case MasterTone:
+        case ReverbFreeze:
+        case ChorusMode:
+        case OscDetune:
+        case SubOsc:
+        case Noise:
+        case OscMix:
+            return true;
+        default:
+            return false;
+    }
 }
 constexpr size_t kSamples = config::kBlockSize * 2;
 static_assert(config::kSynthReleaseReserve < config::kSynthCommandCapacity);
@@ -69,6 +94,22 @@ struct AmyAdapter::State {
             panic_timestamp_us = c.timestamp_us;
             requested_generation.fetch_add(1, std::memory_order_release);
         } else {
+            // Check for coalescing continuous parameter updates already pending in the queue
+            if (is_continuous(c.type) && count > 0) {
+                for (size_t i = 0; i < count; ++i) {
+                    size_t idx = (head + count - 1 - i) % config::kSynthCommandCapacity;
+                    if (commands[idx].type == c.type &&
+                        commands[idx].channel == c.channel &&
+                        commands[idx].id == c.id) {
+                        commands[idx].data = c.data;
+                        commands[idx].timestamp_us = c.timestamp_us;
+                        portEXIT_CRITICAL(&mux);
+                        xSemaphoreGive(wake);
+                        return;
+                    }
+                }
+            }
+
             const size_t limit = release(c) ? config::kSynthCommandCapacity :
                                  config::kSynthCommandCapacity - config::kSynthReleaseReserve;
             if (count >= limit) {
@@ -174,12 +215,16 @@ void AmyAdapter::workerRoutine(void* arg) {
     vTaskDelete(nullptr);
 }
 
-void AmyAdapter::submit(uint8_t type, uint8_t channel, uint16_t id, float a, float b, float c, float d) {
+void AmyAdapter::submit(uint8_t type, uint8_t channel, uint16_t id,
+                        float a, float b, float c, float d,
+                        float e, float f, float g) {
     if (!state_ || !state_->wake) return;
     Command command{};
     command.type = type; command.channel = channel; command.id = id;
     command.data.values[0] = a; command.data.values[1] = b;
     command.data.values[2] = c; command.data.values[3] = d;
+    command.data.values[4] = e; command.data.values[5] = f;
+    command.data.values[6] = g;
     state_->enqueue(command);
 }
 
@@ -189,18 +234,30 @@ void AmyAdapter::pitchBend(uint8_t ch, int16_t bend) { submit(Bend, ch, 0, bend)
 void AmyAdapter::controlChange(uint8_t ch, uint8_t cc, uint8_t value) { submit(CC, ch, cc, value); }
 void AmyAdapter::allNotesOff() { submit(AllOff, 0, 0); }
 void AmyAdapter::panic() { submit(Panic, 0, 0); }
-void AmyAdapter::setFilter(uint8_t id, float cutoff, float res) { submit(Filter, id, 0, cutoff, res); }
+void AmyAdapter::setFilter(uint8_t id, float cutoff, float res,
+                           float env_amount, float key_tracking,
+                           float vel_tracking, uint8_t filter_type) {
+    submit(Filter, id, 0, cutoff, res, env_amount, key_tracking, vel_tracking, (float)filter_type);
+}
 void AmyAdapter::setOscillatorWaveform(uint8_t id, uint8_t wave) { submit(Wave, id, wave); }
 void AmyAdapter::setEnvelope(uint8_t id, float a, float d, float s, float r) { submit(Envelope, id, 0, a, d, s, r); }
 void AmyAdapter::setPortamento(uint8_t id, uint16_t ms) { submit(Portamento, id, ms); }
 void AmyAdapter::loadPreset(uint8_t id, uint16_t preset, uint8_t voices) { submit(Preset, id, preset, voices); }
+void AmyAdapter::setOscDetune(uint8_t synth_id, float cents) { submit(OscDetune, synth_id, 0, cents); }
+void AmyAdapter::setSubOscLevel(uint8_t synth_id, float level) { submit(SubOsc, synth_id, 0, level); }
+void AmyAdapter::setNoiseLevel(uint8_t synth_id, float level) { submit(Noise, synth_id, 0, level); }
+void AmyAdapter::setOscMix(uint8_t synth_id, float mix) { submit(OscMix, synth_id, 0, mix); }
 void AmyAdapter::setFmModIndex(uint8_t id, float value) { submit(FmIndex, id, 0, value); }
 void AmyAdapter::setFmFeedback(uint8_t id, float value) { submit(FmFeedback, id, 0, value); }
 void AmyAdapter::setFmRatio(uint8_t id, float value) { submit(FmRatio, id, 0, value); }
 void AmyAdapter::setFmAlgorithm(uint8_t id, uint8_t value) { submit(FmAlgorithm, id, value); }
 void AmyAdapter::setChorus(float depth, float rate, float level) { submit(Chorus, 0, 0, depth, rate, level); }
+void AmyAdapter::setChorusMode(uint8_t mode) { submit(ChorusMode, 0, mode); }
 void AmyAdapter::setReverb(float room, float damp, float mix) { submit(Reverb, 0, 0, room, damp, mix); }
+void AmyAdapter::setReverbFreeze(bool freeze) { submit(ReverbFreeze, 0, 0, freeze ? 1.0f : 0.0f); }
 void AmyAdapter::setDelay(float ms, float feedback, float mix) { submit(Delay, 0, 0, ms, feedback, mix); }
+void AmyAdapter::setDrive(float drive) { submit(Drive, 0, 0, drive); }
+void AmyAdapter::setMasterTone(float tone) { submit(MasterTone, 0, 0, tone); }
 void AmyAdapter::setMonoMode(bool enable) { submit(Mono, 0, 0, enable ? 1 : 0); }
 
 void AmyAdapter::sendAmyMessage(const char* message) {
@@ -244,7 +301,7 @@ bool AmyAdapter::serviceBlock() {
             case AllOff: executeAllNotesOff(); break;
             case Panic: executePanic(); s.applied_generation = c.generation;
                         diag.synth_panics.fetch_add(1, std::memory_order_relaxed); break;
-            case Filter: executeFilter(c.channel, v[0], v[1]); break;
+            case Filter: executeFilter(c.channel, v[0], v[1], v[2], v[3], v[4], static_cast<uint8_t>(v[5])); break;
             case Wave: executeWaveform(c.channel, static_cast<uint8_t>(c.id)); break;
             case Envelope: executeEnvelope(c.channel, v[0], v[1], v[2], v[3]); break;
             case Portamento: executePortamento(c.channel, c.id); break;
@@ -255,8 +312,16 @@ bool AmyAdapter::serviceBlock() {
             case FmRatio: executeFmRatio(c.channel, v[0]); break;
             case FmAlgorithm: executeFmAlgorithm(c.channel, static_cast<uint8_t>(c.id)); break;
             case Chorus: executeChorus(v[0], v[1], v[2]); break;
+            case ChorusMode: executeChorusMode(static_cast<uint8_t>(c.id)); break;
             case Reverb: executeReverb(v[0], v[1], v[2]); break;
+            case ReverbFreeze: executeReverbFreeze(v[0] > 0.5f); break;
             case Delay: executeDelay(v[0], v[1], v[2]); break;
+            case Drive: executeDrive(v[0]); break;
+            case MasterTone: executeMasterTone(v[0]); break;
+            case OscDetune: executeOscDetune(c.channel, v[0]); break;
+            case SubOsc: executeSubOscLevel(c.channel, v[0]); break;
+            case Noise: executeNoiseLevel(c.channel, v[0]); break;
+            case OscMix: executeOscMix(c.channel, v[0]); break;
             case Mono: mono_mode_ = v[0] != 0; mono_stack_size_ = 0; break;
         }
     }

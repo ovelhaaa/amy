@@ -374,19 +374,35 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
         if (track_mutes_[t]) continue;
         if (any_solo && !track_solos_[t]) continue;
 
-        if (is_step_tick) {
-            uint8_t step_idx = current_step_;
-            const auto& s = patterns_[current_pattern_][t][step_idx];
+        uint32_t step_tick_offset = tick_count % ticks_per_step;
+        uint8_t step_idx = current_step_;
+        const auto& s = patterns_[current_pattern_][t][step_idx];
 
+        bool is_ratchet_tick = false;
+        uint32_t ratchet_gate = 1;
+        if (s.active && s.ratchet > 1) {
+            if (s.ratchet == 2 && step_tick_offset == 3) {
+                is_ratchet_tick = true;
+                ratchet_gate = 2;
+            } else if (s.ratchet == 3 && (step_tick_offset == 2 || step_tick_offset == 4)) {
+                is_ratchet_tick = true;
+                ratchet_gate = 1;
+            } else if (s.ratchet == 4 && (step_tick_offset == 1 || step_tick_offset == 3 || step_tick_offset == 4)) {
+                is_ratchet_tick = true;
+                ratchet_gate = 1;
+            }
+        }
+
+        if (is_step_tick || is_ratchet_tick) {
             if (s.active) {
-                // Check probability
-                if (s.probability < 100) {
+                // Check probability on step onset
+                if (is_step_tick && s.probability < 100) {
                     uint8_t roll = static_cast<uint8_t>((esp_timer_get_time() % 100) + 1);
                     if (roll > s.probability) continue;
                 }
 
-                // Dispatch Parameter Lock Automation Event if present
-                if (s.has_plock && s.locked_param < 8) {
+                // Dispatch Parameter Lock Automation Event if present on step onset
+                if (is_step_tick && s.has_plock && s.locked_param < 8) {
                     SynthEvent plock_ev;
                     plock_ev.type = EventType::ControlChange;
                     plock_ev.source = EventSource::Sequencer;
@@ -407,16 +423,24 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
                 event_bus.send(on_ev);
 
                 last_played_notes_[t] = s.note;
-                uint32_t gate_ticks = static_cast<uint32_t>((ticks_per_step * s.gate_percent) / 100.0f);
-                if (gate_ticks < 1) gate_ticks = 1;
-                note_off_ticks_[t] = tick_count + gate_ticks;
+                if (is_ratchet_tick) {
+                    note_off_ticks_[t] = tick_count + ratchet_gate;
+                } else if (s.ratchet > 1) {
+                    uint32_t first_gate = (s.ratchet == 2) ? 2 : 1;
+                    note_off_ticks_[t] = tick_count + first_gate;
+                } else {
+                    uint32_t gate_ticks = static_cast<uint32_t>((ticks_per_step * s.gate_percent) / 100.0f);
+                    if (gate_ticks < 1) gate_ticks = 1;
+                    note_off_ticks_[t] = tick_count + gate_ticks;
+                }
             }
         }
     }
 
     if (is_step_tick) {
-        if (current_step_ == (kMaxSteps - 1)) {
-            // End of 16-step pattern reached -> Check Pattern Chain
+        uint8_t eff_len = (pattern_length_ > 0 && pattern_length_ <= kMaxSteps) ? pattern_length_ : kMaxSteps;
+        if (current_step_ >= (eff_len - 1)) {
+            // End of pattern reached -> Check Pattern Chain
             if (chain_.enabled && chain_.length > 1) {
                 chain_.current_index = (chain_.current_index + 1) % chain_.length;
                 if (!chain_.loop && chain_.current_index == 0) {
@@ -428,9 +452,57 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
             }
             current_step_ = 0;
         } else {
-            current_step_ = (current_step_ + 1) % kMaxSteps;
+            current_step_ = (current_step_ + 1) % eff_len;
         }
     }
+}
+
+void StepSequencer::mutatePattern(uint8_t track_idx, uint8_t probability_pct) {
+    if (track_idx >= kMaxTracks) return;
+    mutation_backup_[track_idx] = patterns_[current_pattern_][track_idx];
+    has_mutation_backup_[track_idx] = true;
+
+    probability_pct = std::clamp(probability_pct, (uint8_t)1, (uint8_t)100);
+    uint8_t len = pattern_length_;
+    for (uint8_t s = 0; s < len; ++s) {
+        uint8_t roll = static_cast<uint8_t>((esp_timer_get_time() % 100) + 1);
+        if (roll <= probability_pct) {
+            auto& step = patterns_[current_pattern_][track_idx][s];
+            uint8_t mutation_type = static_cast<uint8_t>(esp_timer_get_time() % 4);
+            switch (mutation_type) {
+                case 0:
+                    step.active = !step.active;
+                    break;
+                case 1:
+                    if (step.active) {
+                        int v = (int)step.velocity + ((esp_timer_get_time() % 2 == 0) ? 15 : -15);
+                        step.velocity = static_cast<uint8_t>(std::clamp(v, 30, 127));
+                    }
+                    break;
+                case 2:
+                    if (step.active) {
+                        step.ratchet = ((step.ratchet % 3) + 1);
+                    }
+                    break;
+                case 3:
+                    if (step.active && track_channels_[track_idx] != 9) {
+                        static const int kIntervals[4] = { -12, -2, 2, 12 };
+                        int interval = kIntervals[esp_timer_get_time() % 4];
+                        int n = (int)step.note + interval;
+                        if (n >= 12 && n <= 108) step.note = static_cast<uint8_t>(n);
+                    }
+                    break;
+            }
+        }
+    }
+    ESP_LOGI(TAG, "Mutated pattern %u track %u with prob %u%%", current_pattern_, track_idx, probability_pct);
+}
+
+void StepSequencer::undoMutation(uint8_t track_idx) {
+    if (track_idx >= kMaxTracks || !has_mutation_backup_[track_idx]) return;
+    patterns_[current_pattern_][track_idx] = mutation_backup_[track_idx];
+    has_mutation_backup_[track_idx] = false;
+    ESP_LOGI(TAG, "Undid mutation on pattern %u track %u", current_pattern_, track_idx);
 }
 
 } // namespace smk
