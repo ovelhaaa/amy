@@ -1,0 +1,66 @@
+name: SMK-S3 Firmware Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'smk-s3/**'
+      - 'src/**'
+      - '.github/workflows/smk-s3-build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'smk-s3/**'
+      - 'src/**'
+      - '.github/workflows/smk-s3-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smk-s3-build-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (Block Size ${{ matrix.block_size }})
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v5.3
+    strategy:
+      fail-fast: false
+      matrix:
+        block_size: [256, 128]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure and Build
+        working-directory: smk-s3
+        run: |
+          . $IDF_PATH/export.sh
+          if [ "${{ matrix.block_size }}" = "128" ]; then
+            echo "CONFIG_SMKS3_AMY_BLOCK_SIZE_128=y" >> sdkconfig.defaults
+            echo "CONFIG_SMKS3_AMY_BLOCK_SIZE_256=n" >> sdkconfig.defaults
+          else
+            echo "CONFIG_SMKS3_AMY_BLOCK_SIZE_256=y" >> sdkconfig.defaults
+            echo "CONFIG_SMKS3_AMY_BLOCK_SIZE_128=n" >> sdkconfig.defaults
+          fi
+          idf.py set-target esp32s3
+          idf.py build
+          idf.py size
+
+      - name: Upload Firmware Artifacts (256 samples only)
+        if: matrix.block_size == 256
+        uses: actions/upload-artifact@v4
+        with:
+          name: smk-s3-firmware-256
+          path: |
+            smk-s3/build/smk-s3-synth.bin
+            smk-s3/build/bootloader/bootloader.bin
+            smk-s3/build/partition_table/partition-table.bin
+            smk-s3/build/flasher_args.json
+          if-no-files-found: error

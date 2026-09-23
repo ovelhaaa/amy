@@ -14,4 +14,8 @@ dependencies:
   #   # `public` flag doesn't have an effect dependencies of the `main` component.
   #   # All dependencies of `main` are public by default.
   #   public: true
-  espressif/usb: '~1.4.0'
+  espressif/usb:
+    version: '~1.4.0'
+    rules:
+      - if: 'idf_version >= 5.4'
+

@@ -15,8 +15,11 @@ public:
     StorageManager();
     ~StorageManager();
 
-    bool begin();
+    bool begin(const char* base_path = nullptr);
     bool isMounted() const { return mounted_; }
+
+    void setBasePath(const char* path);
+    const char* basePath() const { return base_path_; }
 
     /**
      * @brief Save a patch struct atomically to Flash SPIFFS slot
@@ -67,6 +70,7 @@ private:
     void updateStorageStats();
 
     bool   mounted_ = false;
+    char   base_path_[64] = "/spiffs";
     size_t total_bytes_ = 0;
     size_t used_bytes_ = 0;
 };

@@ -31,7 +31,7 @@ bool ClockManager::begin() {
         return false;
     }
 
-    ESP_LOGI(TAG, "ClockManager initialized at %.1f BPM (%u PPQN)", bpm_, kPpqn);
+    ESP_LOGI(TAG, "ClockManager initialized at %.1f BPM (%u PPQN)", bpm_, static_cast<unsigned int>(kPpqn));
     return true;
 }
 

@@ -39,11 +39,11 @@ struct MacroConfig {
 };
 
 constexpr uint32_t kPatchMagic = 0x534D4B31; // "SMK1"
-constexpr uint16_t kPatchFormatVersion = 4;
+constexpr uint16_t kPatchFormatVersion = 5;
 
 struct PatchHeader {
     uint32_t magic;          // 0x534D4B31
-    uint16_t format_version; // Version 4
+    uint16_t format_version; // Version 5
     uint16_t data_size;      // Payload data size
     uint32_t crc32;          // Checksum of patch data
 };
@@ -64,15 +64,16 @@ struct FxControlState {
 };
 
 enum class SmkFilterType : uint8_t {
-    None    = 0, // FILTER_NONE
-    LPF     = 1, // FILTER_LPF (12dB biquad)
-    BPF     = 2, // FILTER_BPF
-    HPF     = 3, // FILTER_HPF
-    LPF24   = 4, // FILTER_LPF24 (24dB 4-pole)
-    Notch   = 5, // FILTER_NOTCH
-    Phaser  = 6, // FILTER_PHASER
-    Moog24  = 7, // FILTER_MOOG24
-    TptSvf  = 8  // FILTER_TPT_SVF
+    Inherit = 0xFF, // Preserves AMY preset filter type
+    None    = 0,    // FILTER_NONE
+    LPF     = 1,    // FILTER_LPF (12dB biquad)
+    BPF     = 2,    // FILTER_BPF
+    HPF     = 3,    // FILTER_HPF
+    LPF24   = 4,    // FILTER_LPF24 (24dB 4-pole)
+    Notch   = 5,    // FILTER_NOTCH
+    Phaser  = 6,    // FILTER_PHASER
+    Moog24  = 7,    // FILTER_MOOG24
+    TptSvf  = 8     // FILTER_TPT_SVF
 };
 
 inline uint8_t toAmyFilterType(SmkFilterType type) {
@@ -80,12 +81,14 @@ inline uint8_t toAmyFilterType(SmkFilterType type) {
 }
 
 inline SmkFilterType fromAmyFilterType(uint8_t amy_type) {
+    if (amy_type == 0xFF) return SmkFilterType::Inherit;
     if (amy_type > 8) return SmkFilterType::None;
     return static_cast<SmkFilterType>(amy_type);
 }
 
 inline const char* filterTypeName(SmkFilterType type) {
     switch (type) {
+        case SmkFilterType::Inherit: return "PRESET";
         case SmkFilterType::None:   return "NONE";
         case SmkFilterType::LPF:    return "LPF 12dB";
         case SmkFilterType::BPF:    return "BPF";
@@ -167,6 +170,42 @@ struct SynthPatchV3 {
     uint32_t    crc32;
 };
 
+struct SynthPatchV4Legacy {
+    uint8_t     id;
+    char        name[24];
+    char        category[16];
+    char        author[16];
+    uint16_t    engine_patch; // AMY preset or patch ID (0..127 Juno, 128..255 DX7, 256+ PCM)
+    int8_t      transpose;    // Transpose in semitones (-24..+24)
+    uint8_t     voice_count;  // Max polyphony voices (e.g. 8)
+    uint8_t     wave_type;    // Legacy 0=Sine, 1=SawDown, 2=SawUp, 3=Triangle, 4=Square, 5=Noise, 6=KS, 7=PCM, 8=ALGO
+    uint8_t     mono_mode;    // 0=Polyphonic, 1=Monophonic Legato
+    uint16_t    portamento_ms;// Portamento glide time in milliseconds
+    float       base_freq;
+    float       filter_cutoff;
+    float       filter_res;
+    float       amp_attack;
+    float       amp_decay;
+    float       amp_sustain;
+    float       amp_release;
+    MacroConfig macros[8];
+    // Legacy v4 fields:
+    float       filter_env_amount;   // Envelope amount to filter cutoff (-4.0 to +4.0)
+    float       filter_key_tracking; // Filter keyboard tracking (0.0 to 2.0)
+    float       filter_vel_tracking; // Filter velocity tracking (0.0 to 2.0)
+    uint8_t     filter_type;         // Legacy: 0=LPF24, 1=BPF, 2=HPF, 3=LPF12
+    float       osc_mix;             // Sub/main osc mix (0.0 to 1.0)
+    float       osc_detune;          // Detune in cents (-100.0 to +100.0)
+    float       sub_level;           // Sub-oscillator level (0.0 to 1.0)
+    float       noise_level;         // Noise level (0.0 to 1.0)
+    float       drive_level;         // Saturation / drive level (0.0 to 3.0)
+    float       master_tone;         // Tilt EQ tone (-1.0 to +1.0)
+    uint8_t     chorus_mode;         // Legacy: 0=Classic, 1=Juno, 2=Ensemble, 3=Wide, 4=Vibrato
+    uint8_t     reverb_freeze;       // 0=Normal, 1=Frozen reverb tank
+    uint8_t     reserved[6];         // Reserved padding
+    uint32_t    crc32;
+};
+
 struct SynthPatch {
     uint8_t     id;
     char        name[24];
@@ -186,11 +225,11 @@ struct SynthPatch {
     float       amp_sustain;
     float       amp_release;
     MacroConfig macros[8];
-    // v4 fields:
+    // v5 fields:
     float       filter_env_amount;   // Envelope amount to filter cutoff (-4.0 to +4.0)
     float       filter_key_tracking; // Filter keyboard tracking (0.0 to 2.0)
     float       filter_vel_tracking; // Filter velocity tracking (0.0 to 2.0)
-    uint8_t     filter_type;         // SmkFilterType: 0=None, 1=LPF, 2=BPF, 3=HPF, 4=LPF24, 5=Notch, 6=Phaser, 7=Moog24, 8=TptSvf
+    uint8_t     filter_type;         // SmkFilterType: 0xFF=Inherit, 0=None, 1=LPF, 2=BPF, 3=HPF, 4=LPF24, 5=Notch, 6=Phaser, 7=Moog24, 8=TptSvf
     float       osc_mix;             // Sub/main osc mix (0.0 to 1.0)
     float       osc_detune;          // Detune in cents (-100.0 to +100.0)
     float       sub_level;           // Sub-oscillator level (0.0 to 1.0)
@@ -206,5 +245,6 @@ struct SynthPatch {
 // Helper functions to calculate CRC32 checksums
 uint32_t calculatePatchCrc32(const SynthPatch& patch);
 uint32_t calculatePatchV3Crc32(const SynthPatchV3& patch);
+uint32_t calculatePatchV4LegacyCrc32(const SynthPatchV4Legacy& patch);
 
 } // namespace smk

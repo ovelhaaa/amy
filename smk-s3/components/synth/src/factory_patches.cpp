@@ -31,6 +31,20 @@ uint32_t calculatePatchV3Crc32(const SynthPatchV3& patch) {
     return ~crc;
 }
 
+uint32_t calculatePatchV4LegacyCrc32(const SynthPatchV4Legacy& patch) {
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(&patch);
+    size_t len = sizeof(SynthPatchV4Legacy) - sizeof(uint32_t); // Exclude the crc32 field itself
+    
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t i = 0; i < len; ++i) {
+        crc ^= p[i];
+        for (int j = 0; j < 8; ++j) {
+            crc = (crc >> 1) ^ (0xEDB88320 & (-(crc & 1)));
+        }
+    }
+    return ~crc;
+}
+
 static MacroConfig makeMacro(const char* name, float val, uint8_t param_type, float min_val, float max_val) {
     MacroConfig m = {};
     strncpy(m.name, name, sizeof(m.name) - 1);
@@ -363,11 +377,11 @@ static void buildPatchFromDescriptor(const PatchDescriptor& desc, SynthPatch& ou
     out.amp_sustain = desc.amp_sustain;
     out.amp_release = desc.amp_release;
 
-    // Initialize v4 engine parameters
+    // Initialize v5 engine parameters
     out.filter_env_amount = 0.0f;
     out.filter_key_tracking = 0.0f;
     out.filter_vel_tracking = 1.5f;
-    out.filter_type = toAmyFilterType(SmkFilterType::LPF24);
+    out.filter_type = toAmyFilterType(SmkFilterType::Inherit);
     out.osc_mix = 0.5f;
     out.osc_detune = 0.0f;
     out.sub_level = 0.0f;

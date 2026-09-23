@@ -56,7 +56,7 @@ void MidiLearn::finishAndSave() {
     target_profile_->crc32 = calculateProfileCrc32(*target_profile_);
     current_step_ = LearnStep::Complete;
     ESP_LOGI(TAG, "==================================================");
-    ESP_LOGI(TAG, "MIDI Learn Finished and Saved (CRC32: 0x%08X)", target_profile_->crc32);
+    ESP_LOGI(TAG, "MIDI Learn Finished and Saved (CRC32: 0x%08X)", static_cast<unsigned int>(target_profile_->crc32));
     ESP_LOGI(TAG, "==================================================");
 }
 
@@ -181,7 +181,7 @@ void MidiLearn::advanceStep() {
     if (current_step_ == LearnStep::Complete && target_profile_) {
         target_profile_->crc32 = calculateProfileCrc32(*target_profile_);
         ESP_LOGI(TAG, "==================================================");
-        ESP_LOGI(TAG, "MIDI Learn Wizard Completed Successfully! (CRC32: 0x%08X)", target_profile_->crc32);
+        ESP_LOGI(TAG, "MIDI Learn Wizard Completed Successfully! (CRC32: 0x%08X)", static_cast<unsigned int>(target_profile_->crc32));
         ESP_LOGI(TAG, "==================================================");
     } else if (current_step_ != LearnStep::Idle) {
         ESP_LOGI(TAG, ">>> STEP [%u/%u]: %s <<<", static_cast<unsigned>(current_step_), static_cast<unsigned>(LearnStep::Complete), currentStepName());

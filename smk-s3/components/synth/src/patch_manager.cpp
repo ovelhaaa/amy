@@ -30,6 +30,12 @@ void PatchManager::applyActiveFilterState() {
     }
 }
 
+void PatchManager::setFilterType(uint8_t filter_type) {
+    active_filter_type_ = filter_type;
+    active_patch_.filter_type = filter_type;
+    applyActiveFilterState();
+}
+
 void PatchManager::applyActiveChorusState() {
     if (!amy_adapter_) return;
     // 0=Off, 1=Classic, 2=Juno, 3=Ensemble, 4=Wide, 5=Vibrato
@@ -50,7 +56,7 @@ void PatchManager::applyActiveChorusState() {
         amy_adapter_->setChorus(0.0f, 0.0f, 0.0f);
     } else {
         const auto& p = kChorusPresets[mode];
-        float depth_mult = (fx_state_.chorus_depth > 0.001f) ? fx_state_.chorus_depth : 1.0f;
+        float depth_mult = std::clamp(fx_state_.chorus_depth, 0.0f, 1.0f);
         amy_adapter_->setChorus(p.base_depth * depth_mult, p.rate, p.base_level * depth_mult);
     }
 }
@@ -166,18 +172,22 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                 switch (knob_idx) {
                     case 0: { // FM Mod Index
                         param_name = "FM MOD INDEX";
-                        float mod_index = norm_val * 10.0f;
-                        if (amy_adapter_) amy_adapter_->setFmModIndex(1, mod_index);
+                        // Relative modulation factor: center (norm 0.5) = 1.0x, min = 0.0x, max = 4.0x
+                        float mod_factor = (norm_val <= 0.5f) ? (norm_val * 2.0f) : (1.0f + (norm_val - 0.5f) * 6.0f);
+                        if (amy_adapter_) amy_adapter_->setFmModIndex(1, mod_factor);
                         break;
                     }
                     case 1: { // FM Operator Ratio
                         param_name = "FM OP RATIO";
-                        float ratio = 0.5f + norm_val * 7.5f;
-                        if (amy_adapter_) amy_adapter_->setFmRatio(1, ratio);
+                        // Relative ratio factor: -1 -> 0.5x, 0 -> 1.0x, +1 -> 2.0x
+                        float bipolar = (norm_val - 0.5f) * 2.0f;
+                        float ratio_factor = std::pow(2.0f, bipolar);
+                        if (amy_adapter_) amy_adapter_->setFmRatio(1, ratio_factor);
                         break;
                     }
                     case 2: { // FM Detune
                         param_name = "FM DETUNE";
+                        // Detune in cents: -25 .. 0 .. +25 cents (0 at center norm_val 0.5)
                         float cents = (norm_val - 0.5f) * 50.0f;
                         if (amy_adapter_) amy_adapter_->setOscDetune(1, cents);
                         break;
@@ -314,6 +324,10 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                 case 0: {
                     param_name = "CHORUS MODE";
                     uint8_t mode = static_cast<uint8_t>(std::clamp(static_cast<int>(std::round(norm_val * 5.0f)), 0, 5));
+                    uint8_t old_mode = fx_state_.chorus_mode;
+                    if (old_mode == 0 && mode != 0 && fx_state_.chorus_depth <= 0.001f) {
+                        fx_state_.chorus_depth = 1.0f;
+                    }
                     fx_state_.chorus_mode = mode;
                     active_patch_.chorus_mode = mode;
                     applyActiveChorusState();
@@ -562,7 +576,7 @@ bool PatchManager::selectPatch(uint8_t patch_id) {
     active_patch_.crc32 = calculatePatchCrc32(active_patch_);
 
     ESP_LOGI(TAG, "Loaded Patch #%d [%s] (CRC32: 0x%08X)", 
-             active_patch_.id, active_patch_.name, active_patch_.crc32);
+             active_patch_.id, active_patch_.name, static_cast<unsigned int>(active_patch_.crc32));
 
     // Reset soft takeover states for all macros with the new saved values
     soft_takeover_.resetAll();
@@ -687,7 +701,12 @@ void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
 
     fx_state_.drive       = std::clamp(patch.drive_level, 0.0f, 1.0f);
     fx_state_.master_tone = patch.master_tone;
+
+    uint8_t old_mode = fx_state_.chorus_mode;
     fx_state_.chorus_mode = patch.chorus_mode;
+    if (old_mode == 0 && patch.chorus_mode != 0 && fx_state_.chorus_depth <= 0.001f) {
+        fx_state_.chorus_depth = 1.0f;
+    }
 
     amy_adapter_->setDrive(fx_state_.drive);
     amy_adapter_->setMasterTone(fx_state_.master_tone);
@@ -743,7 +762,8 @@ void PatchManager::applyMacroToEngine(uint8_t macro_idx, float effective_val) {
                     active_patch_.filter_cutoff = target_val;
                     applyActiveFilterState();
                 } else {
-                    amy_adapter_->setFmModIndex(1, target_val * 0.001f);
+                    float mod_factor = (norm_val <= 0.5f) ? (norm_val * 2.0f) : (1.0f + (norm_val - 0.5f) * 6.0f);
+                    amy_adapter_->setFmModIndex(1, mod_factor);
                 }
                 break;
             case 3: // Amp Attack (Enabled across all presets)

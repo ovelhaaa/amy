@@ -27,44 +27,44 @@ public:
     uint32_t activeVoices() const override;
 
     // Copied commands; only the synthesis worker accesses AMY after boot.
-    void setFilter(uint8_t osc_id, float cutoff_hz, float resonance,
-                   float env_amount = 0.0f, float key_tracking = 0.0f,
-                   float vel_tracking = 1.5f, uint8_t filter_type = 0);
-    void setOscillatorWaveform(uint8_t osc_id, uint8_t wave_type);
-    void setEnvelope(uint8_t osc_id, float attack_ms, float decay_ms, float sustain_level, float release_ms);
-    void setPortamento(uint8_t synth_id, uint16_t portamento_ms);
-    void loadPreset(uint8_t synth_id, uint16_t preset_id, uint8_t num_voices = 8);
-    void sendAmyMessage(const char* message);
+    virtual void setFilter(uint8_t osc_id, float cutoff_hz, float resonance,
+                           float env_amount = 0.0f, float key_tracking = 0.0f,
+                           float vel_tracking = 1.5f, uint8_t filter_type = 0);
+    virtual void setOscillatorWaveform(uint8_t osc_id, uint8_t wave_type);
+    virtual void setEnvelope(uint8_t osc_id, float attack_ms, float decay_ms, float sustain_level, float release_ms);
+    virtual void setPortamento(uint8_t synth_id, uint16_t portamento_ms);
+    virtual void loadPreset(uint8_t synth_id, uint16_t preset_id, uint8_t num_voices = 8);
+    virtual void sendAmyMessage(const char* message);
 
     // Oscillator & Voice Controls (Bank B)
-    void setOscDetune(uint8_t synth_id, float cents);
-    void setSubOscLevel(uint8_t synth_id, float level);
-    void setNoiseLevel(uint8_t synth_id, float level);
-    void setOscMix(uint8_t synth_id, float mix);
+    virtual void setOscDetune(uint8_t synth_id, float cents);
+    virtual void setSubOscLevel(uint8_t synth_id, float level);
+    virtual void setNoiseLevel(uint8_t synth_id, float level);
+    virtual void setOscMix(uint8_t synth_id, float mix);
 
     // FM Synthesis Controls
-    void setFmModIndex(uint8_t osc_id, float mod_index);
-    void setFmFeedback(uint8_t osc_id, float feedback);
-    void setFmRatio(uint8_t osc_id, float ratio);
-    void setFmAlgorithm(uint8_t osc_id, uint8_t algo_id);
+    virtual void setFmModIndex(uint8_t osc_id, float mod_index);
+    virtual void setFmFeedback(uint8_t osc_id, float feedback);
+    virtual void setFmRatio(uint8_t osc_id, float ratio);
+    virtual void setFmAlgorithm(uint8_t osc_id, uint8_t algo_id);
 
     // Built-in AMY Effects Controls
-    void setChorus(float depth, float rate, float level);
-    void setChorusMode(uint8_t mode);
-    void setReverb(float room_size, float damp, float mix);
-    void setReverbFreeze(bool freeze);
+    virtual void setChorus(float depth, float rate, float level);
+    virtual void setChorusMode(uint8_t mode);
+    virtual void setReverb(float room_size, float damp, float mix);
+    virtual void setReverbFreeze(bool freeze);
     bool reverbFreeze() const { return reverb_freeze_.load(std::memory_order_relaxed); }
-    void setDelay(float delay_ms, float feedback, float mix);
-    void setSendLevels(uint8_t osc_id, float reverb_send, float chorus_send, float echo_send);
+    virtual void setDelay(float delay_ms, float feedback, float mix);
+    virtual void setSendLevels(uint8_t osc_id, float reverb_send, float chorus_send, float echo_send);
 
     // Master Output & Protection
-    void setSoftLimiter(bool enable) { soft_limiter_enabled_.store(enable, std::memory_order_relaxed); }
+    virtual void setSoftLimiter(bool enable) { soft_limiter_enabled_.store(enable, std::memory_order_relaxed); }
     bool softLimiterEnabled() const { return soft_limiter_enabled_.load(std::memory_order_relaxed); }
-    void setMasterGain(float gain);
+    virtual void setMasterGain(float gain);
     float masterGain() const { return master_gain_.load(std::memory_order_relaxed); }
-    void setDrive(float drive);
+    virtual void setDrive(float drive);
     float drive() const { return drive_level_.load(std::memory_order_relaxed); }
-    void setMasterTone(float tone);
+    virtual void setMasterTone(float tone);
     float masterTone() const { return master_tone_.load(std::memory_order_relaxed); }
 
     // Oscilloscope sample capture for UI
@@ -132,6 +132,20 @@ private:
     uint8_t mono_stack_[kMonoStackCap]{};
     uint8_t mono_stack_size_{0};
     bool mono_mode_{false};
+
+    struct FmOpSnapshot {
+        float base_level = 0.0f;
+        float base_logratio = 0.0f;
+        float base_logfreq = 0.0f;
+        bool  is_modulator = false;
+        bool  valid = false;
+    };
+    static constexpr size_t kMaxVoicesSnapshot = 32;
+    static constexpr size_t kMaxOpsSnapshot = 6;
+    FmOpSnapshot fm_base_ops_[kMaxVoicesSnapshot][kMaxOpsSnapshot]{};
+    FmOpSnapshot fm_base_mod_source_[kMaxVoicesSnapshot]{};
+    bool fm_snapshot_valid_{false};
+    void captureFmBaseState(uint8_t synth_id);
 };
 
 } // namespace smk

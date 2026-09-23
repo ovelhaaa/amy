@@ -221,6 +221,8 @@ void AmyAdapter::executeNoteOff(uint8_t channel, uint8_t note) {
     note &= 0x7F;
     if (active_notes_[channel][note] > 0) {
         active_notes_[channel][note]--;
+    } else {
+        return; // Note was already released or cleared by Panic / AllNotesOff
     }
 
     if (channel == 9) {
@@ -425,7 +427,9 @@ void AmyAdapter::executeFilter(uint8_t synth_id, float cutoff_hz, float resonanc
     e.filter_freq_coefs[COEF_EG0] = env_amount;
     e.filter_freq_coefs[COEF_VEL] = vel_tracking;
     e.resonance = resonance;
-    e.filter_type = filter_type;
+    if (filter_type != 0xFF) {
+        e.filter_type = filter_type;
+    }
     amy_add_event(&e);
 }
 
@@ -469,33 +473,100 @@ void AmyAdapter::executePreset(uint8_t synth_id, uint16_t preset_id, uint8_t num
     e.bus = 0; // Synth bus
     e.synth_delay_ms = 4; // 4ms smooth micro-fade on voice stealing
     amy_add_event(&e);
+    captureFmBaseState(e.synth);
+}
+
+void AmyAdapter::captureFmBaseState(uint8_t synth_id) {
+    uint8_t target = (synth_id == 0) ? 1 : synth_id;
+    if (target != 1) return;
+    fm_snapshot_valid_ = false;
+    uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
+    int num_v = instrument_get_num_voices(target, voices);
+    if (num_v <= 0) return;
+
+    for (int v = 0; v < num_v && v < (int)kMaxVoicesSnapshot; ++v) {
+        uint16_t base = voice_to_base_osc[voices[v]];
+        if (!AMY_IS_SET(base)) continue;
+        if (synth[base]->wave == ALGO) {
+            uint8_t algo_id = synth[base]->algorithm;
+            if (algo_id < 1 || algo_id > 32) algo_id = 1;
+            const auto& algo = algorithms[algo_id];
+            for (uint8_t op = 0; op < MAX_ALGO_OPS && op < (int)kMaxOpsSnapshot; ++op) {
+                auto& snap = fm_base_ops_[v][op];
+                snap.valid = false;
+                snap.is_modulator = (algo.ops[op] & (FM_OUT_BUS_ONE | FM_OUT_BUS_TWO)) != 0;
+                uint16_t op_osc = synth[base]->algo_source[op];
+                if (AMY_IS_SET(op_osc)) {
+                    snap.base_level = synth[op_osc]->amp_coefs[COEF_CONST];
+                    snap.base_logratio = synth[op_osc]->logratio;
+                    snap.base_logfreq = synth[op_osc]->logfreq_coefs[COEF_CONST];
+                    snap.valid = true;
+                }
+            }
+            fm_snapshot_valid_ = true;
+        } else if (AMY_IS_SET(synth[base]->mod_source)) {
+            uint16_t mod_osc = synth[base]->mod_source;
+            auto& snap = fm_base_mod_source_[v];
+            snap.valid = true;
+            snap.is_modulator = true;
+            snap.base_level = synth[mod_osc]->amp_coefs[COEF_CONST];
+            snap.base_logratio = synth[mod_osc]->logratio;
+            snap.base_logfreq = synth[mod_osc]->logfreq_coefs[COEF_CONST];
+            fm_snapshot_valid_ = true;
+        }
+    }
 }
 
 void AmyAdapter::executeMessage(const char* message) {
     if (message) amy_play_message((char*)message);
 }
 
-void AmyAdapter::executeFmModIndex(uint8_t synth_id, float mod_index) {
+void AmyAdapter::executeFmModIndex(uint8_t synth_id, float factor) {
     uint8_t target = (synth_id == 0) ? 1 : synth_id;
     uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
     int num_v = instrument_get_num_voices(target, voices);
-    for (int v = 0; v < num_v; ++v) {
+    if (!fm_snapshot_valid_) {
+        for (int v = 0; v < num_v; ++v) {
+            uint16_t base = voice_to_base_osc[voices[v]];
+            if (AMY_IS_SET(base) && synth[base]->wave == ALGO) {
+                uint8_t algo_id = synth[base]->algorithm;
+                if (algo_id < 1 || algo_id > 32) algo_id = 1;
+                const auto& algo = algorithms[algo_id];
+                for (uint8_t op = 0; op < MAX_ALGO_OPS; ++op) {
+                    bool is_modulator = (algo.ops[op] & (FM_OUT_BUS_ONE | FM_OUT_BUS_TWO)) != 0;
+                    if (is_modulator) {
+                        uint16_t op_osc = synth[base]->algo_source[op];
+                        if (AMY_IS_SET(op_osc)) {
+                            synth[op_osc]->amp_coefs[COEF_CONST] = factor;
+                        }
+                    }
+                }
+            } else if (AMY_IS_SET(base) && AMY_IS_SET(synth[base]->mod_source)) {
+                synth[synth[base]->mod_source]->amp_coefs[COEF_CONST] = factor;
+            }
+        }
+        return;
+    }
+
+    factor = std::clamp(factor, 0.0f, 8.0f);
+    for (int v = 0; v < num_v && v < (int)kMaxVoicesSnapshot; ++v) {
         uint16_t base = voice_to_base_osc[voices[v]];
-        if (AMY_IS_SET(base) && synth[base]->wave == ALGO) {
-            uint8_t algo_id = synth[base]->algorithm;
-            if (algo_id < 1 || algo_id > 32) algo_id = 1;
-            const auto& algo = algorithms[algo_id];
-            for (uint8_t op = 0; op < MAX_ALGO_OPS; ++op) {
-                bool is_modulator = (algo.ops[op] & (FM_OUT_BUS_ONE | FM_OUT_BUS_TWO)) != 0;
-                if (is_modulator) {
+        if (!AMY_IS_SET(base)) continue;
+        if (synth[base]->wave == ALGO) {
+            for (uint8_t op = 0; op < MAX_ALGO_OPS && op < (int)kMaxOpsSnapshot; ++op) {
+                const auto& snap = fm_base_ops_[v][op];
+                if (snap.valid && snap.is_modulator) {
                     uint16_t op_osc = synth[base]->algo_source[op];
                     if (AMY_IS_SET(op_osc)) {
-                        synth[op_osc]->amp_coefs[COEF_CONST] = mod_index;
+                        synth[op_osc]->amp_coefs[COEF_CONST] = std::clamp(snap.base_level * factor, 0.0f, 16.0f);
                     }
                 }
             }
-        } else if (AMY_IS_SET(base) && AMY_IS_SET(synth[base]->mod_source)) {
-            synth[synth[base]->mod_source]->amp_coefs[COEF_CONST] = mod_index;
+        } else if (AMY_IS_SET(synth[base]->mod_source)) {
+            const auto& snap = fm_base_mod_source_[v];
+            if (snap.valid) {
+                synth[synth[base]->mod_source]->amp_coefs[COEF_CONST] = std::clamp(snap.base_level * factor, 0.0f, 16.0f);
+            }
         }
     }
 }
@@ -512,28 +583,53 @@ void AmyAdapter::executeFmFeedback(uint8_t synth_id, float feedback) {
     }
 }
 
-void AmyAdapter::executeFmRatio(uint8_t synth_id, float ratio) {
-    if (ratio <= 0.001f) ratio = 0.001f;
+void AmyAdapter::executeFmRatio(uint8_t synth_id, float ratio_factor) {
+    if (ratio_factor <= 0.001f) ratio_factor = 0.001f;
     uint8_t target = (synth_id == 0) ? 1 : synth_id;
     uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
     int num_v = instrument_get_num_voices(target, voices);
-    for (int v = 0; v < num_v; ++v) {
+    if (!fm_snapshot_valid_) {
+        for (int v = 0; v < num_v; ++v) {
+            uint16_t base = voice_to_base_osc[voices[v]];
+            if (AMY_IS_SET(base) && synth[base]->wave == ALGO) {
+                uint8_t algo_id = synth[base]->algorithm;
+                if (algo_id < 1 || algo_id > 32) algo_id = 1;
+                const auto& algo = algorithms[algo_id];
+                for (uint8_t op = 0; op < MAX_ALGO_OPS; ++op) {
+                    bool is_modulator = (algo.ops[op] & (FM_OUT_BUS_ONE | FM_OUT_BUS_TWO)) != 0;
+                    if (is_modulator) {
+                        uint16_t op_osc = synth[base]->algo_source[op];
+                        if (AMY_IS_SET(op_osc)) {
+                            synth[op_osc]->logratio = log2f(ratio_factor);
+                        }
+                    }
+                }
+            } else if (AMY_IS_SET(base) && AMY_IS_SET(synth[base]->mod_source)) {
+                synth[synth[base]->mod_source]->logratio = log2f(ratio_factor);
+            }
+        }
+        return;
+    }
+
+    float log_mult = log2f(ratio_factor);
+    for (int v = 0; v < num_v && v < (int)kMaxVoicesSnapshot; ++v) {
         uint16_t base = voice_to_base_osc[voices[v]];
-        if (AMY_IS_SET(base) && synth[base]->wave == ALGO) {
-            uint8_t algo_id = synth[base]->algorithm;
-            if (algo_id < 1 || algo_id > 32) algo_id = 1;
-            const auto& algo = algorithms[algo_id];
-            for (uint8_t op = 0; op < MAX_ALGO_OPS; ++op) {
-                bool is_modulator = (algo.ops[op] & (FM_OUT_BUS_ONE | FM_OUT_BUS_TWO)) != 0;
-                if (is_modulator) {
+        if (!AMY_IS_SET(base)) continue;
+        if (synth[base]->wave == ALGO) {
+            for (uint8_t op = 0; op < MAX_ALGO_OPS && op < (int)kMaxOpsSnapshot; ++op) {
+                const auto& snap = fm_base_ops_[v][op];
+                if (snap.valid && snap.is_modulator) {
                     uint16_t op_osc = synth[base]->algo_source[op];
                     if (AMY_IS_SET(op_osc)) {
-                        synth[op_osc]->logratio = log2f(ratio);
+                        synth[op_osc]->logratio = snap.base_logratio + log_mult;
                     }
                 }
             }
-        } else if (AMY_IS_SET(base) && AMY_IS_SET(synth[base]->mod_source)) {
-            synth[synth[base]->mod_source]->logratio = log2f(ratio);
+        } else if (AMY_IS_SET(synth[base]->mod_source)) {
+            const auto& snap = fm_base_mod_source_[v];
+            if (snap.valid) {
+                synth[synth[base]->mod_source]->logratio = snap.base_logratio + log_mult;
+            }
         }
     }
 }
@@ -622,6 +718,7 @@ void AmyAdapter::executeOscDetune(uint8_t synth_id, float cents) {
     uint8_t target = (synth_id == 0) ? 1 : synth_id;
     uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
     int num_v = instrument_get_num_voices(target, voices);
+    float detune_offset = cents / 1200.0f;
     for (int v = 0; v < num_v; ++v) {
         uint16_t base = voice_to_base_osc[voices[v]];
         if (!AMY_IS_SET(base)) continue;
@@ -634,14 +731,17 @@ void AmyAdapter::executeOscDetune(uint8_t synth_id, float cents) {
                 if (is_modulator) {
                     uint16_t op_osc = synth[base]->algo_source[op];
                     if (AMY_IS_SET(op_osc)) {
-                        synth[op_osc]->logfreq_coefs[COEF_CONST] = cents / 1200.0f;
+                        float base_lf = (fm_snapshot_valid_ && v < (int)kMaxVoicesSnapshot && op < (int)kMaxOpsSnapshot && fm_base_ops_[v][op].valid)
+                                            ? fm_base_ops_[v][op].base_logfreq
+                                            : 0.0f;
+                        synth[op_osc]->logfreq_coefs[COEF_CONST] = base_lf + detune_offset;
                     }
                 }
             }
         } else {
             int oscs_per_v = instrument_get_oscs_per_voice(target);
             if (oscs_per_v >= 2) {
-                synth[base + 1]->logfreq_coefs[COEF_CONST] = cents / 1200.0f;
+                synth[base + 1]->logfreq_coefs[COEF_CONST] = detune_offset;
             }
         }
     }

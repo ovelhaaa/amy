@@ -1,9 +1,25 @@
 #include "storage_manager.h"
+#ifdef ESP_PLATFORM
 #include "esp_spiffs.h"
 #include "esp_rom_crc.h"
 #include "esp_log.h"
+#else
+#include "esp_log.h"
+#include <algorithm>
+static inline uint32_t esp_rom_crc32_le(uint32_t crc, const uint8_t *buf, uint32_t len) {
+    crc = ~crc;
+    for (uint32_t i = 0; i < len; ++i) {
+        crc ^= buf[i];
+        for (int j = 0; j < 8; ++j) {
+            crc = (crc >> 1) ^ (0xEDB88320 & (-(crc & 1)));
+        }
+    }
+    return ~crc;
+}
+#endif
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
 
 static const char* TAG = "StorageManager";
 
@@ -13,16 +29,29 @@ StorageManager::StorageManager() {}
 
 StorageManager::~StorageManager() {
     if (mounted_) {
+#ifdef ESP_PLATFORM
         esp_vfs_spiffs_unregister("storage");
+#endif
         mounted_ = false;
     }
 }
 
-bool StorageManager::begin() {
+void StorageManager::setBasePath(const char* path) {
+    if (path) {
+        strncpy(base_path_, path, sizeof(base_path_) - 1);
+        base_path_[sizeof(base_path_) - 1] = '\0';
+    }
+}
+
+bool StorageManager::begin(const char* base_path) {
+    if (base_path) {
+        setBasePath(base_path);
+    }
+#ifdef ESP_PLATFORM
     ESP_LOGI(TAG, "Mounting SPIFFS storage partition...");
 
     esp_vfs_spiffs_conf_t conf = {
-        .base_path = kMountPath,
+        .base_path = base_path_,
         .partition_label = "storage",
         .max_files = 5,
         .format_if_mount_failed = true
@@ -45,22 +74,27 @@ bool StorageManager::begin() {
 
     ESP_LOGI(TAG, "SPIFFS Mounted Successfully: Total=%zu KB, Used=%zu KB", 
              total_bytes_ / 1024, used_bytes_ / 1024);
+#else
+    mounted_ = true;
+#endif
 
     return true;
 }
 
 void StorageManager::getSlotPath(uint8_t slot_id, char* path_out, size_t max_len, const char* ext) const {
-    snprintf(path_out, max_len, "%s/patch_%03d%s", kMountPath, slot_id, ext);
+    snprintf(path_out, max_len, "%s/patch_%03d%s", base_path_, slot_id, ext);
 }
 
 void StorageManager::updateStorageStats() {
     if (!mounted_) return;
+#ifdef ESP_PLATFORM
     esp_spiffs_info("storage", &total_bytes_, &used_bytes_);
+#endif
 }
 
 bool StorageManager::patchExists(uint8_t slot_id) const {
     if (!mounted_) return false;
-    char path[64];
+    char path[128];
     getSlotPath(slot_id, path, sizeof(path));
     FILE* f = fopen(path, "rb");
     if (f) {
@@ -74,8 +108,8 @@ bool StorageManager::savePatch(uint8_t slot_id, const SynthPatch& patch) {
     if (!mounted_) return false;
     if (slot_id >= kMaxSlots) return false;
 
-    char tmp_path[64];
-    char s3p_path[64];
+    char tmp_path[128];
+    char s3p_path[128];
     getSlotPath(slot_id, tmp_path, sizeof(tmp_path), ".tmp");
     getSlotPath(slot_id, s3p_path, sizeof(s3p_path), ".s3p");
 
@@ -115,7 +149,7 @@ bool StorageManager::savePatch(uint8_t slot_id, const SynthPatch& patch) {
 
     updateStorageStats();
     ESP_LOGI(TAG, "Saved Patch Slot #%d [%s] (.s3p) to Flash (CRC32: 0x%08X)", 
-             slot_id, p_copy.name, p_copy.crc32);
+             slot_id, p_copy.name, static_cast<unsigned int>(p_copy.crc32));
 
     return true;
 }
@@ -124,13 +158,13 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
     if (!mounted_) return false;
     if (slot_id >= kMaxSlots) return false;
 
-    char s3p_path[64];
+    char s3p_path[128];
     getSlotPath(slot_id, s3p_path, sizeof(s3p_path), ".s3p");
 
     FILE* f = fopen(s3p_path, "rb");
     if (!f) {
         // Fallback check for legacy .bin format
-        char bin_path[64];
+        char bin_path[128];
         getSlotPath(slot_id, bin_path, sizeof(bin_path), ".bin");
         f = fopen(bin_path, "rb");
         if (!f) {
@@ -157,7 +191,7 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
             uint32_t computed_crc = calculatePatchV3Crc32(v3_patch);
             if (computed_crc != header.crc32 || computed_crc != v3_patch.crc32) {
                 ESP_LOGE(TAG, "v3 Patch CRC32 mismatch on slot #%d! Computed 0x%08X != Header 0x%08X",
-                         slot_id, computed_crc, header.crc32);
+                         slot_id, static_cast<unsigned int>(computed_crc), static_cast<unsigned int>(header.crc32));
                 return false;
             }
 
@@ -184,7 +218,7 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
             patch_out.filter_env_amount = 0.0f;
             patch_out.filter_key_tracking = 0.0f;
             patch_out.filter_vel_tracking = 1.5f;
-            patch_out.filter_type = toAmyFilterType(SmkFilterType::LPF24);
+            patch_out.filter_type = toAmyFilterType(SmkFilterType::Inherit);
             patch_out.osc_mix = 0.5f;
             patch_out.osc_detune = 0.0f;
             patch_out.sub_level = 0.0f;
@@ -195,7 +229,77 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
             patch_out.reverb_freeze = 0;
             patch_out.crc32 = calculatePatchCrc32(patch_out);
 
-            ESP_LOGI(TAG, "Loaded and migrated v3 Patch Slot #%d [%s] to v4", slot_id, patch_out.name);
+            ESP_LOGI(TAG, "Loaded and migrated v3 Patch Slot #%d [%s] to v5", slot_id, patch_out.name);
+            return true;
+        } else if (header.format_version == 4) {
+            SynthPatchV4Legacy v4_patch = {};
+            size_t read_bytes = fread(&v4_patch, 1, sizeof(SynthPatchV4Legacy), f);
+            fclose(f);
+
+            if (read_bytes != sizeof(SynthPatchV4Legacy)) {
+                ESP_LOGE(TAG, "Corrupted v4 legacy patch payload on slot #%d (bytes read %zu != %zu)", 
+                         slot_id, read_bytes, sizeof(SynthPatchV4Legacy));
+                return false;
+            }
+
+            uint32_t computed_crc = calculatePatchV4LegacyCrc32(v4_patch);
+            if (computed_crc != header.crc32 || computed_crc != v4_patch.crc32) {
+                ESP_LOGE(TAG, "v4 legacy Patch CRC32 mismatch on slot #%d! Computed 0x%08X != Header 0x%08X",
+                         slot_id, static_cast<unsigned int>(computed_crc), static_cast<unsigned int>(header.crc32));
+                return false;
+            }
+
+            patch_out = {};
+            patch_out.id = v4_patch.id;
+            memcpy(patch_out.name, v4_patch.name, sizeof(patch_out.name));
+            memcpy(patch_out.category, v4_patch.category, sizeof(patch_out.category));
+            memcpy(patch_out.author, v4_patch.author, sizeof(patch_out.author));
+            patch_out.engine_patch = v4_patch.engine_patch;
+            patch_out.transpose = v4_patch.transpose;
+            patch_out.voice_count = v4_patch.voice_count;
+            patch_out.wave_type = mapLegacyWaveToAmy(v4_patch.wave_type);
+            patch_out.mono_mode = v4_patch.mono_mode;
+            patch_out.portamento_ms = v4_patch.portamento_ms;
+            patch_out.base_freq = v4_patch.base_freq;
+            patch_out.filter_cutoff = v4_patch.filter_cutoff;
+            patch_out.filter_res = v4_patch.filter_res;
+            patch_out.amp_attack = v4_patch.amp_attack;
+            patch_out.amp_decay = v4_patch.amp_decay;
+            patch_out.amp_sustain = v4_patch.amp_sustain;
+            patch_out.amp_release = v4_patch.amp_release;
+            memcpy(patch_out.macros, v4_patch.macros, sizeof(patch_out.macros));
+
+            patch_out.filter_env_amount = v4_patch.filter_env_amount;
+            patch_out.filter_key_tracking = v4_patch.filter_key_tracking;
+            patch_out.filter_vel_tracking = v4_patch.filter_vel_tracking;
+
+            // Map legacy v4 filter type: 0=LPF24, 1=BPF, 2=HPF, 3=LPF12
+            switch (v4_patch.filter_type) {
+                case 0: patch_out.filter_type = toAmyFilterType(SmkFilterType::LPF24); break;
+                case 1: patch_out.filter_type = toAmyFilterType(SmkFilterType::BPF); break;
+                case 2: patch_out.filter_type = toAmyFilterType(SmkFilterType::HPF); break;
+                case 3: patch_out.filter_type = toAmyFilterType(SmkFilterType::LPF); break;
+                default: patch_out.filter_type = toAmyFilterType(SmkFilterType::Inherit); break;
+            }
+
+            patch_out.osc_mix = v4_patch.osc_mix;
+            patch_out.osc_detune = v4_patch.osc_detune;
+            patch_out.sub_level = v4_patch.sub_level;
+            patch_out.noise_level = v4_patch.noise_level;
+            patch_out.drive_level = (v4_patch.drive_level > 1.0f) ? std::clamp(v4_patch.drive_level / 3.0f, 0.0f, 1.0f) : std::clamp(v4_patch.drive_level, 0.0f, 1.0f);
+            patch_out.master_tone = v4_patch.master_tone;
+
+            // Map legacy v4 chorus mode: 0..4 (Classic, Juno, Ensemble, Wide, Vibrato) -> 1..5 in v5
+            if (v4_patch.chorus_mode <= 4) {
+                patch_out.chorus_mode = v4_patch.chorus_mode + 1;
+            } else {
+                patch_out.chorus_mode = 0;
+            }
+
+            patch_out.reverb_freeze = v4_patch.reverb_freeze;
+            patch_out.crc32 = calculatePatchCrc32(patch_out);
+
+            ESP_LOGI(TAG, "Loaded and migrated legacy v4 Patch Slot #%d [%s] to v5", slot_id, patch_out.name);
             return true;
         } else if (header.format_version != kPatchFormatVersion) {
             ESP_LOGE(TAG, "Incompatible patch format version: %u on slot #%d", header.format_version, slot_id);
@@ -216,7 +320,7 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
         uint32_t computed_crc = calculatePatchCrc32(loaded_patch);
         if (computed_crc != header.crc32 || computed_crc != loaded_patch.crc32) {
             ESP_LOGE(TAG, "Patch CRC32 mismatch on slot #%d! Computed 0x%08X != Header 0x%08X",
-                     slot_id, computed_crc, header.crc32);
+                     slot_id, static_cast<unsigned int>(computed_crc), static_cast<unsigned int>(header.crc32));
             return false;
         }
 
@@ -266,7 +370,7 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
         patch_out.filter_env_amount = 0.0f;
         patch_out.filter_key_tracking = 0.0f;
         patch_out.filter_vel_tracking = 1.5f;
-        patch_out.filter_type = toAmyFilterType(SmkFilterType::LPF24);
+        patch_out.filter_type = toAmyFilterType(SmkFilterType::Inherit);
         patch_out.osc_mix = 0.5f;
         patch_out.osc_detune = 0.0f;
         patch_out.sub_level = 0.0f;
@@ -287,8 +391,8 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
 bool StorageManager::saveProfile(const char* name, const ControllerProfile& profile) {
     if (!mounted_ || !name) return false;
 
-    char path[64];
-    snprintf(path, sizeof(path), "%s/%s.s3m", kMountPath, name);
+    char path[128];
+    snprintf(path, sizeof(path), "%s/%s.s3m", base_path_, name);
 
     ControllerProfile prof_copy = profile;
     prof_copy.crc32 = calculateProfileCrc32(prof_copy);
@@ -311,15 +415,15 @@ bool StorageManager::saveProfile(const char* name, const ControllerProfile& prof
 
     updateStorageStats();
     ESP_LOGI(TAG, "Saved Controller Profile [%s] (.s3m) to Flash (CRC32: 0x%08X)", 
-             name, prof_copy.crc32);
+             name, static_cast<unsigned int>(prof_copy.crc32));
     return true;
 }
 
 bool StorageManager::loadProfile(const char* name, ControllerProfile& profile_out) {
     if (!mounted_ || !name) return false;
 
-    char path[64];
-    snprintf(path, sizeof(path), "%s/%s.s3m", kMountPath, name);
+    char path[128];
+    snprintf(path, sizeof(path), "%s/%s.s3m", base_path_, name);
 
     FILE* f = fopen(path, "rb");
     if (!f) {
@@ -399,7 +503,7 @@ uint32_t calculateSceneCrc32(const Scene& scene) {
 bool StorageManager::saveScene(const char* name, const Scene& scene) {
     if (!mounted_) return false;
     char path[128];
-    snprintf(path, sizeof(path), "%s/scene_%s.s3s", kMountPath, name);
+    snprintf(path, sizeof(path), "%s/scene_%s.s3s", base_path_, name);
 
     FILE* f = fopen(path, "wb");
     if (!f) return false;
@@ -429,7 +533,7 @@ bool StorageManager::saveScene(const char* name, const Scene& scene) {
 bool StorageManager::loadScene(const char* name, Scene& scene_out) {
     if (!mounted_) return false;
     char path[128];
-    snprintf(path, sizeof(path), "%s/scene_%s.s3s", kMountPath, name);
+    snprintf(path, sizeof(path), "%s/scene_%s.s3s", base_path_, name);
 
     FILE* f = fopen(path, "rb");
     if (!f) return false;

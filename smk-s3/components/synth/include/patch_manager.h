@@ -50,11 +50,15 @@ public:
     SoftTakeover& softTakeover() { return soft_takeover_; }
     const FxControlState& fxControlState() const { return fx_state_; }
 
+    void setFilterType(uint8_t filter_type);
+    uint8_t activeFilterType() const { return active_filter_type_; }
+
+    void applyActiveFilterState();
+    void applyActiveChorusState();
+
 private:
     void applyPatchToEngine(const SynthPatch& patch);
     void applyMacroToEngine(uint8_t macro_idx, float effective_val);
-    void applyActiveFilterState();
-    void applyActiveChorusState();
 
     AmyAdapter*    amy_adapter_    = nullptr;
     UIManager*     ui_manager_     = nullptr;
