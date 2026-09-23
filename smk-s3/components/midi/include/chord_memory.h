@@ -6,6 +6,11 @@
 
 namespace smk {
 
+/**
+ * @brief Chord Memory utility (EXPERIMENTAL / NOT-YET-WIRED to live MIDI stream)
+ * 
+ * Generates polyphonic harmonic chords from monophonic MIDI note input.
+ */
 enum class ChordType : uint8_t {
     Off       = 0,
     Octave    = 1,

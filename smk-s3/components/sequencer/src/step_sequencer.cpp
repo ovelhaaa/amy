@@ -1,6 +1,9 @@
 #include "step_sequencer.h"
 #include "esp_timer.h"
 #include "esp_log.h"
+#if defined(ESP_PLATFORM)
+#include "esp_random.h"
+#endif
 #include <algorithm>
 #include <cstring>
 #include <cmath>
@@ -8,6 +11,18 @@
 static const char* TAG = "StepSequencer";
 
 namespace smk {
+
+uint32_t StepSequencer::randomU32() {
+#if defined(ESP_PLATFORM)
+    return esp_random();
+#else
+    static uint32_t x = 2463534242UL;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    return x;
+#endif
+}
 
 StepSequencer::StepSequencer() {
     // Default drum track names
@@ -35,8 +50,9 @@ void StepSequencer::reset() {
     swing_percent_ = 0.0f;
     track_mutes_.fill(false);
     track_solos_.fill(false);
-    last_played_notes_.fill(-1);
-    note_off_ticks_.fill(0);
+    track_playback_.fill(TrackPlaybackState{});
+    mutation_backup_pattern_.fill(0);
+    has_mutation_backup_.fill(false);
 
     chain_.enabled = false;
     chain_.length = 0;
@@ -301,29 +317,39 @@ void StepSequencer::recordLiveHit(uint8_t note, uint8_t velocity) {
 void StepSequencer::play() {
     state_ = SequencerState::Playing;
     current_step_ = 0;
-    last_played_notes_.fill(-1);
+    for (auto& pb : track_playback_) {
+        pb.last_played_note = -1;
+        pb.active = false;
+        pb.passed_probability = false;
+    }
     ESP_LOGI(TAG, "StepSequencer PLAY");
 }
 
 void StepSequencer::stop() {
     state_ = SequencerState::Stopped;
     current_step_ = 0;
-    last_played_notes_.fill(-1);
+    for (auto& pb : track_playback_) {
+        pb.last_played_note = -1;
+        pb.active = false;
+        pb.passed_probability = false;
+    }
     ESP_LOGI(TAG, "StepSequencer STOP");
 }
 
 void StepSequencer::stop(EventBus& event_bus) {
     for (size_t t = 0; t < kMaxTracks; ++t) {
-        if (last_played_notes_[t] >= 0) {
+        if (track_playback_[t].last_played_note >= 0) {
             SynthEvent off_ev;
             off_ev.type = EventType::NoteOff;
             off_ev.source = EventSource::Sequencer;
             off_ev.channel = track_channels_[t];
-            off_ev.id = (uint16_t)last_played_notes_[t];
+            off_ev.id = (uint16_t)track_playback_[t].last_played_note;
             off_ev.value = 0;
             off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
             event_bus.send(off_ev);
-            last_played_notes_[t] = -1;
+            track_playback_[t].last_played_note = -1;
+            track_playback_[t].active = false;
+            track_playback_[t].passed_probability = false;
         }
     }
     stop();
@@ -356,82 +382,135 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
         is_step_tick = (mod12 == 0) || (mod12 == tick_split);
     }
 
+    uint32_t step_tick_offset = tick_count % ticks_per_step;
+
     for (size_t t = 0; t < kMaxTracks; ++t) {
-        if (last_played_notes_[t] >= 0 && tick_count >= note_off_ticks_[t]) {
+        auto& pb = track_playback_[t];
+
+        // Process scheduled NoteOff
+        if (pb.last_played_note >= 0 && tick_count >= pb.note_off_tick) {
             SynthEvent off_ev;
             off_ev.type = EventType::NoteOff;
             off_ev.source = EventSource::Sequencer;
             off_ev.channel = track_channels_[t];
-            off_ev.id = (uint16_t)last_played_notes_[t];
+            off_ev.id = (uint16_t)pb.last_played_note;
             off_ev.value = 0;
             off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
             event_bus.send(off_ev);
 
-            last_played_notes_[t] = -1;
+            pb.last_played_note = -1;
         }
 
         // Check Mute and Solo
         if (track_mutes_[t]) continue;
         if (any_solo && !track_solos_[t]) continue;
 
-        uint32_t step_tick_offset = tick_count % ticks_per_step;
-        uint8_t step_idx = current_step_;
-        const auto& s = patterns_[current_pattern_][t][step_idx];
+        if (is_step_tick) {
+            // Latch active step from current pattern
+            const auto& s = patterns_[current_pattern_][t][current_step_];
+            pb.note = s.note;
+            pb.velocity = s.velocity;
+            pb.ratchet = s.ratchet;
+            pb.gate_percent = s.gate_percent;
+            pb.active = s.active;
 
-        bool is_ratchet_tick = false;
-        uint32_t ratchet_gate = 1;
-        if (s.active && s.ratchet > 1) {
-            if (s.ratchet == 2 && step_tick_offset == 3) {
-                is_ratchet_tick = true;
-                ratchet_gate = 2;
-            } else if (s.ratchet == 3 && (step_tick_offset == 2 || step_tick_offset == 4)) {
-                is_ratchet_tick = true;
-                ratchet_gate = 1;
-            } else if (s.ratchet == 4 && (step_tick_offset == 1 || step_tick_offset == 3 || step_tick_offset == 4)) {
-                is_ratchet_tick = true;
-                ratchet_gate = 1;
-            }
-        }
-
-        if (is_step_tick || is_ratchet_tick) {
-            if (s.active) {
-                // Check probability on step onset
-                if (is_step_tick && s.probability < 100) {
-                    uint8_t roll = static_cast<uint8_t>((esp_timer_get_time() % 100) + 1);
-                    if (roll > s.probability) continue;
+            if (pb.active) {
+                // Evaluate probability exactly once at step onset
+                if (s.probability < 100) {
+                    uint32_t roll = (randomU32() % 100) + 1;
+                    pb.passed_probability = (roll <= s.probability);
+                } else {
+                    pb.passed_probability = true;
                 }
+            } else {
+                pb.passed_probability = false;
+            }
 
-                // Dispatch Parameter Lock Automation Event if present on step onset
-                if (is_step_tick && s.has_plock && s.locked_param < 8) {
-                    SynthEvent plock_ev;
-                    plock_ev.type = EventType::ControlChange;
-                    plock_ev.source = EventSource::Sequencer;
-                    plock_ev.channel = track_channels_[t];
-                    plock_ev.id = static_cast<uint16_t>(s.locked_param + 1); // CC 1..8 for Macro 1..8
-                    plock_ev.value = static_cast<int32_t>(s.locked_val);
-                    plock_ev.timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
-                    event_bus.send(plock_ev);
+            // Dispatch Parameter Lock Automation Event if present on step onset
+            if (pb.active && pb.passed_probability && s.has_plock && s.locked_param < 8) {
+                SynthEvent plock_ev;
+                plock_ev.type = EventType::ControlChange;
+                plock_ev.source = EventSource::Sequencer;
+                plock_ev.channel = track_channels_[t];
+                plock_ev.id = static_cast<uint16_t>(s.locked_param + 1); // CC 1..8 for Macro 1..8
+                plock_ev.value = static_cast<int32_t>(s.locked_val);
+                plock_ev.timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
+                event_bus.send(plock_ev);
+            }
+
+            // Trigger step onset NoteOn if active and passed probability
+            if (pb.active && pb.passed_probability) {
+                if (pb.last_played_note >= 0) {
+                    SynthEvent off_ev;
+                    off_ev.type = EventType::NoteOff;
+                    off_ev.source = EventSource::Sequencer;
+                    off_ev.channel = track_channels_[t];
+                    off_ev.id = (uint16_t)pb.last_played_note;
+                    off_ev.value = 0;
+                    off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+                    event_bus.send(off_ev);
+                    pb.last_played_note = -1;
                 }
 
                 SynthEvent on_ev;
                 on_ev.type = EventType::NoteOn;
                 on_ev.source = EventSource::Sequencer;
                 on_ev.channel = track_channels_[t];
-                on_ev.id = s.note;
-                on_ev.value = s.velocity;
+                on_ev.id = pb.note;
+                on_ev.value = pb.velocity;
                 on_ev.timestamp_us = (uint32_t)esp_timer_get_time();
                 event_bus.send(on_ev);
 
-                last_played_notes_[t] = s.note;
-                if (is_ratchet_tick) {
-                    note_off_ticks_[t] = tick_count + ratchet_gate;
-                } else if (s.ratchet > 1) {
-                    uint32_t first_gate = (s.ratchet == 2) ? 2 : 1;
-                    note_off_ticks_[t] = tick_count + first_gate;
+                pb.last_played_note = pb.note;
+                if (pb.ratchet > 1) {
+                    uint32_t first_gate = (pb.ratchet == 2) ? 2 : 1;
+                    pb.note_off_tick = tick_count + first_gate;
                 } else {
-                    uint32_t gate_ticks = static_cast<uint32_t>((ticks_per_step * s.gate_percent) / 100.0f);
+                    uint32_t gate_ticks = static_cast<uint32_t>((ticks_per_step * pb.gate_percent) / 100.0f);
                     if (gate_ticks < 1) gate_ticks = 1;
-                    note_off_ticks_[t] = tick_count + gate_ticks;
+                    pb.note_off_tick = tick_count + gate_ticks;
+                }
+            }
+        } else {
+            // Intermediate ratchet ticks: read EXCLUSIVELY from latched track_playback_
+            if (pb.active && pb.passed_probability && pb.ratchet > 1) {
+                bool is_ratchet_tick = false;
+                uint32_t ratchet_gate = 1;
+                if (pb.ratchet == 2 && step_tick_offset == 3) {
+                    is_ratchet_tick = true;
+                    ratchet_gate = 2;
+                } else if (pb.ratchet == 3 && (step_tick_offset == 2 || step_tick_offset == 4)) {
+                    is_ratchet_tick = true;
+                    ratchet_gate = 1;
+                } else if (pb.ratchet == 4 && (step_tick_offset == 1 || step_tick_offset == 3 || step_tick_offset == 4)) {
+                    is_ratchet_tick = true;
+                    ratchet_gate = 1;
+                }
+
+                if (is_ratchet_tick) {
+                    if (pb.last_played_note >= 0) {
+                        SynthEvent off_ev;
+                        off_ev.type = EventType::NoteOff;
+                        off_ev.source = EventSource::Sequencer;
+                        off_ev.channel = track_channels_[t];
+                        off_ev.id = (uint16_t)pb.last_played_note;
+                        off_ev.value = 0;
+                        off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+                        event_bus.send(off_ev);
+                        pb.last_played_note = -1;
+                    }
+
+                    SynthEvent on_ev;
+                    on_ev.type = EventType::NoteOn;
+                    on_ev.source = EventSource::Sequencer;
+                    on_ev.channel = track_channels_[t];
+                    on_ev.id = pb.note;
+                    on_ev.value = pb.velocity;
+                    on_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+                    event_bus.send(on_ev);
+
+                    pb.last_played_note = pb.note;
+                    pb.note_off_tick = tick_count + ratchet_gate;
                 }
             }
         }
@@ -460,22 +539,23 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
 void StepSequencer::mutatePattern(uint8_t track_idx, uint8_t probability_pct) {
     if (track_idx >= kMaxTracks) return;
     mutation_backup_[track_idx] = patterns_[current_pattern_][track_idx];
+    mutation_backup_pattern_[track_idx] = current_pattern_;
     has_mutation_backup_[track_idx] = true;
 
     probability_pct = std::clamp(probability_pct, (uint8_t)1, (uint8_t)100);
     uint8_t len = pattern_length_;
     for (uint8_t s = 0; s < len; ++s) {
-        uint8_t roll = static_cast<uint8_t>((esp_timer_get_time() % 100) + 1);
+        uint8_t roll = static_cast<uint8_t>((randomU32() % 100) + 1);
         if (roll <= probability_pct) {
             auto& step = patterns_[current_pattern_][track_idx][s];
-            uint8_t mutation_type = static_cast<uint8_t>(esp_timer_get_time() % 4);
+            uint8_t mutation_type = static_cast<uint8_t>(randomU32() % 4);
             switch (mutation_type) {
                 case 0:
                     step.active = !step.active;
                     break;
                 case 1:
                     if (step.active) {
-                        int v = (int)step.velocity + ((esp_timer_get_time() % 2 == 0) ? 15 : -15);
+                        int v = (int)step.velocity + ((randomU32() % 2 == 0) ? 15 : -15);
                         step.velocity = static_cast<uint8_t>(std::clamp(v, 30, 127));
                     }
                     break;
@@ -487,7 +567,7 @@ void StepSequencer::mutatePattern(uint8_t track_idx, uint8_t probability_pct) {
                 case 3:
                     if (step.active && track_channels_[track_idx] != 9) {
                         static const int kIntervals[4] = { -12, -2, 2, 12 };
-                        int interval = kIntervals[esp_timer_get_time() % 4];
+                        int interval = kIntervals[randomU32() % 4];
                         int n = (int)step.note + interval;
                         if (n >= 12 && n <= 108) step.note = static_cast<uint8_t>(n);
                     }
@@ -500,6 +580,11 @@ void StepSequencer::mutatePattern(uint8_t track_idx, uint8_t probability_pct) {
 
 void StepSequencer::undoMutation(uint8_t track_idx) {
     if (track_idx >= kMaxTracks || !has_mutation_backup_[track_idx]) return;
+    if (current_pattern_ != mutation_backup_pattern_[track_idx]) {
+        ESP_LOGW(TAG, "Cannot undo mutation: active pattern %u != backup pattern %u", 
+                 current_pattern_, mutation_backup_pattern_[track_idx]);
+        return;
+    }
     patterns_[current_pattern_][track_idx] = mutation_backup_[track_idx];
     has_mutation_backup_[track_idx] = false;
     ESP_LOGI(TAG, "Undid mutation on pattern %u track %u", current_pattern_, track_idx);

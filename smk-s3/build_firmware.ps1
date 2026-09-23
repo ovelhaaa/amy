@@ -1,20 +1,81 @@
-$tools = @(
-    'C:\Users\devx\.espressif\tools\xtensa-esp-elf\esp-14.2.0_20241119\xtensa-esp-elf\bin',
-    'C:\Users\devx\.espressif\tools\riscv32-esp-elf\esp-14.2.0_20241119\riscv32-esp-elf\bin',
-    'C:\Users\devx\.espressif\tools\esp32ulp-elf\2.38_20240113\esp32ulp-elf\bin',
-    'C:\Users\devx\.espressif\tools\cmake\3.30.2\bin',
-    'C:\Users\devx\.espressif\tools\ninja\1.12.1',
-    'C:\Users\devx\.espressif\tools\idf-exe\1.0.3',
-    'C:\Users\devx\.espressif\python_env\idf6.0_py3.11_env\Scripts'
+[CmdletBinding()]
+param(
+    [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
+    [string[]]$IdfArgs,
+    [string]$IdfPath,
+    [string]$ToolsPath,
+    [string]$PythonEnvPath
 )
 
-$env:PATH = ($tools -join ';') + ';' + $env:PATH
-$env:IDF_PATH = 'X:/'
-$env:IDF_TOOLS_PATH = 'C:\Users\devx\.espressif'
-$env:IDF_PYTHON_ENV_PATH = 'C:\Users\devx\.espressif\python_env\idf6.0_py3.11_env'
-$env:IDF_MAINTAINER = '1'
-$python = 'C:\Users\devx\.espressif\python_env\idf6.0_py3.11_env\Scripts\python.exe'
-$idf_py = 'X:\tools\idf.py'
+if (-not $IdfArgs -or $IdfArgs.Count -eq 0) {
+    $IdfArgs = @('build')
+}
 
-& $python $idf_py build
+# Fallbacks for local environment if not already defined
+if (-not $ToolsPath) {
+    if (Test-Path "$env:USERPROFILE\.espressif") {
+        $ToolsPath = "$env:USERPROFILE\.espressif"
+    } elseif (Test-Path 'C:\Users\devx\.espressif') {
+        $ToolsPath = 'C:\Users\devx\.espressif'
+    }
+}
+
+if (-not $IdfPath) {
+    if (Test-Path 'X:\tools\idf.py') {
+        $IdfPath = 'X:\'
+    } elseif ($env:IDF_PATH) {
+        $IdfPath = $env:IDF_PATH
+    }
+}
+
+if (-not $PythonEnvPath -and $ToolsPath) {
+    if (Test-Path "$ToolsPath\python_env\idf6.0_py3.11_env") {
+        $PythonEnvPath = "$ToolsPath\python_env\idf6.0_py3.11_env"
+    } else {
+        $pyEnvs = Get-ChildItem -Path "$ToolsPath\python_env" -Directory -ErrorAction SilentlyContinue
+        if ($pyEnvs) {
+            $PythonEnvPath = $pyEnvs[0].FullName
+        }
+    }
+}
+
+# Resolve Python executable
+$python = 'python'
+if ($PythonEnvPath -and (Test-Path "$PythonEnvPath\Scripts\python.exe")) {
+    $python = "$PythonEnvPath\Scripts\python.exe"
+}
+
+# Resolve idf.py
+$idf_py = 'idf.py'
+if ($IdfPath -and (Test-Path "$IdfPath\tools\idf.py")) {
+    $idf_py = "$IdfPath\tools\idf.py"
+}
+
+# Setup environment variables
+if ($IdfPath) { $env:IDF_PATH = $IdfPath }
+if ($ToolsPath) { $env:IDF_TOOLS_PATH = $ToolsPath }
+if ($PythonEnvPath) {
+    $env:IDF_PYTHON_ENV_PATH = $PythonEnvPath
+    $env:PATH = "$PythonEnvPath\Scripts;$env:PATH"
+}
+
+# Add tool directories to PATH if found in ToolsPath
+if ($ToolsPath -and (Test-Path "$ToolsPath\tools")) {
+    $binPaths = Get-ChildItem -Path "$ToolsPath\tools" -Recurse -Filter "bin" -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+    $ninjaPath = Get-ChildItem -Path "$ToolsPath\tools\ninja" -Recurse -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+    $allPaths = @()
+    if ($binPaths) { $allPaths += $binPaths }
+    if ($ninjaPath) { $allPaths += $ninjaPath }
+    if ($allPaths.Count -gt 0) {
+        $env:PATH = ($allPaths -join ';') + ';' + $env:PATH
+    }
+}
+
+$env:IDF_MAINTAINER = '1'
+
+Write-Host "Using IDF_PATH: $env:IDF_PATH"
+Write-Host "Using Python: $python"
+Write-Host "Running idf.py with args: $IdfArgs"
+
+& $python $idf_py @IdfArgs
 exit $LASTEXITCODE

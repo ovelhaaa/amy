@@ -114,7 +114,9 @@ public:
     // Pattern Mutation & Generative Evolver
     void mutatePattern(uint8_t track_idx, uint8_t probability_pct);
     void undoMutation(uint8_t track_idx);
-    bool hasMutationUndo(uint8_t track_idx) const { return track_idx < kMaxTracks && has_mutation_backup_[track_idx]; }
+    bool hasMutationUndo(uint8_t track_idx) const {
+        return track_idx < kMaxTracks && has_mutation_backup_[track_idx] && (current_pattern_ == mutation_backup_pattern_[track_idx]);
+    }
 
     // Track metadata
     const char* trackName(uint8_t track_idx) const;
@@ -128,6 +130,25 @@ public:
 
     void processTick(uint32_t tick_count, EventBus& event_bus);
     void reset();
+
+    struct TrackPlaybackState {
+        uint8_t  note = 36;
+        uint8_t  velocity = 100;
+        uint8_t  ratchet = 1;
+        uint8_t  gate_percent = 50;
+        bool     active = false;
+        bool     passed_probability = false;
+        int16_t  last_played_note = -1;
+        uint32_t note_off_tick = 0;
+    };
+
+    const TrackPlaybackState& trackPlayback(uint8_t track_idx) const {
+        static const TrackPlaybackState kDummy{};
+        if (track_idx < kMaxTracks) return track_playback_[track_idx];
+        return kDummy;
+    }
+
+    static uint32_t randomU32();
 
 private:
     std::array<std::array<std::array<StepData, kMaxSteps>, kMaxTracks>, kMaxPatterns> patterns_;
@@ -148,10 +169,10 @@ private:
     std::array<uint8_t, kMaxTracks>                                                    track_channels_{9, 9, 9, 9};
 
     std::array<std::array<StepData, kMaxSteps>, kMaxTracks>                            mutation_backup_{};
+    std::array<uint8_t, kMaxTracks>                                                    mutation_backup_pattern_{0, 0, 0, 0};
     std::array<bool, kMaxTracks>                                                       has_mutation_backup_{false, false, false, false};
 
-    std::array<int16_t, kMaxTracks>                                                    last_played_notes_;
-    std::array<uint32_t, kMaxTracks>                                                   note_off_ticks_;
+    std::array<TrackPlaybackState, kMaxTracks>                                         track_playback_{};
 };
 
 } // namespace smk

@@ -169,7 +169,7 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
             patch_out.engine_patch = v3_patch.engine_patch;
             patch_out.transpose = v3_patch.transpose;
             patch_out.voice_count = v3_patch.voice_count;
-            patch_out.wave_type = v3_patch.wave_type;
+            patch_out.wave_type = mapLegacyWaveToAmy(v3_patch.wave_type);
             patch_out.mono_mode = v3_patch.mono_mode;
             patch_out.portamento_ms = v3_patch.portamento_ms;
             patch_out.base_freq = v3_patch.base_freq;
@@ -184,7 +184,7 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
             patch_out.filter_env_amount = 0.0f;
             patch_out.filter_key_tracking = 0.0f;
             patch_out.filter_vel_tracking = 1.5f;
-            patch_out.filter_type = 0;
+            patch_out.filter_type = toAmyFilterType(SmkFilterType::LPF24);
             patch_out.osc_mix = 0.5f;
             patch_out.osc_detune = 0.0f;
             patch_out.sub_level = 0.0f;
@@ -252,7 +252,7 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
         patch_out.engine_patch = legacy_v3.engine_patch;
         patch_out.transpose = legacy_v3.transpose;
         patch_out.voice_count = legacy_v3.voice_count;
-        patch_out.wave_type = legacy_v3.wave_type;
+        patch_out.wave_type = mapLegacyWaveToAmy(legacy_v3.wave_type);
         patch_out.mono_mode = legacy_v3.mono_mode;
         patch_out.portamento_ms = legacy_v3.portamento_ms;
         patch_out.base_freq = legacy_v3.base_freq;
@@ -266,7 +266,7 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
         patch_out.filter_env_amount = 0.0f;
         patch_out.filter_key_tracking = 0.0f;
         patch_out.filter_vel_tracking = 1.5f;
-        patch_out.filter_type = 0;
+        patch_out.filter_type = toAmyFilterType(SmkFilterType::LPF24);
         patch_out.osc_mix = 0.5f;
         patch_out.osc_detune = 0.0f;
         patch_out.sub_level = 0.0f;

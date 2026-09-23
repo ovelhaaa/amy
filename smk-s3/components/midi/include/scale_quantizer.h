@@ -6,6 +6,11 @@
 
 namespace smk {
 
+/**
+ * @brief Scale Quantizer utility (EXPERIMENTAL / NOT-YET-WIRED to live MIDI stream)
+ * 
+ * Provides musical scale quantization for raw MIDI note pitches.
+ */
 enum class ScaleType : uint8_t {
     Chromatic       = 0,
     Major           = 1, // Ionian
@@ -14,12 +19,13 @@ enum class ScaleType : uint8_t {
     Dorian          = 4,
     PentatonicMajor = 5,
     PentatonicMinor = 6,
-    Blues           = 7
+    Blues           = 7,
+    Mixolydian      = 8
 };
 
 class ScaleQuantizer {
 public:
-    static constexpr size_t kNumScales = 8;
+    static constexpr size_t kNumScales = 9;
 
     ScaleQuantizer() = default;
 
@@ -57,6 +63,7 @@ public:
             case ScaleType::PentatonicMajor: return "PENTAMAJOR";
             case ScaleType::PentatonicMinor: return "PENTAMINOR";
             case ScaleType::Blues:           return "BLUES";
+            case ScaleType::Mixolydian:      return "MIXOLYDIAN";
             default:                         return "UNKNOWN";
         }
     }
@@ -122,6 +129,8 @@ private:
                 return 0x04A9; // 0, 3, 5, 7, 10       -> 010010101001b
             case ScaleType::Blues:
                 return 0x04E9; // 0, 3, 5, 6, 7, 10    -> 010011101001b
+            case ScaleType::Mixolydian:
+                return 0x06B5; // 0, 2, 4, 5, 7, 9, 10 -> 011010110101b
             default:
                 return 0x0FFF;
         }

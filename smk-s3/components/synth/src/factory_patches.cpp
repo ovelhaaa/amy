@@ -331,7 +331,15 @@ static void buildPatchFromDescriptor(const PatchDescriptor& desc, SynthPatch& ou
     strncpy(out.category, desc.category, sizeof(out.category) - 1);
     strncpy(out.author, desc.author, sizeof(out.author) - 1);
     out.engine_patch = desc.engine_patch;
-    out.wave_type = desc.wave_type;
+    // Map descriptor wave_type (0=SINE, 1=SAW, 3=TRI, 4=SQR, 7=PCM, 8=ALGO)
+    // to canonical AMY wave constants (0=SINE, 1=PULSE, 2=SAW_DOWN, 4=TRIANGLE, 7=PCM, 8=ALGO)
+    switch (desc.wave_type) {
+        case 1: out.wave_type = toAmyWaveType(SmkWaveType::SawDown); break;
+        case 2: out.wave_type = toAmyWaveType(SmkWaveType::SawUp); break;
+        case 3: out.wave_type = toAmyWaveType(SmkWaveType::Triangle); break;
+        case 4: out.wave_type = toAmyWaveType(SmkWaveType::Pulse); break;
+        default: out.wave_type = desc.wave_type; break;
+    }
     out.transpose = desc.transpose;
 
     // Smart Mono Legato with Portamento for Bass and Lead presets
@@ -359,7 +367,7 @@ static void buildPatchFromDescriptor(const PatchDescriptor& desc, SynthPatch& ou
     out.filter_env_amount = 0.0f;
     out.filter_key_tracking = 0.0f;
     out.filter_vel_tracking = 1.5f;
-    out.filter_type = 0;
+    out.filter_type = toAmyFilterType(SmkFilterType::LPF24);
     out.osc_mix = 0.5f;
     out.osc_detune = 0.0f;
     out.sub_level = 0.0f;

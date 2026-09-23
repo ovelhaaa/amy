@@ -43,13 +43,18 @@ public:
      */
     void setMacro(uint8_t macro_idx, float physical_val, bool from_physical_knob = true);
 
+    using FxControlState = smk::FxControlState;
+
     const SynthPatch& activePatch() const { return active_patch_; }
     uint8_t activePatchId() const { return active_patch_.id; }
     SoftTakeover& softTakeover() { return soft_takeover_; }
+    const FxControlState& fxControlState() const { return fx_state_; }
 
 private:
     void applyPatchToEngine(const SynthPatch& patch);
     void applyMacroToEngine(uint8_t macro_idx, float effective_val);
+    void applyActiveFilterState();
+    void applyActiveChorusState();
 
     AmyAdapter*    amy_adapter_    = nullptr;
     UIManager*     ui_manager_     = nullptr;
@@ -59,7 +64,7 @@ private:
     SynthPatch     active_patch_;
     KnobBank       active_bank_    = KnobBank::BankA_Macros;
     SoftTakeover   soft_takeover_;
-    std::array<uint8_t, 4> bank_b_fx_values_{0, 0, 40, 15}; // Chorus, Delay, Reverb, Drive
+    FxControlState fx_state_;
     float          active_filter_env_amt_   = 0.0f;
     float          active_filter_key_track_ = 0.0f;
     float          active_filter_vel_track_ = 1.5f;

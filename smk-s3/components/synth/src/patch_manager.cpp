@@ -18,6 +18,43 @@ PatchManager::PatchManager() {
     active_patch_ = *FactoryPatches::getPatchById(0);
 }
 
+void PatchManager::applyActiveFilterState() {
+    if (amy_adapter_) {
+        amy_adapter_->setFilter(1,
+            active_patch_.filter_cutoff,
+            active_patch_.filter_res,
+            active_filter_env_amt_,
+            active_filter_key_track_,
+            active_filter_vel_track_,
+            active_filter_type_);
+    }
+}
+
+void PatchManager::applyActiveChorusState() {
+    if (!amy_adapter_) return;
+    // 0=Off, 1=Classic, 2=Juno, 3=Ensemble, 4=Wide, 5=Vibrato
+    static const struct {
+        float base_depth;
+        float rate;
+        float base_level;
+    } kChorusPresets[6] = {
+        { 0.0f, 0.0f, 0.0f },  // 0: Off
+        { 0.5f, 0.5f, 0.7f },  // 1: Classic
+        { 0.8f, 0.6f, 0.85f }, // 2: Juno
+        { 1.2f, 0.9f, 1.0f },  // 3: Ensemble
+        { 1.5f, 0.4f, 0.9f },  // 4: Wide
+        { 0.4f, 4.5f, 0.6f }   // 5: Vibrato
+    };
+    uint8_t mode = std::clamp<uint8_t>(fx_state_.chorus_mode, 0, 5);
+    if (mode == 0) {
+        amy_adapter_->setChorus(0.0f, 0.0f, 0.0f);
+    } else {
+        const auto& p = kChorusPresets[mode];
+        float depth_mult = (fx_state_.chorus_depth > 0.001f) ? fx_state_.chorus_depth : 1.0f;
+        amy_adapter_->setChorus(p.base_depth * depth_mult, p.rate, p.base_level * depth_mult);
+    }
+}
+
 bool PatchManager::begin(AmyAdapter* amy_adapter, UIManager* ui_manager) {
     amy_adapter_ = amy_adapter;
     ui_manager_  = ui_manager;
@@ -92,10 +129,17 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                 }
                 break;
             case KnobBank::BankD_Effects:
-                if (knob_idx >= 1 && knob_idx <= 5) saved_val = (float)bank_b_fx_values_[knob_idx];
-                else if (knob_idx == 0) saved_val = std::clamp(active_patch_.chorus_mode / 4.0f * 127.0f, 0.0f, 127.0f);
-                else if (knob_idx == 6 && amy_adapter_) saved_val = std::clamp(amy_adapter_->drive() / 3.0f * 127.0f, 0.0f, 127.0f);
-                else if (knob_idx == 7 && amy_adapter_) saved_val = std::clamp((amy_adapter_->masterTone() + 1.0f) / 2.0f * 127.0f, 0.0f, 127.0f);
+                switch (knob_idx) {
+                    case 0: saved_val = std::clamp(fx_state_.chorus_mode / 5.0f * 127.0f, 0.0f, 127.0f); break;
+                    case 1: saved_val = std::clamp((fx_state_.delay_time_ms - 10.0f) / 990.0f * 127.0f, 0.0f, 127.0f); break;
+                    case 2: saved_val = std::clamp(fx_state_.delay_feedback / 0.95f * 127.0f, 0.0f, 127.0f); break;
+                    case 3: saved_val = std::clamp(fx_state_.delay_mix * 127.0f, 0.0f, 127.0f); break;
+                    case 4: saved_val = std::clamp(fx_state_.reverb_size * 127.0f, 0.0f, 127.0f); break;
+                    case 5: saved_val = std::clamp(fx_state_.reverb_mix * 127.0f, 0.0f, 127.0f); break;
+                    case 6: saved_val = std::clamp(fx_state_.drive * 127.0f, 0.0f, 127.0f); break;
+                    case 7: saved_val = std::clamp((fx_state_.master_tone + 1.0f) / 2.0f * 127.0f, 0.0f, 127.0f); break;
+                    default: break;
+                }
                 break;
             case KnobBank::BankE_Sequencer:
                 if (knob_idx == 0 && clock_manager_) saved_val = std::clamp((clock_manager_->bpm() - 30.0f) / 270.0f * 127.0f, 0.0f, 127.0f);
@@ -145,9 +189,8 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                         break;
                     }
                     case 4: { // FM Mod Decay
-                        param_name = "FM MOD DECAY";
-                        float decay_ms = 5.0f + norm_val * 2000.0f;
-                        if (amy_adapter_) amy_adapter_->setEnvelope(1, active_patch_.amp_attack, decay_ms, active_patch_.amp_sustain, active_patch_.amp_release);
+                        param_name = "FM DECAY [N/A]";
+                        // Operator-level envelope modulation not yet wired; do not corrupt global amp envelope
                         break;
                     }
                     case 5: { // FM Feedback
@@ -157,14 +200,13 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                         break;
                     }
                     case 6: { // FM Vibrato
-                        param_name = "FM VIBRATO";
-                        float vibrato = norm_val * 0.2f;
-                        if (amy_adapter_) amy_adapter_->setChorus(vibrato * 0.5f, 5.0f, vibrato * 0.6f);
+                        param_name = "FM VIB [N/A]";
+                        // True pitch LFO vibrato not yet wired; do not apply fake chorus
                         break;
                     }
-                    case 7: { // DX7 Algorithm
+                    case 7: { // DX7 Algorithm (1 .. 32)
                         param_name = "DX7 ALGO";
-                        uint8_t algo = static_cast<uint8_t>(norm_val * 31.0f);
+                        uint8_t algo = 1 + static_cast<uint8_t>(std::clamp(static_cast<int>(std::round(norm_val * 31.0f)), 0, 31));
                         if (amy_adapter_) amy_adapter_->setFmAlgorithm(1, algo);
                         break;
                     }
@@ -178,9 +220,12 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                         if (amy_adapter_) amy_adapter_->setOscMix(1, norm_val);
                         break;
                     case 1: // Waveform
-                        param_name = "WAVEFORM";
-                        active_patch_.wave_type = static_cast<uint8_t>(norm_val * 8.0f);
-                        if (amy_adapter_) amy_adapter_->setOscillatorWaveform(1, active_patch_.wave_type);
+                        {
+                            uint8_t w = static_cast<uint8_t>(std::clamp(static_cast<int>(std::round(norm_val * 8.0f)), 0, 8));
+                            active_patch_.wave_type = w;
+                            if (amy_adapter_) amy_adapter_->setOscillatorWaveform(1, w);
+                            param_name = waveTypeName(fromAmyWaveType(w));
+                        }
                         break;
                     case 2:
                         param_name = "DETUNE";
@@ -221,18 +266,18 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                 case 0: // Cutoff
                     param_name = "CUTOFF FREQ";
                     active_patch_.filter_cutoff = 20.0f + norm_val * 18000.0f;
-                    if (amy_adapter_) amy_adapter_->setFilter(1, active_patch_.filter_cutoff, active_patch_.filter_res, active_filter_env_amt_, active_filter_key_track_);
+                    applyActiveFilterState();
                     break;
                 case 1: // Resonance
                     param_name = "RESONANCE";
                     active_patch_.filter_res = 0.5f + norm_val * 9.5f;
-                    if (amy_adapter_) amy_adapter_->setFilter(1, active_patch_.filter_cutoff, active_patch_.filter_res, active_filter_env_amt_, active_filter_key_track_);
+                    applyActiveFilterState();
                     break;
                 case 2: // ENV AMOUNT
                     param_name = "ENV AMOUNT";
                     active_filter_env_amt_ = (norm_val - 0.5f) * 8.0f;
                     active_patch_.filter_env_amount = active_filter_env_amt_;
-                    if (amy_adapter_) amy_adapter_->setFilter(1, active_patch_.filter_cutoff, active_patch_.filter_res, active_filter_env_amt_, active_filter_key_track_);
+                    applyActiveFilterState();
                     break;
                 case 3: // Amp Attack
                     param_name = "AMP ATTACK";
@@ -258,7 +303,7 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     param_name = "KEY TRACKING";
                     active_filter_key_track_ = norm_val * 2.0f;
                     active_patch_.filter_key_tracking = active_filter_key_track_;
-                    if (amy_adapter_) amy_adapter_->setFilter(1, active_patch_.filter_cutoff, active_patch_.filter_res, active_filter_env_amt_, active_filter_key_track_);
+                    applyActiveFilterState();
                     break;
             }
             break;
@@ -268,17 +313,14 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
             switch (knob_idx) {
                 case 0: {
                     param_name = "CHORUS MODE";
-                    uint8_t mode = static_cast<uint8_t>(norm_val * 4.99f);
+                    uint8_t mode = static_cast<uint8_t>(std::clamp(static_cast<int>(std::round(norm_val * 5.0f)), 0, 5));
+                    fx_state_.chorus_mode = mode;
                     active_patch_.chorus_mode = mode;
-                    if (amy_adapter_) {
-                        amy_adapter_->setChorusMode(mode);
-                        amy_adapter_->setChorus(0.6f, 0.5f, 0.5f);
-                    }
+                    applyActiveChorusState();
                     break;
                 }
                 case 1: {
                     param_name = "DELAY SYNC";
-                    bank_b_fx_values_[1] = static_cast<uint8_t>(effective_val);
                     float delay_ms = 10.0f + norm_val * 990.0f;
                     if (clock_manager_ && clock_manager_->bpm() >= 30.0f) {
                         float beat_ms = 60000.0f / clock_manager_->bpm();
@@ -286,56 +328,41 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                         int div_idx = std::clamp(static_cast<int>(norm_val * 6.99f), 0, 6);
                         delay_ms = std::min(beat_ms * kDivMultipliers[div_idx], 1200.0f);
                     }
-                    if (amy_adapter_) amy_adapter_->setDelay(delay_ms, (float)bank_b_fx_values_[2] / 127.0f * 0.95f, (float)bank_b_fx_values_[3] / 127.0f);
+                    fx_state_.delay_time_ms = delay_ms;
+                    if (amy_adapter_) amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
                     break;
                 }
                 case 2:
                     param_name = "DELAY FEEDBACK";
-                    bank_b_fx_values_[2] = static_cast<uint8_t>(effective_val);
-                    if (amy_adapter_) {
-                        float delay_ms = 10.0f + (float)bank_b_fx_values_[1] / 127.0f * 990.0f;
-                        if (clock_manager_ && clock_manager_->bpm() >= 30.0f) {
-                            float beat_ms = 60000.0f / clock_manager_->bpm();
-                            static const float kDivMultipliers[7] = { 0.25f, 0.3333f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f };
-                            int div_idx = std::clamp(static_cast<int>((float)bank_b_fx_values_[1] / 127.0f * 6.99f), 0, 6);
-                            delay_ms = std::min(beat_ms * kDivMultipliers[div_idx], 1200.0f);
-                        }
-                        amy_adapter_->setDelay(delay_ms, norm_val * 0.95f, (float)bank_b_fx_values_[3] / 127.0f);
-                    }
+                    fx_state_.delay_feedback = norm_val * 0.95f;
+                    if (amy_adapter_) amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
                     break;
                 case 3:
                     param_name = "DELAY MIX";
-                    bank_b_fx_values_[3] = static_cast<uint8_t>(effective_val);
-                    if (amy_adapter_) {
-                        float delay_ms = 10.0f + (float)bank_b_fx_values_[1] / 127.0f * 990.0f;
-                        if (clock_manager_ && clock_manager_->bpm() >= 30.0f) {
-                            float beat_ms = 60000.0f / clock_manager_->bpm();
-                            static const float kDivMultipliers[7] = { 0.25f, 0.3333f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f };
-                            int div_idx = std::clamp(static_cast<int>((float)bank_b_fx_values_[1] / 127.0f * 6.99f), 0, 6);
-                            delay_ms = std::min(beat_ms * kDivMultipliers[div_idx], 1200.0f);
-                        }
-                        amy_adapter_->setDelay(delay_ms, (float)bank_b_fx_values_[2] / 127.0f * 0.95f, norm_val);
-                    }
+                    fx_state_.delay_mix = norm_val;
+                    if (amy_adapter_) amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
                     break;
                 case 4:
                     param_name = "REVERB SIZE";
-                    bank_b_fx_values_[4] = static_cast<uint8_t>(effective_val);
-                    if (amy_adapter_) amy_adapter_->setReverb(norm_val, 0.7f, (float)bank_b_fx_values_[5] / 127.0f);
+                    fx_state_.reverb_size = norm_val;
+                    if (amy_adapter_) amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
                     break;
                 case 5:
                     param_name = "REVERB MIX";
-                    bank_b_fx_values_[5] = static_cast<uint8_t>(effective_val);
-                    if (amy_adapter_) amy_adapter_->setReverb((float)bank_b_fx_values_[4] / 127.0f, 0.7f, norm_val);
+                    fx_state_.reverb_mix = norm_val;
+                    if (amy_adapter_) amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
                     break;
                 case 6:
                     param_name = "DRIVE LEVEL";
-                    active_patch_.drive_level = norm_val * 3.0f;
-                    if (amy_adapter_) amy_adapter_->setDrive(active_patch_.drive_level);
+                    fx_state_.drive = norm_val;
+                    active_patch_.drive_level = norm_val;
+                    if (amy_adapter_) amy_adapter_->setDrive(norm_val);
                     break;
                 case 7:
                     param_name = "MASTER TONE";
-                    active_patch_.master_tone = (norm_val - 0.5f) * 2.0f;
-                    if (amy_adapter_) amy_adapter_->setMasterTone(active_patch_.master_tone);
+                    fx_state_.master_tone = (norm_val - 0.5f) * 2.0f;
+                    active_patch_.master_tone = fx_state_.master_tone;
+                    if (amy_adapter_) amy_adapter_->setMasterTone(fx_state_.master_tone);
                     break;
             }
             break;
@@ -432,7 +459,7 @@ switch (b_idx) {
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
         active_patch_.filter_cutoff = 20.0f + norm * 18000.0f;
-        if (amy_adapter_) amy_adapter_->setFilter(1, active_patch_.filter_cutoff, active_patch_.filter_res);
+        applyActiveFilterState();
         break;
     }
     case 1: { // Knob B2: Resonance (0.5 .. 10.0)
@@ -441,7 +468,7 @@ switch (b_idx) {
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
         active_patch_.filter_res = 0.5f + norm * 9.5f;
-        if (amy_adapter_) amy_adapter_->setFilter(1, active_patch_.filter_cutoff, active_patch_.filter_res);
+        applyActiveFilterState();
         break;
     }
     case 2: { // Knob B3: Amp Attack (1ms .. 5000ms)
@@ -464,37 +491,42 @@ switch (b_idx) {
     }
     case 4: { // Knob B5: Chorus Depth (0% .. 100%)
         param_name = "CHORUS DEPTH";
-        status = soft_takeover_.update(takeover_id, physical_val, (float)bank_b_fx_values_[0], effective_val);
-        bank_b_fx_values_[0] = static_cast<uint8_t>(std::clamp(effective_val, 0.0f, 127.0f));
+        float saved_val = std::clamp(fx_state_.chorus_depth * 127.0f, 0.0f, 127.0f);
+        status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        if (amy_adapter_) amy_adapter_->setChorus(norm * 0.8f, 0.5f, norm * 0.7f);
+        fx_state_.chorus_depth = norm;
+        applyActiveChorusState();
         break;
     }
     case 5: { // Knob B6: Delay Time (10ms .. 1000ms)
         param_name = "DELAY TIME";
-        status = soft_takeover_.update(takeover_id, physical_val, (float)bank_b_fx_values_[1], effective_val);
-        bank_b_fx_values_[1] = static_cast<uint8_t>(std::clamp(effective_val, 0.0f, 127.0f));
+        float saved_val = std::clamp((fx_state_.delay_time_ms - 10.0f) / 990.0f * 127.0f, 0.0f, 127.0f);
+        status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        if (amy_adapter_) amy_adapter_->setDelay(10.0f + norm * 990.0f, 0.4f, 0.5f);
+        fx_state_.delay_time_ms = 10.0f + norm * 990.0f;
+        if (amy_adapter_) amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
         break;
     }
     case 6: { // Knob B7: Reverb Mix (0% .. 100%)
         param_name = "REVERB MIX";
-        status = soft_takeover_.update(takeover_id, physical_val, (float)bank_b_fx_values_[2], effective_val);
-        bank_b_fx_values_[2] = static_cast<uint8_t>(std::clamp(effective_val, 0.0f, 127.0f));
+        float saved_val = std::clamp(fx_state_.reverb_mix * 127.0f, 0.0f, 127.0f);
+        status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        if (amy_adapter_) amy_adapter_->setReverb(0.7f, 0.5f, norm * 0.8f);
+        fx_state_.reverb_mix = norm;
+        if (amy_adapter_) amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
         break;
     }
     case 7: { // Knob B8: Master Tone / FM Feedback / Drive
-        param_name = "MASTER DRIVE";
-        status = soft_takeover_.update(takeover_id, physical_val, (float)bank_b_fx_values_[3], effective_val);
-        bank_b_fx_values_[3] = static_cast<uint8_t>(std::clamp(effective_val, 0.0f, 127.0f));
+        param_name = (active_patch_.wave_type == 8) ? "FM FEEDBACK" : "MASTER DRIVE";
+        float saved_val = std::clamp(fx_state_.drive * 127.0f, 0.0f, 127.0f);
+        status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
+        fx_state_.drive = norm;
+        active_patch_.drive_level = norm;
         if (active_patch_.wave_type == 8 && amy_adapter_) {
             amy_adapter_->setFmFeedback(1, std::clamp(norm * 0.16f, 0.0f, 0.16f));
         } else if (amy_adapter_) {
-            amy_adapter_->setDrive(norm * 3.0f);
+            amy_adapter_->setDrive(norm);
         }
         break;
     }
@@ -508,10 +540,10 @@ if (ui_manager_) {
         static_cast<uint8_t>(std::clamp((active_patch_.filter_res - 0.5f) / 9.5f * 127.0f, 0.0f, 127.0f)),
         static_cast<uint8_t>(std::clamp((active_patch_.amp_attack - 1.0f) / 4999.0f * 127.0f, 0.0f, 127.0f)),
         static_cast<uint8_t>(std::clamp((active_patch_.amp_release - 1.0f) / 4999.0f * 127.0f, 0.0f, 127.0f)),
-        bank_b_fx_values_[0],
-        bank_b_fx_values_[1],
-        bank_b_fx_values_[2],
-        bank_b_fx_values_[3]
+        static_cast<uint8_t>(std::clamp(fx_state_.chorus_depth * 127.0f, 0.0f, 127.0f)),
+        static_cast<uint8_t>(std::clamp((fx_state_.delay_time_ms - 10.0f) / 990.0f * 127.0f, 0.0f, 127.0f)),
+        static_cast<uint8_t>(std::clamp(fx_state_.reverb_mix * 127.0f, 0.0f, 127.0f)),
+        static_cast<uint8_t>(std::clamp(fx_state_.drive * 127.0f, 0.0f, 127.0f))
     };
     ui_manager_->homeScreen().setHomeKnobBankView(HomeScreen::HomeKnobBankView::BankB_Engine);
     ui_manager_->homeScreen().setEngineValues(eng_vals);
@@ -640,11 +672,11 @@ void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     }
 
     // 3. Configure Filter & Envelopes
-    active_filter_env_amt_ = patch.filter_env_amount;
+    active_filter_env_amt_   = patch.filter_env_amount;
     active_filter_key_track_ = patch.filter_key_tracking;
     active_filter_vel_track_ = patch.filter_vel_tracking;
-    active_filter_type_ = patch.filter_type;
-    amy_adapter_->setFilter(1, patch.filter_cutoff, patch.filter_res, patch.filter_env_amount, patch.filter_key_tracking, patch.filter_vel_tracking, patch.filter_type);
+    active_filter_type_      = patch.filter_type;
+    applyActiveFilterState();
     amy_adapter_->setEnvelope(1, patch.amp_attack, patch.amp_decay, patch.amp_sustain, patch.amp_release);
 
     // 4. Configure Oscillator & FX state
@@ -652,15 +684,19 @@ void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     amy_adapter_->setOscDetune(1, patch.osc_detune);
     amy_adapter_->setSubOscLevel(1, patch.sub_level);
     amy_adapter_->setNoiseLevel(1, patch.noise_level);
-    amy_adapter_->setDrive(patch.drive_level);
-    amy_adapter_->setMasterTone(patch.master_tone);
-    amy_adapter_->setChorusMode(patch.chorus_mode);
+
+    fx_state_.drive       = std::clamp(patch.drive_level, 0.0f, 1.0f);
+    fx_state_.master_tone = patch.master_tone;
+    fx_state_.chorus_mode = patch.chorus_mode;
+
+    amy_adapter_->setDrive(fx_state_.drive);
+    amy_adapter_->setMasterTone(fx_state_.master_tone);
+    applyActiveChorusState();
     amy_adapter_->setReverbFreeze(patch.reverb_freeze != 0);
 
-    // 5. Set clean default effect levels (prevent noise leak / stale reverb accumulation)
-    amy_adapter_->setReverb(0.7f, 0.7f, 0.0f);
-    amy_adapter_->setChorus(0.0f, 0.0f, 0.0f);
-    amy_adapter_->setDelay(0.0f, 0.0f, 0.0f);
+    // 5. Set default reverb & delay effect levels
+    amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
+    amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
 
     // 6. Update UI macro status without destructively overriding preset internals
     if (ui_manager_) {
@@ -693,19 +729,19 @@ void PatchManager::applyMacroToEngine(uint8_t macro_idx, float effective_val) {
             case 0: // Filter Cutoff (Subtractive/Juno)
                 if (active_patch_.engine_patch == 0 || active_patch_.wave_type != 8) {
                     active_patch_.filter_cutoff = target_val;
-                    amy_adapter_->setFilter(1, target_val, active_patch_.filter_res, active_filter_env_amt_, active_filter_key_track_);
+                    applyActiveFilterState();
                 }
                 break;
             case 1: // Filter Res (Subtractive/Juno)
                 if (active_patch_.engine_patch == 0 || active_patch_.wave_type != 8) {
                     active_patch_.filter_res = target_val;
-                    amy_adapter_->setFilter(1, active_patch_.filter_cutoff, target_val, active_filter_env_amt_, active_filter_key_track_);
+                    applyActiveFilterState();
                 }
                 break;
             case 2: // Brightness
                 if (active_patch_.wave_type != 8) { // Subtractive / Juno
                     active_patch_.filter_cutoff = target_val;
-                    amy_adapter_->setFilter(1, target_val, active_patch_.filter_res, active_filter_env_amt_, active_filter_key_track_);
+                    applyActiveFilterState();
                 } else {
                     amy_adapter_->setFmModIndex(1, target_val * 0.001f);
                 }
@@ -720,14 +756,14 @@ void PatchManager::applyMacroToEngine(uint8_t macro_idx, float effective_val) {
                 break;
             case 5: // Motion (Chorus)
                 {
-                    float chorus_level = std::clamp(shaped_val * 0.5f, 0.0f, 0.5f);
-                    amy_adapter_->setChorus(chorus_level * 0.8f, 0.5f, chorus_level);
+                    fx_state_.chorus_depth = std::clamp(shaped_val, 0.0f, 1.0f);
+                    applyActiveChorusState();
                 }
                 break;
             case 6: // Reverb / Space Send Level
                 {
-                    float reverb_level = std::clamp(shaped_val * 0.6f, 0.0f, 0.6f);
-                    amy_adapter_->setReverb(0.7f, 0.5f, reverb_level);
+                    fx_state_.reverb_mix = std::clamp(shaped_val * 0.6f, 0.0f, 0.6f);
+                    amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
                 }
                 break;
             case 7: // Safe Feedback / Drive
@@ -735,7 +771,10 @@ void PatchManager::applyMacroToEngine(uint8_t macro_idx, float effective_val) {
                     float safe_fb = std::clamp(shaped_val * 0.16f, 0.0f, 0.16f);
                     amy_adapter_->setFmFeedback(1, safe_fb);
                 } else {
-                    amy_adapter_->setDrive(target_val);
+                    float drive_val = std::clamp(target_val, 0.0f, 1.0f);
+                    fx_state_.drive = drive_val;
+                    active_patch_.drive_level = drive_val;
+                    amy_adapter_->setDrive(drive_val);
                 }
                 break;
             default:

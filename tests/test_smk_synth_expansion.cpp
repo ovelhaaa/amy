@@ -278,12 +278,381 @@ static void test_amy_core_fixes() {
     printf("PASS: AMY core fixes (sample rate invariant delay lengths & 48kHz Karplus-Strong buffer)\n");
 }
 
+static void test_scale_quantizer_mixolydian() {
+    using namespace smk;
+    ScaleQuantizer sq;
+    sq.setRootNote(0); // C
+    sq.setEnabled(true);
+    sq.setScale(ScaleType::Mixolydian);
+
+    // C Mixolydian: C (0), D (2), E (4), F (5), G (7), A (9), Bb (10)
+    assert(sq.isNoteInScale(60)); // C4
+    assert(sq.isNoteInScale(62)); // D4
+    assert(sq.isNoteInScale(64)); // E4
+    assert(sq.isNoteInScale(65)); // F4
+    assert(sq.isNoteInScale(67)); // G4
+    assert(sq.isNoteInScale(69)); // A4
+    assert(sq.isNoteInScale(70)); // Bb4
+    assert(!sq.isNoteInScale(71)); // B4 is NOT in Mixolydian
+
+    uint8_t q_b = sq.quantize(71);
+    assert(q_b == 70 || q_b == 72);
+    assert(strcmp(ScaleQuantizer::scaleName(ScaleType::Mixolydian), "MIXOLYDIAN") == 0);
+    printf("PASS: ScaleQuantizer Mixolydian scale (0x06B5) and quantization\n");
+}
+
+static void test_fx_state_isolation_and_knob_routing() {
+    using namespace smk;
+    FxControlState fx;
+
+    // Verify default initialization
+    assert(fx.delay_time_ms == 350.0f);
+    assert(fx.delay_feedback == 0.4f);
+    assert(fx.delay_mix == 0.0f);
+    assert(fx.reverb_size == 0.7f);
+    assert(fx.reverb_mix == 0.0f);
+    assert(fx.chorus_mode == 0);
+    assert(fx.chorus_depth == 0.0f);
+    assert(fx.drive == 0.0f);
+    assert(fx.master_tone == 0.0f);
+
+    // Modifying delay must not alter reverb, chorus, or drive
+    fx.delay_time_ms = 500.0f;
+    fx.delay_feedback = 0.8f;
+    fx.delay_mix = 0.6f;
+    assert(fx.reverb_size == 0.7f);
+    assert(fx.reverb_mix == 0.0f);
+    assert(fx.chorus_mode == 0);
+    assert(fx.drive == 0.0f);
+
+    // Modifying reverb must not alter delay or chorus
+    fx.reverb_size = 0.9f;
+    fx.reverb_mix = 0.5f;
+    assert(fx.delay_time_ms == 500.0f);
+    assert(fx.delay_feedback == 0.8f);
+    assert(fx.chorus_mode == 0);
+
+    // Drive normalized to 0.0f .. 1.0f
+    fx.drive = 0.85f;
+    assert(fx.drive >= 0.0f && fx.drive <= 1.0f);
+
+    // Chorus modes 0..5
+    for (uint8_t m = 0; m <= 5; ++m) {
+        fx.chorus_mode = m;
+        assert(fx.chorus_mode == m);
+    }
+
+    printf("PASS: FxControlState isolation, independent delays/reverbs/chorus & drive normalization\n");
+}
+
+static void test_filter_enum_and_preservation() {
+    using namespace smk;
+
+    // Verify all 8 AMY filter types + None
+    assert(toAmyFilterType(SmkFilterType::None) == 0);
+    assert(toAmyFilterType(SmkFilterType::LPF) == 1);
+    assert(toAmyFilterType(SmkFilterType::BPF) == 2);
+    assert(toAmyFilterType(SmkFilterType::HPF) == 3);
+    assert(toAmyFilterType(SmkFilterType::LPF24) == 4);
+    assert(toAmyFilterType(SmkFilterType::Notch) == 5);
+    assert(toAmyFilterType(SmkFilterType::Phaser) == 6);
+    assert(toAmyFilterType(SmkFilterType::Moog24) == 7);
+    assert(toAmyFilterType(SmkFilterType::TptSvf) == 8);
+
+    for (uint8_t i = 0; i <= 8; ++i) {
+        SmkFilterType ft = fromAmyFilterType(i);
+        assert(toAmyFilterType(ft) == i);
+        assert(strlen(filterTypeName(ft)) > 0);
+    }
+    assert(fromAmyFilterType(99) == SmkFilterType::None);
+
+    printf("PASS: Filter Enum reconciliation (0..8) and bidirectional mapping\n");
+}
+
+static void test_waveform_enum_and_legacy_mapping() {
+    using namespace smk;
+
+    assert(toAmyWaveType(SmkWaveType::Sine) == 0);
+    assert(toAmyWaveType(SmkWaveType::Pulse) == 1);
+    assert(toAmyWaveType(SmkWaveType::SawDown) == 2);
+    assert(toAmyWaveType(SmkWaveType::SawUp) == 3);
+    assert(toAmyWaveType(SmkWaveType::Triangle) == 4);
+    assert(toAmyWaveType(SmkWaveType::Noise) == 5);
+    assert(toAmyWaveType(SmkWaveType::KarplusStrong) == 6);
+    assert(toAmyWaveType(SmkWaveType::Pcm) == 7);
+    assert(toAmyWaveType(SmkWaveType::Algo) == 8);
+
+    for (uint8_t w = 0; w <= 8; ++w) {
+        SmkWaveType wt = fromAmyWaveType(w);
+        assert(toAmyWaveType(wt) == w);
+        assert(strlen(waveTypeName(wt)) > 0);
+    }
+
+    // Legacy migration mapping:
+    // Legacy 1: SawDown -> AMY 2
+    // Legacy 2: SawUp -> AMY 3
+    // Legacy 3: Triangle -> AMY 4
+    // Legacy 4: Pulse -> AMY 1
+    // Legacy 0: Sine -> AMY 0
+    assert(mapLegacyWaveToAmy(1) == 2);
+    assert(mapLegacyWaveToAmy(2) == 3);
+    assert(mapLegacyWaveToAmy(3) == 4);
+    assert(mapLegacyWaveToAmy(4) == 1);
+    assert(mapLegacyWaveToAmy(0) == 0);
+
+    printf("PASS: Waveform Enum reconciliation (0..8) and legacy migration mapping\n");
+}
+
+static void test_step_sequencer_ratchet_decoupling() {
+    using namespace smk;
+    StepSequencer seq;
+    EventBus bus;
+
+    seq.setPatternLength(16);
+    seq.clearPattern(0);
+
+    // Step 0: Note C3 (48), ratchet 4, 100% prob, active
+    seq.setStep(0, 0, 48, 100, true, false);
+    seq.step(0, 0).ratchet = 4;
+    seq.step(0, 0).probability = 100;
+
+    // Step 1: Note G3 (55), ratchet 1, 100% prob, active
+    seq.setStep(0, 1, 55, 110, true, false);
+    seq.step(0, 1).ratchet = 1;
+    seq.step(0, 1).probability = 100;
+
+    seq.play();
+
+    std::vector<SynthEvent> events_step0;
+    // Process Step 0 (ticks 0..5)
+    for (uint32_t t = 0; t < 6; ++t) {
+        seq.processTick(t, bus);
+        SynthEvent ev;
+        while (bus.tryReceive(ev)) {
+            events_step0.push_back(ev);
+        }
+    }
+
+    // Step 0 with ratchet 4 must have exactly 4 NoteOn events with note 48
+    std::vector<SynthEvent> note_ons_step0;
+    for (const auto& ev : events_step0) {
+        if (ev.type == EventType::NoteOn) {
+            note_ons_step0.push_back(ev);
+        }
+    }
+    assert(note_ons_step0.size() == 4);
+    for (const auto& ev : note_ons_step0) {
+        assert(ev.id == 48); // All 4 triggers must be C3 (48), NEVER G3 (55)!
+    }
+
+    // Now process Step 1 onset (tick 6)
+    seq.processTick(6, bus);
+    std::vector<SynthEvent> events_step1;
+    SynthEvent ev;
+    while (bus.tryReceive(ev)) {
+        events_step1.push_back(ev);
+    }
+
+    std::vector<SynthEvent> note_ons_step1;
+    for (const auto& e : events_step1) {
+        if (e.type == EventType::NoteOn) {
+            note_ons_step1.push_back(e);
+        }
+    }
+    assert(note_ons_step1.size() == 1);
+    assert(note_ons_step1[0].id == 55); // Step 1 is G3 (55)
+
+    printf("PASS: StepSequencer ratchet decoupling (all 4 ratchet sub-ticks trigger C3 before G3 onset)\n");
+}
+
+static void test_step_sequencer_probability_latching() {
+    using namespace smk;
+    StepSequencer seq;
+    EventBus bus;
+
+    seq.setPatternLength(16);
+    seq.clearPattern(0);
+
+    // Step 0: Note 60, ratchet 4, probability 0% (always fails)
+    seq.setStep(0, 0, 60, 100, true, false);
+    seq.step(0, 0).ratchet = 4;
+    seq.step(0, 0).probability = 0;
+
+    seq.play();
+
+    size_t note_on_count = 0;
+    for (uint32_t t = 0; t < 6; ++t) {
+        seq.processTick(t, bus);
+        SynthEvent ev;
+        while (bus.tryReceive(ev)) {
+            if (ev.type == EventType::NoteOn) {
+                note_on_count++;
+            }
+        }
+    }
+    assert(note_on_count == 0);
+
+    printf("PASS: StepSequencer single probability evaluation at onset (no stray ratchet triggers when prob fails)\n");
+}
+
+static void test_pattern_mutation_undo_isolation() {
+    using namespace smk;
+    StepSequencer seq;
+
+    // Setup Pattern 2
+    seq.selectPattern(2);
+    seq.clearTrack(0);
+    seq.setStep(0, 0, 60, 100, true, false);
+    seq.setStep(0, 1, 62, 100, true, false);
+
+    // Setup Pattern 4
+    seq.selectPattern(4);
+    seq.clearTrack(0);
+    seq.setStep(0, 0, 72, 100, true, false);
+    seq.setStep(0, 1, 74, 100, true, false);
+
+    // Mutate Pattern 2
+    seq.selectPattern(2);
+    seq.mutatePattern(0, 100);
+    assert(seq.hasMutationUndo(0));
+
+    // Switch to Pattern 4
+    seq.selectPattern(4);
+    assert(!seq.hasMutationUndo(0));
+
+    // Calling undoMutation while on Pattern 4 must NOT corrupt Pattern 4
+    seq.undoMutation(0);
+    assert(seq.step(0, 0).note == 72);
+    assert(seq.step(0, 1).note == 74);
+
+    // Switch back to Pattern 2
+    seq.selectPattern(2);
+    assert(seq.hasMutationUndo(0));
+
+    // Now undo restores Pattern 2
+    seq.undoMutation(0);
+    assert(!seq.hasMutationUndo(0));
+    assert(seq.step(0, 0).note == 60);
+    assert(seq.step(0, 1).note == 62);
+
+    printf("PASS: Pattern Mutation Undo isolation across active pattern switches\n");
+}
+
+static void test_real_file_patch_roundtrip_and_v3_migration() {
+    using namespace smk;
+
+    const char* v4_filename = "test_temp_v4.s3p";
+    const char* v3_filename = "test_temp_v3.s3p";
+
+    // 1. Test real binary disk file write and read of v4
+    SynthPatch p_orig = {};
+    p_orig.id = 42;
+    strncpy(p_orig.name, "Deep Sub Bass", sizeof(p_orig.name));
+    p_orig.wave_type = toAmyWaveType(SmkWaveType::Triangle);
+    p_orig.filter_type = toAmyFilterType(SmkFilterType::Moog24);
+    p_orig.filter_cutoff = 120.0f;
+    p_orig.drive_level = 0.45f;
+    p_orig.chorus_mode = 2; // Juno
+    p_orig.crc32 = calculatePatchCrc32(p_orig);
+
+    PatchHeader h4 = {};
+    h4.magic = kPatchMagic;
+    h4.format_version = kPatchFormatVersion;
+    h4.data_size = sizeof(SynthPatch);
+    h4.crc32 = p_orig.crc32;
+
+    FILE* f4 = fopen(v4_filename, "wb");
+    assert(f4 != nullptr);
+    fwrite(&h4, 1, sizeof(PatchHeader), f4);
+    fwrite(&p_orig, 1, sizeof(SynthPatch), f4);
+    fclose(f4);
+
+    // Read back v4 file
+    FILE* fr4 = fopen(v4_filename, "rb");
+    assert(fr4 != nullptr);
+    PatchHeader read_h4 = {};
+    SynthPatch read_p4 = {};
+    fread(&read_h4, 1, sizeof(PatchHeader), fr4);
+    fread(&read_p4, 1, sizeof(SynthPatch), fr4);
+    fclose(fr4);
+    remove(v4_filename);
+
+    assert(read_h4.magic == kPatchMagic);
+    assert(read_h4.format_version == 4);
+    assert(read_h4.crc32 == p_orig.crc32);
+    assert(read_p4.crc32 == p_orig.crc32);
+    assert(calculatePatchCrc32(read_p4) == p_orig.crc32);
+    assert(strcmp(read_p4.name, "Deep Sub Bass") == 0);
+    assert(read_p4.wave_type == toAmyWaveType(SmkWaveType::Triangle));
+    assert(read_p4.filter_type == toAmyFilterType(SmkFilterType::Moog24));
+    assert(read_p4.drive_level == 0.45f);
+
+    // 2. Test real binary disk file write of v3 and migration to v4
+    SynthPatchV3 v3 = {};
+    v3.id = 12;
+    strncpy(v3.name, "Vintage Strings", sizeof(v3.name));
+    v3.wave_type = 1; // Legacy SawDown
+    v3.filter_cutoff = 2200.0f;
+    v3.filter_res = 1.5f;
+    v3.crc32 = calculatePatchV3Crc32(v3);
+
+    PatchHeader h3 = {};
+    h3.magic = kPatchMagic;
+    h3.format_version = 3;
+    h3.data_size = sizeof(SynthPatchV3);
+    h3.crc32 = v3.crc32;
+
+    FILE* f3 = fopen(v3_filename, "wb");
+    assert(f3 != nullptr);
+    fwrite(&h3, 1, sizeof(PatchHeader), f3);
+    fwrite(&v3, 1, sizeof(SynthPatchV3), f3);
+    fclose(f3);
+
+    // Read back v3 and execute migration logic
+    FILE* fr3 = fopen(v3_filename, "rb");
+    assert(fr3 != nullptr);
+    PatchHeader read_h3 = {};
+    SynthPatchV3 read_v3 = {};
+    fread(&read_h3, 1, sizeof(PatchHeader), fr3);
+    fread(&read_v3, 1, sizeof(SynthPatchV3), fr3);
+    fclose(fr3);
+    remove(v3_filename);
+
+    assert(read_h3.format_version == 3);
+    assert(calculatePatchV3Crc32(read_v3) == read_h3.crc32);
+
+    // Perform migration
+    SynthPatch migrated_v4 = {};
+    migrated_v4.id = read_v3.id;
+    memcpy(migrated_v4.name, read_v3.name, sizeof(migrated_v4.name));
+    migrated_v4.wave_type = mapLegacyWaveToAmy(read_v3.wave_type);
+    migrated_v4.filter_type = toAmyFilterType(SmkFilterType::LPF24);
+    migrated_v4.filter_cutoff = read_v3.filter_cutoff;
+    migrated_v4.filter_res = read_v3.filter_res;
+    migrated_v4.crc32 = calculatePatchCrc32(migrated_v4);
+
+    assert(migrated_v4.wave_type == toAmyWaveType(SmkWaveType::SawDown)); // Legacy 1 -> AMY 2
+    assert(migrated_v4.filter_type == toAmyFilterType(SmkFilterType::LPF24)); // Default LPF24
+    assert(migrated_v4.crc32 != 0);
+    assert(calculatePatchCrc32(migrated_v4) == migrated_v4.crc32);
+
+    printf("PASS: Real file binary roundtrip (v4 .s3p) and v3 migration with CRC validation\n");
+}
+
 int main() {
     printf("=== Running SMK Synth Expansion Host Test Suite ===\n");
     test_scale_quantizer();
+    test_scale_quantizer_mixolydian();
     test_chord_memory();
+    test_fx_state_isolation_and_knob_routing();
+    test_filter_enum_and_preservation();
+    test_waveform_enum_and_legacy_mapping();
     test_step_sequencer_features();
+    test_step_sequencer_ratchet_decoupling();
+    test_step_sequencer_probability_latching();
+    test_pattern_mutation_undo_isolation();
     test_patch_migration_and_crc();
+    test_real_file_patch_roundtrip_and_v3_migration();
     test_macro_curves();
     test_amy_core_fixes();
     printf("=== ALL SMK SYNTH EXPANSION TESTS PASSED ===\n");

@@ -48,6 +48,103 @@ struct PatchHeader {
     uint32_t crc32;          // Checksum of patch data
 };
 
+struct FxControlState {
+    float   chorus_depth   = 0.0f;   // 0.0 .. 1.0
+    uint8_t chorus_mode    = 0;      // 0=Off, 1=Classic, 2=Juno, 3=Ensemble, 4=Wide, 5=Vibrato
+
+    float   delay_time_ms  = 350.0f; // 10.0 .. 1000.0 ms (or synced)
+    float   delay_feedback = 0.4f;   // 0.0 .. 0.95
+    float   delay_mix      = 0.0f;   // 0.0 .. 1.0
+
+    float   reverb_size    = 0.7f;   // 0.0 .. 1.0
+    float   reverb_mix     = 0.0f;   // 0.0 .. 1.0
+
+    float   drive          = 0.0f;   // 0.0 .. 1.0 (post-FX synth bus saturation)
+    float   master_tone    = 0.0f;   // -1.0 .. +1.0
+};
+
+enum class SmkFilterType : uint8_t {
+    None    = 0, // FILTER_NONE
+    LPF     = 1, // FILTER_LPF (12dB biquad)
+    BPF     = 2, // FILTER_BPF
+    HPF     = 3, // FILTER_HPF
+    LPF24   = 4, // FILTER_LPF24 (24dB 4-pole)
+    Notch   = 5, // FILTER_NOTCH
+    Phaser  = 6, // FILTER_PHASER
+    Moog24  = 7, // FILTER_MOOG24
+    TptSvf  = 8  // FILTER_TPT_SVF
+};
+
+inline uint8_t toAmyFilterType(SmkFilterType type) {
+    return static_cast<uint8_t>(type);
+}
+
+inline SmkFilterType fromAmyFilterType(uint8_t amy_type) {
+    if (amy_type > 8) return SmkFilterType::None;
+    return static_cast<SmkFilterType>(amy_type);
+}
+
+inline const char* filterTypeName(SmkFilterType type) {
+    switch (type) {
+        case SmkFilterType::None:   return "NONE";
+        case SmkFilterType::LPF:    return "LPF 12dB";
+        case SmkFilterType::BPF:    return "BPF";
+        case SmkFilterType::HPF:    return "HPF";
+        case SmkFilterType::LPF24:  return "LPF 24dB";
+        case SmkFilterType::Notch:  return "NOTCH";
+        case SmkFilterType::Phaser: return "PHASER";
+        case SmkFilterType::Moog24: return "MOOG 24";
+        case SmkFilterType::TptSvf: return "TPT SVF";
+        default:                    return "UNKNOWN";
+    }
+}
+
+enum class SmkWaveType : uint8_t {
+    Sine          = 0, // SINE
+    Pulse         = 1, // PULSE / SQUARE
+    SawDown       = 2, // SAW_DOWN
+    SawUp         = 3, // SAW_UP
+    Triangle      = 4, // TRIANGLE
+    Noise         = 5, // NOISE
+    KarplusStrong = 6, // KS
+    Pcm           = 7, // PCM
+    Algo          = 8  // ALGO (FM 6-op)
+};
+
+inline uint8_t toAmyWaveType(SmkWaveType type) {
+    return static_cast<uint8_t>(type);
+}
+
+inline SmkWaveType fromAmyWaveType(uint8_t amy_wave) {
+    if (amy_wave > 8) return SmkWaveType::Sine;
+    return static_cast<SmkWaveType>(amy_wave);
+}
+
+inline const char* waveTypeName(SmkWaveType type) {
+    switch (type) {
+        case SmkWaveType::Sine:          return "SINE";
+        case SmkWaveType::Pulse:         return "PULSE";
+        case SmkWaveType::SawDown:       return "SAW DOWN";
+        case SmkWaveType::SawUp:         return "SAW UP";
+        case SmkWaveType::Triangle:      return "TRIANGLE";
+        case SmkWaveType::Noise:         return "NOISE";
+        case SmkWaveType::KarplusStrong: return "KARPLUS";
+        case SmkWaveType::Pcm:           return "PCM";
+        case SmkWaveType::Algo:          return "FM ALGO";
+        default:                         return "UNKNOWN";
+    }
+}
+
+inline uint8_t mapLegacyWaveToAmy(uint8_t legacy_wave) {
+    switch (legacy_wave) {
+        case 1: return toAmyWaveType(SmkWaveType::SawDown);   // Legacy 1: SawDown -> AMY 2
+        case 2: return toAmyWaveType(SmkWaveType::SawUp);     // Legacy 2: SawUp -> AMY 3
+        case 3: return toAmyWaveType(SmkWaveType::Triangle);  // Legacy 3: Triangle -> AMY 4
+        case 4: return toAmyWaveType(SmkWaveType::Pulse);     // Legacy 4: Pulse -> AMY 1
+        default: return legacy_wave;                          // 0: Sine -> AMY 0, etc.
+    }
+}
+
 struct SynthPatchV3 {
     uint8_t     id;
     char        name[24];
@@ -56,7 +153,7 @@ struct SynthPatchV3 {
     uint16_t    engine_patch; // AMY preset or patch ID (0..127 Juno, 128..255 DX7, 256+ PCM)
     int8_t      transpose;    // Transpose in semitones (-24..+24)
     uint8_t     voice_count;  // Max polyphony voices (e.g. 8)
-    uint8_t     wave_type;    // 0=SINE, 1=SAW_DOWN, 2=SAW_UP, 3=TRIANGLE, 4=SQUARE, 5=NOISE, 6=KS, 7=PCM, 8=ALGO
+    uint8_t     wave_type;    // AMY wave: 0=SINE, 1=PULSE, 2=SAW_DOWN, 3=SAW_UP, 4=TRIANGLE, 5=NOISE, 6=KS, 7=PCM, 8=ALGO
     uint8_t     mono_mode;    // 0=Polyphonic, 1=Monophonic Legato
     uint16_t    portamento_ms;// Portamento glide time in milliseconds
     float       base_freq;
@@ -78,7 +175,7 @@ struct SynthPatch {
     uint16_t    engine_patch; // AMY preset or patch ID (0..127 Juno, 128..255 DX7, 256+ PCM)
     int8_t      transpose;    // Transpose in semitones (-24..+24)
     uint8_t     voice_count;  // Max polyphony voices (e.g. 8)
-    uint8_t     wave_type;    // 0=SINE, 1=SAW_DOWN, 2=SAW_UP, 3=TRIANGLE, 4=SQUARE, 5=NOISE, 6=KS, 7=PCM, 8=ALGO
+    uint8_t     wave_type;    // AMY wave: 0=SINE, 1=PULSE, 2=SAW_DOWN, 3=SAW_UP, 4=TRIANGLE, 5=NOISE, 6=KS, 7=PCM, 8=ALGO
     uint8_t     mono_mode;    // 0=Polyphonic, 1=Monophonic Legato
     uint16_t    portamento_ms;// Portamento glide time in milliseconds
     float       base_freq;
@@ -93,14 +190,14 @@ struct SynthPatch {
     float       filter_env_amount;   // Envelope amount to filter cutoff (-4.0 to +4.0)
     float       filter_key_tracking; // Filter keyboard tracking (0.0 to 2.0)
     float       filter_vel_tracking; // Filter velocity tracking (0.0 to 2.0)
-    uint8_t     filter_type;         // 0=LPF24, 1=BPF, 2=HPF, 3=LPF12
+    uint8_t     filter_type;         // SmkFilterType: 0=None, 1=LPF, 2=BPF, 3=HPF, 4=LPF24, 5=Notch, 6=Phaser, 7=Moog24, 8=TptSvf
     float       osc_mix;             // Sub/main osc mix (0.0 to 1.0)
     float       osc_detune;          // Detune in cents (-100.0 to +100.0)
     float       sub_level;           // Sub-oscillator level (0.0 to 1.0)
     float       noise_level;         // Noise level (0.0 to 1.0)
-    float       drive_level;         // Saturation / drive level (0.0 to 3.0)
+    float       drive_level;         // Saturation / drive level normalized (0.0 to 1.0, post-FX bus)
     float       master_tone;         // Tilt EQ tone (-1.0 to +1.0)
-    uint8_t     chorus_mode;         // 0=Classic, 1=Juno, 2=Ensemble, 3=Wide, 4=Vibrato
+    uint8_t     chorus_mode;         // 0=Off, 1=Classic, 2=Juno, 3=Ensemble, 4=Wide, 5=Vibrato
     uint8_t     reverb_freeze;       // 0=Normal, 1=Frozen reverb tank
     uint8_t     reserved[6];         // Reserved padding
     uint32_t    crc32;
