@@ -178,6 +178,12 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
 
     if (hdr_read == sizeof(PatchHeader) && header.magic == kPatchMagic) {
         if (header.format_version == 3) {
+            if (header.data_size != sizeof(SynthPatchV3)) {
+                ESP_LOGE(TAG, "v3 data_size mismatch on slot #%d: header %u != expected %zu",
+                         slot_id, header.data_size, sizeof(SynthPatchV3));
+                fclose(f);
+                return false;
+            }
             SynthPatchV3 v3_patch = {};
             size_t read_bytes = fread(&v3_patch, 1, sizeof(SynthPatchV3), f);
             fclose(f);
@@ -232,6 +238,12 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
             ESP_LOGI(TAG, "Loaded and migrated v3 Patch Slot #%d [%s] to v5", slot_id, patch_out.name);
             return true;
         } else if (header.format_version == 4) {
+            if (header.data_size != sizeof(SynthPatchV4Legacy)) {
+                ESP_LOGE(TAG, "v4 legacy data_size mismatch on slot #%d: header %u != expected %zu",
+                         slot_id, header.data_size, sizeof(SynthPatchV4Legacy));
+                fclose(f);
+                return false;
+            }
             SynthPatchV4Legacy v4_patch = {};
             size_t read_bytes = fread(&v4_patch, 1, sizeof(SynthPatchV4Legacy), f);
             fclose(f);
@@ -273,12 +285,15 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
             patch_out.filter_key_tracking = v4_patch.filter_key_tracking;
             patch_out.filter_vel_tracking = v4_patch.filter_vel_tracking;
 
-            // Map legacy v4 filter type: 0=LPF24, 1=BPF, 2=HPF, 3=LPF12
+            // Map legacy v4 filter type by the firmware's *actual* behavior.
+            // The old adapter only forwarded filter_type when > 0, so 0 left the
+            // preset filter alone (Inherit). The documented enum (0=LPF24,
+            // 1=BPF, 2=HPF, 3=LPF12) never matched the DSP for this format.
             switch (v4_patch.filter_type) {
-                case 0: patch_out.filter_type = toAmyFilterType(SmkFilterType::LPF24); break;
-                case 1: patch_out.filter_type = toAmyFilterType(SmkFilterType::BPF); break;
-                case 2: patch_out.filter_type = toAmyFilterType(SmkFilterType::HPF); break;
-                case 3: patch_out.filter_type = toAmyFilterType(SmkFilterType::LPF); break;
+                case 0: patch_out.filter_type = toAmyFilterType(SmkFilterType::Inherit); break;
+                case 1: patch_out.filter_type = toAmyFilterType(SmkFilterType::LPF); break;
+                case 2: patch_out.filter_type = toAmyFilterType(SmkFilterType::BPF); break;
+                case 3: patch_out.filter_type = toAmyFilterType(SmkFilterType::HPF); break;
                 default: patch_out.filter_type = toAmyFilterType(SmkFilterType::Inherit); break;
             }
 
@@ -286,7 +301,9 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
             patch_out.osc_detune = v4_patch.osc_detune;
             patch_out.sub_level = v4_patch.sub_level;
             patch_out.noise_level = v4_patch.noise_level;
-            patch_out.drive_level = (v4_patch.drive_level > 1.0f) ? std::clamp(v4_patch.drive_level / 3.0f, 0.0f, 1.0f) : std::clamp(v4_patch.drive_level, 0.0f, 1.0f);
+            // The old adapter clamped drive to the audible 0..1 DSP range before
+            // applying it, so preserve the effective sound, not knob position.
+            patch_out.drive_level = std::clamp(v4_patch.drive_level, 0.0f, 1.0f);
             patch_out.master_tone = v4_patch.master_tone;
 
             // Map legacy v4 chorus mode: 0..4 (Classic, Juno, Ensemble, Wide, Vibrato) -> 1..5 in v5
@@ -303,6 +320,13 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
             return true;
         } else if (header.format_version != kPatchFormatVersion) {
             ESP_LOGE(TAG, "Incompatible patch format version: %u on slot #%d", header.format_version, slot_id);
+            fclose(f);
+            return false;
+        }
+
+        if (header.data_size != sizeof(SynthPatch)) {
+            ESP_LOGE(TAG, "v5 data_size mismatch on slot #%d: header %u != expected %zu",
+                     slot_id, header.data_size, sizeof(SynthPatch));
             fclose(f);
             return false;
         }

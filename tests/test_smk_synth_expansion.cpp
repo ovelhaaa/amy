@@ -69,6 +69,8 @@ void AmyAdapter::setMasterGain(float) {}
 void AmyAdapter::setDrive(float) {}
 void AmyAdapter::setMasterTone(float) {}
 void AmyAdapter::setMonoMode(bool) {}
+bool AmyAdapter::fmBaseline(uint8_t&, float&) const { return false; }
+void AmyAdapter::invalidateFmBaseline() {}
 }
 
 class MockAmyAdapter : public smk::AmyAdapter {
@@ -895,38 +897,53 @@ static void test_storage_manager_real_files_and_migration() {
     assert(std::abs(loaded5.drive_level - 0.35f) < 0.001f);
     assert(strcmp(loaded5.name, "V5 Test Patch") == 0);
 
-    // B. Legacy v4 fixture migration
-    char path_v4[128];
-    snprintf(path_v4, sizeof(path_v4), "%s/patch_%03d.s3p", test_dir, 44);
-    PatchHeader h4 = {};
-    h4.magic = kPatchMagic;
-    h4.format_version = 4;
-    h4.data_size = sizeof(SynthPatchV4Legacy);
+    // B. Legacy v4 fixture migration. Legacy v4 is officially the first
+    // Expansion v4: the old adapter forwarded filter_type only when > 0, so
+    // 0 == Inherit, 1 == LPF, 2 == BPF, 3 == HPF (the documented LPF24 enum
+    // never matched the DSP). Drive was clamped to the audible 0..1 range.
+    struct V4Case { uint8_t filter_type; SmkFilterType expected; float drive_in; float drive_out; };
+    const V4Case v4_cases[] = {
+        {0, SmkFilterType::Inherit, 0.6f, 0.6f},
+        {1, SmkFilterType::LPF,     2.7f, 1.0f},
+        {2, SmkFilterType::BPF,    -0.5f, 0.0f},
+        {3, SmkFilterType::HPF,     0.45f, 0.45f},
+    };
+    uint8_t v4_slot = 44;
+    for (const auto& tc : v4_cases) {
+        char path_v4[128];
+        snprintf(path_v4, sizeof(path_v4), "%s/patch_%03d.s3p", test_dir, v4_slot);
+        PatchHeader h4 = {};
+        h4.magic = kPatchMagic;
+        h4.format_version = 4;
+        h4.data_size = sizeof(SynthPatchV4Legacy);
 
-    SynthPatchV4Legacy v4 = {};
-    v4.id = 44;
-    strncpy(v4.name, "Legacy V4 Patch", sizeof(v4.name));
-    v4.wave_type = 1; // legacy SawDown (maps to SawDown = 2)
-    v4.filter_type = 0; // legacy LPF (maps to LPF24 = 4)
-    v4.chorus_mode = 1; // legacy Juno (maps to Juno = 2)
-    v4.drive_level = 0.6f;
-    v4.filter_cutoff = 1200.0f;
-    v4.crc32 = calculatePatchV4LegacyCrc32(v4);
-    h4.crc32 = v4.crc32;
+        SynthPatchV4Legacy v4 = {};
+        v4.id = v4_slot;
+        strncpy(v4.name, "Legacy V4 Patch", sizeof(v4.name));
+        v4.wave_type = 1; // legacy SawDown (maps to SawDown = 2)
+        v4.filter_type = tc.filter_type;
+        v4.chorus_mode = 1; // legacy Juno (maps to Juno = 2)
+        v4.drive_level = tc.drive_in;
+        v4.filter_cutoff = 1200.0f;
+        v4.crc32 = calculatePatchV4LegacyCrc32(v4);
+        h4.crc32 = v4.crc32;
 
-    FILE* f4 = fopen(path_v4, "wb");
-    assert(f4 != nullptr);
-    fwrite(&h4, 1, sizeof(PatchHeader), f4);
-    fwrite(&v4, 1, sizeof(SynthPatchV4Legacy), f4);
-    fclose(f4);
+        FILE* f4 = fopen(path_v4, "wb");
+        assert(f4 != nullptr);
+        fwrite(&h4, 1, sizeof(PatchHeader), f4);
+        fwrite(&v4, 1, sizeof(SynthPatchV4Legacy), f4);
+        fclose(f4);
 
-    SynthPatch loaded_v4 = {};
-    assert(storage.loadPatch(44, loaded_v4));
-    assert(loaded_v4.wave_type == toAmyWaveType(SmkWaveType::SawDown));
-    assert(loaded_v4.filter_type == toAmyFilterType(SmkFilterType::LPF24));
-    assert(loaded_v4.chorus_mode == 2); // Juno
-    assert(std::abs(loaded_v4.drive_level - 0.6f) < 0.001f);
-    assert(loaded_v4.crc32 == calculatePatchCrc32(loaded_v4));
+        SynthPatch loaded_v4 = {};
+        assert(storage.loadPatch(v4_slot, loaded_v4));
+        assert(loaded_v4.wave_type == toAmyWaveType(SmkWaveType::SawDown));
+        assert(loaded_v4.filter_type == toAmyFilterType(tc.expected));
+        assert(loaded_v4.chorus_mode == 2); // Juno
+        assert(std::abs(loaded_v4.drive_level - tc.drive_out) < 0.001f);
+        assert(loaded_v4.crc32 == calculatePatchCrc32(loaded_v4));
+        ++v4_slot;
+    }
+    assert(v4_slot == 48);
 
     // C. V3 fixture migration
     char path_v3[128];
@@ -969,7 +986,32 @@ static void test_storage_manager_real_files_and_migration() {
     SynthPatch loaded_corrupt = {};
     assert(!storage.loadPatch(55, loaded_corrupt));
 
-    printf("PASS: StorageManager real disk I/O, v5 save/load, legacy v4/v3 migrations & CRC corruption rejection\n");
+    // E. data_size validation: a header declaring the wrong payload size must be
+    // rejected before any payload is read (no partial reads).
+    auto write_header_only = [&](uint8_t s, uint16_t version, uint16_t data_size) {
+        char p[128];
+        snprintf(p, sizeof(p), "%s/patch_%03d.s3p", test_dir, s);
+        PatchHeader bh = {};
+        bh.magic = kPatchMagic;
+        bh.format_version = version;
+        bh.data_size = data_size;
+        FILE* f = fopen(p, "wb");
+        assert(f != nullptr);
+        fwrite(&bh, 1, sizeof(PatchHeader), f);
+        uint8_t payload[sizeof(SynthPatch)] = {};
+        fwrite(payload, 1, sizeof(payload), f);
+        fclose(f);
+    };
+
+    SynthPatch reject_out = {};
+    write_header_only(70, kPatchFormatVersion, static_cast<uint16_t>(sizeof(SynthPatch) - 1));
+    assert(!storage.loadPatch(70, reject_out));
+    write_header_only(71, 4, static_cast<uint16_t>(sizeof(SynthPatchV4Legacy) - 1));
+    assert(!storage.loadPatch(71, reject_out));
+    write_header_only(72, 3, static_cast<uint16_t>(sizeof(SynthPatchV3) - 1));
+    assert(!storage.loadPatch(72, reject_out));
+
+    printf("PASS: StorageManager disk I/O, v5 save/load, v4/v3 migration, CRC corruption and data_size rejection\n");
 }
 
 static void test_bank_b_fm_relative_and_detune() {
@@ -1021,6 +1063,121 @@ static void test_bank_b_fm_relative_and_detune() {
     printf("PASS: Bank B FM Relative Controls (Mod Index 0..4, Ratio 0.25..4.0) and Detune center (0 cents)\n");
 }
 
+static void test_bank_b_fm_ratio_freq_mult_composition() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    pm.setKnobBank(KnobBank::BankB_Oscillator);
+    pm.handleKnobInput(1, 127.0f); // waveform -> ALGO/FM
+    assert(pm.activePatch().wave_type == 8);
+
+    // Ratio center (1x), Freq Mult = 2x -> composed factor 2x.
+    pm.handleKnobInput(1, 63.5f);
+    pm.handleKnobInput(3, (1.0f / 7.0f) * 127.0f);
+    assert(std::abs(mock.fm_ratio_calls.back().value - 2.0f) < 0.01f);
+
+    // Ratio -> 2x while Freq Mult stays 2x -> composed 4x.
+    pm.handleKnobInput(1, 127.0f);
+    assert(std::abs(mock.fm_ratio_calls.back().value - 4.0f) < 0.01f);
+
+    // Freq Mult back to 1x must not lose the Ratio position (still 2x).
+    pm.handleKnobInput(3, 0.0f);
+    assert(std::abs(mock.fm_ratio_calls.back().value - 2.0f) < 0.01f);
+
+    // Ratio -> 0.5x, Freq Mult 1x -> composed 0.5x.
+    pm.handleKnobInput(1, 0.0f);
+    assert(std::abs(mock.fm_ratio_calls.back().value - 0.5f) < 0.01f);
+
+    printf("PASS: FM Ratio and Freq Mult compose (ratio * freq_mult) without overwriting each other\n");
+}
+
+static void test_fm_soft_takeover_pickup() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    pm.setKnobBank(KnobBank::BankB_Oscillator);
+    pm.handleKnobInput(1, 127.0f); // waveform -> ALGO/FM
+    assert(pm.activePatch().wave_type == 8);
+
+    // Re-arm pickup after entering FM mode deterministically.
+    pm.softTakeover().setMode(TakeoverMode::Pickup);
+    pm.softTakeover().resetAll();
+
+    // FM Mod Index baseline is 1x (knob center ~63.5). A distant physical knob
+    // must hold the effective factor at 1x until the pickup point is crossed.
+    mock.fm_index_calls.clear();
+    pm.handleKnobInput(0, 0.0f);
+    assert(std::abs(mock.fm_index_calls.back().value - 1.0f) < 0.001f);
+    assert(std::abs(pm.fmControlState().mod_factor - 1.0f) < 0.001f);
+    pm.handleKnobInput(0, 63.5f); // crosses baseline
+    assert(std::abs(mock.fm_index_calls.back().value - 1.0f) < 0.01f);
+    pm.handleKnobInput(0, 127.0f); // captured now
+    assert(std::abs(mock.fm_index_calls.back().value - 4.0f) < 0.01f);
+
+    // FM Ratio baseline 1x: pickup center must map to 1x.
+    mock.fm_ratio_calls.clear();
+    pm.handleKnobInput(1, 0.0f); // far below center
+    assert(std::abs(mock.fm_ratio_calls.back().value - 1.0f) < 0.01f);
+    assert(std::abs(pm.fmControlState().ratio_factor - 1.0f) < 0.001f);
+    pm.handleKnobInput(1, 63.5f); // crosses center
+    assert(std::abs(mock.fm_ratio_calls.back().value - 1.0f) < 0.01f);
+    pm.handleKnobInput(1, 127.0f);
+    assert(std::abs(mock.fm_ratio_calls.back().value - 2.0f) < 0.01f);
+
+    // FM Detune baseline 0 cents (knob center ~63.5).
+    pm.handleKnobInput(2, 127.0f); // far above center -> stays centered
+    assert(std::abs(pm.fmControlState().detune_cents - 0.0f) < 0.001f);
+    pm.handleKnobInput(2, 63.5f); // crosses center
+    assert(std::abs(pm.fmControlState().detune_cents - 0.0f) < 0.1f);
+    pm.handleKnobInput(2, 127.0f); // captured now
+    assert(std::abs(pm.fmControlState().detune_cents - 25.0f) < 0.1f);
+
+    printf("PASS: FM Pickup soft takeover holds Mod Index 1x / Ratio 1x / Detune 0 until crossing\n");
+}
+
+static void test_fm_algorithm_saved_value_and_patch_reset() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    pm.setKnobBank(KnobBank::BankB_Oscillator);
+    pm.handleKnobInput(1, 127.0f); // waveform -> ALGO/FM
+    assert(pm.activePatch().wave_type == 8);
+
+    // Select algorithm 16, then verify Pickup's saved position matches it.
+    const float algo16_phys = fmAlgorithmNormFromValue(16) * 127.0f;
+    pm.handleKnobInput(7, algo16_phys);
+    assert(pm.fmControlState().algorithm == 16);
+
+    pm.softTakeover().setMode(TakeoverMode::Pickup);
+    pm.softTakeover().resetAll();
+    pm.handleKnobInput(7, 127.0f); // far above saved position: not captured
+    assert(pm.fmControlState().algorithm == 16); // saved_val corresponds to algo 16
+    pm.handleKnobInput(7, algo16_phys); // crosses the saved position
+    assert(pm.fmControlState().algorithm == 16);
+    pm.handleKnobInput(7, 0.0f); // captured now
+    assert(pm.fmControlState().algorithm == 1);
+
+    // Loading a patch must discard the previous patch's runtime FM state.
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    pm.handleKnobInput(0, 127.0f);
+    assert(std::abs(pm.fmControlState().mod_factor - 4.0f) < 0.01f);
+    pm.selectPatch(1);
+    assert(std::abs(pm.fmControlState().mod_factor - 1.0f) < 0.001f);
+    assert(std::abs(pm.fmControlState().ratio_factor - 1.0f) < 0.001f);
+    assert(std::abs(pm.fmControlState().detune_cents - 0.0f) < 0.001f);
+    assert(std::abs(pm.fmControlState().freq_mult - 1.0f) < 0.001f);
+    assert(pm.fmControlState().algorithm == 1);
+    assert(!pm.fmControlState().initialized);
+
+    printf("PASS: FM algorithm saved value tracks knob position and patch load resets FM runtime state\n");
+}
+
 int main() {
     printf("=== Running SMK Synth Expansion Host Test Suite ===\n");
     test_scale_quantizer();
@@ -1039,6 +1196,9 @@ int main() {
     test_patch_manager_filter_inherit_and_retention();
     test_storage_manager_real_files_and_migration();
     test_bank_b_fm_relative_and_detune();
+    test_bank_b_fm_ratio_freq_mult_composition();
+    test_fm_soft_takeover_pickup();
+    test_fm_algorithm_saved_value_and_patch_reset();
     test_macro_curves();
     test_amy_core_fixes();
     printf("=== ALL SMK SYNTH EXPANSION TESTS PASSED ===\n");

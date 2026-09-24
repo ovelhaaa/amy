@@ -16,6 +16,9 @@ struct DiagnosticCounters {
     std::atomic<uint32_t> synth_queue_high_water{0};
     std::atomic<uint32_t> synth_panics{0};
     std::atomic<uint32_t> synth_max_command_wait_us{0};
+    // FM operator controls with no valid patch baseline were ignored rather
+    // than overwriting the preset's operator topology with absolute values.
+    std::atomic<uint32_t> fm_controls_ignored{0};
     
     // MIDI
     std::atomic<uint32_t> midi_parse_errors{0};

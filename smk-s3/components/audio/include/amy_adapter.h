@@ -72,6 +72,15 @@ public:
     static constexpr size_t kRawScopeBufferSize = 512; // stereo samples (256 frames * 2)
     void getScopeSamples(int16_t* dest, size_t max_count, size_t* out_count = nullptr) const override;
 
+    // Baseline FM operator metadata captured by the synthesis owner. The
+    // control/UI layer reads it to map soft-takeover knobs back to the timbre
+    // that the currently loaded patch actually produces. Reading is lock-free;
+    // only the synthesis owner updates it.
+    bool fmBaseline(uint8_t& algorithm, float& feedback) const;
+    // Called when a new patch is requested so the previous patch's baseline is
+    // never observed while the new preset is still being materialized.
+    void invalidateFmBaseline();
+
     // Monophonic Legato
     void setMonoMode(bool enable);
     bool isMonoMode() const { return mono_snapshot_.load(); }
@@ -137,7 +146,6 @@ private:
         float base_level = 0.0f;
         float base_logratio = 0.0f;
         float base_logfreq = 0.0f;
-        bool  is_modulator = false;
         bool  valid = false;
     };
     static constexpr size_t kMaxVoicesSnapshot = 32;
@@ -145,6 +153,9 @@ private:
     FmOpSnapshot fm_base_ops_[kMaxVoicesSnapshot][kMaxOpsSnapshot]{};
     FmOpSnapshot fm_base_mod_source_[kMaxVoicesSnapshot]{};
     bool fm_snapshot_valid_{false};
+    std::atomic<uint8_t> fm_baseline_algorithm_{1};
+    std::atomic<float>   fm_baseline_feedback_{0.0f};
+    std::atomic<bool>    fm_baseline_valid_{false};
     void captureFmBaseState(uint8_t synth_id);
 };
 

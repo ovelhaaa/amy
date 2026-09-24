@@ -170,6 +170,15 @@ struct SynthPatchV3 {
     uint32_t    crc32;
 };
 
+// Legacy format_version == 4. Two short-lived semantics reused this version:
+//   1. The first Expansion v4 (officially supported here): legacy wave/filter/
+//      chorus/drive enums whose *effective* firmware behavior is migrated.
+//   2. A brief stabilization window that also wrote format_version == 4 but
+//      already used native AMY wave/filter enums and 0..1 drive.
+// Both wrote the same struct layout and never populated reserved[] distinctly,
+// so data_size, range checks and header metadata cannot deterministically tell
+// them apart. We therefore support interpretation (1) only and do not guess.
+// See docs/patch_v4_compatibility.md.
 struct SynthPatchV4Legacy {
     uint8_t     id;
     char        name[24];
@@ -193,7 +202,7 @@ struct SynthPatchV4Legacy {
     float       filter_env_amount;   // Envelope amount to filter cutoff (-4.0 to +4.0)
     float       filter_key_tracking; // Filter keyboard tracking (0.0 to 2.0)
     float       filter_vel_tracking; // Filter velocity tracking (0.0 to 2.0)
-    uint8_t     filter_type;         // Legacy: 0=LPF24, 1=BPF, 2=HPF, 3=LPF12
+    uint8_t     filter_type;         // Legacy realized behavior: 0=Inherit, 1=LPF, 2=BPF, 3=HPF (documented enum never matched DSP)
     float       osc_mix;             // Sub/main osc mix (0.0 to 1.0)
     float       osc_detune;          // Detune in cents (-100.0 to +100.0)
     float       sub_level;           // Sub-oscillator level (0.0 to 1.0)

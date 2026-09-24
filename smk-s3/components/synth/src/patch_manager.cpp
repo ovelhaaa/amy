@@ -99,6 +99,20 @@ void PatchManager::setKnobBank(KnobBank bank) {
     }
 }
 
+void PatchManager::syncFmStateFromBaseline() {
+    if (fm_state_.initialized || !amy_adapter_) return;
+    uint8_t algorithm = 1;
+    float feedback = 0.0f;
+    if (amy_adapter_->fmBaseline(algorithm, feedback)) {
+        fm_state_.algorithm = algorithm;
+        fm_state_.feedback = feedback;
+        fm_state_.initialized = true;
+    }
+    // If the engine has not materialized the preset yet, keep the neutral
+    // defaults (1x/everything centered). Absolute FM writes are never issued
+    // from here, so leaving the state uninitialized is safe.
+}
+
 void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
     if (knob_idx >= 16) return;
 
@@ -115,7 +129,22 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
         float saved_val = 64.0f;
         switch (active_bank_) {
             case KnobBank::BankB_Oscillator:
-                if (knob_idx == 0) saved_val = active_patch_.osc_mix * 127.0f;
+                if (active_patch_.wave_type == 8) {
+                    // FM mode: the same knobs are relative FM controls, so read
+                    // back the runtime FM state, not the subtractive osc fields.
+                    syncFmStateFromBaseline();
+                    switch (knob_idx) {
+                        case 0: saved_val = fmModNormFromFactor(fm_state_.mod_factor) * 127.0f; break;
+                        case 1: saved_val = fmRatioNormFromFactor(fm_state_.ratio_factor) * 127.0f; break;
+                        case 2: saved_val = fmDetuneNormFromCents(fm_state_.detune_cents) * 127.0f; break;
+                        case 3: saved_val = fmFreqMultNormFromMult(fm_state_.freq_mult) * 127.0f; break;
+                        case 4: break; // FM Mod Decay [N/A]
+                        case 5: saved_val = fmFeedbackNormFromValue(fm_state_.feedback) * 127.0f; break;
+                        case 6: break; // FM Vibrato [N/A]
+                        case 7: saved_val = fmAlgorithmNormFromValue(fm_state_.algorithm) * 127.0f; break;
+                        default: break;
+                    }
+                } else if (knob_idx == 0) saved_val = active_patch_.osc_mix * 127.0f;
                 else if (knob_idx == 1) saved_val = (active_patch_.wave_type / 8.0f) * 127.0f;
                 else if (knob_idx == 2) saved_val = std::clamp((active_patch_.osc_detune + 100.0f) / 200.0f * 127.0f, 0.0f, 127.0f);
                 else if (knob_idx == 3) saved_val = std::clamp(((active_patch_.transpose / 12.0f + 2.0f) / 4.0f) * 127.0f, 0.0f, 127.0f);
@@ -172,30 +201,39 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                 switch (knob_idx) {
                     case 0: { // FM Mod Index
                         param_name = "FM MOD INDEX";
+                        syncFmStateFromBaseline();
                         // Relative modulation factor: center (norm 0.5) = 1.0x, min = 0.0x, max = 4.0x
-                        float mod_factor = (norm_val <= 0.5f) ? (norm_val * 2.0f) : (1.0f + (norm_val - 0.5f) * 6.0f);
+                        float mod_factor = fmModFactorFromNorm(norm_val);
+                        fm_state_.mod_factor = mod_factor;
                         if (amy_adapter_) amy_adapter_->setFmModIndex(1, mod_factor);
                         break;
                     }
-                    case 1: { // FM Operator Ratio
+                    case 1: { // FM Operator Ratio (continuous relative fine ratio)
                         param_name = "FM OP RATIO";
+                        syncFmStateFromBaseline();
                         // Relative ratio factor: -1 -> 0.5x, 0 -> 1.0x, +1 -> 2.0x
-                        float bipolar = (norm_val - 0.5f) * 2.0f;
-                        float ratio_factor = std::pow(2.0f, bipolar);
-                        if (amy_adapter_) amy_adapter_->setFmRatio(1, ratio_factor);
+                        float ratio_factor = fmRatioFactorFromNorm(norm_val);
+                        fm_state_.ratio_factor = ratio_factor;
+                        // Compose with the discrete Freq Mult so neither control
+                        // overwrites the other's contribution.
+                        if (amy_adapter_) amy_adapter_->setFmRatio(1, ratio_factor * fm_state_.freq_mult);
                         break;
                     }
                     case 2: { // FM Detune
                         param_name = "FM DETUNE";
+                        syncFmStateFromBaseline();
                         // Detune in cents: -25 .. 0 .. +25 cents (0 at center norm_val 0.5)
-                        float cents = (norm_val - 0.5f) * 50.0f;
+                        float cents = fmDetuneCentsFromNorm(norm_val);
+                        fm_state_.detune_cents = cents;
                         if (amy_adapter_) amy_adapter_->setOscDetune(1, cents);
                         break;
                     }
                     case 3: { // FM Freq Multiplier
                         param_name = "FM FREQ MULT";
-                        float mult = 1.0f + std::round(norm_val * 7.0f);
-                        if (amy_adapter_) amy_adapter_->setFmRatio(1, mult);
+                        syncFmStateFromBaseline();
+                        float mult = fmFreqMultFromNorm(norm_val);
+                        fm_state_.freq_mult = mult;
+                        if (amy_adapter_) amy_adapter_->setFmRatio(1, fm_state_.ratio_factor * mult);
                         break;
                     }
                     case 4: { // FM Mod Decay
@@ -205,7 +243,9 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     }
                     case 5: { // FM Feedback
                         param_name = "FM FEEDBACK";
-                        float feedback = norm_val * 0.16f;
+                        syncFmStateFromBaseline();
+                        float feedback = fmFeedbackFromNorm(norm_val);
+                        fm_state_.feedback = feedback;
                         if (amy_adapter_) amy_adapter_->setFmFeedback(1, feedback);
                         break;
                     }
@@ -216,7 +256,8 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     }
                     case 7: { // DX7 Algorithm (1 .. 32)
                         param_name = "DX7 ALGO";
-                        uint8_t algo = 1 + static_cast<uint8_t>(std::clamp(static_cast<int>(std::round(norm_val * 31.0f)), 0, 31));
+                        uint8_t algo = fmAlgorithmFromNorm(norm_val);
+                        fm_state_.algorithm = algo;
                         if (amy_adapter_) amy_adapter_->setFmAlgorithm(1, algo);
                         break;
                     }
@@ -532,14 +573,22 @@ switch (b_idx) {
     }
     case 7: { // Knob B8: Master Tone / FM Feedback / Drive
         param_name = (active_patch_.wave_type == 8) ? "FM FEEDBACK" : "MASTER DRIVE";
-        float saved_val = std::clamp(fx_state_.drive * 127.0f, 0.0f, 127.0f);
+        float saved_val;
+        if (active_patch_.wave_type == 8) {
+            syncFmStateFromBaseline();
+            saved_val = std::clamp(fmFeedbackNormFromValue(fm_state_.feedback) * 127.0f, 0.0f, 127.0f);
+        } else {
+            saved_val = std::clamp(fx_state_.drive * 127.0f, 0.0f, 127.0f);
+        }
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        fx_state_.drive = norm;
-        active_patch_.drive_level = norm;
         if (active_patch_.wave_type == 8 && amy_adapter_) {
-            amy_adapter_->setFmFeedback(1, std::clamp(norm * 0.16f, 0.0f, 0.16f));
+            float feedback = fmFeedbackFromNorm(norm);
+            fm_state_.feedback = feedback;
+            amy_adapter_->setFmFeedback(1, feedback);
         } else if (amy_adapter_) {
+            fx_state_.drive = norm;
+            active_patch_.drive_level = norm;
             amy_adapter_->setDrive(norm);
         }
         break;
@@ -673,6 +722,12 @@ void PatchManager::setMacro(uint8_t macro_idx, float physical_val, bool from_phy
 void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     if (!amy_adapter_) return;
 
+    // A new preset establishes a new FM baseline. Drop the previous patch's
+    // runtime FM controls so the centered positions reproduce the new timbre,
+    // and invalidate the engine baseline until the preset materializes.
+    fm_state_ = FmControlState{};
+    amy_adapter_->invalidateFmBaseline();
+
     // 1. Load built-in AMY preset (Juno presets 0..127, DX7 presets 128..255, PCM presets 256+)
     amy_adapter_->loadPreset(1, patch.engine_patch, patch.voice_count > 0 ? patch.voice_count : 8);
 
@@ -762,7 +817,8 @@ void PatchManager::applyMacroToEngine(uint8_t macro_idx, float effective_val) {
                     active_patch_.filter_cutoff = target_val;
                     applyActiveFilterState();
                 } else {
-                    float mod_factor = (norm_val <= 0.5f) ? (norm_val * 2.0f) : (1.0f + (norm_val - 0.5f) * 6.0f);
+                    float mod_factor = fmModFactorFromNorm(norm_val);
+                    fm_state_.mod_factor = mod_factor;
                     amy_adapter_->setFmModIndex(1, mod_factor);
                 }
                 break;
@@ -789,6 +845,7 @@ void PatchManager::applyMacroToEngine(uint8_t macro_idx, float effective_val) {
             case 7: // Safe Feedback / Drive
                 if (active_patch_.wave_type == 8) {
                     float safe_fb = std::clamp(shaped_val * 0.16f, 0.0f, 0.16f);
+                    fm_state_.feedback = safe_fb;
                     amy_adapter_->setFmFeedback(1, safe_fb);
                 } else {
                     float drive_val = std::clamp(target_val, 0.0f, 1.0f);
