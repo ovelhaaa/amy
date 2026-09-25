@@ -740,19 +740,33 @@ void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
         amy_adapter_->setPortamento(1, 0);
     }
 
-    // 3. Configure Filter & Envelopes
+    // 3. Configure Filter & Envelopes. AMY broadcasts synth-level amp/freq
+    // coefficients to every osc of the voice; for an ALGO voice that includes
+    // the DX7 operators, so a generic ADSR would overwrite their preset levels.
+    // The FM preset owns its operator envelopes, so the generic amp envelope is
+    // subtractive-only.
     active_filter_env_amt_   = patch.filter_env_amount;
     active_filter_key_track_ = patch.filter_key_tracking;
     active_filter_vel_track_ = patch.filter_vel_tracking;
     active_filter_type_      = patch.filter_type;
     applyActiveFilterState();
-    amy_adapter_->setEnvelope(1, patch.amp_attack, patch.amp_decay, patch.amp_sustain, patch.amp_release);
+    const bool is_algo = (patch.wave_type == toAmyWaveType(SmkWaveType::Algo));
+    if (!is_algo) {
+        amy_adapter_->setEnvelope(1, patch.amp_attack, patch.amp_decay, patch.amp_sustain, patch.amp_release);
+    }
 
-    // 4. Configure Oscillator & FX state
-    amy_adapter_->setOscMix(1, patch.osc_mix);
-    amy_adapter_->setOscDetune(1, patch.osc_detune);
-    amy_adapter_->setSubOscLevel(1, patch.sub_level);
-    amy_adapter_->setNoiseLevel(1, patch.noise_level);
+    // 4. Configure Oscillator & FX state. These controls address base/base+1/
+    // base+2/base+3 as a subtractive voice (main/sub/noise). In an ALGO
+    // (DX7/FM) preset those positions are the FM control osc and its operators,
+    // so applying them would overwrite operator levels/ratios and make the
+    // played state diverge from the captured FM baseline. FM has its own
+    // controls; skip the subtractive ones for ALGO.
+    if (!is_algo) {
+        amy_adapter_->setOscMix(1, patch.osc_mix);
+        amy_adapter_->setOscDetune(1, patch.osc_detune);
+        amy_adapter_->setSubOscLevel(1, patch.sub_level);
+        amy_adapter_->setNoiseLevel(1, patch.noise_level);
+    }
 
     fx_state_.drive       = std::clamp(patch.drive_level, 0.0f, 1.0f);
     fx_state_.master_tone = patch.master_tone;

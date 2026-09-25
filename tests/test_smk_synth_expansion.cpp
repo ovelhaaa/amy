@@ -101,12 +101,19 @@ public:
         uint8_t synth_id;
         float cents;
     };
+    struct LevelCall {
+        uint8_t synth_id;
+        float value;
+    };
 
     std::vector<FilterCall> filter_calls;
     std::vector<ChorusCall> chorus_calls;
     std::vector<FmIndexCall> fm_index_calls;
     std::vector<FmRatioCall> fm_ratio_calls;
     std::vector<DetuneCall> detune_calls;
+    std::vector<LevelCall> osc_mix_calls;
+    std::vector<LevelCall> sub_osc_calls;
+    std::vector<LevelCall> noise_calls;
 
     void setFilter(uint8_t osc_id, float cutoff_hz, float resonance,
                    float env_amount = 0.0f, float key_tracking = 0.0f,
@@ -128,6 +135,18 @@ public:
 
     void setOscDetune(uint8_t synth_id, float cents) override {
         detune_calls.push_back({synth_id, cents});
+    }
+
+    void setOscMix(uint8_t synth_id, float mix) override {
+        osc_mix_calls.push_back({synth_id, mix});
+    }
+
+    void setSubOscLevel(uint8_t synth_id, float level) override {
+        sub_osc_calls.push_back({synth_id, level});
+    }
+
+    void setNoiseLevel(uint8_t synth_id, float level) override {
+        noise_calls.push_back({synth_id, level});
     }
 };
 
@@ -1178,6 +1197,40 @@ static void test_fm_algorithm_saved_value_and_patch_reset() {
     printf("PASS: FM algorithm saved value tracks knob position and patch load resets FM runtime state\n");
 }
 
+static void test_algo_skips_subtractive_osc_controls() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+
+    // ALGO/DX7 factory patch: base+1/+2/+3 belong to the FM voice, so the
+    // subtractive osc controls must not be sent at all.
+    mock.osc_mix_calls.clear();
+    mock.sub_osc_calls.clear();
+    mock.noise_calls.clear();
+    mock.detune_calls.clear();
+    assert(pm.selectPatch(128));
+    assert(pm.activePatch().wave_type == toAmyWaveType(SmkWaveType::Algo));
+    assert(mock.osc_mix_calls.empty());
+    assert(mock.sub_osc_calls.empty());
+    assert(mock.noise_calls.empty());
+    assert(mock.detune_calls.empty());
+
+    // Subtractive factory patch: the same controls must still be applied.
+    assert(pm.selectPatch(0));
+    assert(pm.activePatch().wave_type != toAmyWaveType(SmkWaveType::Algo));
+    assert(!mock.osc_mix_calls.empty());
+    assert(std::abs(mock.osc_mix_calls.back().value - pm.activePatch().osc_mix) < 1e-6f);
+    assert(!mock.sub_osc_calls.empty());
+    assert(std::abs(mock.sub_osc_calls.back().value - pm.activePatch().sub_level) < 1e-6f);
+    assert(!mock.noise_calls.empty());
+    assert(std::abs(mock.noise_calls.back().value - pm.activePatch().noise_level) < 1e-6f);
+    assert(!mock.detune_calls.empty());
+    assert(std::abs(mock.detune_calls.back().cents - pm.activePatch().osc_detune) < 1e-6f);
+
+    printf("PASS: ALGO skips OscMix/Sub/Noise/Detune; subtractive patches keep them\n");
+}
+
 int main() {
     printf("=== Running SMK Synth Expansion Host Test Suite ===\n");
     test_scale_quantizer();
@@ -1199,6 +1252,7 @@ int main() {
     test_bank_b_fm_ratio_freq_mult_composition();
     test_fm_soft_takeover_pickup();
     test_fm_algorithm_saved_value_and_patch_reset();
+    test_algo_skips_subtractive_osc_controls();
     test_macro_curves();
     test_amy_core_fixes();
     printf("=== ALL SMK SYNTH EXPANSION TESTS PASSED ===\n");
