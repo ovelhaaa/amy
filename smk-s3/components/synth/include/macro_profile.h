@@ -48,13 +48,58 @@ inline bool isLegacyMacroTarget(uint8_t param_type) {
     return param_type <= static_cast<uint8_t>(MacroTarget::LegacyDrive);
 }
 
+// Classifies how a patch's persisted macro mappings are expressed. Legacy
+// values 0..7 use the original absolute handler; the relative destinations use
+// the deterministic baseline+contribution model. Mixed is only reachable from a
+// hand-crafted patch and is called out explicitly instead of silently dropping
+// the legacy routes.
+enum class MacroMappingMode : uint8_t {
+    None,          // No macro routes at all.
+    LegacyOnly,    // Only param_type 0..7.
+    RelativeOnly,  // Only the family-aware relative destinations.
+    Mixed          // Both kinds in the same patch.
+};
+
+// Pure classifier over the persisted macro routes. Kept free-standing so the
+// mixed/legacy decision is unit-testable without constructing a PatchManager.
+inline MacroMappingMode classifyMacroMappings(const SynthPatch& patch) {
+    bool saw_legacy = false;
+    bool saw_relative = false;
+    for (uint8_t i = 0; i < 8; ++i) {
+        const MacroConfig& macro = patch.macros[i];
+        for (uint8_t m = 0; m < macro.mapping_count && m < 4; ++m) {
+            if (isLegacyMacroTarget(macro.mappings[m].param_type)) {
+                saw_legacy = true;
+            } else {
+                saw_relative = true;
+            }
+        }
+    }
+    if (saw_legacy && saw_relative) return MacroMappingMode::Mixed;
+    if (saw_legacy) return MacroMappingMode::LegacyOnly;
+    if (saw_relative) return MacroMappingMode::RelativeOnly;
+    return MacroMappingMode::None;
+}
+
 // ─────────────────────────────────────────────────────────────
-// Immutable per-session baseline captured when a patch is loaded. Macros are
-// always recomputed as baseline + contributions, never as an incremental
-// modification of the previous result, so moving a macro back to neutral or
-// visiting macros in a different order cannot accumulate drift.
+// Sound & Musicality M2.1: runtime manual-control state.
+//
+// The detailed Bank B/C/D controls are the *source* of the sound, not the
+// final applied state. This struct holds the current manual value of every
+// control that a macro can also touch. Macros are then composed on top:
+//
+//   PATCH BASELINE -> MANUAL STATE -> MACRO CONTRIBUTIONS -> FINAL ENGINE STATE
+//
+// On patch load the manual state is initialized from the patch/FX state, so it
+// starts equal to the patch baseline. Moving a detailed control updates the
+// manual state and triggers a deterministic recompute. Reverting a macro to
+// neutral restores exactly the manual state, never the factory baseline, and
+// never drifts because the final applied value is never read back as manual.
+//
+// This state is runtime-only. The persisted patch format stays v5; only the
+// macro *positions* live in SynthPatch::macros.
 // ─────────────────────────────────────────────────────────────
-struct MacroBaseline {
+struct ManualControlState {
     float filter_cutoff = 1000.0f;
     float filter_res = 1.0f;
     float filter_env = 0.0f;
@@ -76,14 +121,16 @@ struct MacroBaseline {
     float drive = 0.0f;
     float master_tone = 0.0f;
 
-    // FM relative controls. These are not absolute operator levels: they are
-    // factors/offsets on top of the timbre the loaded preset already produces.
+    // FM manual controls. Mod/ratio are manual factors (1.0 == centered); the
+    // macros further multiply or offset them. Feedback and algorithm are seeded
+    // from the real loaded preset once it materializes, so a neutral macro
+    // restores the preset's own feedback rather than assuming zero.
     float   fm_mod_factor = 1.0f;
     float   fm_ratio_factor = 1.0f;
     float   fm_detune_cents = 0.0f;
-    float   fm_feedback = 0.0f; // absolute DSP feedback value
-    uint8_t fm_algorithm = 1;
-    bool    fm_valid = false;
+    float   fm_freq_mult = 1.0f; // discrete Bank B frequency multiplier (manual only)
+    float   fm_feedback = 0.0f;  // absolute preset/manual DSP feedback
+    uint8_t fm_algorithm = 1;    // manual only; macros never change it
 };
 
 // Maps a macro position (0..1) to a bipolar deviation in [-1, +1] around the

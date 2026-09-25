@@ -116,11 +116,26 @@ public:
     const FxControlState& fxControlState() const { return fx_state_; }
     const FmControlState& fmControlState() const { return fm_state_; }
 
+    // M2.1 state model:
+    //   active_patch_ / fx_state_ / fm_state_ = final effective musical state
+    //   manualControlState()                  = detailed-control base state
+    // Macros are composed as final = manual (+) macro contribution. The final
+    // state is derived only and is never read back as the manual base.
+    const ManualControlState& manualControlState() const { return manual_state_; }
+
     void setFilterType(uint8_t filter_type);
     uint8_t activeFilterType() const { return active_filter_type_; }
 
     void applyActiveFilterState();
     void applyActiveChorusState();
+
+    // True when the active patch mixes legacy (0..7) and relative macro routes.
+    // Such a patch is unsupported: the relative routes are applied and the
+    // legacy routes are reported instead of silently ignored.
+    bool hasMixedMacroMappings() const {
+        return macroMappingMode() == MacroMappingMode::Mixed;
+    }
+    MacroMappingMode macroMappingMode() const;
 
 private:
     // Runtime family of the active patch, derived from wave_type (never stored).
@@ -134,15 +149,15 @@ private:
     // preset has materialized. Safe to call on every FM knob event; cheap.
     void syncFmStateFromBaseline();
 
-    // Sound & Musicality M2: deterministic family-aware macro model.
-    // Returns true when the active patch uses at least one relative macro
-    // destination (all factory profiles do; legacy patches do not).
-    bool usesRelativeMacros() const;
-    // Capture the immutable per-session baseline from the loaded patch and the
-    // FX/FM state that applyPatchToEngine just configured.
-    void captureMacroBaseline();
-    // Recompute every target from the baseline and the eight macro positions,
-    // then reconcile only the engine parameters that actually changed.
+    // Sound & Musicality M2.1: deterministic family-aware macro model.
+    // Capture the runtime manual-control state from the loaded patch and the
+    // FX/FM state that applyPatchToEngine just configured. The manual state is
+    // the base layer that macros compose on top of; it starts equal to the
+    // patch baseline.
+    void captureManualControlState();
+    // Recompute every target from the manual state and the eight macro
+    // positions, then reconcile only the engine parameters that actually
+    // changed. Deterministic and order-independent.
     void recomputeMacroTargets();
 
     AmyAdapter*    amy_adapter_    = nullptr;
@@ -160,9 +175,11 @@ private:
     float          active_filter_vel_track_ = 1.5f;
     uint8_t        active_filter_type_      = 0;
 
-    // Immutable per-session baseline for the relative macro model. Captured on
-    // patch load; never stored in the patch (format stays v5).
-    MacroBaseline  macro_baseline_;
+    // Runtime-only manual-control base state for the relative macro model.
+    // Captured on patch load; never stored in the patch (format stays v5).
+    ManualControlState manual_state_;
+    // One diagnostic per patch load when an unsupported mixed mapping is seen.
+    bool mixed_macro_warning_emitted_ = false;
 };
 
 } // namespace smk

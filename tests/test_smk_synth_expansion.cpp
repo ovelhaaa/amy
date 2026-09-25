@@ -1079,25 +1079,31 @@ static void test_bank_b_fm_relative_and_detune() {
 
     // 2. FM Op Ratio (Knob 1): bipolar = (norm - 0.5)*2, ratio = powf(2.0, bipolar)
     // At center: 63.5f -> norm 0.5f -> bipolar 0.0f -> ratio = 1.0f
-    pm.handleKnobInput(1, 63.5f);
-    assert(std::abs(mock.fm_ratio_calls.back().value - 1.0f) < 0.01f);
-
+    // Move away first so the change emits; a second move back to center is a
+    // real transition and must emit the restored 1x.
+    mock.fm_ratio_calls.clear();
     pm.handleKnobInput(1, 0.0f);
+    assert(!mock.fm_ratio_calls.empty());
     assert(std::abs(mock.fm_ratio_calls.back().value - 0.5f) < 0.01f);
 
     pm.handleKnobInput(1, 127.0f);
     assert(std::abs(mock.fm_ratio_calls.back().value - 2.0f) < 0.01f);
 
+    pm.handleKnobInput(1, 63.5f);
+    assert(std::abs(mock.fm_ratio_calls.back().value - 1.0f) < 0.01f);
+
     // 3. FM Detune (Knob 2): cents = (norm - 0.5f) * 50.0f (-25 .. +25 cents)
     // At center: 63.5f -> cents = 0.0f
-    pm.handleKnobInput(2, 63.5f);
-    assert(std::abs(mock.detune_calls.back().cents - 0.0f) < 0.1f);
-
+    mock.detune_calls.clear();
     pm.handleKnobInput(2, 0.0f);
+    assert(!mock.detune_calls.empty());
     assert(std::abs(mock.detune_calls.back().cents - (-25.0f)) < 0.1f);
 
     pm.handleKnobInput(2, 127.0f);
     assert(std::abs(mock.detune_calls.back().cents - 25.0f) < 0.1f);
+
+    pm.handleKnobInput(2, 63.5f);
+    assert(std::abs(mock.detune_calls.back().cents - 0.0f) < 0.1f);
 
     printf("PASS: Bank B FM Relative Controls (Mod Index 0..4, Ratio 0.25..4.0) and Detune center (0 cents)\n");
 }
@@ -1148,22 +1154,22 @@ static void test_fm_soft_takeover_pickup() {
 
     // FM Mod Index baseline is 1x (knob center ~63.5). A distant physical knob
     // must hold the effective factor at 1x until the pickup point is crossed.
+    // Because the effective value does not move, no redundant engine command is
+    // emitted while held; the observable guarantee is the runtime FM state.
     mock.fm_index_calls.clear();
     pm.handleKnobInput(0, 0.0f);
-    assert(std::abs(mock.fm_index_calls.back().value - 1.0f) < 0.001f);
     assert(std::abs(pm.fmControlState().mod_factor - 1.0f) < 0.001f);
     pm.handleKnobInput(0, 63.5f); // crosses baseline
-    assert(std::abs(mock.fm_index_calls.back().value - 1.0f) < 0.01f);
+    assert(std::abs(pm.fmControlState().mod_factor - 1.0f) < 0.001f);
     pm.handleKnobInput(0, 127.0f); // captured now
     assert(std::abs(mock.fm_index_calls.back().value - 4.0f) < 0.01f);
 
     // FM Ratio baseline 1x: pickup center must map to 1x.
     mock.fm_ratio_calls.clear();
     pm.handleKnobInput(1, 0.0f); // far below center
-    assert(std::abs(mock.fm_ratio_calls.back().value - 1.0f) < 0.01f);
     assert(std::abs(pm.fmControlState().ratio_factor - 1.0f) < 0.001f);
     pm.handleKnobInput(1, 63.5f); // crosses center
-    assert(std::abs(mock.fm_ratio_calls.back().value - 1.0f) < 0.01f);
+    assert(std::abs(pm.fmControlState().ratio_factor - 1.0f) < 0.001f);
     pm.handleKnobInput(1, 127.0f);
     assert(std::abs(mock.fm_ratio_calls.back().value - 2.0f) < 0.01f);
 
@@ -1738,6 +1744,261 @@ static void test_macro_command_throttle() {
     printf("PASS: unchanged macro recomputes do not emit redundant engine commands\n");
 }
 
+// ─────────────────────────────────────────────────────────────
+// Sound & Musicality M2.1: manual controls + macro composition
+// ─────────────────────────────────────────────────────────────
+static void test_manual_edit_then_macro_neutral_restores_manual() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.selectPatch(0));
+
+    // Bank C: cutoff -> 5000 Hz, attack -> 200 ms.
+    pm.setKnobBank(KnobBank::BankC_FilterEnv);
+    pm.handleKnobInput(0, cutoffToNorm(5000.0f) * 127.0f);
+    const float attack_manual = envelopeMsFromNorm(0.6f);
+    pm.handleKnobInput(3, 0.6f * 127.0f);
+    assert(std::abs(pm.manualControlState().filter_cutoff - 5000.0f) < 1.0f);
+    assert(std::abs(pm.activePatch().filter_cutoff - 5000.0f) < 1.0f); // macros neutral
+
+    // Bank D: reverb mix -> 0.5 wet, drive -> 0.6.
+    pm.setKnobBank(KnobBank::BankD_Effects);
+    pm.handleKnobInput(5, wetToNorm(0.5f) * 127.0f);
+    pm.handleKnobInput(6, driveToNorm(0.6f) * 127.0f);
+
+    // Bank B (subtractive): detune -> +25 cents.
+    pm.setKnobBank(KnobBank::BankB_Oscillator);
+    pm.handleKnobInput(2, 0.75f * 127.0f);
+
+    const float reverb_manual = pm.manualControlState().reverb_mix;
+    const float drive_manual = pm.manualControlState().drive;
+    const float detune_manual = pm.manualControlState().osc_detune;
+    assert(std::abs(attack_manual - pm.manualControlState().amp_attack) < 1e-3f);
+
+    // Every macro to both extremes and back to neutral.
+    for (uint8_t m = 0; m < 8; ++m) {
+        pm.setMacro(m, 0.0f, true);
+        pm.setMacro(m, 127.0f, true);
+        pm.setMacro(m, pm.activePatch().macros[m].default_val, true);
+    }
+
+    assert(std::abs(pm.manualControlState().filter_cutoff - 5000.0f) < 1.0f);
+    assert(std::abs(pm.activePatch().filter_cutoff - 5000.0f) < 1.0f);
+    assert(std::abs(pm.activePatch().amp_attack - attack_manual) < 1e-2f);
+    assert(std::abs(pm.fxControlState().reverb_mix - reverb_manual) < 1e-4f);
+    assert(std::abs(pm.fxControlState().drive - drive_manual) < 1e-4f);
+    assert(std::abs(pm.activePatch().osc_detune - detune_manual) < 1e-2f);
+
+    printf("PASS: manual edits survive macro extremes; neutral restores the manual state (cutoff/attack/reverb/drive/detune)\n");
+}
+
+static void test_macro_active_then_manual_edit() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.selectPatch(0));
+
+    const float base_cutoff = pm.activePatch().filter_cutoff;
+
+    // Macro CHAR up: final cutoff is boosted, manual base is untouched.
+    pm.setMacro(0, 127.0f, true);
+    assert(pm.activePatch().filter_cutoff > base_cutoff + 1e-3f);
+    assert(std::abs(pm.manualControlState().filter_cutoff - base_cutoff) < 1.0f);
+
+    // Bank C now defines the new manual base while the macro stays active. The
+    // macro contribution scales the new base instead of being discarded.
+    pm.setKnobBank(KnobBank::BankC_FilterEnv);
+    pm.handleKnobInput(0, cutoffToNorm(3000.0f) * 127.0f);
+    assert(std::abs(pm.manualControlState().filter_cutoff - 3000.0f) < 1.0f);
+    const float composed_3000 = pm.activePatch().filter_cutoff;
+    assert(composed_3000 > 3000.0f + 1e-3f);
+
+    // A second manual base under the same active macro scales proportionally,
+    // proving final = manual * macro contribution (outside the clamp region).
+    if (composed_3000 < control_ranges::kCutoffMaxHz * 0.99f) {
+        pm.handleKnobInput(0, cutoffToNorm(1000.0f) * 127.0f);
+        const float composed_1000 = pm.activePatch().filter_cutoff;
+        assert(macroNearlyEqual(composed_1000, composed_3000 / 3.0f, 1e-3f));
+    }
+
+    // Returning the macro to neutral lands exactly on the current manual base.
+    pm.handleKnobInput(0, cutoffToNorm(3000.0f) * 127.0f);
+    pm.setMacro(0, pm.activePatch().macros[0].default_val, true);
+    assert(std::abs(pm.activePatch().filter_cutoff - 3000.0f) < 1.0f);
+
+    printf("PASS: macro active then manual edit composes and returns to the new manual base\n");
+}
+
+static MacroOrderResult run_macro_order_with_manual(float manual_cutoff,
+                                                    uint8_t first, float first_val,
+                                                    uint8_t second, float second_val) {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.selectPatch(0));
+    pm.setKnobBank(KnobBank::BankC_FilterEnv);
+    pm.handleKnobInput(0, cutoffToNorm(manual_cutoff) * 127.0f);
+    pm.setMacro(first, first_val, true);
+    pm.setMacro(second, second_val, true);
+    const MacroStateView v = captureMacroState(pm, mock);
+    MacroOrderResult r;
+    r.cutoff = v.cutoff;
+    r.res = v.res;
+    r.chorus = v.chorus;
+    return r;
+}
+
+static void test_macro_order_independence_with_manual() {
+    using namespace smk;
+    const float manual = 4000.0f;
+    const MacroOrderResult ab = run_macro_order_with_manual(manual, 0, 80.0f, 1, 30.0f);
+    const MacroOrderResult ba = run_macro_order_with_manual(manual, 1, 30.0f, 0, 80.0f);
+    assert(macroNearlyEqual(ab.cutoff, ba.cutoff));
+    assert(macroNearlyEqual(ab.res, ba.res));
+    printf("PASS: order independence holds with a non-baseline manual cutoff (CHAR -> BRTE == BRTE -> CHAR)\n");
+}
+
+static void test_manual_macro_no_drift_cycles() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.selectPatch(0));
+    pm.setKnobBank(KnobBank::BankC_FilterEnv);
+
+    for (int i = 0; i < 100; ++i) {
+        pm.handleKnobInput(0, cutoffToNorm(2000.0f) * 127.0f);
+        assert(std::abs(pm.manualControlState().filter_cutoff - 2000.0f) < 1.0f);
+        pm.setMacro(0, 127.0f, true);
+        pm.setMacro(0, pm.activePatch().macros[0].default_val, true);
+        assert(std::abs(pm.manualControlState().filter_cutoff - 2000.0f) < 1.0f);
+        assert(std::abs(pm.activePatch().filter_cutoff - 2000.0f) < 1.0f);
+    }
+
+    printf("PASS: 100 manual -> macro extreme -> neutral cycles do not drift the manual state\n");
+}
+
+static void test_manual_state_change_command_throttle() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.selectPatch(0));
+    pm.setKnobBank(KnobBank::BankC_FilterEnv);
+    pm.handleKnobInput(0, cutoffToNorm(5000.0f) * 127.0f);
+
+    mock.filter_calls.clear();
+    // Re-running the recompute with the same manual state and neutral macros
+    // must not re-emit any engine command.
+    pm.setMacro(0, pm.activePatch().macros[0].default_val, true);
+    pm.setMacro(1, pm.activePatch().macros[1].default_val, true);
+    assert(mock.filter_calls.empty());
+
+    // Moving a manual control to a value that yields the same final state is
+    // also silent (here neutral macros make final == manual).
+    pm.handleKnobInput(0, cutoffToNorm(5000.0f) * 127.0f);
+    assert(mock.filter_calls.empty());
+
+    printf("PASS: same manual state + same macros emits no redundant engine commands\n");
+}
+
+static void test_fm_manual_and_macro_composition() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.selectPatch(128));
+    assert(classifyPatch(pm.activePatch()) == PatchFamily::FM);
+    pm.setKnobBank(KnobBank::BankB_Oscillator);
+
+    // Bank B manual FM controls.
+    pm.handleKnobInput(0, fmModNormFromFactor(2.0f) * 127.0f);   // mod index 2x
+    pm.handleKnobInput(1, fmRatioNormFromFactor(1.5f) * 127.0f); // ratio 1.5x
+    pm.handleKnobInput(3, fmFreqMultNormFromMult(3.0f) * 127.0f); // freq mult 3x
+    pm.handleKnobInput(2, fmDetuneNormFromCents(8.0f) * 127.0f); // +8 cents
+    pm.handleKnobInput(5, fmFeedbackNormFromValue(0.08f) * 127.0f); // 0.08
+
+    const uint8_t algo_manual = pm.fmControlState().algorithm;
+    assert(std::abs(pm.manualControlState().fm_mod_factor - 2.0f) < 1e-3f);
+    assert(std::abs(pm.manualControlState().fm_ratio_factor - 1.5f) < 1e-3f);
+    assert(std::abs(pm.manualControlState().fm_freq_mult - 3.0f) < 1e-3f);
+    assert(std::abs(pm.fmControlState().mod_factor - 2.0f) < 1e-3f);
+    // ratio * freq_mult with neutral macros.
+    assert(std::abs(pm.fmControlState().ratio_factor - 4.5f) < 1e-3f);
+    assert(std::abs(pm.fmControlState().detune_cents - 8.0f) < 1e-3f);
+    assert(std::abs(pm.fmControlState().feedback - 0.08f) < 1e-3f);
+
+    const float neutral_fdbk = fmFeedbackNormFromValue(0.08f) * 127.0f;
+
+    // Macro CHAR (mod index) x manual mod index.
+    pm.setMacro(0, 127.0f, true);
+    assert(macroNearlyEqual(pm.fmControlState().mod_factor, 2.0f * 4.0f, 1e-3f));
+    pm.setMacro(0, pm.activePatch().macros[0].default_val, true);
+    assert(std::abs(pm.fmControlState().mod_factor - 2.0f) < 1e-3f);
+
+    // Macro RATIO x manual ratio x freq mult: 1.5 * 3 * 2 == 9x.
+    pm.setMacro(4, 127.0f, true);
+    assert(macroNearlyEqual(pm.fmControlState().ratio_factor, 9.0f, 1e-3f));
+    pm.setMacro(4, pm.activePatch().macros[4].default_val, true);
+    assert(std::abs(pm.fmControlState().ratio_factor - 4.5f) < 1e-3f);
+
+    // Macro DTUNE adds to the manual detune.
+    pm.setMacro(5, 127.0f, true);
+    assert(std::abs(pm.fmControlState().detune_cents - 33.0f) < 1e-2f);
+    pm.setMacro(5, pm.activePatch().macros[5].default_val, true);
+    assert(std::abs(pm.fmControlState().detune_cents - 8.0f) < 1e-2f);
+
+    // Macro FDBK offsets the manual feedback and is clamped safely.
+    pm.setMacro(3, 127.0f, true);
+    assert(std::abs(pm.fmControlState().feedback - 0.14f) < 1e-3f);
+    pm.setMacro(3, pm.activePatch().macros[3].default_val, true);
+    assert(std::abs(pm.fmControlState().feedback - 0.08f) < 1e-3f);
+    (void)neutral_fdbk;
+
+    // Algorithm is manual-only and never changed by any macro.
+    assert(pm.fmControlState().algorithm == algo_manual);
+
+    printf("PASS: FM manual base composes with mod/ratio/detune/feedback macros and neutral restores manual values\n");
+}
+
+static void test_legacy_and_mixed_macro_mapping_classification() {
+    using namespace smk;
+
+    // Legacy targets keep their exact 0..7 meaning; relative start at 8.
+    for (uint8_t t = 0; t <= 7; ++t) assert(isLegacyMacroTarget(t));
+    for (uint8_t t = 8; t <= 24; ++t) assert(!isLegacyMacroTarget(t));
+
+    SynthPatch legacy = *FactoryPatches::getPatchById(0);
+    for (uint8_t m = 0; m < 8; ++m) {
+        legacy.macros[m].mapping_count = 1;
+        legacy.macros[m].mappings[0].param_type = static_cast<uint8_t>(MacroTarget::LegacyCutoff);
+    }
+    assert(classifyMacroMappings(legacy) == MacroMappingMode::LegacyOnly);
+
+    SynthPatch rel = *FactoryPatches::getPatchById(0);
+    assert(classifyMacroMappings(rel) == MacroMappingMode::RelativeOnly);
+
+    // A single patch that mixes both kinds must be reported, not silently
+    // treated as relative-only.
+    rel.macros[0].mappings[1].param_type = static_cast<uint8_t>(MacroTarget::LegacyBrightness);
+    assert(classifyMacroMappings(rel) == MacroMappingMode::Mixed);
+
+    SynthPatch none = *FactoryPatches::getPatchById(0);
+    for (uint8_t m = 0; m < 8; ++m) none.macros[m].mapping_count = 0;
+    assert(classifyMacroMappings(none) == MacroMappingMode::None);
+
+    printf("PASS: legacy 0..7 preserved; legacy/relative/mixed/none macro mappings classified explicitly\n");
+}
+
 static void test_showcase_macro_smoke() {
     using namespace smk;
     size_t n = 0;
@@ -1852,6 +2113,13 @@ int main() {
     test_relative_macro_neutral_restoration();
     test_macro_order_independence();
     test_macro_command_throttle();
+    test_manual_edit_then_macro_neutral_restores_manual();
+    test_macro_active_then_manual_edit();
+    test_macro_order_independence_with_manual();
+    test_manual_macro_no_drift_cycles();
+    test_manual_state_change_command_throttle();
+    test_fm_manual_and_macro_composition();
+    test_legacy_and_mixed_macro_mapping_classification();
     test_showcase_macro_smoke();
     test_patch_format_unchanged();
     printf("=== ALL SMK SYNTH EXPANSION TESTS PASSED ===\n");

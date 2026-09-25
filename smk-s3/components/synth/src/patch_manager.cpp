@@ -106,6 +106,12 @@ void PatchManager::syncFmStateFromBaseline() {
     if (amy_adapter_->fmBaseline(algorithm, feedback)) {
         fm_state_.algorithm = algorithm;
         fm_state_.feedback = feedback;
+        // Seed the manual FM base from the real preset. A neutral macro then
+        // restores the preset's own feedback/algorithm instead of assuming 0/1.
+        // Bank B paths call this before writing their knob value, so a manual
+        // feedback edit still wins over the preset seed.
+        manual_state_.fm_algorithm = algorithm;
+        manual_state_.fm_feedback = feedback;
         fm_state_.initialized = true;
     }
     // If the engine has not materialized the preset yet, keep the neutral
@@ -113,41 +119,36 @@ void PatchManager::syncFmStateFromBaseline() {
     // from here, so leaving the state uninitialized is safe.
 }
 
-bool PatchManager::usesRelativeMacros() const {
-    for (uint8_t i = 0; i < 8; ++i) {
-        const auto& macro = active_patch_.macros[i];
-        for (uint8_t m = 0; m < macro.mapping_count && m < 4; ++m) {
-            if (!isLegacyMacroTarget(macro.mappings[m].param_type)) return true;
-        }
-    }
-    return false;
+MacroMappingMode PatchManager::macroMappingMode() const {
+    return classifyMacroMappings(active_patch_);
 }
 
-void PatchManager::captureMacroBaseline() {
-    macro_baseline_ = MacroBaseline{};
-    macro_baseline_.filter_cutoff  = active_patch_.filter_cutoff;
-    macro_baseline_.filter_res     = active_patch_.filter_res;
-    macro_baseline_.filter_env     = active_filter_env_amt_;
-    macro_baseline_.amp_attack     = active_patch_.amp_attack;
-    macro_baseline_.amp_decay      = active_patch_.amp_decay;
-    macro_baseline_.amp_sustain    = active_patch_.amp_sustain;
-    macro_baseline_.amp_release    = active_patch_.amp_release;
-    macro_baseline_.osc_detune     = active_patch_.osc_detune;
-    macro_baseline_.chorus_depth   = fx_state_.chorus_depth;
-    macro_baseline_.delay_time_ms  = fx_state_.delay_time_ms;
-    macro_baseline_.delay_feedback = fx_state_.delay_feedback;
-    macro_baseline_.delay_mix      = fx_state_.delay_mix;
-    macro_baseline_.reverb_size    = fx_state_.reverb_size;
-    macro_baseline_.reverb_mix     = fx_state_.reverb_mix;
-    macro_baseline_.drive          = fx_state_.drive;
-    macro_baseline_.master_tone    = fx_state_.master_tone;
-    // FM baseline metadata is finalized lazily once the preset materializes.
-    macro_baseline_.fm_mod_factor   = 1.0f;
-    macro_baseline_.fm_ratio_factor = 1.0f;
-    macro_baseline_.fm_detune_cents = 0.0f;
-    macro_baseline_.fm_feedback     = 0.0f;
-    macro_baseline_.fm_algorithm    = 1;
-    macro_baseline_.fm_valid        = false;
+void PatchManager::captureManualControlState() {
+    manual_state_ = ManualControlState{};
+    manual_state_.filter_cutoff  = active_patch_.filter_cutoff;
+    manual_state_.filter_res     = active_patch_.filter_res;
+    manual_state_.filter_env     = active_filter_env_amt_;
+    manual_state_.amp_attack     = active_patch_.amp_attack;
+    manual_state_.amp_decay      = active_patch_.amp_decay;
+    manual_state_.amp_sustain    = active_patch_.amp_sustain;
+    manual_state_.amp_release    = active_patch_.amp_release;
+    manual_state_.osc_detune     = active_patch_.osc_detune;
+    manual_state_.chorus_depth   = fx_state_.chorus_depth;
+    manual_state_.delay_time_ms  = fx_state_.delay_time_ms;
+    manual_state_.delay_feedback = fx_state_.delay_feedback;
+    manual_state_.delay_mix      = fx_state_.delay_mix;
+    manual_state_.reverb_size    = fx_state_.reverb_size;
+    manual_state_.reverb_mix     = fx_state_.reverb_mix;
+    manual_state_.drive          = fx_state_.drive;
+    manual_state_.master_tone    = fx_state_.master_tone;
+    // FM manual base starts centered. Feedback/algorithm are seeded lazily from
+    // the real preset in syncFmStateFromBaseline() once it has materialized.
+    manual_state_.fm_mod_factor   = 1.0f;
+    manual_state_.fm_ratio_factor = 1.0f;
+    manual_state_.fm_detune_cents = 0.0f;
+    manual_state_.fm_freq_mult    = 1.0f;
+    manual_state_.fm_feedback     = 0.0f;
+    manual_state_.fm_algorithm    = 1;
 }
 
 void PatchManager::recomputeMacroTargets() {
@@ -159,15 +160,10 @@ void PatchManager::recomputeMacroTargets() {
     const bool supports_osc = supportsSubtractiveOscControls(family);
 
     // The engine materializes the preset asynchronously; pull the FM baseline
-    // as soon as it is available so feedback is relative to the real preset,
-    // never assumed to start at zero.
+    // as soon as it is available so the manual feedback base is the real preset
+    // feedback, never assumed to start at zero.
     if (is_fm) {
         syncFmStateFromBaseline();
-        if (fm_state_.initialized && !macro_baseline_.fm_valid) {
-            macro_baseline_.fm_feedback  = fm_state_.feedback;
-            macro_baseline_.fm_algorithm = fm_state_.algorithm;
-            macro_baseline_.fm_valid     = true;
-        }
     }
 
     // Accumulators default to the identity contribution.
@@ -240,26 +236,35 @@ void PatchManager::recomputeMacroTargets() {
         }
     }
 
-    // Final target state, clamped to the safe engine ranges.
-    const float new_cutoff = std::clamp(macro_baseline_.filter_cutoff * std::exp2(cutoff_oct),
+    // Final target state = manual base composed with the macro contribution,
+    // clamped to the safe engine ranges. The manual state is never modified
+    // here, so a neutral macro always reproduces the manual value exactly.
+    const float new_cutoff = std::clamp(manual_state_.filter_cutoff * std::exp2(cutoff_oct),
                                         control_ranges::kCutoffMinHz, control_ranges::kCutoffMaxHz);
-    const float new_res    = std::clamp(macro_baseline_.filter_res * res_factor,
+    const float new_res    = std::clamp(manual_state_.filter_res * res_factor,
                                         control_ranges::kResonanceMin, control_ranges::kResonanceMax);
-    const float new_fenv   = std::clamp(macro_baseline_.filter_env + fenv_off, -4.0f, 4.0f);
-    const float new_atk    = std::clamp(macro_baseline_.amp_attack * atk_factor,
+    const float new_fenv   = std::clamp(manual_state_.filter_env + fenv_off, -4.0f, 4.0f);
+    const float new_atk    = std::clamp(manual_state_.amp_attack * atk_factor,
                                         control_ranges::kEnvelopeMinMs, control_ranges::kEnvelopeMaxMs);
-    const float new_dec    = std::clamp(macro_baseline_.amp_decay * dec_factor,
+    const float new_dec    = std::clamp(manual_state_.amp_decay * dec_factor,
                                         control_ranges::kEnvelopeMinMs, control_ranges::kEnvelopeMaxMs);
-    const float new_sus    = std::clamp(macro_baseline_.amp_sustain + sus_off, 0.0f, 1.0f);
-    const float new_rel    = std::clamp(macro_baseline_.amp_release * rel_factor,
+    const float new_sus    = std::clamp(manual_state_.amp_sustain + sus_off, 0.0f, 1.0f);
+    const float new_rel    = std::clamp(manual_state_.amp_release * rel_factor,
                                         control_ranges::kEnvelopeMinMs, control_ranges::kEnvelopeMaxMs);
-    const float new_detune = std::clamp(macro_baseline_.osc_detune + detune_off, -100.0f, 100.0f);
-    const float new_chorus = std::clamp(macro_baseline_.chorus_depth + chorus_off, 0.0f, 1.0f);
-    const float new_reverb = std::clamp(macro_baseline_.reverb_mix + reverb_off, 0.0f, 1.0f);
-    const float new_delay  = std::clamp(macro_baseline_.delay_mix + delay_off, 0.0f, 1.0f);
-    const float new_drive  = std::clamp(macro_baseline_.drive + drive_off, 0.0f, 1.0f);
-    const float new_tone   = std::clamp(macro_baseline_.master_tone + tone_off, -1.0f, 1.0f);
-    const float new_fm_fb  = std::clamp(macro_baseline_.fm_feedback + fm_fb_off, 0.0f, 0.16f);
+    const float new_detune = std::clamp(manual_state_.osc_detune + detune_off, -100.0f, 100.0f);
+    const float new_chorus = std::clamp(manual_state_.chorus_depth + chorus_off, 0.0f, 1.0f);
+    const float new_reverb = std::clamp(manual_state_.reverb_mix + reverb_off, 0.0f, 1.0f);
+    const float new_delay  = std::clamp(manual_state_.delay_mix + delay_off, 0.0f, 1.0f);
+    const float new_drive  = std::clamp(manual_state_.drive + drive_off, 0.0f, 1.0f);
+    const float new_tone   = std::clamp(manual_state_.master_tone + tone_off, -1.0f, 1.0f);
+
+    // FM final values: manual base multiplied/offset by the macro contribution.
+    // freq_mult and the discrete ratio are folded in exactly once, and the
+    // algorithm is never touched by macros.
+    const float new_fm_mod     = std::clamp(manual_state_.fm_mod_factor * fm_mod_factor, 0.0f, 8.0f);
+    const float new_fm_ratio   = manual_state_.fm_ratio_factor * manual_state_.fm_freq_mult * fm_ratio_factor;
+    const float new_fm_detune  = manual_state_.fm_detune_cents + fm_detune_off;
+    const float new_fm_fb      = std::clamp(manual_state_.fm_feedback + fm_fb_off, 0.0f, 0.16f);
 
     const float eps = 1e-4f;
 
@@ -321,19 +326,20 @@ void PatchManager::recomputeMacroTargets() {
         amy_adapter_->setMasterTone(new_tone);
     }
 
-    // FM relative controls. These compose with the Bank B runtime controls.
+    // FM relative controls. The engine receives the composed final value once;
+    // the manual base is never overwritten by the applied result.
     if (is_fm) {
-        if (std::fabs(fm_mod_factor - fm_state_.mod_factor) > eps) {
-            fm_state_.mod_factor = fm_mod_factor;
-            amy_adapter_->setFmModIndex(1, fm_mod_factor);
+        if (std::fabs(new_fm_mod - fm_state_.mod_factor) > eps) {
+            fm_state_.mod_factor = new_fm_mod;
+            amy_adapter_->setFmModIndex(1, new_fm_mod);
         }
-        if (std::fabs(fm_ratio_factor - fm_state_.ratio_factor) > eps) {
-            fm_state_.ratio_factor = fm_ratio_factor;
-            amy_adapter_->setFmRatio(1, fm_ratio_factor * fm_state_.freq_mult);
+        if (std::fabs(new_fm_ratio - fm_state_.ratio_factor) > eps) {
+            fm_state_.ratio_factor = new_fm_ratio;
+            amy_adapter_->setFmRatio(1, new_fm_ratio);
         }
-        if (std::fabs(fm_detune_off - fm_state_.detune_cents) > eps) {
-            fm_state_.detune_cents = fm_detune_off;
-            amy_adapter_->setOscDetune(1, fm_detune_off);
+        if (std::fabs(new_fm_detune - fm_state_.detune_cents) > eps) {
+            fm_state_.detune_cents = new_fm_detune;
+            amy_adapter_->setOscDetune(1, new_fm_detune);
         }
         if (std::fabs(new_fm_fb - fm_state_.feedback) > eps) {
             fm_state_.feedback = new_fm_fb;
@@ -359,49 +365,51 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
         switch (active_bank_) {
             case KnobBank::BankB_Oscillator:
                 if (activeFamily() == PatchFamily::FM) {
-                    // FM mode: the same knobs are relative FM controls, so read
-                    // back the runtime FM state, not the subtractive osc fields.
+                    // FM mode: the same knobs are relative FM controls. The
+                    // soft-takeover saved position must follow the *manual* base,
+                    // not the macro-composed final state, so the knob can always
+                    // reach the manual value it represents.
                     syncFmStateFromBaseline();
                     switch (knob_idx) {
-                        case 0: saved_val = fmModNormFromFactor(fm_state_.mod_factor) * 127.0f; break;
-                        case 1: saved_val = fmRatioNormFromFactor(fm_state_.ratio_factor) * 127.0f; break;
-                        case 2: saved_val = fmDetuneNormFromCents(fm_state_.detune_cents) * 127.0f; break;
-                        case 3: saved_val = fmFreqMultNormFromMult(fm_state_.freq_mult) * 127.0f; break;
+                        case 0: saved_val = fmModNormFromFactor(manual_state_.fm_mod_factor) * 127.0f; break;
+                        case 1: saved_val = fmRatioNormFromFactor(manual_state_.fm_ratio_factor) * 127.0f; break;
+                        case 2: saved_val = fmDetuneNormFromCents(manual_state_.fm_detune_cents) * 127.0f; break;
+                        case 3: saved_val = fmFreqMultNormFromMult(manual_state_.fm_freq_mult) * 127.0f; break;
                         case 4: break; // FM Mod Decay [N/A]
-                        case 5: saved_val = fmFeedbackNormFromValue(fm_state_.feedback) * 127.0f; break;
+                        case 5: saved_val = fmFeedbackNormFromValue(manual_state_.fm_feedback) * 127.0f; break;
                         case 6: break; // FM Vibrato [N/A]
-                        case 7: saved_val = fmAlgorithmNormFromValue(fm_state_.algorithm) * 127.0f; break;
+                        case 7: saved_val = fmAlgorithmNormFromValue(manual_state_.fm_algorithm) * 127.0f; break;
                         default: break;
                     }
                 } else if (knob_idx == 0) saved_val = active_patch_.osc_mix * 127.0f;
                 else if (knob_idx == 1) saved_val = (active_patch_.wave_type / 8.0f) * 127.0f;
-                else if (knob_idx == 2) saved_val = std::clamp((active_patch_.osc_detune + 100.0f) / 200.0f * 127.0f, 0.0f, 127.0f);
+                else if (knob_idx == 2) saved_val = std::clamp((manual_state_.osc_detune + 100.0f) / 200.0f * 127.0f, 0.0f, 127.0f);
                 else if (knob_idx == 3) saved_val = std::clamp(((active_patch_.transpose / 12.0f + 2.0f) / 4.0f) * 127.0f, 0.0f, 127.0f);
                 else if (knob_idx == 4) saved_val = active_patch_.sub_level * 127.0f;
                 else if (knob_idx == 5) saved_val = active_patch_.noise_level * 127.0f;
                 break;
             case KnobBank::BankC_FilterEnv:
                 switch (knob_idx) {
-                    case 0: saved_val = std::clamp(cutoffToNorm(active_patch_.filter_cutoff) * 127.0f, 0.0f, 127.0f); break;
-                    case 1: saved_val = std::clamp(resonanceToNorm(active_patch_.filter_res) * 127.0f, 0.0f, 127.0f); break;
-                    case 2: saved_val = std::clamp((active_filter_env_amt_ + 4.0f) / 8.0f * 127.0f, 0.0f, 127.0f); break;
-                    case 3: saved_val = std::clamp(envelopeMsToNorm(active_patch_.amp_attack) * 127.0f, 0.0f, 127.0f); break;
-                    case 4: saved_val = std::clamp(envelopeMsToNorm(active_patch_.amp_decay) * 127.0f, 0.0f, 127.0f); break;
-                    case 5: saved_val = std::clamp(active_patch_.amp_sustain * 127.0f, 0.0f, 127.0f); break;
-                    case 6: saved_val = std::clamp(envelopeMsToNorm(active_patch_.amp_release) * 127.0f, 0.0f, 127.0f); break;
+                    case 0: saved_val = std::clamp(cutoffToNorm(manual_state_.filter_cutoff) * 127.0f, 0.0f, 127.0f); break;
+                    case 1: saved_val = std::clamp(resonanceToNorm(manual_state_.filter_res) * 127.0f, 0.0f, 127.0f); break;
+                    case 2: saved_val = std::clamp((manual_state_.filter_env + 4.0f) / 8.0f * 127.0f, 0.0f, 127.0f); break;
+                    case 3: saved_val = std::clamp(envelopeMsToNorm(manual_state_.amp_attack) * 127.0f, 0.0f, 127.0f); break;
+                    case 4: saved_val = std::clamp(envelopeMsToNorm(manual_state_.amp_decay) * 127.0f, 0.0f, 127.0f); break;
+                    case 5: saved_val = std::clamp(manual_state_.amp_sustain * 127.0f, 0.0f, 127.0f); break;
+                    case 6: saved_val = std::clamp(envelopeMsToNorm(manual_state_.amp_release) * 127.0f, 0.0f, 127.0f); break;
                     case 7: saved_val = std::clamp(active_filter_key_track_ / 2.0f * 127.0f, 0.0f, 127.0f); break;
                 }
                 break;
             case KnobBank::BankD_Effects:
                 switch (knob_idx) {
                     case 0: saved_val = std::clamp(fx_state_.chorus_mode / 5.0f * 127.0f, 0.0f, 127.0f); break;
-                    case 1: saved_val = std::clamp((fx_state_.delay_time_ms - 10.0f) / 990.0f * 127.0f, 0.0f, 127.0f); break;
-                    case 2: saved_val = std::clamp(fx_state_.delay_feedback / 0.95f * 127.0f, 0.0f, 127.0f); break;
-                    case 3: saved_val = std::clamp(wetToNorm(fx_state_.delay_mix) * 127.0f, 0.0f, 127.0f); break;
-                    case 4: saved_val = std::clamp(fx_state_.reverb_size * 127.0f, 0.0f, 127.0f); break;
-                    case 5: saved_val = std::clamp(wetToNorm(fx_state_.reverb_mix) * 127.0f, 0.0f, 127.0f); break;
-                    case 6: saved_val = std::clamp(driveToNorm(fx_state_.drive) * 127.0f, 0.0f, 127.0f); break;
-                    case 7: saved_val = std::clamp((fx_state_.master_tone + 1.0f) / 2.0f * 127.0f, 0.0f, 127.0f); break;
+                    case 1: saved_val = std::clamp((manual_state_.delay_time_ms - 10.0f) / 990.0f * 127.0f, 0.0f, 127.0f); break;
+                    case 2: saved_val = std::clamp(manual_state_.delay_feedback / 0.95f * 127.0f, 0.0f, 127.0f); break;
+                    case 3: saved_val = std::clamp(wetToNorm(manual_state_.delay_mix) * 127.0f, 0.0f, 127.0f); break;
+                    case 4: saved_val = std::clamp(manual_state_.reverb_size * 127.0f, 0.0f, 127.0f); break;
+                    case 5: saved_val = std::clamp(wetToNorm(manual_state_.reverb_mix) * 127.0f, 0.0f, 127.0f); break;
+                    case 6: saved_val = std::clamp(driveToNorm(manual_state_.drive) * 127.0f, 0.0f, 127.0f); break;
+                    case 7: saved_val = std::clamp((manual_state_.master_tone + 1.0f) / 2.0f * 127.0f, 0.0f, 127.0f); break;
                     default: break;
                 }
                 break;
@@ -431,38 +439,34 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     case 0: { // FM Mod Index
                         param_name = "FM MOD INDEX";
                         syncFmStateFromBaseline();
-                        // Relative modulation factor: center (norm 0.5) = 1.0x, min = 0.0x, max = 4.0x
-                        float mod_factor = fmModFactorFromNorm(norm_val);
-                        fm_state_.mod_factor = mod_factor;
-                        if (amy_adapter_) amy_adapter_->setFmModIndex(1, mod_factor);
+                        // Manual modulation factor: center (norm 0.5) = 1.0x,
+                        // min = 0.0x, max = 4.0x. The macro multiplies this.
+                        manual_state_.fm_mod_factor = fmModFactorFromNorm(norm_val);
+                        recomputeMacroTargets();
                         break;
                     }
                     case 1: { // FM Operator Ratio (continuous relative fine ratio)
                         param_name = "FM OP RATIO";
                         syncFmStateFromBaseline();
-                        // Relative ratio factor: -1 -> 0.5x, 0 -> 1.0x, +1 -> 2.0x
-                        float ratio_factor = fmRatioFactorFromNorm(norm_val);
-                        fm_state_.ratio_factor = ratio_factor;
-                        // Compose with the discrete Freq Mult so neither control
-                        // overwrites the other's contribution.
-                        if (amy_adapter_) amy_adapter_->setFmRatio(1, ratio_factor * fm_state_.freq_mult);
+                        // Manual ratio factor: -1 -> 0.5x, 0 -> 1.0x, +1 -> 2.0x.
+                        manual_state_.fm_ratio_factor = fmRatioFactorFromNorm(norm_val);
+                        recomputeMacroTargets();
                         break;
                     }
                     case 2: { // FM Detune
                         param_name = "FM DETUNE";
                         syncFmStateFromBaseline();
-                        // Detune in cents: -25 .. 0 .. +25 cents (0 at center norm_val 0.5)
-                        float cents = fmDetuneCentsFromNorm(norm_val);
-                        fm_state_.detune_cents = cents;
-                        if (amy_adapter_) amy_adapter_->setOscDetune(1, cents);
+                        // Detune in cents: -25 .. 0 .. +25 (0 at center).
+                        manual_state_.fm_detune_cents = fmDetuneCentsFromNorm(norm_val);
+                        recomputeMacroTargets();
                         break;
                     }
                     case 3: { // FM Freq Multiplier
                         param_name = "FM FREQ MULT";
                         syncFmStateFromBaseline();
-                        float mult = fmFreqMultFromNorm(norm_val);
-                        fm_state_.freq_mult = mult;
-                        if (amy_adapter_) amy_adapter_->setFmRatio(1, fm_state_.ratio_factor * mult);
+                        manual_state_.fm_freq_mult = fmFreqMultFromNorm(norm_val);
+                        fm_state_.freq_mult = manual_state_.fm_freq_mult;
+                        recomputeMacroTargets();
                         break;
                     }
                     case 4: { // FM Mod Decay
@@ -473,9 +477,8 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     case 5: { // FM Feedback
                         param_name = "FM FEEDBACK";
                         syncFmStateFromBaseline();
-                        float feedback = fmFeedbackFromNorm(norm_val);
-                        fm_state_.feedback = feedback;
-                        if (amy_adapter_) amy_adapter_->setFmFeedback(1, feedback);
+                        manual_state_.fm_feedback = fmFeedbackFromNorm(norm_val);
+                        recomputeMacroTargets();
                         break;
                     }
                     case 6: { // FM Vibrato
@@ -486,6 +489,7 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     case 7: { // DX7 Algorithm (1 .. 32)
                         param_name = "DX7 ALGO";
                         uint8_t algo = fmAlgorithmFromNorm(norm_val);
+                        manual_state_.fm_algorithm = algo;
                         fm_state_.algorithm = algo;
                         if (amy_adapter_) amy_adapter_->setFmAlgorithm(1, algo);
                         break;
@@ -509,8 +513,8 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                         break;
                     case 2:
                         param_name = "DETUNE";
-                        active_patch_.osc_detune = (norm_val - 0.5f) * 100.0f;
-                        if (amy_adapter_) amy_adapter_->setOscDetune(1, active_patch_.osc_detune);
+                        manual_state_.osc_detune = (norm_val - 0.5f) * 100.0f;
+                        recomputeMacroTargets();
                         break;
                     case 3: {
                         param_name = "OCTAVE";
@@ -545,43 +549,42 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
             switch (knob_idx) {
                 case 0: // Cutoff
                     param_name = "CUTOFF FREQ";
-                    active_patch_.filter_cutoff = cutoffFromNorm(norm_val);
-                    applyActiveFilterState();
+                    manual_state_.filter_cutoff = cutoffFromNorm(norm_val);
+                    recomputeMacroTargets();
                     break;
                 case 1: // Resonance
                     param_name = "RESONANCE";
-                    active_patch_.filter_res = resonanceFromNorm(norm_val);
-                    applyActiveFilterState();
+                    manual_state_.filter_res = resonanceFromNorm(norm_val);
+                    recomputeMacroTargets();
                     break;
                 case 2: // ENV AMOUNT
                     param_name = "ENV AMOUNT";
-                    active_filter_env_amt_ = (norm_val - 0.5f) * 8.0f;
-                    active_patch_.filter_env_amount = active_filter_env_amt_;
-                    applyActiveFilterState();
+                    manual_state_.filter_env = (norm_val - 0.5f) * 8.0f;
+                    recomputeMacroTargets();
                     break;
                 case 3: // Amp Attack
                     if (activeFamily() == PatchFamily::FM) { param_name = "AMP ATTACK [N/A]"; break; }
                     param_name = "AMP ATTACK";
-                    active_patch_.amp_attack = envelopeMsFromNorm(norm_val);
-                    if (amy_adapter_) amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
+                    manual_state_.amp_attack = envelopeMsFromNorm(norm_val);
+                    recomputeMacroTargets();
                     break;
                 case 4: // Amp Decay
                     if (activeFamily() == PatchFamily::FM) { param_name = "AMP DECAY [N/A]"; break; }
                     param_name = "AMP DECAY";
-                    active_patch_.amp_decay = envelopeMsFromNorm(norm_val);
-                    if (amy_adapter_) amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
+                    manual_state_.amp_decay = envelopeMsFromNorm(norm_val);
+                    recomputeMacroTargets();
                     break;
                 case 5: // Amp Sustain
                     if (activeFamily() == PatchFamily::FM) { param_name = "AMP SUSTAIN [N/A]"; break; }
                     param_name = "AMP SUSTAIN";
-                    active_patch_.amp_sustain = norm_val;
-                    if (amy_adapter_) amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
+                    manual_state_.amp_sustain = norm_val;
+                    recomputeMacroTargets();
                     break;
                 case 6: // Amp Release
                     if (activeFamily() == PatchFamily::FM) { param_name = "AMP RELEASE [N/A]"; break; }
                     param_name = "AMP RELEASE";
-                    active_patch_.amp_release = envelopeMsFromNorm(norm_val);
-                    if (amy_adapter_) amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
+                    manual_state_.amp_release = envelopeMsFromNorm(norm_val);
+                    recomputeMacroTargets();
                     break;
                 case 7: // KEY TRACKING
                     param_name = "KEY TRACKING";
@@ -599,11 +602,15 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     param_name = "CHORUS MODE";
                     uint8_t mode = static_cast<uint8_t>(std::clamp(static_cast<int>(std::round(norm_val * 5.0f)), 0, 5));
                     uint8_t old_mode = fx_state_.chorus_mode;
-                    if (old_mode == 0 && mode != 0 && fx_state_.chorus_depth <= 0.001f) {
-                        fx_state_.chorus_depth = 1.0f;
+                    if (old_mode == 0 && mode != 0 && manual_state_.chorus_depth <= 0.001f) {
+                        manual_state_.chorus_depth = 1.0f;
                     }
                     fx_state_.chorus_mode = mode;
                     active_patch_.chorus_mode = mode;
+                    recomputeMacroTargets();
+                    // The mode itself is not a macro target, so re-send the
+                    // chorus configuration for the new mode even when depth and
+                    // macro positions did not change.
                     applyActiveChorusState();
                     break;
                 }
@@ -616,41 +623,42 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                         int div_idx = std::clamp(static_cast<int>(norm_val * 6.99f), 0, 6);
                         delay_ms = std::min(beat_ms * kDivMultipliers[div_idx], 1200.0f);
                     }
+                    manual_state_.delay_time_ms = delay_ms;
                     fx_state_.delay_time_ms = delay_ms;
                     if (amy_adapter_) amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
                     break;
                 }
                 case 2:
                     param_name = "DELAY FEEDBACK";
-                    fx_state_.delay_feedback = norm_val * 0.95f;
+                    manual_state_.delay_feedback = norm_val * 0.95f;
+                    fx_state_.delay_feedback = manual_state_.delay_feedback;
                     if (amy_adapter_) amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
                     break;
                 case 3:
                     param_name = "DELAY MIX";
-                    fx_state_.delay_mix = wetFromNorm(norm_val);
-                    if (amy_adapter_) amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
+                    manual_state_.delay_mix = wetFromNorm(norm_val);
+                    recomputeMacroTargets();
                     break;
                 case 4:
                     param_name = "REVERB SIZE";
+                    manual_state_.reverb_size = norm_val;
                     fx_state_.reverb_size = norm_val;
                     if (amy_adapter_) amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
                     break;
                 case 5:
                     param_name = "REVERB MIX";
-                    fx_state_.reverb_mix = wetFromNorm(norm_val);
-                    if (amy_adapter_) amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
+                    manual_state_.reverb_mix = wetFromNorm(norm_val);
+                    recomputeMacroTargets();
                     break;
                 case 6:
                     param_name = "DRIVE LEVEL";
-                    fx_state_.drive = driveFromNorm(norm_val);
-                    active_patch_.drive_level = fx_state_.drive;
-                    if (amy_adapter_) amy_adapter_->setDrive(fx_state_.drive);
+                    manual_state_.drive = driveFromNorm(norm_val);
+                    recomputeMacroTargets();
                     break;
                 case 7:
                     param_name = "MASTER TONE";
-                    fx_state_.master_tone = (norm_val - 0.5f) * 2.0f;
-                    active_patch_.master_tone = fx_state_.master_tone;
-                    if (amy_adapter_) amy_adapter_->setMasterTone(fx_state_.master_tone);
+                    manual_state_.master_tone = (norm_val - 0.5f) * 2.0f;
+                    recomputeMacroTargets();
                     break;
             }
             break;
@@ -743,67 +751,68 @@ TakeoverStatus status = TakeoverStatus::Captured;
 switch (b_idx) {
     case 0: { // Knob B1: Cutoff Frequency (20Hz .. 18000Hz)
         param_name = "CUTOFF FREQ";
-        float saved_val = std::clamp(cutoffToNorm(active_patch_.filter_cutoff) * 127.0f, 0.0f, 127.0f);
+        float saved_val = std::clamp(cutoffToNorm(manual_state_.filter_cutoff) * 127.0f, 0.0f, 127.0f);
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        active_patch_.filter_cutoff = cutoffFromNorm(norm);
-        applyActiveFilterState();
+        manual_state_.filter_cutoff = cutoffFromNorm(norm);
+        recomputeMacroTargets();
         break;
     }
     case 1: { // Knob B2: Resonance (0.5 .. 10.0)
         param_name = "RESONANCE";
-        float saved_val = std::clamp(resonanceToNorm(active_patch_.filter_res) * 127.0f, 0.0f, 127.0f);
+        float saved_val = std::clamp(resonanceToNorm(manual_state_.filter_res) * 127.0f, 0.0f, 127.0f);
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        active_patch_.filter_res = resonanceFromNorm(norm);
-        applyActiveFilterState();
+        manual_state_.filter_res = resonanceFromNorm(norm);
+        recomputeMacroTargets();
         break;
     }
     case 2: { // Knob B3: Amp Attack (1ms .. 5000ms)
         param_name = "AMP ATTACK";
-        float saved_val = std::clamp(envelopeMsToNorm(active_patch_.amp_attack) * 127.0f, 0.0f, 127.0f);
+        float saved_val = std::clamp(envelopeMsToNorm(manual_state_.amp_attack) * 127.0f, 0.0f, 127.0f);
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
         if (activeFamily() == PatchFamily::FM) { param_name = "AMP ATTACK [N/A]"; break; }
-        active_patch_.amp_attack = envelopeMsFromNorm(norm);
-        if (amy_adapter_) amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
+        manual_state_.amp_attack = envelopeMsFromNorm(norm);
+        recomputeMacroTargets();
         break;
     }
     case 3: { // Knob B4: Amp Release (1ms .. 5000ms)
         param_name = "AMP RELEASE";
-        float saved_val = std::clamp(envelopeMsToNorm(active_patch_.amp_release) * 127.0f, 0.0f, 127.0f);
+        float saved_val = std::clamp(envelopeMsToNorm(manual_state_.amp_release) * 127.0f, 0.0f, 127.0f);
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
         if (activeFamily() == PatchFamily::FM) { param_name = "AMP RELEASE [N/A]"; break; }
-        active_patch_.amp_release = envelopeMsFromNorm(norm);
-        if (amy_adapter_) amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
+        manual_state_.amp_release = envelopeMsFromNorm(norm);
+        recomputeMacroTargets();
         break;
     }
     case 4: { // Knob B5: Chorus Depth (0% .. 100%)
         param_name = "CHORUS DEPTH";
-        float saved_val = std::clamp(wetToNorm(fx_state_.chorus_depth) * 127.0f, 0.0f, 127.0f);
+        float saved_val = std::clamp(wetToNorm(manual_state_.chorus_depth) * 127.0f, 0.0f, 127.0f);
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        fx_state_.chorus_depth = wetFromNorm(norm);
-        applyActiveChorusState();
+        manual_state_.chorus_depth = wetFromNorm(norm);
+        recomputeMacroTargets();
         break;
     }
     case 5: { // Knob B6: Delay Time (10ms .. 1000ms)
         param_name = "DELAY TIME";
-        float saved_val = std::clamp(delayMsToNorm(fx_state_.delay_time_ms) * 127.0f, 0.0f, 127.0f);
+        float saved_val = std::clamp(delayMsToNorm(manual_state_.delay_time_ms) * 127.0f, 0.0f, 127.0f);
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        fx_state_.delay_time_ms = delayMsFromNorm(norm);
+        manual_state_.delay_time_ms = delayMsFromNorm(norm);
+        fx_state_.delay_time_ms = manual_state_.delay_time_ms;
         if (amy_adapter_) amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
         break;
     }
     case 6: { // Knob B7: Reverb Mix (0% .. 100%)
         param_name = "REVERB MIX";
-        float saved_val = std::clamp(wetToNorm(fx_state_.reverb_mix) * 127.0f, 0.0f, 127.0f);
+        float saved_val = std::clamp(wetToNorm(manual_state_.reverb_mix) * 127.0f, 0.0f, 127.0f);
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        fx_state_.reverb_mix = wetFromNorm(norm);
-        if (amy_adapter_) amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
+        manual_state_.reverb_mix = wetFromNorm(norm);
+        recomputeMacroTargets();
         break;
     }
     case 7: { // Knob B8: Master Tone / FM Feedback / Drive
@@ -812,20 +821,18 @@ switch (b_idx) {
         float saved_val;
         if (is_fm) {
             syncFmStateFromBaseline();
-            saved_val = std::clamp(fmFeedbackNormFromValue(fm_state_.feedback) * 127.0f, 0.0f, 127.0f);
+            saved_val = std::clamp(fmFeedbackNormFromValue(manual_state_.fm_feedback) * 127.0f, 0.0f, 127.0f);
         } else {
-            saved_val = std::clamp(driveToNorm(fx_state_.drive) * 127.0f, 0.0f, 127.0f);
+            saved_val = std::clamp(driveToNorm(manual_state_.drive) * 127.0f, 0.0f, 127.0f);
         }
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        if (is_fm && amy_adapter_) {
-            float feedback = fmFeedbackFromNorm(norm);
-            fm_state_.feedback = feedback;
-            amy_adapter_->setFmFeedback(1, feedback);
-        } else if (amy_adapter_) {
-            fx_state_.drive = driveFromNorm(norm);
-            active_patch_.drive_level = fx_state_.drive;
-            amy_adapter_->setDrive(fx_state_.drive);
+        if (is_fm) {
+            manual_state_.fm_feedback = fmFeedbackFromNorm(norm);
+            recomputeMacroTargets();
+        } else {
+            manual_state_.drive = driveFromNorm(norm);
+            recomputeMacroTargets();
         }
         break;
     }
@@ -950,11 +957,24 @@ void PatchManager::setMacro(uint8_t macro_idx, float physical_val, bool from_phy
         sequencer_->recordLiveMotion(macro_idx, effective_val);
     }
 
-    if (usesRelativeMacros()) {
-        // Family-aware factory profiles: rebuild every target from the immutable
-        // baseline so results are deterministic and order-independent.
+    const MacroMappingMode mapping_mode = macroMappingMode();
+    if (mapping_mode == MacroMappingMode::Mixed) {
+        // A patch mixing legacy and relative routes is unsupported. Apply the
+        // relative model and say so once per load instead of silently dropping
+        // the legacy routes.
+        if (!mixed_macro_warning_emitted_) {
+            ESP_LOGW(TAG, "Patch #%u mixes legacy and relative macro mappings; legacy routes are ignored",
+                     active_patch_.id);
+            mixed_macro_warning_emitted_ = true;
+        }
+    }
+
+    if (mapping_mode == MacroMappingMode::RelativeOnly ||
+        mapping_mode == MacroMappingMode::Mixed) {
+        // Family-aware factory profiles: rebuild every target from the manual
+        // state so results are deterministic and order-independent.
         recomputeMacroTargets();
-    } else {
+    } else if (mapping_mode == MacroMappingMode::LegacyOnly) {
         // Legacy patches keep their original absolute macro behavior.
         applyMacroToEngine(macro_idx, effective_val);
     }
@@ -969,6 +989,8 @@ void PatchManager::setMacro(uint8_t macro_idx, float physical_val, bool from_phy
 
 void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     if (!amy_adapter_) return;
+
+    mixed_macro_warning_emitted_ = false;
 
     // A new preset establishes a new FM baseline. Drop the previous patch's
     // runtime FM controls so the centered positions reproduce the new timbre,
@@ -1034,10 +1056,10 @@ void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
     amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
 
-    // 5b. Capture the immutable per-session macro baseline now that the patch
-    // and its FX state are fully configured. Macros are always recomputed from
-    // this snapshot; the patch format itself is untouched.
-    captureMacroBaseline();
+    // 5b. Capture the runtime manual-control state now that the patch and its FX
+    // state are fully configured. Macros compose on top of this base; the patch
+    // format itself is untouched.
+    captureManualControlState();
 
     // 6. Update UI macro status without destructively overriding preset internals
     if (ui_manager_) {

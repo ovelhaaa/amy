@@ -278,6 +278,81 @@ int main() {
         assert(std::fabs(back.feedback - before.feedback) < 1e-6f);
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // M2.1: Bank B manual FM controls compose with the FM macros, and returning
+    // each macro to neutral restores the *manual* state, not the preset one.
+    // ─────────────────────────────────────────────────────────────
+    pm.setKnobBank(smk::KnobBank::BankB_Oscillator);
+    pm.softTakeover().setMode(smk::TakeoverMode::Jump);
+
+    pm.handleKnobInput(0, smk::fmModNormFromFactor(2.0f) * 127.0f);   // mod index 2x
+    pm.handleKnobInput(1, smk::fmRatioNormFromFactor(1.5f) * 127.0f); // ratio 1.5x
+    pm.handleKnobInput(3, smk::fmFreqMultNormFromMult(3.0f) * 127.0f); // freq mult 3x
+    pm.handleKnobInput(2, smk::fmDetuneNormFromCents(8.0f) * 127.0f);  // +8 cents
+    pm.handleKnobInput(5, smk::fmFeedbackNormFromValue(0.08f) * 127.0f); // 0.08
+
+    process(adapter, 2);
+    VoiceCapture manual_fm;
+    assert(captureVoice0(manual_fm));
+    const float manual_feedback = manual_fm.feedback;
+    assert(std::fabs(manual_feedback - 0.08f) < 1e-4f);
+    assert(std::fabs(pm.fmControlState().mod_factor - 2.0f) < 1e-3f);
+    assert(std::fabs(pm.fmControlState().ratio_factor - 4.5f) < 1e-3f); // 1.5 * 3
+    assert(std::fabs(pm.fmControlState().detune_cents - 8.0f) < 1e-3f);
+
+    auto captures_match = [&](const VoiceCapture& a, const VoiceCapture& b, const char* label) {
+        if (a.algorithm != b.algorithm) {
+            std::printf("FAIL: algorithm mismatch after %s\n", label);
+            assert(false);
+        }
+        for (int op = 0; op < MAX_ALGO_OPS; ++op) {
+            if (a.ops[op].present != b.ops[op].present || a.ops[op].osc != b.ops[op].osc) {
+                std::printf("FAIL: routing mismatch after %s (op %d)\n", label, op);
+                assert(false);
+            }
+            if (!a.ops[op].present) continue;
+            if (std::fabs(a.ops[op].amp - b.ops[op].amp) > 1e-5f ||
+                std::fabs(a.ops[op].logratio - b.ops[op].logratio) > 1e-5f ||
+                std::fabs(a.ops[op].logfreq - b.ops[op].logfreq) > 1e-5f) {
+                std::printf("FAIL: operator %d mismatch after %s\n", op, label);
+                assert(false);
+            }
+        }
+    };
+
+    const uint8_t fm_macro_ids[] = { 0, 4, 5, 3 }; // CHAR, RATIO, DTUNE, FDBK
+    for (uint8_t m : fm_macro_ids) {
+        pm.setMacro(m, 127.0f, true);
+        assert_routing_unchanged("FM manual+macro extreme");
+        if (m == 4) {
+            // manual ratio 1.5 * freq mult 3 * macro ratio 2 == 9x.
+            assert(std::fabs(pm.fmControlState().ratio_factor - 9.0f) < 1e-3f);
+        }
+        process(adapter, 2);
+        VoiceCapture changed;
+        assert(captureVoice0(changed));
+        if (m == 3) {
+            // The FDBK macro must move live engine feedback away from manual.
+            assert(std::fabs(changed.feedback - manual_feedback) > 1e-6f);
+        }
+
+        pm.setMacro(m, pm.activePatch().macros[m].default_val, true);
+        assert_routing_unchanged("FM manual+macro neutral");
+        process(adapter, 2);
+        VoiceCapture restored;
+        assert(captureVoice0(restored));
+        captures_match(restored, manual_fm, "FM manual restore");
+    }
+
+    assert(std::fabs(pm.fmControlState().mod_factor - 2.0f) < 1e-3f);
+    assert(std::fabs(pm.fmControlState().ratio_factor - 4.5f) < 1e-3f);
+    assert(std::fabs(pm.fmControlState().detune_cents - 8.0f) < 1e-3f);
+    assert(std::fabs(pm.fmControlState().feedback - 0.08f) < 1e-3f);
+    assert(pm.fmControlState().algorithm == algo_baseline);
+    assert(std::fabs(manual_fm.feedback - 0.08f) < 1e-4f);
+
+    std::printf("PASS: real AMY FM manual controls + macros compose and neutral restores the manual state\n");
+
     std::printf("PASS: FM macros scale the timbre; algorithm/routing never change\n");
     std::printf("PASS: FM neutral restores operator levels/ratios/freqs and feedback exactly\n");
 
