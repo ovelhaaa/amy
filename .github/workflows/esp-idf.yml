@@ -1,0 +1,56 @@
+name: ESP-IDF firmware
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "smk-s3/**"
+      - "src/**"
+      - ".github/workflows/esp-idf.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "smk-s3/**"
+      - "src/**"
+      - ".github/workflows/esp-idf.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: esp-idf-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ESP32-S3 (ESP-IDF 5.5.1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build firmware and report size
+        uses: espressif/esp-idf-ci-action@v1.2.0
+        with:
+          esp_idf_version: v5.5.1
+          target: esp32s3
+          path: smk-s3
+          command: idf.py build && idf.py size
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: smk-s3-esp-idf-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            smk-s3/build/*.bin
+            smk-s3/build/*.elf
+            smk-s3/build/*.map
+            smk-s3/build/bootloader/*.bin
+            smk-s3/build/partition_table/*.bin
+            smk-s3/build/flash_args
+            smk-s3/build/flasher_args.json
