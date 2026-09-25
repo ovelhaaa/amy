@@ -1,5 +1,7 @@
 #pragma once
 #include "patch_types.h"
+#include "patch_family.h"
+#include "control_mappings.h"
 #include "soft_takeover.h"
 #include "factory_patches.h"
 #include <algorithm>
@@ -120,6 +122,9 @@ public:
     void applyActiveChorusState();
 
 private:
+    // Runtime family of the active patch, derived from wave_type (never stored).
+    PatchFamily activeFamily() const { return classifyPatch(active_patch_); }
+
     void applyPatchToEngine(const SynthPatch& patch);
     void applyMacroToEngine(uint8_t macro_idx, float effective_val);
     // Pull the algorithm/feedback baseline from the engine once the loaded

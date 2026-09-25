@@ -129,7 +129,7 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
         float saved_val = 64.0f;
         switch (active_bank_) {
             case KnobBank::BankB_Oscillator:
-                if (active_patch_.wave_type == 8) {
+                if (activeFamily() == PatchFamily::FM) {
                     // FM mode: the same knobs are relative FM controls, so read
                     // back the runtime FM state, not the subtractive osc fields.
                     syncFmStateFromBaseline();
@@ -153,13 +153,13 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                 break;
             case KnobBank::BankC_FilterEnv:
                 switch (knob_idx) {
-                    case 0: saved_val = std::clamp((active_patch_.filter_cutoff - 20.0f) / 18000.0f * 127.0f, 0.0f, 127.0f); break;
-                    case 1: saved_val = std::clamp((active_patch_.filter_res - 0.5f) / 9.5f * 127.0f, 0.0f, 127.0f); break;
+                    case 0: saved_val = std::clamp(cutoffToNorm(active_patch_.filter_cutoff) * 127.0f, 0.0f, 127.0f); break;
+                    case 1: saved_val = std::clamp(resonanceToNorm(active_patch_.filter_res) * 127.0f, 0.0f, 127.0f); break;
                     case 2: saved_val = std::clamp((active_filter_env_amt_ + 4.0f) / 8.0f * 127.0f, 0.0f, 127.0f); break;
-                    case 3: saved_val = std::clamp((active_patch_.amp_attack - 1.0f) / 4999.0f * 127.0f, 0.0f, 127.0f); break;
-                    case 4: saved_val = std::clamp((active_patch_.amp_decay - 1.0f) / 4999.0f * 127.0f, 0.0f, 127.0f); break;
+                    case 3: saved_val = std::clamp(envelopeMsToNorm(active_patch_.amp_attack) * 127.0f, 0.0f, 127.0f); break;
+                    case 4: saved_val = std::clamp(envelopeMsToNorm(active_patch_.amp_decay) * 127.0f, 0.0f, 127.0f); break;
                     case 5: saved_val = std::clamp(active_patch_.amp_sustain * 127.0f, 0.0f, 127.0f); break;
-                    case 6: saved_val = std::clamp((active_patch_.amp_release - 1.0f) / 4999.0f * 127.0f, 0.0f, 127.0f); break;
+                    case 6: saved_val = std::clamp(envelopeMsToNorm(active_patch_.amp_release) * 127.0f, 0.0f, 127.0f); break;
                     case 7: saved_val = std::clamp(active_filter_key_track_ / 2.0f * 127.0f, 0.0f, 127.0f); break;
                 }
                 break;
@@ -168,10 +168,10 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     case 0: saved_val = std::clamp(fx_state_.chorus_mode / 5.0f * 127.0f, 0.0f, 127.0f); break;
                     case 1: saved_val = std::clamp((fx_state_.delay_time_ms - 10.0f) / 990.0f * 127.0f, 0.0f, 127.0f); break;
                     case 2: saved_val = std::clamp(fx_state_.delay_feedback / 0.95f * 127.0f, 0.0f, 127.0f); break;
-                    case 3: saved_val = std::clamp(fx_state_.delay_mix * 127.0f, 0.0f, 127.0f); break;
+                    case 3: saved_val = std::clamp(wetToNorm(fx_state_.delay_mix) * 127.0f, 0.0f, 127.0f); break;
                     case 4: saved_val = std::clamp(fx_state_.reverb_size * 127.0f, 0.0f, 127.0f); break;
-                    case 5: saved_val = std::clamp(fx_state_.reverb_mix * 127.0f, 0.0f, 127.0f); break;
-                    case 6: saved_val = std::clamp(fx_state_.drive * 127.0f, 0.0f, 127.0f); break;
+                    case 5: saved_val = std::clamp(wetToNorm(fx_state_.reverb_mix) * 127.0f, 0.0f, 127.0f); break;
+                    case 6: saved_val = std::clamp(driveToNorm(fx_state_.drive) * 127.0f, 0.0f, 127.0f); break;
                     case 7: saved_val = std::clamp((fx_state_.master_tone + 1.0f) / 2.0f * 127.0f, 0.0f, 127.0f); break;
                     default: break;
                 }
@@ -196,7 +196,7 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
 
     switch (active_bank_) {
         case KnobBank::BankB_Oscillator:
-            if (active_patch_.wave_type == 8) {
+            if (activeFamily() == PatchFamily::FM) {
                 bank_label = "BANK B: FM OPERATORS";
                 switch (knob_idx) {
                     case 0: { // FM Mod Index
@@ -316,12 +316,12 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
             switch (knob_idx) {
                 case 0: // Cutoff
                     param_name = "CUTOFF FREQ";
-                    active_patch_.filter_cutoff = 20.0f + norm_val * 18000.0f;
+                    active_patch_.filter_cutoff = cutoffFromNorm(norm_val);
                     applyActiveFilterState();
                     break;
                 case 1: // Resonance
                     param_name = "RESONANCE";
-                    active_patch_.filter_res = 0.5f + norm_val * 9.5f;
+                    active_patch_.filter_res = resonanceFromNorm(norm_val);
                     applyActiveFilterState();
                     break;
                 case 2: // ENV AMOUNT
@@ -331,23 +331,27 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     applyActiveFilterState();
                     break;
                 case 3: // Amp Attack
+                    if (activeFamily() == PatchFamily::FM) { param_name = "AMP ATTACK [N/A]"; break; }
                     param_name = "AMP ATTACK";
-                    active_patch_.amp_attack = 1.0f + norm_val * 4999.0f;
+                    active_patch_.amp_attack = envelopeMsFromNorm(norm_val);
                     if (amy_adapter_) amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
                     break;
                 case 4: // Amp Decay
+                    if (activeFamily() == PatchFamily::FM) { param_name = "AMP DECAY [N/A]"; break; }
                     param_name = "AMP DECAY";
-                    active_patch_.amp_decay = 1.0f + norm_val * 4999.0f;
+                    active_patch_.amp_decay = envelopeMsFromNorm(norm_val);
                     if (amy_adapter_) amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
                     break;
                 case 5: // Amp Sustain
+                    if (activeFamily() == PatchFamily::FM) { param_name = "AMP SUSTAIN [N/A]"; break; }
                     param_name = "AMP SUSTAIN";
                     active_patch_.amp_sustain = norm_val;
                     if (amy_adapter_) amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
                     break;
                 case 6: // Amp Release
+                    if (activeFamily() == PatchFamily::FM) { param_name = "AMP RELEASE [N/A]"; break; }
                     param_name = "AMP RELEASE";
-                    active_patch_.amp_release = 1.0f + norm_val * 4999.0f;
+                    active_patch_.amp_release = envelopeMsFromNorm(norm_val);
                     if (amy_adapter_) amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
                     break;
                 case 7: // KEY TRACKING
@@ -394,7 +398,7 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     break;
                 case 3:
                     param_name = "DELAY MIX";
-                    fx_state_.delay_mix = norm_val;
+                    fx_state_.delay_mix = wetFromNorm(norm_val);
                     if (amy_adapter_) amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
                     break;
                 case 4:
@@ -404,14 +408,14 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     break;
                 case 5:
                     param_name = "REVERB MIX";
-                    fx_state_.reverb_mix = norm_val;
+                    fx_state_.reverb_mix = wetFromNorm(norm_val);
                     if (amy_adapter_) amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
                     break;
                 case 6:
                     param_name = "DRIVE LEVEL";
-                    fx_state_.drive = norm_val;
-                    active_patch_.drive_level = norm_val;
-                    if (amy_adapter_) amy_adapter_->setDrive(norm_val);
+                    fx_state_.drive = driveFromNorm(norm_val);
+                    active_patch_.drive_level = fx_state_.drive;
+                    if (amy_adapter_) amy_adapter_->setDrive(fx_state_.drive);
                     break;
                 case 7:
                     param_name = "MASTER TONE";
@@ -510,86 +514,89 @@ TakeoverStatus status = TakeoverStatus::Captured;
 switch (b_idx) {
     case 0: { // Knob B1: Cutoff Frequency (20Hz .. 18000Hz)
         param_name = "CUTOFF FREQ";
-        float saved_val = std::clamp((active_patch_.filter_cutoff - 20.0f) / 18000.0f * 127.0f, 0.0f, 127.0f);
+        float saved_val = std::clamp(cutoffToNorm(active_patch_.filter_cutoff) * 127.0f, 0.0f, 127.0f);
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        active_patch_.filter_cutoff = 20.0f + norm * 18000.0f;
+        active_patch_.filter_cutoff = cutoffFromNorm(norm);
         applyActiveFilterState();
         break;
     }
     case 1: { // Knob B2: Resonance (0.5 .. 10.0)
         param_name = "RESONANCE";
-        float saved_val = std::clamp((active_patch_.filter_res - 0.5f) / 9.5f * 127.0f, 0.0f, 127.0f);
+        float saved_val = std::clamp(resonanceToNorm(active_patch_.filter_res) * 127.0f, 0.0f, 127.0f);
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        active_patch_.filter_res = 0.5f + norm * 9.5f;
+        active_patch_.filter_res = resonanceFromNorm(norm);
         applyActiveFilterState();
         break;
     }
     case 2: { // Knob B3: Amp Attack (1ms .. 5000ms)
         param_name = "AMP ATTACK";
-        float saved_val = std::clamp((active_patch_.amp_attack - 1.0f) / 4999.0f * 127.0f, 0.0f, 127.0f);
+        float saved_val = std::clamp(envelopeMsToNorm(active_patch_.amp_attack) * 127.0f, 0.0f, 127.0f);
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        active_patch_.amp_attack = 1.0f + norm * 4999.0f;
+        if (activeFamily() == PatchFamily::FM) { param_name = "AMP ATTACK [N/A]"; break; }
+        active_patch_.amp_attack = envelopeMsFromNorm(norm);
         if (amy_adapter_) amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
         break;
     }
     case 3: { // Knob B4: Amp Release (1ms .. 5000ms)
         param_name = "AMP RELEASE";
-        float saved_val = std::clamp((active_patch_.amp_release - 1.0f) / 4999.0f * 127.0f, 0.0f, 127.0f);
+        float saved_val = std::clamp(envelopeMsToNorm(active_patch_.amp_release) * 127.0f, 0.0f, 127.0f);
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        active_patch_.amp_release = 1.0f + norm * 4999.0f;
+        if (activeFamily() == PatchFamily::FM) { param_name = "AMP RELEASE [N/A]"; break; }
+        active_patch_.amp_release = envelopeMsFromNorm(norm);
         if (amy_adapter_) amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
         break;
     }
     case 4: { // Knob B5: Chorus Depth (0% .. 100%)
         param_name = "CHORUS DEPTH";
-        float saved_val = std::clamp(fx_state_.chorus_depth * 127.0f, 0.0f, 127.0f);
+        float saved_val = std::clamp(wetToNorm(fx_state_.chorus_depth) * 127.0f, 0.0f, 127.0f);
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        fx_state_.chorus_depth = norm;
+        fx_state_.chorus_depth = wetFromNorm(norm);
         applyActiveChorusState();
         break;
     }
     case 5: { // Knob B6: Delay Time (10ms .. 1000ms)
         param_name = "DELAY TIME";
-        float saved_val = std::clamp((fx_state_.delay_time_ms - 10.0f) / 990.0f * 127.0f, 0.0f, 127.0f);
+        float saved_val = std::clamp(delayMsToNorm(fx_state_.delay_time_ms) * 127.0f, 0.0f, 127.0f);
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        fx_state_.delay_time_ms = 10.0f + norm * 990.0f;
+        fx_state_.delay_time_ms = delayMsFromNorm(norm);
         if (amy_adapter_) amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
         break;
     }
     case 6: { // Knob B7: Reverb Mix (0% .. 100%)
         param_name = "REVERB MIX";
-        float saved_val = std::clamp(fx_state_.reverb_mix * 127.0f, 0.0f, 127.0f);
+        float saved_val = std::clamp(wetToNorm(fx_state_.reverb_mix) * 127.0f, 0.0f, 127.0f);
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        fx_state_.reverb_mix = norm;
+        fx_state_.reverb_mix = wetFromNorm(norm);
         if (amy_adapter_) amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
         break;
     }
     case 7: { // Knob B8: Master Tone / FM Feedback / Drive
-        param_name = (active_patch_.wave_type == 8) ? "FM FEEDBACK" : "MASTER DRIVE";
+        const bool is_fm = (activeFamily() == PatchFamily::FM);
+        param_name = is_fm ? "FM FEEDBACK" : "MASTER DRIVE";
         float saved_val;
-        if (active_patch_.wave_type == 8) {
+        if (is_fm) {
             syncFmStateFromBaseline();
             saved_val = std::clamp(fmFeedbackNormFromValue(fm_state_.feedback) * 127.0f, 0.0f, 127.0f);
         } else {
-            saved_val = std::clamp(fx_state_.drive * 127.0f, 0.0f, 127.0f);
+            saved_val = std::clamp(driveToNorm(fx_state_.drive) * 127.0f, 0.0f, 127.0f);
         }
         status = soft_takeover_.update(takeover_id, physical_val, saved_val, effective_val);
         float norm = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
-        if (active_patch_.wave_type == 8 && amy_adapter_) {
+        if (is_fm && amy_adapter_) {
             float feedback = fmFeedbackFromNorm(norm);
             fm_state_.feedback = feedback;
             amy_adapter_->setFmFeedback(1, feedback);
         } else if (amy_adapter_) {
-            fx_state_.drive = norm;
-            active_patch_.drive_level = norm;
-            amy_adapter_->setDrive(norm);
+            fx_state_.drive = driveFromNorm(norm);
+            active_patch_.drive_level = fx_state_.drive;
+            amy_adapter_->setDrive(fx_state_.drive);
         }
         break;
     }
@@ -599,14 +606,14 @@ switch (b_idx) {
 
 if (ui_manager_) {
     uint8_t eng_vals[8] = {
-        static_cast<uint8_t>(std::clamp((active_patch_.filter_cutoff - 20.0f) / 18000.0f * 127.0f, 0.0f, 127.0f)),
-        static_cast<uint8_t>(std::clamp((active_patch_.filter_res - 0.5f) / 9.5f * 127.0f, 0.0f, 127.0f)),
-        static_cast<uint8_t>(std::clamp((active_patch_.amp_attack - 1.0f) / 4999.0f * 127.0f, 0.0f, 127.0f)),
-        static_cast<uint8_t>(std::clamp((active_patch_.amp_release - 1.0f) / 4999.0f * 127.0f, 0.0f, 127.0f)),
-        static_cast<uint8_t>(std::clamp(fx_state_.chorus_depth * 127.0f, 0.0f, 127.0f)),
-        static_cast<uint8_t>(std::clamp((fx_state_.delay_time_ms - 10.0f) / 990.0f * 127.0f, 0.0f, 127.0f)),
-        static_cast<uint8_t>(std::clamp(fx_state_.reverb_mix * 127.0f, 0.0f, 127.0f)),
-        static_cast<uint8_t>(std::clamp(fx_state_.drive * 127.0f, 0.0f, 127.0f))
+        static_cast<uint8_t>(std::clamp(cutoffToNorm(active_patch_.filter_cutoff) * 127.0f, 0.0f, 127.0f)),
+        static_cast<uint8_t>(std::clamp(resonanceToNorm(active_patch_.filter_res) * 127.0f, 0.0f, 127.0f)),
+        static_cast<uint8_t>(std::clamp(envelopeMsToNorm(active_patch_.amp_attack) * 127.0f, 0.0f, 127.0f)),
+        static_cast<uint8_t>(std::clamp(envelopeMsToNorm(active_patch_.amp_release) * 127.0f, 0.0f, 127.0f)),
+        static_cast<uint8_t>(std::clamp(wetToNorm(fx_state_.chorus_depth) * 127.0f, 0.0f, 127.0f)),
+        static_cast<uint8_t>(std::clamp(delayMsToNorm(fx_state_.delay_time_ms) * 127.0f, 0.0f, 127.0f)),
+        static_cast<uint8_t>(std::clamp(wetToNorm(fx_state_.reverb_mix) * 127.0f, 0.0f, 127.0f)),
+        static_cast<uint8_t>(std::clamp(driveToNorm(fx_state_.drive) * 127.0f, 0.0f, 127.0f))
     };
     ui_manager_->homeScreen().setHomeKnobBankView(HomeScreen::HomeKnobBankView::BankB_Engine);
     ui_manager_->homeScreen().setEngineValues(eng_vals);
@@ -744,14 +751,14 @@ void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     // coefficients to every osc of the voice; for an ALGO voice that includes
     // the DX7 operators, so a generic ADSR would overwrite their preset levels.
     // The FM preset owns its operator envelopes, so the generic amp envelope is
-    // subtractive-only.
+    // only sent to non-FM families.
     active_filter_env_amt_   = patch.filter_env_amount;
     active_filter_key_track_ = patch.filter_key_tracking;
     active_filter_vel_track_ = patch.filter_vel_tracking;
     active_filter_type_      = patch.filter_type;
     applyActiveFilterState();
-    const bool is_algo = (patch.wave_type == toAmyWaveType(SmkWaveType::Algo));
-    if (!is_algo) {
+    const PatchFamily family = classifyPatch(patch);
+    if (supportsGenericAmpEnvelope(family)) {
         amy_adapter_->setEnvelope(1, patch.amp_attack, patch.amp_decay, patch.amp_sustain, patch.amp_release);
     }
 
@@ -760,8 +767,8 @@ void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     // (DX7/FM) preset those positions are the FM control osc and its operators,
     // so applying them would overwrite operator levels/ratios and make the
     // played state diverge from the captured FM baseline. FM has its own
-    // controls; skip the subtractive ones for ALGO.
-    if (!is_algo) {
+    // controls; skip the subtractive ones for FM.
+    if (supportsSubtractiveOscControls(family)) {
         amy_adapter_->setOscMix(1, patch.osc_mix);
         amy_adapter_->setOscDetune(1, patch.osc_detune);
         amy_adapter_->setSubOscLevel(1, patch.sub_level);
@@ -800,6 +807,7 @@ void PatchManager::applyMacroToEngine(uint8_t macro_idx, float effective_val) {
 
     const auto& macro = active_patch_.macros[macro_idx];
     float norm_val = std::clamp(effective_val / 127.0f, 0.0f, 1.0f);
+    const bool is_fm = (activeFamily() == PatchFamily::FM);
 
     for (uint8_t m = 0; m < macro.mapping_count; ++m) {
         const auto& map = macro.mappings[m];
@@ -815,19 +823,19 @@ void PatchManager::applyMacroToEngine(uint8_t macro_idx, float effective_val) {
 
         switch (map.param_type) {
             case 0: // Filter Cutoff (Subtractive/Juno)
-                if (active_patch_.engine_patch == 0 || active_patch_.wave_type != 8) {
+                if (!is_fm || active_patch_.engine_patch == 0) {
                     active_patch_.filter_cutoff = target_val;
                     applyActiveFilterState();
                 }
                 break;
             case 1: // Filter Res (Subtractive/Juno)
-                if (active_patch_.engine_patch == 0 || active_patch_.wave_type != 8) {
+                if (!is_fm || active_patch_.engine_patch == 0) {
                     active_patch_.filter_res = target_val;
                     applyActiveFilterState();
                 }
                 break;
             case 2: // Brightness
-                if (active_patch_.wave_type != 8) { // Subtractive / Juno
+                if (!is_fm) { // Subtractive / Juno
                     active_patch_.filter_cutoff = target_val;
                     applyActiveFilterState();
                 } else {
@@ -836,11 +844,15 @@ void PatchManager::applyMacroToEngine(uint8_t macro_idx, float effective_val) {
                     amy_adapter_->setFmModIndex(1, mod_factor);
                 }
                 break;
-            case 3: // Amp Attack (Enabled across all presets)
+            case 3: // Amp Attack
+                // FM presets own their operator envelopes: the generic ADSR must
+                // not touch amp_coefs or the DX7 operators.
+                if (is_fm) break;
                 active_patch_.amp_attack = target_val;
                 amy_adapter_->setEnvelope(1, target_val, active_patch_.amp_decay, active_patch_.amp_sustain, active_patch_.amp_release);
                 break;
-            case 4: // Amp Release (Enabled across all presets)
+            case 4: // Amp Release
+                if (is_fm) break;
                 active_patch_.amp_release = target_val;
                 amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay, active_patch_.amp_sustain, target_val);
                 break;
@@ -857,7 +869,7 @@ void PatchManager::applyMacroToEngine(uint8_t macro_idx, float effective_val) {
                 }
                 break;
             case 7: // Safe Feedback / Drive
-                if (active_patch_.wave_type == 8) {
+                if (is_fm) {
                     float safe_fb = std::clamp(shaped_val * 0.16f, 0.0f, 0.16f);
                     fm_state_.feedback = safe_fb;
                     amy_adapter_->setFmFeedback(1, safe_fb);

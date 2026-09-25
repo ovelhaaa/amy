@@ -105,6 +105,13 @@ public:
         uint8_t synth_id;
         float value;
     };
+    struct EnvelopeCall {
+        uint8_t synth_id;
+        float attack_ms;
+        float decay_ms;
+        float sustain;
+        float release_ms;
+    };
 
     std::vector<FilterCall> filter_calls;
     std::vector<ChorusCall> chorus_calls;
@@ -114,6 +121,17 @@ public:
     std::vector<LevelCall> osc_mix_calls;
     std::vector<LevelCall> sub_osc_calls;
     std::vector<LevelCall> noise_calls;
+    std::vector<EnvelopeCall> envelope_calls;
+    std::vector<float> drive_calls;
+
+    void setEnvelope(uint8_t osc_id, float attack_ms, float decay_ms,
+                     float sustain, float release_ms) override {
+        envelope_calls.push_back({osc_id, attack_ms, decay_ms, sustain, release_ms});
+    }
+
+    void setDrive(float drive) override {
+        drive_calls.push_back(drive);
+    }
 
     void setFilter(uint8_t osc_id, float cutoff_hz, float resonance,
                    float env_amount = 0.0f, float key_tracking = 0.0f,
@@ -801,14 +819,14 @@ static void test_patch_manager_chorus_depth_and_modes() {
     assert(mock.chorus_calls.back().level == 0.0f);
     assert(std::abs(mock.chorus_calls.back().rate - 0.6f) < 0.01f);
 
-    // 3. Test depths 0.25, 0.5, 1.0 on Juno
+    // 3. Test knob positions 0.25, 0.5, 1.0 on Juno using the squared wet curve.
     pm.handleKnobInput(12, 0.25f * 127.0f);
-    assert(std::abs(mock.chorus_calls.back().depth - (0.8f * 0.25f)) < 0.01f);
-    assert(std::abs(mock.chorus_calls.back().level - (0.85f * 0.25f)) < 0.01f);
+    assert(std::abs(mock.chorus_calls.back().depth - (0.8f * wetFromNorm(0.25f))) < 0.01f);
+    assert(std::abs(mock.chorus_calls.back().level - (0.85f * wetFromNorm(0.25f))) < 0.01f);
 
     pm.handleKnobInput(12, 0.5f * 127.0f);
-    assert(std::abs(mock.chorus_calls.back().depth - (0.8f * 0.5f)) < 0.01f);
-    assert(std::abs(mock.chorus_calls.back().level - (0.85f * 0.5f)) < 0.01f);
+    assert(std::abs(mock.chorus_calls.back().depth - (0.8f * wetFromNorm(0.5f))) < 0.01f);
+    assert(std::abs(mock.chorus_calls.back().level - (0.85f * wetFromNorm(0.5f))) < 0.01f);
 
     pm.handleKnobInput(12, 1.0f * 127.0f);
     assert(std::abs(mock.chorus_calls.back().depth - 0.8f) < 0.01f);
@@ -839,12 +857,12 @@ static void test_patch_manager_chorus_depth_and_modes() {
         assert(mock.chorus_calls.back().level == 0.0f);
         assert(std::abs(mock.chorus_calls.back().rate - specs[m].rate) < 0.01f);
 
-        // Test depth 0.5f
+        // Test knob 0.5 (wet = 0.25 after the squared curve)
         pm.handleKnobInput(12, 0.5f * 127.0f);
-        assert(std::abs(mock.chorus_calls.back().depth - specs[m].depth * 0.5f) < 0.01f);
-        assert(std::abs(mock.chorus_calls.back().level - specs[m].level * 0.5f) < 0.01f);
+        assert(std::abs(mock.chorus_calls.back().depth - specs[m].depth * wetFromNorm(0.5f)) < 0.01f);
+        assert(std::abs(mock.chorus_calls.back().level - specs[m].level * wetFromNorm(0.5f)) < 0.01f);
 
-        // Test depth 1.0f
+        // Test knob 1.0 (wet = 1.0)
         pm.handleKnobInput(12, 127.0f);
         assert(std::abs(mock.chorus_calls.back().depth - specs[m].depth) < 0.01f);
         assert(std::abs(mock.chorus_calls.back().level - specs[m].level) < 0.01f);
@@ -867,9 +885,10 @@ static void test_patch_manager_filter_inherit_and_retention() {
     assert(!mock.filter_calls.empty());
     assert(mock.filter_calls.back().filter_type == 0xFF);
 
-    // Adjust cutoff in Bank C (Knob 0)
+    // Adjust cutoff in Bank C (Knob 0). The knob now uses the perceptual
+    // geometric mapping, so the physical position comes from cutoffToNorm().
     pm.setKnobBank(KnobBank::BankC_FilterEnv);
-    float physical_cutoff = ((1000.0f - 20.0f) / 18000.0f) * 127.0f;
+    float physical_cutoff = cutoffToNorm(1000.0f) * 127.0f;
     pm.handleKnobInput(0, physical_cutoff);
     assert(std::abs(mock.filter_calls.back().cutoff - 1000.0f) < 50.0f);
     assert(mock.filter_calls.back().filter_type == 0xFF); // Inherit preserved!
@@ -1231,6 +1250,264 @@ static void test_algo_skips_subtractive_osc_controls() {
     printf("PASS: ALGO skips OscMix/Sub/Noise/Detune; subtractive patches keep them\n");
 }
 
+// ─────────────────────────────────────────────────────────────
+// Sound & Musicality M1: PatchFamily classification
+// ─────────────────────────────────────────────────────────────
+static void test_patch_family_classification() {
+    using namespace smk;
+    SynthPatch p = *FactoryPatches::getPatchById(0);
+
+    p.wave_type = toAmyWaveType(SmkWaveType::Sine);
+    assert(classifyPatch(p) == PatchFamily::Subtractive);
+    p.wave_type = toAmyWaveType(SmkWaveType::Pulse);
+    assert(classifyPatch(p) == PatchFamily::Subtractive);
+    p.wave_type = toAmyWaveType(SmkWaveType::SawDown);
+    assert(classifyPatch(p) == PatchFamily::Subtractive);
+    p.wave_type = toAmyWaveType(SmkWaveType::SawUp);
+    assert(classifyPatch(p) == PatchFamily::Subtractive);
+    p.wave_type = toAmyWaveType(SmkWaveType::Triangle);
+    assert(classifyPatch(p) == PatchFamily::Subtractive);
+    p.wave_type = toAmyWaveType(SmkWaveType::Noise);
+    assert(classifyPatch(p) == PatchFamily::Noise);
+    p.wave_type = toAmyWaveType(SmkWaveType::KarplusStrong);
+    assert(classifyPatch(p) == PatchFamily::KarplusStrong);
+    p.wave_type = toAmyWaveType(SmkWaveType::Pcm);
+    assert(classifyPatch(p) == PatchFamily::PCM);
+    p.wave_type = toAmyWaveType(SmkWaveType::Algo);
+    assert(classifyPatch(p) == PatchFamily::FM);
+
+    // Auxiliary engine_patch fallback only when wave_type is out of range.
+    p.wave_type = 200;
+    p.engine_patch = 130;
+    assert(classifyPatch(p) == PatchFamily::FM);
+    p.engine_patch = 300;
+    assert(classifyPatch(p) == PatchFamily::PCM);
+    p.engine_patch = 5;
+    assert(classifyPatch(p) == PatchFamily::Generic);
+
+    // Control-support helpers.
+    assert(!supportsGenericAmpEnvelope(PatchFamily::FM));
+    assert(!supportsSubtractiveOscControls(PatchFamily::FM));
+    assert(supportsFmControls(PatchFamily::FM));
+    for (PatchFamily f : {PatchFamily::Subtractive, PatchFamily::PCM,
+                          PatchFamily::KarplusStrong, PatchFamily::Noise,
+                          PatchFamily::Generic}) {
+        assert(supportsGenericAmpEnvelope(f));
+        assert(supportsSubtractiveOscControls(f));
+        assert(!supportsFmControls(f));
+    }
+
+    printf("PASS: PatchFamily derived from wave_type (FM/PCM/KS/Noise/Subtractive) + support helpers\n");
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sound & Musicality M1: perceptual mapping roundtrip / monotonic / clamp
+// ─────────────────────────────────────────────────────────────
+static void check_mapping(const char* name, float (*fwd)(float), float (*inv)(float),
+                          float min_val, float max_val) {
+    const float points[] = {0.0f, 0.1f, 0.25f, 0.5f, 0.75f, 0.9f, 1.0f};
+    float prev = -1.0f;
+    for (float n : points) {
+        const float v = fwd(n);
+        assert(v >= prev - 1e-4f); // non-decreasing
+        prev = v;
+        assert(std::abs(inv(v) - n) < 1e-3f);                       // inverse(forward(n)) == n
+        assert(std::abs(fwd(inv(v)) - v) < 1e-3f * (std::abs(v) + 1.0f)); // forward(inverse(v)) == v
+    }
+    assert(std::abs(fwd(0.0f) - min_val) < 1e-3f * (std::abs(min_val) + 1.0f));
+    assert(std::abs(fwd(1.0f) - max_val) < 1e-3f * (std::abs(max_val) + 1.0f));
+    assert(fwd(-1.0f) == fwd(0.0f)); // clamp low
+    assert(fwd(2.0f) == fwd(1.0f));  // clamp high
+    assert(inv(min_val - 100.0f) == inv(min_val));
+    assert(inv(max_val + 100.0f) == inv(max_val));
+    (void)name;
+}
+
+static void test_perceptual_control_mappings() {
+    using namespace smk;
+    check_mapping("cutoff", cutoffFromNorm, cutoffToNorm,
+                  control_ranges::kCutoffMinHz, control_ranges::kCutoffMaxHz);
+    check_mapping("envelope", envelopeMsFromNorm, envelopeMsToNorm,
+                  control_ranges::kEnvelopeMinMs, control_ranges::kEnvelopeMaxMs);
+    check_mapping("resonance", resonanceFromNorm, resonanceToNorm,
+                  control_ranges::kResonanceMin, control_ranges::kResonanceMax);
+    check_mapping("drive", driveFromNorm, driveToNorm, 0.0f, 1.0f);
+    check_mapping("delay", delayMsFromNorm, delayMsToNorm,
+                  control_ranges::kDelayMinMs, control_ranges::kDelayMaxMs);
+    check_mapping("wet", wetFromNorm, wetToNorm, 0.0f, 1.0f);
+
+    // Musical midpoints: geometric cutoff lands near 600 Hz, not ~9 kHz.
+    assert(std::abs(cutoffFromNorm(0.5f) - 600.0f) < 1.0f);
+    assert(std::abs(envelopeMsFromNorm(0.5f) - 70.7107f) < 0.05f);
+    assert(std::abs(delayMsFromNorm(0.5f) - 100.0f) < 0.05f);
+    assert(std::abs(driveFromNorm(0.5f) - 0.25f) < 1e-5f);
+    assert(std::abs(wetFromNorm(0.5f) - 0.25f) < 1e-5f);
+
+    printf("PASS: perceptual mappings endpoints, monotonic, clamp and forward/inverse roundtrip\n");
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sound & Musicality M1: soft takeover pickup uses the mapping inverse
+// ─────────────────────────────────────────────────────────────
+static void test_perceptual_soft_takeover_positions() {
+    using namespace smk;
+
+    assert(std::abs(cutoffToNorm(1000.0f) - 0.57509f) < 5e-4f);
+    assert(std::abs(envelopeMsToNorm(10.0f) - 0.27035f) < 5e-4f);
+    assert(std::abs(envelopeMsToNorm(100.0f) - 0.54069f) < 5e-4f);
+    assert(std::abs(envelopeMsToNorm(1000.0f) - 0.81104f) < 5e-4f);
+    assert(std::abs(driveToNorm(0.1f) - 0.31623f) < 5e-4f);
+    assert(std::abs(delayMsToNorm(120.0f) - 0.53960f) < 5e-4f);
+    assert(std::abs(resonanceToNorm(2.0f) - 0.39736f) < 5e-4f);
+
+    struct StCase { float value; float (*inv)(float); };
+    const StCase cases[] = {
+        {1000.0f, cutoffToNorm},
+        {10.0f,   envelopeMsToNorm},
+        {100.0f,  envelopeMsToNorm},
+        {1000.0f, envelopeMsToNorm},
+        {0.1f,    driveToNorm},
+        {120.0f,  delayMsToNorm},
+        {2.0f,    resonanceToNorm},
+    };
+
+    for (const auto& c : cases) {
+        const float saved = c.inv(c.value) * 127.0f;
+        SoftTakeover st;
+        st.reset(0, saved);
+
+        // Still far from the saved position: hold the patch value, no jump.
+        float eff = 0.0f;
+        TakeoverStatus s = st.update(0, saved - 8.0f, saved, eff);
+        assert(s != TakeoverStatus::Captured);
+        assert(std::abs(eff - saved) < 1e-2f);
+
+        // Reaching the saved position must capture exactly there.
+        s = st.update(0, saved, saved, eff);
+        assert(s == TakeoverStatus::Captured);
+        assert(std::abs(eff - saved) < 1e-2f);
+    }
+
+    printf("PASS: soft takeover pickup lands on the mapped position for cutoff/attack/release/drive/delay/res\n");
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sound & Musicality M1: generic ADSR is N/A for FM/DX7
+// ─────────────────────────────────────────────────────────────
+static void test_fm_family_rejects_generic_envelope() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.selectPatch(128));
+    assert(classifyPatch(pm.activePatch()) == PatchFamily::FM);
+
+    const float atk_before = pm.activePatch().amp_attack;
+    const float dec_before = pm.activePatch().amp_decay;
+    const float sus_before = pm.activePatch().amp_sustain;
+    const float rel_before = pm.activePatch().amp_release;
+    mock.envelope_calls.clear();
+
+    // Bank C generic ADSR knobs (3..6)
+    pm.setKnobBank(KnobBank::BankC_FilterEnv);
+    pm.handleKnobInput(3, 127.0f);
+    pm.handleKnobInput(4, 0.0f);
+    pm.handleKnobInput(5, 127.0f);
+    pm.handleKnobInput(6, 127.0f);
+    // Engine generic ADSR knobs (b_idx 2/3 -> knob indices 10/11)
+    pm.handleKnobInput(10, 127.0f);
+    pm.handleKnobInput(11, 127.0f);
+    // Macros SHAP / ATK / REL (all map to generic ADSR param types)
+    pm.setMacro(3, 100.0f, true);
+    pm.setMacro(4, 100.0f, true);
+    pm.setMacro(5, 100.0f, true);
+
+    assert(mock.envelope_calls.empty());
+    assert(pm.activePatch().amp_attack == atk_before);
+    assert(pm.activePatch().amp_decay == dec_before);
+    assert(pm.activePatch().amp_sustain == sus_before);
+    assert(pm.activePatch().amp_release == rel_before);
+
+    printf("PASS: FM/DX7 generic ADSR controls are N/A (no setEnvelope, amp_* untouched)\n");
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sound & Musicality M1: subtractive ADSR still works
+// ─────────────────────────────────────────────────────────────
+static void test_subtractive_family_applies_envelope() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.selectPatch(0));
+    assert(classifyPatch(pm.activePatch()) == PatchFamily::Subtractive);
+    mock.envelope_calls.clear();
+
+    // Bank C Attack -> full knob = 5000 ms.
+    pm.setKnobBank(KnobBank::BankC_FilterEnv);
+    pm.handleKnobInput(3, 127.0f);
+    assert(!mock.envelope_calls.empty());
+    assert(std::abs(pm.activePatch().amp_attack - envelopeMsFromNorm(1.0f)) < 1e-3f);
+    assert(std::abs(mock.envelope_calls.back().attack_ms - pm.activePatch().amp_attack) < 1e-3f);
+
+    // Engine Release -> full knob = 5000 ms.
+    mock.envelope_calls.clear();
+    pm.handleKnobInput(11, 127.0f);
+    assert(!mock.envelope_calls.empty());
+    assert(std::abs(pm.activePatch().amp_release - envelopeMsFromNorm(1.0f)) < 1e-3f);
+    assert(std::abs(mock.envelope_calls.back().release_ms - pm.activePatch().amp_release) < 1e-3f);
+
+    // Macro ATK (1..200 ms, linear) full knob -> 200 ms.
+    mock.envelope_calls.clear();
+    pm.setMacro(4, 127.0f, true);
+    assert(!mock.envelope_calls.empty());
+    assert(std::abs(pm.activePatch().amp_attack - 200.0f) < 0.5f);
+
+    // Macro REL (10..1000 ms, linear) full knob -> 1000 ms.
+    mock.envelope_calls.clear();
+    pm.setMacro(5, 127.0f, true);
+    assert(!mock.envelope_calls.empty());
+    assert(std::abs(pm.activePatch().amp_release - 1000.0f) < 0.5f);
+
+    printf("PASS: Subtractive Bank C / Engine / Macro ATK+REL still drive the AMY envelope\n");
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sound & Musicality M1: FX knobs use the perceptual curves
+// ─────────────────────────────────────────────────────────────
+static void test_effect_knob_perceptual_curves() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+
+    // Bank D drive knob (index 6): 0.5 knob -> 0.25 drive.
+    pm.setKnobBank(KnobBank::BankD_Effects);
+    mock.drive_calls.clear();
+    pm.handleKnobInput(6, 0.5f * 127.0f);
+    assert(std::abs(pm.fxControlState().drive - 0.25f) < 1e-4f);
+    assert(std::abs(pm.activePatch().drive_level - 0.25f) < 1e-4f);
+    assert(!mock.drive_calls.empty());
+    assert(std::abs(mock.drive_calls.back() - 0.25f) < 1e-4f);
+
+    // Engine free delay knob (index 13): 0.5 knob -> 100 ms.
+    pm.handleKnobInput(13, 0.5f * 127.0f);
+    assert(std::abs(pm.fxControlState().delay_time_ms - 100.0f) < 0.1f);
+
+    // Engine reverb mix (index 14): 0.5 knob -> 0.25 wet.
+    pm.handleKnobInput(14, 0.5f * 127.0f);
+    assert(std::abs(pm.fxControlState().reverb_mix - 0.25f) < 1e-4f);
+
+    // Engine chorus depth (index 12): 0.5 knob -> 0.25 wet.
+    pm.handleKnobInput(12, 0.5f * 127.0f);
+    assert(std::abs(pm.fxControlState().chorus_depth - 0.25f) < 1e-4f);
+
+    printf("PASS: FX knobs use perceptual curves (drive^2, log delay time, wet^2)\n");
+}
+
 int main() {
     printf("=== Running SMK Synth Expansion Host Test Suite ===\n");
     test_scale_quantizer();
@@ -1253,6 +1530,12 @@ int main() {
     test_fm_soft_takeover_pickup();
     test_fm_algorithm_saved_value_and_patch_reset();
     test_algo_skips_subtractive_osc_controls();
+    test_patch_family_classification();
+    test_perceptual_control_mappings();
+    test_perceptual_soft_takeover_positions();
+    test_fm_family_rejects_generic_envelope();
+    test_subtractive_family_applies_envelope();
+    test_effect_knob_perceptual_curves();
     test_macro_curves();
     test_amy_core_fixes();
     printf("=== ALL SMK SYNTH EXPANSION TESTS PASSED ===\n");

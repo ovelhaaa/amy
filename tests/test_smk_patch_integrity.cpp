@@ -134,11 +134,78 @@ int main() {
         assert(std::fabs(neutral.ops[op].logfreq - reference.ops[op].logfreq) < 1e-5f);
     }
 
+    // 4. Live FM control integrity. Every generic amp ADSR control must leave
+    // the DX7 operators exactly at the loaded baseline. Use Jump takeover so
+    // each move would be applied immediately if the family guard were missing.
+    const float atk_before = pm.activePatch().amp_attack;
+    const float dec_before = pm.activePatch().amp_decay;
+    const float sus_before = pm.activePatch().amp_sustain;
+    const float rel_before = pm.activePatch().amp_release;
+
+    process(adapter, 2);
+    VoiceCapture baseline;
+    assert(captureVoice0(baseline));
+
+    auto assert_operators_match = [&](const char* label) {
+        process(adapter, 2);
+        VoiceCapture now;
+        assert(captureVoice0(now));
+        if (now.algorithm != baseline.algorithm) {
+            std::printf("FAIL: algorithm changed after %s\n", label);
+            assert(false);
+        }
+        for (int op = 0; op < MAX_ALGO_OPS; ++op) {
+            if (now.ops[op].present != baseline.ops[op].present ||
+                now.ops[op].osc != baseline.ops[op].osc) {
+                std::printf("FAIL: algo_source changed after %s (op %d)\n", label, op);
+                assert(false);
+            }
+            if (!baseline.ops[op].present) continue;
+            if (std::fabs(now.ops[op].amp - baseline.ops[op].amp) > 1e-5f ||
+                std::fabs(now.ops[op].logratio - baseline.ops[op].logratio) > 1e-5f ||
+                std::fabs(now.ops[op].logfreq - baseline.ops[op].logfreq) > 1e-5f) {
+                std::printf("FAIL: operator %d changed after %s (amp %.5f->%.5f lr %.5f->%.5f lf %.5f->%.5f)\n",
+                            op, label,
+                            baseline.ops[op].amp, now.ops[op].amp,
+                            baseline.ops[op].logratio, now.ops[op].logratio,
+                            baseline.ops[op].logfreq, now.ops[op].logfreq);
+                assert(false);
+            }
+        }
+    };
+
+    pm.softTakeover().setMode(smk::TakeoverMode::Jump);
+
+    // Bank C generic ADSR (knob indices 3..6)
+    pm.setKnobBank(smk::KnobBank::BankC_FilterEnv);
+    pm.handleKnobInput(3, 0.0f);   assert_operators_match("Bank C Attack min");
+    pm.handleKnobInput(3, 127.0f); assert_operators_match("Bank C Attack max");
+    pm.handleKnobInput(4, 127.0f); assert_operators_match("Bank C Decay");
+    pm.handleKnobInput(5, 0.0f);   assert_operators_match("Bank C Sustain min");
+    pm.handleKnobInput(5, 127.0f); assert_operators_match("Bank C Sustain max");
+    pm.handleKnobInput(6, 127.0f); assert_operators_match("Bank C Release");
+
+    // Engine generic ADSR (b_idx 2/3 -> knob indices 10/11)
+    pm.handleKnobInput(10, 127.0f); assert_operators_match("Engine Attack");
+    pm.handleKnobInput(11, 0.0f);   assert_operators_match("Engine Release");
+
+    // Macros ATK / REL
+    pm.setMacro(3, 100.0f, true); assert_operators_match("Macro SHAP");
+    pm.setMacro(4, 0.0f, true);   assert_operators_match("Macro ATK min");
+    pm.setMacro(4, 100.0f, true); assert_operators_match("Macro ATK max");
+    pm.setMacro(5, 100.0f, true); assert_operators_match("Macro REL");
+
+    assert(pm.activePatch().amp_attack == atk_before);
+    assert(pm.activePatch().amp_decay == dec_before);
+    assert(pm.activePatch().amp_sustain == sus_before);
+    assert(pm.activePatch().amp_release == rel_before);
+
     std::printf("DX7 algorithm=%u ops:", (unsigned)reference.algorithm);
     for (int op = 0; op < MAX_ALGO_OPS; ++op) {
         std::printf(" [%d amp=%.4f lr=%.4f lf=%.4f]", op, reference.ops[op].amp,
                     reference.ops[op].logratio, reference.ops[op].logfreq);
     }
     std::printf("\nPASS: DX7 via AmyAdapter == DX7 via PatchManager (operators untouched)\n");
+    std::printf("PASS: live FM ADSR controls (Bank C, Engine, Macros) leave operators at baseline\n");
     return 0;
 }
