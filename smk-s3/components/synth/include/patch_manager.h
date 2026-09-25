@@ -91,6 +91,27 @@ public:
     void nextPatch();
     void previousPatch();
 
+    /**
+     * @brief Apply an already-materialized patch (factory or loaded from storage).
+     *
+     * Factory selection and stored-patch reload both converge here so they share
+     * the same engine apply, soft-takeover reset and UI refresh. The stored patch
+     * must already be CRC-verified by StorageManager.
+     */
+    bool applyLoadedPatch(const SynthPatch& patch);
+
+    /**
+     * @brief Build the semantic snapshot that should be persisted for the active
+     * patch: metadata and macro positions from the active patch, with every
+     * macro-affected sound parameter replaced by the *manual* base value.
+     *
+     * Persisting the final macro-processed value alongside the macro positions
+     * would double-apply the macro on reload. The returned patch has crc32 == 0;
+     * StorageManager::savePatch() is responsible for recomputing and writing the
+     * CRC. This does not modify the active runtime state.
+     */
+    SynthPatch buildPersistablePatch() const;
+
     KnobBank activeKnobBank() const { return active_bank_; }
     void nextKnobBank();
     void setKnobBank(KnobBank bank);

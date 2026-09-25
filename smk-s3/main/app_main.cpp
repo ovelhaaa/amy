@@ -489,7 +489,8 @@ static void app_init_task(void* arg) {
                             const int64_t held_us = esp_timer_get_time() - bank_b_save_press_us;
                             bank_b_save_press_us = 0;
                             if (held_us >= 1200000 && storage_manager && patch_manager) {
-                                if (storage_manager->savePatch(patch_manager->activePatchId(), patch_manager->activePatch())) {
+                                const smk::SynthPatch persisted = patch_manager->buildPersistablePatch();
+                                if (storage_manager->savePatch(patch_manager->activePatchId(), persisted)) {
                                     storage_manager->saveProfile("smk25_custom", active_profile);
                                     if (scene_manager) scene_manager->saveAllToFlash();
                                     ESP_LOGI(TAG, "Saved patch, profile and scenes after long hold");

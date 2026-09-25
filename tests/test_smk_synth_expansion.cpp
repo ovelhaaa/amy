@@ -1910,6 +1910,303 @@ static void test_manual_state_change_command_throttle() {
     printf("PASS: same manual state + same macros emits no redundant engine commands\n");
 }
 
+// ─────────────────────────────────────────────────────────────
+// Sound & Musicality M2.2: macro-safe patch save/reload
+// ─────────────────────────────────────────────────────────────
+
+// Factory profile tuning is intentionally musical, not round numbers. For the
+// persistence contract we need exact, known macro contributions, so build a
+// subtractive patch with a controlled set of relative routes:
+//   macro 0 CHAR : cutoff  -1 .. +1 octave
+//   macro 1 BRTE : cutoff  -0.5 .. +0.5 octave
+//   macro 4 ATK  : attack  x0.5 .. x2.0
+//   macro 7 DRV  : drive   +0.0 .. +0.5
+static smk::SynthPatch make_relative_test_patch(uint8_t base_id) {
+    using namespace smk;
+    SynthPatch p = *FactoryPatches::getPatchById(base_id);
+    for (uint8_t i = 0; i < 8; ++i) {
+        p.macros[i].mapping_count = 0;
+        p.macros[i].default_val = 50.0f;
+        p.macros[i].current_val = 50.0f;
+    }
+    p.macros[0].mapping_count = 1;
+    p.macros[0].mappings[0] = { 0xFFFF, static_cast<uint8_t>(MacroTarget::FilterCutoffRelative), -1.0f, 1.0f, 0 };
+    p.macros[1].mapping_count = 1;
+    p.macros[1].mappings[0] = { 0xFFFF, static_cast<uint8_t>(MacroTarget::FilterCutoffRelative), -0.5f, 0.5f, 0 };
+    p.macros[4].mapping_count = 1;
+    p.macros[4].mappings[0] = { 0xFFFF, static_cast<uint8_t>(MacroTarget::AmpAttackRelative), 0.5f, 2.0f, 0 };
+    p.macros[7].mapping_count = 1;
+    p.macros[7].mappings[0] = { 0xFFFF, static_cast<uint8_t>(MacroTarget::DriveRelative), 0.0f, 0.5f, 0 };
+    return p;
+}
+
+static bool persist_roundtrip(smk::PatchManager& pm, smk::StorageManager& storage, uint8_t slot) {
+    const smk::SynthPatch persisted = pm.buildPersistablePatch();
+    if (!storage.savePatch(slot, persisted)) return false;
+    smk::SynthPatch loaded = {};
+    if (!storage.loadPatch(slot, loaded)) return false;
+    return pm.applyLoadedPatch(loaded);
+}
+
+static void test_persistable_snapshot_uses_manual_state() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.applyLoadedPatch(make_relative_test_patch(0)));
+
+    // Manual base: cutoff 3000 Hz, attack 150 ms, detune +20 cents, drive 0.4.
+    pm.setKnobBank(KnobBank::BankC_FilterEnv);
+    pm.handleKnobInput(0, cutoffToNorm(3000.0f) * 127.0f);
+    pm.handleKnobInput(3, envelopeMsToNorm(150.0f) * 127.0f);
+    pm.setKnobBank(KnobBank::BankB_Oscillator);
+    pm.handleKnobInput(2, (0.5f + 20.0f / 100.0f) * 127.0f); // +20 cents
+    pm.setKnobBank(KnobBank::BankD_Effects);
+    pm.handleKnobInput(6, driveToNorm(0.4f) * 127.0f);
+
+    // Macros contribute on top so the final state differs from the manual base.
+    pm.setMacro(0, 127.0f, true); // CHAR cutoff +1 octave
+    pm.setMacro(4, 100.0f, true); // ATK non-neutral
+    pm.setMacro(7, 100.0f, true); // DRV non-neutral
+
+    assert(std::abs(pm.activePatch().filter_cutoff - 6000.0f) < 5.0f); // effective, manual was 3000
+
+    const SynthPatch snap = pm.buildPersistablePatch();
+    assert(std::abs(snap.filter_cutoff - 3000.0f) < 1.0f);  // manual, never the final 6000
+    assert(std::abs(snap.amp_attack - 150.0f) < 1.0f);
+    assert(std::abs(snap.osc_detune - 20.0f) < 1.0f);
+    assert(std::abs(snap.drive_level - 0.4f) < 2e-3f);
+
+    // Macro positions, defaults and mappings must be carried untouched.
+    assert(std::abs(snap.macros[0].current_val - 127.0f) < 1e-3f);
+    assert(std::abs(snap.macros[4].current_val - 100.0f) < 1e-3f);
+    assert(std::abs(snap.macros[7].current_val - 100.0f) < 1e-3f);
+    assert(std::abs(snap.macros[0].default_val - 50.0f) < 1e-3f);
+    assert(snap.macros[0].mapping_count == 1);
+    assert(std::abs(snap.macros[0].mappings[0].max_val - 1.0f) < 1e-6f);
+
+    // CRC is intentionally left for StorageManager to stamp.
+    assert(snap.crc32 == 0u);
+
+    printf("PASS: persistable snapshot holds manual base + macro positions, not final macro-processed values\n");
+}
+
+static void test_save_reload_no_double_application() {
+    using namespace smk;
+    const char* dir = "build/test_storage_persist";
+    std::filesystem::create_directories(dir);
+    StorageManager storage;
+    assert(storage.begin(dir));
+
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.applyLoadedPatch(make_relative_test_patch(0)));
+
+    pm.setKnobBank(KnobBank::BankC_FilterEnv);
+    pm.handleKnobInput(0, cutoffToNorm(3000.0f) * 127.0f);
+    pm.setMacro(0, 127.0f, true); // +1 octave -> 6000 Hz
+
+    const float before = pm.activePatch().filter_cutoff;
+    assert(std::abs(before - 6000.0f) < 5.0f);
+
+    assert(persist_roundtrip(pm, storage, 60));
+
+    const float after = pm.activePatch().filter_cutoff;
+    assert(std::abs(after - 6000.0f) < 5.0f);   // exactly one macro application
+    assert(after < 9000.0f);                    // never 12000
+    assert(std::abs(pm.manualControlState().filter_cutoff - 3000.0f) < 1.0f);
+
+    printf("PASS: 3000 Hz + CHAR +1 octave saves as 3000 and reloads to 6000, never 12000\n");
+}
+
+static void test_save_reload_neutral_macro() {
+    using namespace smk;
+    const char* dir = "build/test_storage_persist";
+    std::filesystem::create_directories(dir);
+    StorageManager storage;
+    assert(storage.begin(dir));
+
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.applyLoadedPatch(make_relative_test_patch(0)));
+
+    pm.setKnobBank(KnobBank::BankC_FilterEnv);
+    pm.handleKnobInput(0, cutoffToNorm(3000.0f) * 127.0f);
+    pm.setMacro(0, pm.activePatch().macros[0].default_val, true); // neutral
+
+    assert(std::abs(pm.activePatch().filter_cutoff - 3000.0f) < 1.0f);
+    assert(persist_roundtrip(pm, storage, 61));
+    assert(std::abs(pm.activePatch().filter_cutoff - 3000.0f) < 1.0f);
+
+    printf("PASS: neutral macro save/reload keeps manual == effective == 3000 Hz\n");
+}
+
+static void test_save_reload_multiple_macros() {
+    using namespace smk;
+    const char* dir = "build/test_storage_persist";
+    std::filesystem::create_directories(dir);
+    StorageManager storage;
+    assert(storage.begin(dir));
+
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.applyLoadedPatch(make_relative_test_patch(0)));
+
+    pm.setKnobBank(KnobBank::BankC_FilterEnv);
+    pm.handleKnobInput(0, cutoffToNorm(3000.0f) * 127.0f);
+    pm.setMacro(0, 127.0f, true);  // CHAR +1 octave
+    pm.setMacro(1, 127.0f, true);  // BRTE +0.5 octave
+
+    const MacroStateView before = captureMacroState(pm, mock);
+    assert(before.cutoff > 6000.0f); // both macros composed
+    assert(persist_roundtrip(pm, storage, 62));
+    const MacroStateView after = captureMacroState(pm, mock);
+    assert(macroNearlyEqual(after.cutoff, before.cutoff, 1e-4f));
+    assert(macroNearlyEqual(after.res, before.res, 1e-4f));
+
+    printf("PASS: CHAR + BRTE composed cutoff round-trips without double-apply\n");
+}
+
+static void test_save_reload_100_cycles_no_drift() {
+    using namespace smk;
+    const char* dir = "build/test_storage_persist";
+    std::filesystem::create_directories(dir);
+    StorageManager storage;
+    assert(storage.begin(dir));
+
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.applyLoadedPatch(make_relative_test_patch(0)));
+
+    pm.setKnobBank(KnobBank::BankC_FilterEnv);
+    pm.handleKnobInput(0, cutoffToNorm(4000.0f) * 127.0f);
+    pm.handleKnobInput(3, envelopeMsToNorm(120.0f) * 127.0f);
+    pm.setMacro(0, 110.0f, true);
+    pm.setMacro(4, 80.0f, true);
+    pm.setMacro(7, 90.0f, true);
+
+    const float manual_cutoff = pm.manualControlState().filter_cutoff;
+    const float manual_attack = pm.manualControlState().amp_attack;
+    const float effective_cutoff = pm.activePatch().filter_cutoff;
+    const float effective_attack = pm.activePatch().amp_attack;
+    const float effective_drive = pm.fxControlState().drive;
+    const float macro0 = pm.activePatch().macros[0].current_val;
+    const float macro4 = pm.activePatch().macros[4].current_val;
+    const float macro7 = pm.activePatch().macros[7].current_val;
+
+    for (int i = 0; i < 100; ++i) {
+        assert(persist_roundtrip(pm, storage, 63));
+
+        assert(std::abs(pm.manualControlState().filter_cutoff - manual_cutoff) < 1.0f);
+        assert(std::abs(pm.manualControlState().amp_attack - manual_attack) < 1.0f);
+        assert(std::abs(pm.activePatch().filter_cutoff - effective_cutoff) < effective_cutoff * 1e-3f);
+        assert(std::abs(pm.activePatch().amp_attack - effective_attack) < effective_attack * 1e-3f);
+        assert(std::abs(pm.fxControlState().drive - effective_drive) < 1e-3f);
+        assert(std::abs(pm.activePatch().macros[0].current_val - macro0) < 1e-3f);
+        assert(std::abs(pm.activePatch().macros[4].current_val - macro4) < 1e-3f);
+        assert(std::abs(pm.activePatch().macros[7].current_val - macro7) < 1e-3f);
+    }
+
+    printf("PASS: 100 save/reload cycles do not drift manual, macro or effective state\n");
+}
+
+static void test_subtractive_save_reload_roundtrip() {
+    using namespace smk;
+    const char* dir = "build/test_storage_persist";
+    std::filesystem::create_directories(dir);
+    StorageManager storage;
+    assert(storage.begin(dir));
+
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.applyLoadedPatch(make_relative_test_patch(0)));
+
+    // Bank C cutoff + attack, Bank B detune, Bank D drive.
+    pm.setKnobBank(KnobBank::BankC_FilterEnv);
+    pm.handleKnobInput(0, cutoffToNorm(3000.0f) * 127.0f);
+    pm.handleKnobInput(3, envelopeMsToNorm(150.0f) * 127.0f);
+    pm.setKnobBank(KnobBank::BankB_Oscillator);
+    pm.handleKnobInput(2, (0.5f + 20.0f / 100.0f) * 127.0f);
+    pm.setKnobBank(KnobBank::BankD_Effects);
+    pm.handleKnobInput(6, driveToNorm(0.4f) * 127.0f);
+
+    // CHAR max, ATK and DRV non-neutral.
+    pm.setMacro(0, 127.0f, true);
+    pm.setMacro(4, 100.0f, true);
+    pm.setMacro(7, 100.0f, true);
+
+    const MacroStateView before = captureMacroState(pm, mock);
+    const SynthPatch snap = pm.buildPersistablePatch();
+    assert(std::abs(snap.filter_cutoff - 3000.0f) < 1.0f);
+    assert(std::abs(snap.amp_attack - 150.0f) < 1.0f);
+    assert(std::abs(snap.osc_detune - 20.0f) < 1.0f);
+    assert(std::abs(snap.drive_level - 0.4f) < 2e-3f);
+
+    assert(persist_roundtrip(pm, storage, 64));
+    const MacroStateView after = captureMacroState(pm, mock);
+
+    assert(macroNearlyEqual(after.cutoff, before.cutoff, 1e-3f));
+    assert(macroNearlyEqual(after.atk, before.atk, 1e-3f));
+    assert(macroNearlyEqual(after.detune, before.detune, 1e-3f));
+    assert(macroNearlyEqual(after.drive, before.drive, 1e-3f));
+    assert(std::abs(pm.manualControlState().filter_cutoff - 3000.0f) < 1.0f);
+    assert(std::abs(pm.manualControlState().osc_detune - 20.0f) < 1.0f);
+
+    printf("PASS: subtractive effective state before save == after reload (cutoff/attack/detune/drive)\n");
+}
+
+static void test_legacy_patch_persistable_snapshot_valid() {
+    using namespace smk;
+    const char* dir = "build/test_storage_persist";
+    std::filesystem::create_directories(dir);
+    StorageManager storage;
+    assert(storage.begin(dir));
+
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+
+    // Legacy absolute cutoff macro (param_type 0).
+    SynthPatch legacy = *FactoryPatches::getPatchById(0);
+    for (uint8_t i = 0; i < 8; ++i) {
+        legacy.macros[i].mapping_count = 0;
+        legacy.macros[i].default_val = 50.0f;
+        legacy.macros[i].current_val = 50.0f;
+    }
+    legacy.macros[0].mapping_count = 1;
+    legacy.macros[0].mappings[0] = { 0xFFFF, static_cast<uint8_t>(MacroTarget::LegacyCutoff), 500.0f, 8000.0f, 0 };
+    assert(classifyMacroMappings(legacy) == MacroMappingMode::LegacyOnly);
+    assert(pm.applyLoadedPatch(legacy));
+
+    pm.setMacro(0, 127.0f, true); // absolute cutoff -> 8000 Hz
+    const float effective = pm.activePatch().filter_cutoff;
+    assert(std::abs(effective - 8000.0f) < 1.0f);
+
+    // Legacy has no separate manual base: the snapshot keeps the applied value
+    // and the legacy route is not recomposed on load.
+    const SynthPatch snap = pm.buildPersistablePatch();
+    assert(std::abs(snap.filter_cutoff - effective) < 1.0f);
+    assert(std::abs(snap.macros[0].current_val - 127.0f) < 1e-3f);
+
+    assert(persist_roundtrip(pm, storage, 65));
+    assert(std::abs(pm.activePatch().filter_cutoff - effective) < 1.0f);
+    assert(std::abs(pm.activePatch().macros[0].current_val - 127.0f) < 1e-3f);
+
+    printf("PASS: legacy absolute macro patch round-trips and its persistable snapshot stays valid\n");
+}
+
 static void test_fm_manual_and_macro_composition() {
     using namespace smk;
     MockAmyAdapter mock;
@@ -2118,6 +2415,13 @@ int main() {
     test_macro_order_independence_with_manual();
     test_manual_macro_no_drift_cycles();
     test_manual_state_change_command_throttle();
+    test_persistable_snapshot_uses_manual_state();
+    test_save_reload_no_double_application();
+    test_save_reload_neutral_macro();
+    test_save_reload_multiple_macros();
+    test_save_reload_100_cycles_no_drift();
+    test_subtractive_save_reload_roundtrip();
+    test_legacy_patch_persistable_snapshot_valid();
     test_fm_manual_and_macro_composition();
     test_legacy_and_mixed_macro_mapping_classification();
     test_showcase_macro_smoke();

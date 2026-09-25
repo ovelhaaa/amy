@@ -3,6 +3,7 @@
 // engine, so it validates the actual operator state rather than a mock.
 #include "patch_manager.h"
 #include "factory_patches.h"
+#include "storage_manager.h"
 #include "amy_adapter.h"
 #include "synth_config.h"
 #include "diagnostics.h"
@@ -12,6 +13,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 
 namespace smk {
 Diagnostics& Diagnostics::instance() { static Diagnostics instance; return instance; }
@@ -350,6 +352,59 @@ int main() {
     assert(std::fabs(pm.fmControlState().feedback - 0.08f) < 1e-3f);
     assert(pm.fmControlState().algorithm == algo_baseline);
     assert(std::fabs(manual_fm.feedback - 0.08f) < 1e-4f);
+
+    // ─────────────────────────────────────────────────────────────
+    // M2.2: FM save/reload through the real StorageManager. The persistable
+    // snapshot carries the macro positions; the FM operator baseline must come
+    // back intact and the macro must be applied exactly once.
+    // ─────────────────────────────────────────────────────────────
+    {
+        const char* dir = "build/smk_patch_integrity/fm_storage";
+        std::filesystem::create_directories(dir);
+        smk::StorageManager storage;
+        assert(storage.begin(dir));
+
+        const uint8_t fm_ids[] = { 128, 135 };
+        uint8_t slot = 90;
+        for (uint8_t fid : fm_ids) {
+            assert(pm.selectPatch(fid));
+            process(adapter, 4);
+            VoiceCapture baseline_neutral;
+            assert(captureVoice0(baseline_neutral));
+            const uint8_t algo0 = baseline_neutral.algorithm;
+            const float neutral_feedback = baseline_neutral.feedback;
+
+            // CHAR is the FM mod index macro: a non-neutral position must scale
+            // the modulator levels without touching algorithm or routing.
+            pm.setMacro(0, 127.0f, true);
+            process(adapter, 2);
+            VoiceCapture effective_before;
+            assert(captureVoice0(effective_before));
+            const float mod_before = pm.fmControlState().mod_factor;
+            assert(mod_before > 1.0f - 1e-6f);
+            assert(effective_before.algorithm == algo0);
+
+            const smk::SynthPatch persisted = pm.buildPersistablePatch();
+            assert(std::fabs(persisted.macros[0].current_val - 127.0f) < 1e-3f);
+            assert(storage.savePatch(slot, persisted));
+
+            smk::SynthPatch loaded = {};
+            assert(storage.loadPatch(slot, loaded));
+            assert(pm.applyLoadedPatch(loaded));
+            process(adapter, 4);
+
+            VoiceCapture effective_after;
+            assert(captureVoice0(effective_after));
+            assert(effective_after.algorithm == algo0);
+            // Applied once, not twice (would be mod_before squared).
+            assert(std::fabs(pm.fmControlState().mod_factor - mod_before) < 1e-3f);
+            captures_match(effective_after, effective_before, "FM persistence round-trip");
+            assert(std::fabs(effective_after.feedback - neutral_feedback) < 1e-5f);
+
+            ++slot;
+        }
+        std::printf("PASS: FM save/reload keeps algorithm/routing/operator baseline and applies macros once (128 & 135)\n");
+    }
 
     std::printf("PASS: real AMY FM manual controls + macros compose and neutral restores the manual state\n");
 

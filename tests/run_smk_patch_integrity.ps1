@@ -16,7 +16,8 @@ try {
         '-DBLOCK_SIZE_BITS=8', '-Isrc', '-Itests/mock',
         '-Ismk-s3/components/audio/include', '-Ismk-s3/components/system/include',
         '-Ismk-s3/components/synth/include', '-Ismk-s3/components/sequencer/include',
-        '-Ismk-s3/components/midi/include', '-Ismk-s3/components/ui/include'
+        '-Ismk-s3/components/midi/include', '-Ismk-s3/components/storage/include',
+        '-Ismk-s3/components/ui/include'
     )
 
     $objects = @()
@@ -36,6 +37,8 @@ try {
         smk-s3/components/synth/src/soft_takeover.cpp `
         smk-s3/components/sequencer/src/step_sequencer.cpp `
         smk-s3/components/midi/event_bus.cpp `
+        smk-s3/components/midi/controller_profile.cpp `
+        smk-s3/components/storage/src/storage_manager.cpp `
         @objects -lm -o $exe
     if ($LASTEXITCODE -ne 0) { throw 'Patch integrity test link failed' }
 

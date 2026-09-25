@@ -863,8 +863,14 @@ bool PatchManager::selectPatch(uint8_t patch_id) {
         ESP_LOGE(TAG, "Patch ID %d not found", patch_id);
         return false;
     }
+    return applyLoadedPatch(*p);
+}
 
-    active_patch_ = *p;
+bool PatchManager::applyLoadedPatch(const SynthPatch& patch) {
+    // Factory selection and stored-patch reload converge here. The caller owns
+    // provenance and validation (factory table lookup, or StorageManager CRC
+    // verification); this path only applies the patch consistently.
+    active_patch_ = patch;
     active_patch_.crc32 = calculatePatchCrc32(active_patch_);
 
     ESP_LOGI(TAG, "Loaded Patch #%d [%s] (CRC32: 0x%08X)", 
@@ -896,6 +902,45 @@ bool PatchManager::selectPatch(uint8_t patch_id) {
     }
 
     return true;
+}
+
+SynthPatch PatchManager::buildPersistablePatch() const {
+    SynthPatch out = active_patch_;
+
+    // A persisted patch must represent MANUAL STATE + MACRO POSITIONS, never the
+    // final macro-processed state plus macro positions, otherwise the macro is
+    // applied twice on reload.
+    //
+    // Only the family-aware relative model has a distinct manual base. Legacy
+    // absolute macros (0..7) write their final value directly into active_patch_
+    // and are persisted as-is; the load path never re-runs them. None also needs
+    // no substitution. Mixed applies the relative model, so it uses the manual
+    // base like RelativeOnly.
+    const MacroMappingMode mode = macroMappingMode();
+    if (mode == MacroMappingMode::RelativeOnly || mode == MacroMappingMode::Mixed) {
+        out.filter_cutoff     = manual_state_.filter_cutoff;
+        out.filter_res        = manual_state_.filter_res;
+        out.filter_env_amount = manual_state_.filter_env;
+
+        out.amp_attack        = manual_state_.amp_attack;
+        out.amp_decay         = manual_state_.amp_decay;
+        out.amp_sustain       = manual_state_.amp_sustain;
+        out.amp_release       = manual_state_.amp_release;
+
+        out.osc_detune        = manual_state_.osc_detune;
+
+        // Only FX fields that exist in the v5 format are persisted. Chorus
+        // depth, delay time/feedback/mix, reverb size/mix and all Bank B FM
+        // runtime edits remain runtime-only until a later format bump.
+        out.drive_level       = manual_state_.drive;
+        out.master_tone       = manual_state_.master_tone;
+    }
+
+    // Macro positions, defaults, mappings and names are carried unchanged from
+    // active_patch_. The CRC is intentionally left unset: StorageManager is the
+    // single place that stamps id + CRC on save.
+    out.crc32 = 0;
+    return out;
 }
 
 bool PatchManager::selectPatchByIndex(size_t index) {
@@ -1060,6 +1105,18 @@ void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     // state are fully configured. Macros compose on top of this base; the patch
     // format itself is untouched.
     captureManualControlState();
+
+    // 5c. Re-apply the macro composition for the relative model. A factory patch
+    // loads with neutral macro positions so this is silent; a persisted
+    // snapshot restored non-neutral positions and its sound parameters hold the
+    // manual base, so recomposing reaches the same effective state as before
+    // save. Legacy absolute macros are applied directly at setMacro() time and
+    // must not be recomposed here.
+    const MacroMappingMode mapping_mode = macroMappingMode();
+    if (mapping_mode == MacroMappingMode::RelativeOnly ||
+        mapping_mode == MacroMappingMode::Mixed) {
+        recomputeMacroTargets();
+    }
 
     // 6. Update UI macro status without destructively overriding preset internals
     if (ui_manager_) {

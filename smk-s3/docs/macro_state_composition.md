@@ -1,4 +1,4 @@
-# Macro State Composition (Sound & Musicality M2.1)
+# Macro State Composition (Sound & Musicality M2.1 + M2.2)
 
 Status: implemented, host-validated. Patch format is unchanged (`kPatchFormatVersion == 5`).
 
@@ -90,30 +90,78 @@ neutral macro restores the preset's own feedback rather than assuming zero.
   applied and the legacy routes are reported with a warning instead of being
   silently ignored.
 
-## 6. Save behavior (unchanged in this milestone)
+## 6. Save/reload contract (Sound & Musicality M2.2)
 
-The patch format stays v5. `StorageManager::savePatch()` persists the whole
-`SynthPatch`, which means:
+The patch format stays v5 (`kPatchFormatVersion == 5`); no new fields, no v6.
 
-* macro positions (`SynthPatch::macros[].current_val`) are persisted;
-* the effective parameter values currently in `active_patch_` are persisted;
-* `manual_state_` is runtime-only and is **not** persisted.
+A persisted patch must represent:
 
-Reloading while macros are active is therefore not yet a fully defined
-round-trip: the saved effective values are loaded as the new baseline and macro
-positions are restored, but the load path does not re-run the composition. This
-milestone only avoids corruption; a versioned "manual + macro positions" save
-model is deferred to a later milestone and must not be added without a format
-version bump.
+```text
+MANUAL STATE + MACRO POSITIONS
+```
+
+and never `FINAL MACRO-PROCESSED STATE + MACRO POSITIONS`. Otherwise the macro
+is applied twice on reload (manual 3000 Hz + CHAR +1 octave would save 6000 and
+reload to 12000).
+
+`PatchManager::buildPersistablePatch()` produces the semantic snapshot:
+
+* starts from `active_patch_` (metadata, engine patch, non-macro controls,
+  macro names/defaults/positions/mappings);
+* substitutes the manual base into the macro-affected v5 fields:
+  `filter_cutoff`, `filter_res`, `filter_env_amount`, `amp_attack`,
+  `amp_decay`, `amp_sustain`, `amp_release`, `osc_detune`, `drive_level`,
+  `master_tone`;
+* leaves `crc32 == 0`; `StorageManager::savePatch()` is the single place that
+  stamps `id` and recomputes the CRC (no CRC inconsistency is produced);
+* never exposes `manual_state_` to `StorageManager`.
+
+`PatchManager::applyLoadedPatch()` is the single apply path shared by factory
+selection (`selectPatch`) and stored-patch reload. After applying the snapshot
+it re-runs the relative macro composition, so a snapshot with non-neutral macro
+positions reaches the same effective state it had before save. Legacy absolute
+macros (`param_type` 0..7) are persisted as their applied value and are not
+recomposed.
+
+### Legacy and mixed mappings
+
+`buildPersistablePatch()` only substitutes the manual base for `RelativeOnly`
+and `Mixed`. `LegacyOnly` and `None` are persisted as-is; legacy behavior and
+legacy mappings are unchanged. Loading a legacy patch still yields a valid
+persistable snapshot.
+
+### FX runtime-only fields in v5
+
+Only `drive_level`, `master_tone`, `chorus_mode` and `reverb_freeze` exist in
+the v5 `SynthPatch`. Therefore the following runtime FX controls do **not**
+round-trip yet: chorus depth, delay time, delay feedback, delay mix, reverb
+size, reverb mix. `DriveRelative` and `MasterToneRelative` are persisted
+(`drive_level`, `master_tone`); `ChorusDepth`, `ReverbMix` and `DelayMix` are
+runtime-only. Full FX patch persistence is deferred to Sound & Musicality M3.
+
+### FM runtime-only fields in v5
+
+`SynthPatch` has no FM operator/runtime fields. Bank B FM runtime edits
+(`manual_state_.fm_*`, seeded from the preset) are **not** persistable in v5.
+Macro positions still round-trip and are applied exactly once; the preset
+operator baseline is reloaded from the engine preset, and algorithm/routing are
+never changed. Explicit limitation: **FM Bank B runtime edits are not yet
+persistable in v5**.
 
 ## 7. Validation
 
 * `tests/run_smk_synth_expansion.ps1`: manual/macro composition, order
   independence with manual state, 100-cycle no-drift, FM manual+macro
   composition and ratio composition (`1.5 x 3 x 2 = 9`), mixed mapping
-  classification, command throttle, legacy/relative profiles, v5 format.
+  classification, command throttle, legacy/relative profiles, v5 format, and
+  M2.2 persistence: persistable snapshot uses the manual base, 3000+1 octave
+  round-trips to 6000 (never 12000), neutral macro round-trip, multiple-macro
+  round-trip, 100-cycle save/reload no-drift, subtractive roundtrip and legacy
+  snapshot validity.
 * `tests/run_smk_patch_integrity.ps1`: real AMY + `PatchManager` FM integration;
   manual FM controls compose with macros and neutral restores the manual state
-  with algorithm/routing unchanged.
+  with algorithm/routing unchanged; FM save/reload through the real
+  `StorageManager` (patches 128 and 135) keeps algorithm/routing/operator
+  baseline and applies macros once.
 * `tests/run_smk_amy_boot.ps1`, `tests/run_smk_safety.ps1`: unchanged and
   passing.
