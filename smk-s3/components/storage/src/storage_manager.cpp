@@ -113,8 +113,12 @@ bool StorageManager::savePatch(uint8_t slot_id, const SynthPatch& patch) {
     getSlotPath(slot_id, tmp_path, sizeof(tmp_path), ".tmp");
     getSlotPath(slot_id, s3p_path, sizeof(s3p_path), ".s3p");
 
+    // The storage slot lives only in the filename. SynthPatch::id is the
+    // patch's own identity (factory id / engine source) and must not be
+    // silently rewritten to the slot; doing so would turn factory patch 135
+    // saved in slot 20 into "factory patch 20". See
+    // smk-s3/docs/patch_storage_semantics.md.
     SynthPatch p_copy = patch;
-    p_copy.id = slot_id;
     p_copy.crc32 = calculatePatchCrc32(p_copy);
 
     PatchHeader header = {};

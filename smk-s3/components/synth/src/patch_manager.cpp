@@ -1,4 +1,5 @@
 #include "patch_manager.h"
+#include "storage_manager.h"
 #include "amy_adapter.h"
 #include "ui_manager.h"
 #include "clock_manager.h"
@@ -863,7 +864,42 @@ bool PatchManager::selectPatch(uint8_t patch_id) {
         ESP_LOGE(TAG, "Patch ID %d not found", patch_id);
         return false;
     }
+    // Factory selection is provenance only. It deliberately leaves the selected
+    // user storage slot untouched so browsing cannot retarget a user Save.
+    active_patch_source_ = PatchSource::Factory;
     return applyLoadedPatch(*p);
+}
+
+void PatchManager::setActiveStorageSlot(uint8_t slot) {
+    if (slot < StorageManager::kMaxSlots) {
+        active_storage_slot_ = slot;
+    } else {
+        ESP_LOGW(TAG, "Ignoring out-of-range storage slot %u (max %u)",
+                 slot, static_cast<unsigned>(StorageManager::kMaxSlots - 1));
+    }
+}
+
+bool PatchManager::applyLoadedPatch(const SynthPatch& patch, uint8_t storage_slot) {
+    // The storage location is runtime metadata, never folded into SynthPatch::id.
+    // StorageManager::loadPatch has already range-checked the slot.
+    active_storage_slot_ = storage_slot;
+    active_patch_source_ = PatchSource::Storage;
+    return applyLoadedPatch(patch);
+}
+
+bool PatchManager::saveActivePatch(StorageManager& storage, uint8_t slot) {
+    const SynthPatch persisted = buildPersistablePatch();
+    if (!storage.savePatch(slot, persisted)) {
+        return false;
+    }
+    // A successful explicit save becomes the selected slot, so a following
+    // unqualified Save (e.g. the long-hold gesture) repeats at the same place.
+    active_storage_slot_ = slot;
+    return true;
+}
+
+bool PatchManager::saveActivePatch(StorageManager& storage) {
+    return saveActivePatch(storage, active_storage_slot_);
 }
 
 bool PatchManager::applyLoadedPatch(const SynthPatch& patch) {

@@ -113,7 +113,9 @@ reload to 12000).
   `amp_decay`, `amp_sustain`, `amp_release`, `osc_detune`, `drive_level`,
   `master_tone`;
 * leaves `crc32 == 0`; `StorageManager::savePatch()` is the single place that
-  stamps `id` and recomputes the CRC (no CRC inconsistency is produced);
+  recomputes and stamps the CRC (no CRC inconsistency is produced). As of M2.3
+  `savePatch()` no longer rewrites `id`: identity is preserved and the slot
+  lives only in the filename. See `patch_storage_semantics.md`;
 * never exposes `manual_state_` to `StorageManager`.
 
 `PatchManager::applyLoadedPatch()` is the single apply path shared by factory
@@ -121,7 +123,19 @@ selection (`selectPatch`) and stored-patch reload. After applying the snapshot
 it re-runs the relative macro composition, so a snapshot with non-neutral macro
 positions reaches the same effective state it had before save. Legacy absolute
 macros (`param_type` 0..7) are persisted as their applied value and are not
-recomposed.
+recomposed. Stored-patch reload uses the slot-aware overload
+(`applyLoadedPatch(patch, slot)`), which records the source slot separately from
+the patch identity.
+
+## 6b. Patch identity vs. storage slot (Sound & Musicality M2.3)
+
+`SynthPatch::id` is the patch's own identity and is never used as a storage
+address. The user storage slot (0..127) is runtime metadata held by
+`PatchManager::active_storage_slot_` and encoded only in the `.s3p` filename.
+Selecting a factory patch does not change the selected slot, and the long-hold
+Save targets the selected slot, so factory DX7 patches with id >= 128 remain
+savable. The full contract, including the default slot and the console behavior,
+is in `patch_storage_semantics.md`.
 
 ### Legacy and mixed mappings
 
@@ -157,11 +171,15 @@ persistable in v5**.
   M2.2 persistence: persistable snapshot uses the manual base, 3000+1 octave
   round-trips to 6000 (never 12000), neutral macro round-trip, multiple-macro
   round-trip, 100-cycle save/reload no-drift, subtractive roundtrip and legacy
-  snapshot validity.
+  snapshot validity. M2.3 storage-slot semantics: factory FM 135 -> slot 17 and
+  factory 255 -> slot 127 save/load with identity preserved, factory selection
+  keeps the active slot, and user-slot overwrite follows the slot rather than
+  the patch id.
 * `tests/run_smk_patch_integrity.ps1`: real AMY + `PatchManager` FM integration;
   manual FM controls compose with macros and neutral restores the manual state
   with algorithm/routing unchanged; FM save/reload through the real
   `StorageManager` (patches 128 and 135) keeps algorithm/routing/operator
-  baseline and applies macros once.
+  baseline and applies macros once; M2.3 factory 135 -> slot 17 and 255 ->
+  slot 127 through the shared save path.
 * `tests/run_smk_amy_boot.ps1`, `tests/run_smk_safety.ps1`: unchanged and
   passing.

@@ -343,8 +343,9 @@ int Console::cmdPatchSave(int argc, char** argv) {
     if (!s_storage_manager || !s_patch_manager) return 1;
     if (argc < 2) return 1;
     uint8_t slot_id = (uint8_t)atoi(argv[1]);
-    const SynthPatch persisted = s_patch_manager->buildPersistablePatch();
-    if (s_storage_manager->savePatch(slot_id, persisted)) {
+    // Explicit slot: independent of the active patch identity. On success this
+    // also selects the slot, so a later unqualified Save repeats there.
+    if (s_patch_manager->saveActivePatch(*s_storage_manager, slot_id)) {
         ESP_LOGI(TAG, "Successfully saved Patch to Flash Slot #%d (manual base + macro positions)", slot_id);
     } else {
         ESP_LOGE(TAG, "Failed to save Patch to Flash Slot #%d", slot_id);
@@ -358,11 +359,12 @@ int Console::cmdPatchLoad(int argc, char** argv) {
     uint8_t slot_id = (uint8_t)atoi(argv[1]);
     SynthPatch loaded_patch = {};
     if (s_storage_manager->loadPatch(slot_id, loaded_patch)) {
-        // Apply the stored patch itself (not the factory patch sharing the slot
-        // id). The loaded snapshot carries the manual base + macro positions and
-        // is recomposed through the normal apply path.
-        s_patch_manager->applyLoadedPatch(loaded_patch);
-        ESP_LOGI(TAG, "Successfully loaded Patch #%d [%s] from Flash", slot_id, loaded_patch.name);
+        // Apply the stored patch itself and record its slot. The loaded snapshot
+        // carries the manual base + macro positions and is recomposed through the
+        // normal apply path. The slot, not SynthPatch::id, is the save target.
+        s_patch_manager->applyLoadedPatch(loaded_patch, slot_id);
+        ESP_LOGI(TAG, "Successfully loaded Patch [%s] from Flash Slot #%d (active slot %u)",
+                 loaded_patch.name, slot_id, (unsigned)s_patch_manager->activeStorageSlot());
     } else {
         ESP_LOGE(TAG, "Failed to load Patch from Flash Slot #%d", slot_id);
     }

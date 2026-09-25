@@ -406,6 +406,58 @@ int main() {
         std::printf("PASS: FM save/reload keeps algorithm/routing/operator baseline and applies macros once (128 & 135)\n");
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // M2.3: the storage slot is independent of the factory patch id. Factory
+    // DX7 ids (128..255) must save through the real long-hold helper into any
+    // user slot without the slot being derived from the id.
+    // ─────────────────────────────────────────────────────────────
+    {
+        const char* dir = "build/smk_patch_integrity/slot_storage";
+        std::filesystem::create_directories(dir);
+        smk::StorageManager storage;
+        assert(storage.begin(dir));
+
+        assert(pm.selectPatch(135));
+        process(adapter, 4);
+        VoiceCapture baseline135;
+        assert(captureVoice0(baseline135));
+
+        pm.setActiveStorageSlot(17);
+        assert(pm.activeStorageSlot() == 17);
+        assert(pm.saveActivePatch(storage)); // shared long-hold helper, no slot arg
+        assert(storage.patchExists(17));
+
+        smk::SynthPatch loaded = {};
+        assert(storage.loadPatch(17, loaded));
+        assert(loaded.id == 135); // identity preserved, not rewritten to 17
+        assert(pm.applyLoadedPatch(loaded, 17));
+        assert(pm.activeStorageSlot() == 17);
+        process(adapter, 4);
+        VoiceCapture after135;
+        assert(captureVoice0(after135));
+        assert(after135.algorithm == baseline135.algorithm);
+        captures_match(after135, baseline135, "M2.3 FM 135 slot 17 round-trip");
+
+        assert(pm.selectPatch(255));
+        process(adapter, 4);
+        VoiceCapture baseline255;
+        assert(captureVoice0(baseline255));
+
+        assert(pm.saveActivePatch(storage, 127));
+        assert(storage.patchExists(127));
+        smk::SynthPatch loaded255 = {};
+        assert(storage.loadPatch(127, loaded255));
+        assert(loaded255.id == 255);
+        assert(pm.applyLoadedPatch(loaded255, 127));
+        process(adapter, 4);
+        VoiceCapture after255;
+        assert(captureVoice0(after255));
+        assert(after255.algorithm == baseline255.algorithm);
+        captures_match(after255, baseline255, "M2.3 FM 255 slot 127 round-trip");
+
+        std::printf("PASS: real AMY factory 135 -> slot 17 and 255 -> slot 127 save/load independently of id\n");
+    }
+
     std::printf("PASS: real AMY FM manual controls + macros compose and neutral restores the manual state\n");
 
     std::printf("PASS: FM macros scale the timbre; algorithm/routing never change\n");

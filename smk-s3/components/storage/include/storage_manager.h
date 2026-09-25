@@ -23,7 +23,13 @@ public:
 
     /**
      * @brief Save a patch struct atomically to Flash SPIFFS slot
-     * @param slot_id Slot index (0..127)
+     *
+     * The slot index (0..127) is a user storage location and lives only in the
+     * filename. SynthPatch::id is the patch's own identity and is preserved
+     * verbatim; it is never overwritten with the slot. See
+     * docs/patch_storage_semantics.md.
+     *
+     * @param slot_id Slot index (0..127), independent of SynthPatch::id
      * @param patch Patch data to save
      * @return True if saved and verified successfully
      */
@@ -31,6 +37,11 @@ public:
 
     /**
      * @brief Load and verify patch struct from Flash SPIFFS slot
+     *
+     * The returned patch keeps the identity stored in the file. The caller
+     * (PatchManager) records the slot separately via applyLoadedPatch(patch,
+     * slot_id).
+     *
      * @param slot_id Slot index (0..127)
      * @param patch_out Output patch struct
      * @return True if loaded and CRC32 verified successfully

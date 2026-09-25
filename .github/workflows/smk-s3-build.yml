@@ -6,12 +6,16 @@ on:
     paths:
       - 'smk-s3/**'
       - 'src/**'
+      - 'tests/run_smk_*'
+      - 'tests/test_smk_*'
       - '.github/workflows/smk-s3-build.yml'
   pull_request:
     branches: [main]
     paths:
       - 'smk-s3/**'
       - 'src/**'
+      - 'tests/run_smk_*'
+      - 'tests/test_smk_*'
       - '.github/workflows/smk-s3-build.yml'
   workflow_dispatch:
 
@@ -23,8 +27,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Fast, independent host-side regression suites. Runs in parallel with the
+  # ESP-IDF builds; a broken macro/persistence/storage-slot change fails here
+  # instead of leaving CI green. Uses windows-latest so the existing .ps1
+  # suites (MinGW gcc/g++, PowerShell) run unmodified.
+  smk-host-tests:
+    name: SMK Host Regression Tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run SMK host regression suites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./tests/run_smk_synth_expansion.ps1
+          ./tests/run_smk_patch_integrity.ps1
+          ./tests/run_smk_amy_boot.ps1
+          ./tests/run_smk_safety.ps1
+
   build:
-    name: Build (Block Size ${{ matrix.block_size }})
+    name: Build Block Size ${{ matrix.block_size }}
     runs-on: ubuntu-latest
     container:
       image: espressif/idf:v5.3

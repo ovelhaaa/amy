@@ -75,6 +75,14 @@ class UIManager;
 class ClockManager;
 class Arpeggiator;
 class StepSequencer;
+class StorageManager;
+
+// Where the currently active patch came from. This is provenance only; it is
+// intentionally independent from the selected user storage slot below.
+enum class PatchSource : uint8_t {
+    Factory = 0, // embedded factory table / in-memory selection
+    Storage = 1  // loaded from a user storage slot
+};
 
 class PatchManager {
 public:
@@ -97,8 +105,24 @@ public:
      * Factory selection and stored-patch reload both converge here so they share
      * the same engine apply, soft-takeover reset and UI refresh. The stored patch
      * must already be CRC-verified by StorageManager.
+     *
+     * This overload carries no provenance and does NOT change the selected user
+     * storage slot. Patch identity and storage location are separate domains:
+     *   SynthPatch::id        = the patch's own identity (factory id / engine
+     *                           source). It is never a storage address.
+     *   active_storage_slot_  = the user slot an unqualified Save targets.
+     * See docs/patch_storage_semantics.md.
      */
     bool applyLoadedPatch(const SynthPatch& patch);
+
+    /**
+     * @brief Apply a stored patch and record the user slot it was loaded from.
+     *
+     * Loading from storage selects that slot, so an unqualified Save writes back
+     * to the same place. The slot is metadata; it is never folded into
+     * SynthPatch::id.
+     */
+    bool applyLoadedPatch(const SynthPatch& patch, uint8_t storage_slot);
 
     /**
      * @brief Build the semantic snapshot that should be persisted for the active
@@ -111,6 +135,29 @@ public:
      * CRC. This does not modify the active runtime state.
      */
     SynthPatch buildPersistablePatch() const;
+
+    // ── Patch identity vs. storage location (M2.3) ──────────────────────────
+    // The selected user storage slot is what an unqualified Save writes to.
+    // It defaults to a fixed, documented slot so even a factory FM/DX7 patch
+    // (whose id is >= 128) can always be saved. Selecting a factory patch does
+    // NOT change it: browsing the factory bank must never retarget a user save.
+    static constexpr uint8_t kDefaultStorageSlot = 0;
+
+    PatchSource activePatchSource() const { return active_patch_source_; }
+    uint8_t activeStorageSlot() const { return active_storage_slot_; }
+    void setActiveStorageSlot(uint8_t slot);
+
+    /**
+     * @brief Build the persistable snapshot and save it through StorageManager.
+     *
+     * Single save path shared by the console (`patch_save`) and the hardware
+     * long-hold gesture. The no-slot form targets the selected user slot; the
+     * explicit form also selects that slot on success, so a following
+     * unqualified Save repeats there. Returns false if the slot is out of range
+     * or the underlying write/verify fails.
+     */
+    bool saveActivePatch(StorageManager& storage);
+    bool saveActivePatch(StorageManager& storage, uint8_t slot);
 
     KnobBank activeKnobBank() const { return active_bank_; }
     void nextKnobBank();
@@ -195,6 +242,10 @@ private:
     float          active_filter_key_track_ = 0.0f;
     float          active_filter_vel_track_ = 1.5f;
     uint8_t        active_filter_type_      = 0;
+
+    // M2.3 storage provenance. Kept separate from SynthPatch::id on purpose.
+    uint8_t        active_storage_slot_ = kDefaultStorageSlot;
+    PatchSource    active_patch_source_ = PatchSource::Factory;
 
     // Runtime-only manual-control base state for the relative macro model.
     // Captured on patch load; never stored in the patch (format stays v5).

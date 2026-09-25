@@ -489,12 +489,18 @@ static void app_init_task(void* arg) {
                             const int64_t held_us = esp_timer_get_time() - bank_b_save_press_us;
                             bank_b_save_press_us = 0;
                             if (held_us >= 1200000 && storage_manager && patch_manager) {
-                                const smk::SynthPatch persisted = patch_manager->buildPersistablePatch();
-                                if (storage_manager->savePatch(patch_manager->activePatchId(), persisted)) {
+                                // Save targets the selected user slot, never the
+                                // patch identity: a factory DX7 patch such as 135
+                                // or 255 has an id >= 128 that is not a slot.
+                                const uint8_t save_slot = patch_manager->activeStorageSlot();
+                                if (patch_manager->saveActivePatch(*storage_manager, save_slot)) {
                                     storage_manager->saveProfile("smk25_custom", active_profile);
                                     if (scene_manager) scene_manager->saveAllToFlash();
-                                    ESP_LOGI(TAG, "Saved patch, profile and scenes after long hold");
-                                    if (ui_manager) ui_manager->triggerParameterOverlay("SAVED", "PATCH+PROFILE+SCENES", (float)patch_manager->activePatchId(), 0.0f, patch_manager->activePatch().name, smk::TakeoverStatus::Captured);
+                                    ESP_LOGI(TAG, "Saved patch to slot %u, profile and scenes after long hold", (unsigned)save_slot);
+                                    if (ui_manager) ui_manager->triggerParameterOverlay("SAVED", "PATCH SLOT", (float)save_slot, 0.0f, patch_manager->activePatch().name, smk::TakeoverStatus::Captured);
+                                } else {
+                                    ESP_LOGE(TAG, "Long-hold save failed for slot %u", (unsigned)save_slot);
+                                    if (ui_manager) ui_manager->triggerParameterOverlay("SAVE FAILED", "PATCH SLOT", (float)save_slot, 0.0f, "", smk::TakeoverStatus::Captured);
                                 }
                             } else if (ui_manager) {
                                 ui_manager->triggerParameterOverlay("SAVE CANCELLED", "HOLD PAD 16", 0.0f, 0.0f, "", smk::TakeoverStatus::Captured);

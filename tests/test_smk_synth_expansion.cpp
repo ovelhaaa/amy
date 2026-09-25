@@ -2207,6 +2207,153 @@ static void test_legacy_patch_persistable_snapshot_valid() {
     printf("PASS: legacy absolute macro patch round-trips and its persistable snapshot stays valid\n");
 }
 
+// ─────────────────────────────────────────────────────────────
+// Sound & Musicality M2.3: patch identity vs. storage slot
+// ─────────────────────────────────────────────────────────────
+
+// SynthPatch::id is patch identity, never a storage address. A factory DX7
+// patch whose id is >= 128 must be savable to any user slot through the same
+// helper the hardware long-hold uses, with its identity preserved in the file.
+static void test_factory_fm_save_to_user_slot() {
+    using namespace smk;
+    const char* dir = "build/test_storage_slot";
+    std::filesystem::create_directories(dir);
+    StorageManager storage;
+    assert(storage.begin(dir));
+
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+
+    // Factory FM 135 -> active user slot 17, saved through the shared path.
+    assert(pm.selectPatch(135));
+    assert(classifyPatch(pm.activePatch()) == PatchFamily::FM);
+    assert(pm.activePatchSource() == PatchSource::Factory);
+    pm.setActiveStorageSlot(17);
+    assert(pm.activeStorageSlot() == 17);
+    assert(pm.saveActivePatch(storage)); // no explicit slot -> active slot
+    assert(storage.patchExists(17));
+
+    // Identity is preserved on disk; the slot lives only in the filename.
+    SynthPatch loaded = {};
+    assert(storage.loadPatch(17, loaded));
+    assert(loaded.id == 135);
+    assert(loaded.engine_patch == pm.activePatch().engine_patch);
+
+    // Slot-aware reload must remember where it came from.
+    assert(pm.applyLoadedPatch(loaded, 17));
+    assert(pm.activeStorageSlot() == 17);
+    assert(pm.activePatchSource() == PatchSource::Storage);
+    assert(pm.activePatchId() == 135);
+
+    // A later unqualified Save repeats at slot 17 (not id, not id % 128).
+    const uint8_t macro_before = static_cast<uint8_t>(pm.activePatch().macros[0].current_val);
+    assert(pm.saveActivePatch(storage));
+    SynthPatch repeated = {};
+    assert(storage.loadPatch(17, repeated));
+    assert(repeated.id == 135);
+    assert(static_cast<uint8_t>(repeated.macros[0].current_val) == macro_before);
+
+    // Factory 255 (id >= 128) -> slot 127.
+    assert(pm.selectPatch(255));
+    assert(classifyPatch(pm.activePatch()) == PatchFamily::FM);
+    pm.setActiveStorageSlot(127);
+    assert(pm.saveActivePatch(storage));
+    SynthPatch loaded255 = {};
+    assert(storage.loadPatch(127, loaded255));
+    assert(loaded255.id == 255);
+    assert(loaded255.engine_patch == pm.activePatch().engine_patch);
+
+    printf("PASS: factory FM 135 -> slot 17 and factory 255 -> slot 127 save/load with identity preserved\n");
+}
+
+// A bare factory selection keeps the selected user slot, and the default slot
+// is a valid user slot so an FM patch can always be saved unqualified.
+static void test_factory_selection_keeps_active_slot() {
+    using namespace smk;
+    const char* dir = "build/test_storage_slot";
+    std::filesystem::create_directories(dir);
+    StorageManager storage;
+    assert(storage.begin(dir));
+
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+
+    // No slot was ever selected: the deterministic default must be a valid slot.
+    assert(pm.activeStorageSlot() == PatchManager::kDefaultStorageSlot);
+    assert(PatchManager::kDefaultStorageSlot < StorageManager::kMaxSlots);
+
+    // Factory selection must never change the save target, even for id >= 128.
+    assert(pm.selectPatch(135));
+    assert(pm.activeStorageSlot() == PatchManager::kDefaultStorageSlot);
+    assert(pm.selectPatch(255));
+    assert(pm.activeStorageSlot() == PatchManager::kDefaultStorageSlot);
+    assert(pm.saveActivePatch(storage));
+    assert(storage.patchExists(PatchManager::kDefaultStorageSlot));
+
+    // Active slot 10, then save factory 135 -> slot 10.
+    pm.setActiveStorageSlot(10);
+    assert(pm.selectPatch(135));
+    assert(pm.activeStorageSlot() == 10);
+    assert(pm.saveActivePatch(storage));
+    assert(storage.patchExists(10));
+
+    // Save another patch into slot 20, then load it -> active slot becomes 20.
+    assert(pm.selectPatch(47));
+    assert(pm.saveActivePatch(storage, 20));
+    SynthPatch loaded = {};
+    assert(storage.loadPatch(20, loaded));
+    assert(pm.applyLoadedPatch(loaded, 20));
+    assert(pm.activeStorageSlot() == 20);
+
+    // Selecting a different factory keeps slot 20.
+    assert(pm.selectPatch(47));
+    assert(pm.activeStorageSlot() == 20);
+    assert(pm.activePatchSource() == PatchSource::Factory);
+
+    printf("PASS: factory selection preserves active user slot; default is a valid slot\n");
+}
+
+// Editing a patch loaded from slot 42 and saving unqualified must overwrite
+// slot 42, independent of the current patch id.
+static void test_user_slot_overwrite_uses_slot_not_id() {
+    using namespace smk;
+    const char* dir = "build/test_storage_slot";
+    std::filesystem::create_directories(dir);
+    StorageManager storage;
+    assert(storage.begin(dir));
+
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+
+    assert(pm.selectPatch(135));
+    assert(pm.saveActivePatch(storage, 42));
+    assert(pm.activeStorageSlot() == 42);
+    assert(pm.activePatchId() == 135); // identity unchanged by saving
+
+    SynthPatch loaded = {};
+    assert(storage.loadPatch(42, loaded));
+    assert(pm.applyLoadedPatch(loaded, 42));
+    assert(pm.activeStorageSlot() == 42);
+
+    // Edit and save with no explicit slot: must land back on 42, not on the id.
+    pm.setMacro(0, 100.0f, true);
+    assert(pm.saveActivePatch(storage));
+    assert(pm.activeStorageSlot() == 42);
+
+    SynthPatch reloaded = {};
+    assert(storage.loadPatch(42, reloaded));
+    assert(reloaded.id == 135);
+    assert(std::abs(reloaded.macros[0].current_val - 100.0f) < 1e-3f);
+
+    printf("PASS: user slot 42 overwrite uses the selected slot, not the patch id\n");
+}
+
 static void test_fm_manual_and_macro_composition() {
     using namespace smk;
     MockAmyAdapter mock;
@@ -2422,6 +2569,9 @@ int main() {
     test_save_reload_100_cycles_no_drift();
     test_subtractive_save_reload_roundtrip();
     test_legacy_patch_persistable_snapshot_valid();
+    test_factory_fm_save_to_user_slot();
+    test_factory_selection_keeps_active_slot();
+    test_user_slot_overwrite_uses_slot_not_id();
     test_fm_manual_and_macro_composition();
     test_legacy_and_mixed_macro_mapping_classification();
     test_showcase_macro_smoke();
