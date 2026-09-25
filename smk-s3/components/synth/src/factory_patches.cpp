@@ -19,6 +19,66 @@ uint32_t calculatePatchCrc32(const SynthPatch& patch) {
     return ~crc;
 }
 
+uint32_t calculatePatchV5Crc32(const SynthPatchV5& patch) {
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(&patch);
+    size_t len = sizeof(SynthPatchV5) - sizeof(uint32_t); // Exclude the crc32 field itself
+
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t i = 0; i < len; ++i) {
+        crc ^= p[i];
+        for (int j = 0; j < 8; ++j) {
+            crc = (crc >> 1) ^ (0xEDB88320 & (-(crc & 1)));
+        }
+    }
+    return ~crc;
+}
+
+SynthPatch migratePatchV5ToV6(const SynthPatchV5& v5) {
+    SynthPatch out = {};
+    out.id = v5.id;
+    memcpy(out.name, v5.name, sizeof(out.name));
+    memcpy(out.category, v5.category, sizeof(out.category));
+    memcpy(out.author, v5.author, sizeof(out.author));
+    out.engine_patch = v5.engine_patch;
+    out.transpose = v5.transpose;
+    out.voice_count = v5.voice_count;
+    out.wave_type = v5.wave_type;
+    out.mono_mode = v5.mono_mode;
+    out.portamento_ms = v5.portamento_ms;
+    out.base_freq = v5.base_freq;
+    out.filter_cutoff = v5.filter_cutoff;
+    out.filter_res = v5.filter_res;
+    out.amp_attack = v5.amp_attack;
+    out.amp_decay = v5.amp_decay;
+    out.amp_sustain = v5.amp_sustain;
+    out.amp_release = v5.amp_release;
+    memcpy(out.macros, v5.macros, sizeof(out.macros));
+    out.filter_env_amount = v5.filter_env_amount;
+    out.filter_key_tracking = v5.filter_key_tracking;
+    out.filter_vel_tracking = v5.filter_vel_tracking;
+    out.filter_type = v5.filter_type;
+    out.osc_mix = v5.osc_mix;
+    out.osc_detune = v5.osc_detune;
+    out.sub_level = v5.sub_level;
+    out.noise_level = v5.noise_level;
+    out.drive_level = v5.drive_level;
+    out.master_tone = v5.master_tone;
+    out.chorus_mode = v5.chorus_mode;
+    out.reverb_freeze = v5.reverb_freeze;
+
+    // New v6 FX state: runtime-equivalent defaults. Chorus depth reproduces the
+    // v5 first-load behavior (a selected mode auto-enabled full depth) so a v5
+    // patch keeps its sound; an Off mode migrates to zero depth.
+    out.chorus_depth = (out.chorus_mode != 0) ? 1.0f : kV6DefaultChorusDepth;
+    out.delay_time_ms = kV6DefaultDelayTimeMs;
+    out.delay_feedback = kV6DefaultDelayFeedback;
+    out.delay_mix = kV6DefaultDelayMix;
+    out.reverb_size = kV6DefaultReverbSize;
+    out.reverb_mix = kV6DefaultReverbMix;
+    out.crc32 = 0;
+    return out;
+}
+
 uint32_t calculatePatchV3Crc32(const SynthPatchV3& patch) {
     const uint8_t* p = reinterpret_cast<const uint8_t*>(&patch);
     size_t len = sizeof(SynthPatchV3) - sizeof(uint32_t); // Exclude the crc32 field itself
@@ -565,7 +625,7 @@ static void buildPatchFromDescriptor(const PatchDescriptor& desc, SynthPatch& ou
     out.amp_sustain = desc.amp_sustain;
     out.amp_release = desc.amp_release;
 
-    // Initialize v5 engine parameters
+    // Initialize current (v6) engine parameters
     out.filter_env_amount = 0.0f;
     out.filter_key_tracking = 0.0f;
     out.filter_vel_tracking = 1.5f;
@@ -578,6 +638,15 @@ static void buildPatchFromDescriptor(const PatchDescriptor& desc, SynthPatch& ou
     out.master_tone = 0.0f;
     out.chorus_mode = 0;
     out.reverb_freeze = 0;
+
+    // v6 FX state defaults. Factory patches start dry/neutral; the user adds
+    // character through the FX bank and macros.
+    out.chorus_depth = kV6DefaultChorusDepth;
+    out.delay_time_ms = kV6DefaultDelayTimeMs;
+    out.delay_feedback = kV6DefaultDelayFeedback;
+    out.delay_mix = kV6DefaultDelayMix;
+    out.reverb_size = kV6DefaultReverbSize;
+    out.reverb_mix = kV6DefaultReverbMix;
 
     // Configure family-aware musical macros. The profile is chosen from the
     // same classifier used at runtime, so a factory preset and its macros can

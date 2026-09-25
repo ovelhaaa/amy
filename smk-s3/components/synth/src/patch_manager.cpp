@@ -37,29 +37,53 @@ void PatchManager::setFilterType(uint8_t filter_type) {
     applyActiveFilterState();
 }
 
+// Sound & Musicality M3: distinguishable chorus identities.
+//
+// depth/level are the *maximum* voice for the mode; the user depth multiplier
+// scales both. rates are separated enough to be heard as different effects:
+//   Classic  = subtle widening (mid depth, mid rate)
+//   Juno     = lush, slower and deeper (the classic Juno-II/106 character)
+//   Ensemble = widest/densest, faster and loudest
+//   Wide     = very slow, large depth for obvious stereo movement
+//   Vibrato  = shallow but fast, an audible pitch wobble rather than thickening
+// A mode never changes gain more than ~1.5 dB versus the others, so switching
+// chorus on does not jump the loudness.
+struct ChorusProfile {
+    float base_depth;
+    float rate_hz;
+    float base_level;
+};
+
+static const ChorusProfile kChorusProfiles[6] = {
+    { 0.00f, 0.00f, 0.00f }, // 0: Off
+    { 0.30f, 0.55f, 0.55f }, // 1: Classic - subtle widening
+    { 0.65f, 0.45f, 0.80f }, // 2: Juno    - lush
+    { 0.95f, 0.85f, 0.95f }, // 3: Ensemble- large/dense
+    { 1.10f, 0.30f, 0.75f }, // 4: Wide    - slow obvious width
+    { 0.45f, 5.00f, 0.75f }  // 5: Vibrato - clear pitch modulation
+};
+
 void PatchManager::applyActiveChorusState() {
     if (!amy_adapter_) return;
-    // 0=Off, 1=Classic, 2=Juno, 3=Ensemble, 4=Wide, 5=Vibrato
-    static const struct {
-        float base_depth;
-        float rate;
-        float base_level;
-    } kChorusPresets[6] = {
-        { 0.0f, 0.0f, 0.0f },  // 0: Off
-        { 0.5f, 0.5f, 0.7f },  // 1: Classic
-        { 0.8f, 0.6f, 0.85f }, // 2: Juno
-        { 1.2f, 0.9f, 1.0f },  // 3: Ensemble
-        { 1.5f, 0.4f, 0.9f },  // 4: Wide
-        { 0.4f, 4.5f, 0.6f }   // 5: Vibrato
-    };
-    uint8_t mode = std::clamp<uint8_t>(fx_state_.chorus_mode, 0, 5);
+    const uint8_t mode = std::clamp<uint8_t>(fx_state_.chorus_mode, 0, 5);
     if (mode == 0) {
         amy_adapter_->setChorus(0.0f, 0.0f, 0.0f);
-    } else {
-        const auto& p = kChorusPresets[mode];
-        float depth_mult = std::clamp(fx_state_.chorus_depth, 0.0f, 1.0f);
-        amy_adapter_->setChorus(p.base_depth * depth_mult, p.rate, p.base_level * depth_mult);
+        return;
     }
+    const ChorusProfile& p = kChorusProfiles[mode];
+    const float depth_mult = std::clamp(fx_state_.chorus_depth, 0.0f, 1.0f);
+    amy_adapter_->setChorus(p.base_depth * depth_mult, p.rate_hz, p.base_level * depth_mult);
+}
+
+void PatchManager::applyActiveReverbState() {
+    if (!amy_adapter_) return;
+    const float size = std::clamp(fx_state_.reverb_size, 0.0f, 1.0f);
+    const float mix = std::clamp(fx_state_.reverb_mix, 0.0f, 1.0f);
+    // Damping tracks size: small rooms stay absorptive/dark (ambience, glue),
+    // large halls keep more high-frequency air (lush, atmospheric). The old
+    // fixed 0.7 made every size sound the same.
+    const float damp = std::clamp(0.85f - 0.5f * size, 0.30f, 0.85f);
+    amy_adapter_->setReverb(size, damp, mix);
 }
 
 bool PatchManager::begin(AmyAdapter* amy_adapter, UIManager* ui_manager) {
@@ -310,7 +334,7 @@ void PatchManager::recomputeMacroTargets() {
     }
     if (std::fabs(new_reverb - fx_state_.reverb_mix) > eps) {
         fx_state_.reverb_mix = new_reverb;
-        amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, new_reverb);
+        applyActiveReverbState();
     }
     if (std::fabs(new_delay - fx_state_.delay_mix) > eps) {
         fx_state_.delay_mix = new_delay;
@@ -405,7 +429,7 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                 switch (knob_idx) {
                     case 0: saved_val = std::clamp(fx_state_.chorus_mode / 5.0f * 127.0f, 0.0f, 127.0f); break;
                     case 1: saved_val = std::clamp((manual_state_.delay_time_ms - 10.0f) / 990.0f * 127.0f, 0.0f, 127.0f); break;
-                    case 2: saved_val = std::clamp(manual_state_.delay_feedback / 0.95f * 127.0f, 0.0f, 127.0f); break;
+                    case 2: saved_val = std::clamp(manual_state_.delay_feedback / control_ranges::kMaxDelayFeedback * 127.0f, 0.0f, 127.0f); break;
                     case 3: saved_val = std::clamp(wetToNorm(manual_state_.delay_mix) * 127.0f, 0.0f, 127.0f); break;
                     case 4: saved_val = std::clamp(manual_state_.reverb_size * 127.0f, 0.0f, 127.0f); break;
                     case 5: saved_val = std::clamp(wetToNorm(manual_state_.reverb_mix) * 127.0f, 0.0f, 127.0f); break;
@@ -616,13 +640,20 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     break;
                 }
                 case 1: {
+                    // DELAY SYNC: when the clock is running the whole knob maps
+                    // to a musical subdivision (1/16, 1/8T, 1/8, 1/8D, 1/4, 1/4D,
+                    // 1/2); with no clock it falls back to free time. The clock
+                    // architecture is untouched.
                     param_name = "DELAY SYNC";
-                    float delay_ms = 10.0f + norm_val * 990.0f;
+                    float delay_ms = control_ranges::kDelayMinMs +
+                                     norm_val * (control_ranges::kDelayMaxMs - control_ranges::kDelayMinMs);
                     if (clock_manager_ && clock_manager_->bpm() >= 30.0f) {
-                        float beat_ms = 60000.0f / clock_manager_->bpm();
-                        static const float kDivMultipliers[7] = { 0.25f, 0.3333f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f };
-                        int div_idx = std::clamp(static_cast<int>(norm_val * 6.99f), 0, 6);
-                        delay_ms = std::min(beat_ms * kDivMultipliers[div_idx], 1200.0f);
+                        const float beat_ms = 60000.0f / clock_manager_->bpm();
+                        int div_idx = std::clamp(static_cast<int>(norm_val * kDelayDivisionCount), 0,
+                                                 kDelayDivisionCount - 1);
+                        delay_ms = std::min(beat_ms * kDelayDivisions[div_idx].beats,
+                                            control_ranges::kDelaySyncMaxMs);
+                        param_name = kDelayDivisions[div_idx].name;
                     }
                     manual_state_.delay_time_ms = delay_ms;
                     fx_state_.delay_time_ms = delay_ms;
@@ -631,7 +662,7 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                 }
                 case 2:
                     param_name = "DELAY FEEDBACK";
-                    manual_state_.delay_feedback = norm_val * 0.95f;
+                    manual_state_.delay_feedback = norm_val * control_ranges::kMaxDelayFeedback;
                     fx_state_.delay_feedback = manual_state_.delay_feedback;
                     if (amy_adapter_) amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
                     break;
@@ -644,7 +675,7 @@ void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
                     param_name = "REVERB SIZE";
                     manual_state_.reverb_size = norm_val;
                     fx_state_.reverb_size = norm_val;
-                    if (amy_adapter_) amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
+                    applyActiveReverbState();
                     break;
                 case 5:
                     param_name = "REVERB MIX";
@@ -965,11 +996,31 @@ SynthPatch PatchManager::buildPersistablePatch() const {
 
         out.osc_detune        = manual_state_.osc_detune;
 
-        // Only FX fields that exist in the v5 format are persisted. Chorus
-        // depth, delay time/feedback/mix, reverb size/mix and all Bank B FM
-        // runtime edits remain runtime-only until a later format bump.
+        // Full FX manual state (v6). Every macro-affected FX parameter is saved
+        // from the manual base so reload composes the macro exactly once. The
+        // mode and freeze are not macro targets and stay as active_patch_ holds
+        // them.
+        out.chorus_depth      = manual_state_.chorus_depth;
+        out.delay_time_ms     = manual_state_.delay_time_ms;
+        out.delay_feedback    = manual_state_.delay_feedback;
+        out.delay_mix         = manual_state_.delay_mix;
+        out.reverb_size       = manual_state_.reverb_size;
+        out.reverb_mix        = manual_state_.reverb_mix;
         out.drive_level       = manual_state_.drive;
         out.master_tone       = manual_state_.master_tone;
+    } else {
+        // Legacy absolute / no-route patches have no separate manual base, so
+        // the effective runtime FX state is what must survive. This is the same
+        // value the load path applies verbatim (legacy macros are never
+        // recomposed), so round-tripping cannot double-apply anything.
+        out.chorus_depth      = fx_state_.chorus_depth;
+        out.delay_time_ms     = fx_state_.delay_time_ms;
+        out.delay_feedback    = fx_state_.delay_feedback;
+        out.delay_mix         = fx_state_.delay_mix;
+        out.reverb_size       = fx_state_.reverb_size;
+        out.reverb_mix        = fx_state_.reverb_mix;
+        out.drive_level       = fx_state_.drive;
+        out.master_tone       = fx_state_.master_tone;
     }
 
     // Macro positions, defaults, mappings and names are carried unchanged from
@@ -1119,22 +1170,30 @@ void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
         amy_adapter_->setNoiseLevel(1, patch.noise_level);
     }
 
-    fx_state_.drive       = std::clamp(patch.drive_level, 0.0f, 1.0f);
-    fx_state_.master_tone = patch.master_tone;
-
-    uint8_t old_mode = fx_state_.chorus_mode;
-    fx_state_.chorus_mode = patch.chorus_mode;
-    if (old_mode == 0 && patch.chorus_mode != 0 && fx_state_.chorus_depth <= 0.001f) {
-        fx_state_.chorus_depth = 1.0f;
-    }
+    // 4b. Adopt the patch's complete FX state. v6 persists every FX field, so
+    // each is written from the patch and nothing can survive from the previous
+    // patch (the historical stale-FX bug). Values are clamped to the same safe
+    // ranges used by the controls so a hand-authored/migrated file cannot
+    // escape them.
+    fx_state_.chorus_mode    = std::clamp<uint8_t>(patch.chorus_mode, 0, 5);
+    fx_state_.chorus_depth   = std::clamp(patch.chorus_depth, 0.0f, 1.0f);
+    fx_state_.delay_time_ms  = std::clamp(patch.delay_time_ms,
+                                          control_ranges::kDelayMinMs, control_ranges::kDelaySyncMaxMs);
+    fx_state_.delay_feedback = std::clamp(patch.delay_feedback, 0.0f, control_ranges::kMaxDelayFeedback);
+    fx_state_.delay_mix      = std::clamp(patch.delay_mix, 0.0f, 1.0f);
+    fx_state_.reverb_size    = std::clamp(patch.reverb_size, 0.0f, 1.0f);
+    fx_state_.reverb_mix     = std::clamp(patch.reverb_mix, 0.0f, 1.0f);
+    fx_state_.drive          = std::clamp(patch.drive_level, 0.0f, 1.0f);
+    fx_state_.master_tone    = std::clamp(patch.master_tone, -1.0f, 1.0f);
 
     amy_adapter_->setDrive(fx_state_.drive);
     amy_adapter_->setMasterTone(fx_state_.master_tone);
     applyActiveChorusState();
+    // Freeze is part of the patch too; v6 makes the new patch own its state
+    // explicitly, so no ghost freeze is inherited from the previous patch.
     amy_adapter_->setReverbFreeze(patch.reverb_freeze != 0);
 
-    // 5. Set default reverb & delay effect levels
-    amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
+    applyActiveReverbState();
     amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
 
     // 5b. Capture the runtime manual-control state now that the patch and its FX
@@ -1226,7 +1285,7 @@ void PatchManager::applyMacroToEngine(uint8_t macro_idx, float effective_val) {
             case 6: // Reverb / Space Send Level
                 {
                     fx_state_.reverb_mix = std::clamp(shaped_val * 0.6f, 0.0f, 0.6f);
-                    amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
+                    applyActiveReverbState();
                 }
                 break;
             case 7: // Safe Feedback / Drive

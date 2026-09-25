@@ -24,7 +24,12 @@ constexpr float kEnvelopeMaxMs = 5000.0f;
 constexpr float kResonanceMin  = 0.5f;
 constexpr float kResonanceMax  = 10.0f;
 constexpr float kDelayMinMs    = 10.0f;
-constexpr float kDelayMaxMs    = 1000.0f;
+constexpr float kDelayMaxMs    = 1000.0f; // free-running delay knob range
+constexpr float kDelaySyncMaxMs = 1200.0f; // BPM-synced delay upper bound
+// Highest musically safe echo feedback. The mapping already uses this; the
+// engine clamp (AmyAdapter::executeDelay) re-asserts it so a hand-authored or
+// migrated value can never drive runaway feedback.
+constexpr float kMaxDelayFeedback = 0.95f;
 } // namespace control_ranges
 
 // Filter cutoff: geometric sweep 20 Hz .. 18 kHz, so the knob midpoint lands
@@ -89,6 +94,25 @@ inline float delayMsToNorm(float delay_ms) {
     const float ratio = control_ranges::kDelayMaxMs / control_ranges::kDelayMinMs;
     return std::log(delay_ms / control_ranges::kDelayMinMs) / std::log(ratio);
 }
+
+// BPM-synced delay subdivisions, in beats (quarter notes). The order is the
+// knob sweep order and is shared by the control path and the tests so the two
+// can never disagree. It intentionally preserves the historical multipliers
+// (0.25, 1/3, 0.5, 0.75, 1, 1.5, 2) but names them as musical divisions.
+struct DelayDivision {
+    const char* name;
+    float       beats;
+};
+constexpr int kDelayDivisionCount = 7;
+constexpr DelayDivision kDelayDivisions[kDelayDivisionCount] = {
+    { "1/16", 0.25f },
+    { "1/8T", 1.0f / 3.0f },
+    { "1/8",  0.5f },
+    { "1/8D", 0.75f },
+    { "1/4",  1.0f },
+    { "1/4D", 1.5f },
+    { "1/2",  2.0f },
+};
 
 // Wet FX amount (delay mix, reverb mix, chorus depth). Squared so a mid knob
 // stays in the musically useful low-wet region and does not jump to an

@@ -237,9 +237,15 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
             patch_out.master_tone = 0.0f;
             patch_out.chorus_mode = 0;
             patch_out.reverb_freeze = 0;
+            patch_out.chorus_depth = kV6DefaultChorusDepth;
+            patch_out.delay_time_ms = kV6DefaultDelayTimeMs;
+            patch_out.delay_feedback = kV6DefaultDelayFeedback;
+            patch_out.delay_mix = kV6DefaultDelayMix;
+            patch_out.reverb_size = kV6DefaultReverbSize;
+            patch_out.reverb_mix = kV6DefaultReverbMix;
             patch_out.crc32 = calculatePatchCrc32(patch_out);
 
-            ESP_LOGI(TAG, "Loaded and migrated v3 Patch Slot #%d [%s] to v5", slot_id, patch_out.name);
+            ESP_LOGI(TAG, "Loaded and migrated v3 Patch Slot #%d [%s] to v6", slot_id, patch_out.name);
             return true;
         } else if (header.format_version == 4) {
             if (header.data_size != sizeof(SynthPatchV4Legacy)) {
@@ -318,9 +324,45 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
             }
 
             patch_out.reverb_freeze = v4_patch.reverb_freeze;
+            patch_out.chorus_depth = (patch_out.chorus_mode != 0) ? 1.0f : kV6DefaultChorusDepth;
+            patch_out.delay_time_ms = kV6DefaultDelayTimeMs;
+            patch_out.delay_feedback = kV6DefaultDelayFeedback;
+            patch_out.delay_mix = kV6DefaultDelayMix;
+            patch_out.reverb_size = kV6DefaultReverbSize;
+            patch_out.reverb_mix = kV6DefaultReverbMix;
             patch_out.crc32 = calculatePatchCrc32(patch_out);
 
-            ESP_LOGI(TAG, "Loaded and migrated legacy v4 Patch Slot #%d [%s] to v5", slot_id, patch_out.name);
+            ESP_LOGI(TAG, "Loaded and migrated legacy v4 Patch Slot #%d [%s] to v6", slot_id, patch_out.name);
+            return true;
+        } else if (header.format_version == 5) {
+            // v5 -> v6: full FX persistence was introduced in v6; the v5 layout
+            // is frozen and migrated with runtime-equivalent FX defaults.
+            if (header.data_size != sizeof(SynthPatchV5)) {
+                ESP_LOGE(TAG, "v5 data_size mismatch on slot #%d: header %u != expected %zu",
+                         slot_id, header.data_size, sizeof(SynthPatchV5));
+                fclose(f);
+                return false;
+            }
+            SynthPatchV5 v5_patch = {};
+            size_t read_bytes = fread(&v5_patch, 1, sizeof(SynthPatchV5), f);
+            fclose(f);
+
+            if (read_bytes != sizeof(SynthPatchV5)) {
+                ESP_LOGE(TAG, "Corrupted v5 patch payload on slot #%d (bytes read %zu != %zu)",
+                         slot_id, read_bytes, sizeof(SynthPatchV5));
+                return false;
+            }
+
+            uint32_t computed_crc = calculatePatchV5Crc32(v5_patch);
+            if (computed_crc != header.crc32 || computed_crc != v5_patch.crc32) {
+                ESP_LOGE(TAG, "v5 Patch CRC32 mismatch on slot #%d! Computed 0x%08X != Header 0x%08X",
+                         slot_id, static_cast<unsigned int>(computed_crc), static_cast<unsigned int>(header.crc32));
+                return false;
+            }
+
+            patch_out = migratePatchV5ToV6(v5_patch);
+            patch_out.crc32 = calculatePatchCrc32(patch_out);
+            ESP_LOGI(TAG, "Loaded and migrated v5 Patch Slot #%d [%s] to v6", slot_id, patch_out.name);
             return true;
         } else if (header.format_version != kPatchFormatVersion) {
             ESP_LOGE(TAG, "Incompatible patch format version: %u on slot #%d", header.format_version, slot_id);
@@ -329,7 +371,7 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
         }
 
         if (header.data_size != sizeof(SynthPatch)) {
-            ESP_LOGE(TAG, "v5 data_size mismatch on slot #%d: header %u != expected %zu",
+            ESP_LOGE(TAG, "v6 data_size mismatch on slot #%d: header %u != expected %zu",
                      slot_id, header.data_size, sizeof(SynthPatch));
             fclose(f);
             return false;
@@ -371,6 +413,18 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
         }
     }
 
+    // Unheadered v5 fallback (pre-header files written by the v5 firmware).
+    fseek(f, 0, SEEK_SET);
+    SynthPatchV5 legacy_v5 = {};
+    size_t v5_read = fread(&legacy_v5, 1, sizeof(SynthPatchV5), f);
+    if (v5_read == sizeof(SynthPatchV5) && calculatePatchV5Crc32(legacy_v5) == legacy_v5.crc32) {
+        fclose(f);
+        patch_out = migratePatchV5ToV6(legacy_v5);
+        patch_out.crc32 = calculatePatchCrc32(patch_out);
+        ESP_LOGI(TAG, "Loaded unheadered v5 Patch Slot #%d [%s] from Flash", slot_id, patch_out.name);
+        return true;
+    }
+
     fseek(f, 0, SEEK_SET);
     SynthPatchV3 legacy_v3 = {};
     size_t v3_read = fread(&legacy_v3, 1, sizeof(SynthPatchV3), f);
@@ -407,6 +461,12 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
         patch_out.master_tone = 0.0f;
         patch_out.chorus_mode = 0;
         patch_out.reverb_freeze = 0;
+        patch_out.chorus_depth = kV6DefaultChorusDepth;
+        patch_out.delay_time_ms = kV6DefaultDelayTimeMs;
+        patch_out.delay_feedback = kV6DefaultDelayFeedback;
+        patch_out.delay_mix = kV6DefaultDelayMix;
+        patch_out.reverb_size = kV6DefaultReverbSize;
+        patch_out.reverb_mix = kV6DefaultReverbMix;
         patch_out.crc32 = calculatePatchCrc32(patch_out);
         ESP_LOGI(TAG, "Loaded legacy v3 unheadered Patch Slot #%d [%s] from Flash", slot_id, patch_out.name);
         return true;

@@ -196,6 +196,10 @@ public:
 
     void applyActiveFilterState();
     void applyActiveChorusState();
+    // Single place that turns fx_state_ reverb fields into an engine command,
+    // with size-dependent damping so the three size zones have distinct
+    // character instead of a single fixed damping.
+    void applyActiveReverbState();
 
     // True when the active patch mixes legacy (0..7) and relative macro routes.
     // Such a patch is unsupported: the relative routes are applied and the
@@ -248,7 +252,8 @@ private:
     PatchSource    active_patch_source_ = PatchSource::Factory;
 
     // Runtime-only manual-control base state for the relative macro model.
-    // Captured on patch load; never stored in the patch (format stays v5).
+    // Captured on patch load and persisted as the manual FX base in v6; the
+    // macro-processed result is never written back here.
     ManualControlState manual_state_;
     // One diagnostic per patch load when an unsupported mixed mapping is seen.
     bool mixed_macro_warning_emitted_ = false;

@@ -9,7 +9,7 @@ namespace smk {
 // ─────────────────────────────────────────────────────────────
 // Sound & Musicality M2: family-aware musical macro destinations.
 //
-// MacroMapping::param_type is a uint8_t and is persisted inside the v5 patch
+// MacroMapping::param_type is a uint8_t and is persisted inside the patch
 // format. The legacy values 0..7 keep their exact previous meaning so existing
 // patches keep loading and behaving as before. The new relative destinations
 // start at 8 and are only emitted by the factory macro profiles generated at
@@ -96,8 +96,9 @@ inline MacroMappingMode classifyMacroMappings(const SynthPatch& patch) {
 // neutral restores exactly the manual state, never the factory baseline, and
 // never drifts because the final applied value is never read back as manual.
 //
-// This state is runtime-only. The persisted patch format stays v5; only the
-// macro *positions* live in SynthPatch::macros.
+// This state is runtime-only. The persisted patch stores the manual base for
+// every control a macro can touch (v6), never the macro-processed result; only
+// the macro *positions* live in SynthPatch::macros.
 // ─────────────────────────────────────────────────────────────
 struct ManualControlState {
     float filter_cutoff = 1000.0f;

@@ -39,11 +39,11 @@ struct MacroConfig {
 };
 
 constexpr uint32_t kPatchMagic = 0x534D4B31; // "SMK1"
-constexpr uint16_t kPatchFormatVersion = 5;
+constexpr uint16_t kPatchFormatVersion = 6;
 
 struct PatchHeader {
     uint32_t magic;          // 0x534D4B31
-    uint16_t format_version; // Version 5
+    uint16_t format_version; // Current: 6
     uint16_t data_size;      // Payload data size
     uint32_t crc32;          // Checksum of patch data
 };
@@ -215,6 +215,47 @@ struct SynthPatchV4Legacy {
     uint32_t    crc32;
 };
 
+// Exact on-disk layout written by format_version == 5. Kept frozen so v5
+// patches can be range-checked and migrated deterministically; never extend it.
+struct SynthPatchV5 {
+    uint8_t     id;
+    char        name[24];
+    char        category[16];
+    char        author[16];
+    uint16_t    engine_patch; // AMY preset or patch ID (0..127 Juno, 128..255 DX7, 256+ PCM)
+    int8_t      transpose;    // Transpose in semitones (-24..+24)
+    uint8_t     voice_count;  // Max polyphony voices (e.g. 8)
+    uint8_t     wave_type;    // AMY wave: 0=SINE, 1=PULSE, 2=SAW_DOWN, 3=SAW_UP, 4=TRIANGLE, 5=NOISE, 6=KS, 7=PCM, 8=ALGO
+    uint8_t     mono_mode;    // 0=Polyphonic, 1=Monophonic Legato
+    uint16_t    portamento_ms;// Portamento glide time in milliseconds
+    float       base_freq;
+    float       filter_cutoff;
+    float       filter_res;
+    float       amp_attack;
+    float       amp_decay;
+    float       amp_sustain;
+    float       amp_release;
+    MacroConfig macros[8];
+    float       filter_env_amount;   // Envelope amount to filter cutoff (-4.0 to +4.0)
+    float       filter_key_tracking; // Filter keyboard tracking (0.0 to 2.0)
+    float       filter_vel_tracking; // Filter velocity tracking (0.0 to 2.0)
+    uint8_t     filter_type;         // SmkFilterType
+    float       osc_mix;             // Sub/main osc mix (0.0 to 1.0)
+    float       osc_detune;          // Detune in cents (-100.0 to +100.0)
+    float       sub_level;           // Sub-oscillator level (0.0 to 1.0)
+    float       noise_level;         // Noise level (0.0 to 1.0)
+    float       drive_level;         // Saturation / drive level normalized (0.0 to 1.0)
+    float       master_tone;         // Tilt EQ tone (-1.0 to +1.0)
+    uint8_t     chorus_mode;         // 0=Off, 1=Classic, 2=Juno, 3=Ensemble, 4=Wide, 5=Vibrato
+    uint8_t     reverb_freeze;       // 0=Normal, 1=Frozen reverb tank
+    uint8_t     reserved[6];         // Reserved padding
+    uint32_t    crc32;
+};
+
+// Current patch layout (format_version == 6). Adds the full musical FX state so
+// a saved patch can reconstruct the exact chorus/delay/reverb sound instead of
+// relying on runtime defaults. Fields 0..reverb_freeze keep their v5 meaning;
+// drive_level and master_tone are re-used, never duplicated.
 struct SynthPatch {
     uint8_t     id;
     char        name[24];
@@ -247,13 +288,43 @@ struct SynthPatch {
     float       master_tone;         // Tilt EQ tone (-1.0 to +1.0)
     uint8_t     chorus_mode;         // 0=Off, 1=Classic, 2=Juno, 3=Ensemble, 4=Wide, 5=Vibrato
     uint8_t     reverb_freeze;       // 0=Normal, 1=Frozen reverb tank
+    // v6 fields: full FX musical state.
+    float       chorus_depth;        // 0.0 .. 1.0 (mode-relative depth)
+    float       delay_time_ms;       // 10.0 .. 1000.0 ms (or BPM-synced)
+    float       delay_feedback;      // 0.0 .. 0.95
+    float       delay_mix;           // 0.0 .. 1.0
+    float       reverb_size;         // 0.0 .. 1.0
+    float       reverb_mix;          // 0.0 .. 1.0
     uint8_t     reserved[6];         // Reserved padding
     uint32_t    crc32;
 };
 
+// ─────────────────────────────────────────────────────────────
+// v5 -> v6 migration defaults.
+//
+// v5 never persisted chorus depth / delay / reverb size+mix, so those fields
+// are filled with the exact runtime defaults the v5 firmware used to apply at
+// load time. The only compatibility rule is chorus depth: v5 auto-enabled full
+// depth the first time a non-Off chorus mode was selected, so a v5 patch whose
+// mode is non-zero migrates to depth 1.0 to keep sounding the same. No value is
+// inferred from unrelated parameters.
+// ─────────────────────────────────────────────────────────────
+constexpr float kV6DefaultChorusDepth   = 0.0f;
+constexpr float kV6DefaultDelayTimeMs   = 350.0f;
+constexpr float kV6DefaultDelayFeedback = 0.4f;
+constexpr float kV6DefaultDelayMix      = 0.0f;
+constexpr float kV6DefaultReverbSize    = 0.7f;
+constexpr float kV6DefaultReverbMix     = 0.0f;
+
 // Helper functions to calculate CRC32 checksums
 uint32_t calculatePatchCrc32(const SynthPatch& patch);
+uint32_t calculatePatchV5Crc32(const SynthPatchV5& patch);
 uint32_t calculatePatchV3Crc32(const SynthPatchV3& patch);
 uint32_t calculatePatchV4LegacyCrc32(const SynthPatchV4Legacy& patch);
+
+// Deterministic v5 -> v6 migration. Metadata, macros and all v5 fields are
+// copied verbatim; only the six new v6 FX fields are seeded, as documented
+// above. Does not compute crc32 (the caller/StorageManager owns that).
+SynthPatch migratePatchV5ToV6(const SynthPatchV5& v5);
 
 } // namespace smk

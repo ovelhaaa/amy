@@ -654,6 +654,11 @@ void AmyAdapter::executeFmAlgorithm(uint8_t synth_id, uint8_t algo_id) {
 }
 
 void AmyAdapter::executeChorus(float depth, float rate, float level) {
+    // Defense in depth: the control layer clamps to the musical profiles, but a
+    // migrated or hand-authored patch must not be able to escape the safe range.
+    depth = std::clamp(depth, 0.0f, 2.0f);
+    rate = std::clamp(rate, 0.0f, 10.0f);
+    level = std::clamp(level, 0.0f, 1.5f);
     amy_event e = amy_default_event();
     e.bus = 0; // Target Synth bus 0 only
     e.chorus_level = level;
@@ -663,6 +668,9 @@ void AmyAdapter::executeChorus(float depth, float rate, float level) {
 }
 
 void AmyAdapter::executeChorusMode(uint8_t mode) {
+    // NOTE: Patch/UI chorus uses PatchManager's canonical profile table. This
+    // path is only reachable through the raw AMY console passthrough and is kept
+    // as a simple fallback.
     switch (mode) {
         case 0: executeChorus(0.0f, 0.0f, 0.0f); break;
         case 1: executeChorus(0.5f, 0.5f, 0.7f); break; // Classic
@@ -675,6 +683,10 @@ void AmyAdapter::executeChorusMode(uint8_t mode) {
 }
 
 void AmyAdapter::executeReverb(float room_size, float damp, float mix) {
+    // Keep the reverb inside a controlled/stable region regardless of source.
+    room_size = std::clamp(room_size, 0.0f, 1.0f);
+    damp = std::clamp(damp, 0.0f, 1.0f);
+    mix = std::clamp(mix, 0.0f, 1.0f);
     amy_event e = amy_default_event();
     e.bus = 0; // Target Synth bus 0 only
     e.reverb_level = mix;
@@ -689,6 +701,11 @@ void AmyAdapter::executeReverbFreeze(bool freeze) {
 }
 
 void AmyAdapter::executeDelay(float delay_ms, float feedback, float mix) {
+    // Musical safety ranges. feedback < 1.0 prevents runaway regeneration; the
+    // time range covers free (10..1000 ms) and BPM-synced (up to 1200 ms) use.
+    delay_ms = std::clamp(delay_ms, 10.0f, 1200.0f);
+    feedback = std::clamp(feedback, 0.0f, 0.95f);
+    mix = std::clamp(mix, 0.0f, 1.0f);
     amy_event e = amy_default_event();
     e.bus = 0; // Target Synth bus 0 only
     e.echo_level = mix;

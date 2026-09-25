@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <cstddef>
+#include <cstdlib>
 #include "patch_types.h"
 #include "controller_profile.h"
 #include "scene_types.h"
@@ -11,6 +12,23 @@ class StorageManager {
 public:
     static constexpr size_t kMaxSlots = 128;
     static constexpr const char* kMountPath = "/spiffs";
+
+    /**
+     * @brief Parse a storage slot argument without narrowing wrap-around.
+     *
+     * A bare (uint8_t)atoi() turns "256" into 0 and "-1" into 255, silently
+     * saving to the wrong slot. This rejects empty/non-numeric/out-of-range
+     * input before any cast, so the console can return a real error.
+     */
+    static bool parseSlotId(const char* arg, uint8_t& slot_out) {
+        if (arg == nullptr || *arg == '\0') return false;
+        char* end = nullptr;
+        const long value = std::strtol(arg, &end, 10);
+        if (end == arg || *end != '\0') return false;
+        if (value < 0 || value >= static_cast<long>(kMaxSlots)) return false;
+        slot_out = static_cast<uint8_t>(value);
+        return true;
+    }
 
     StorageManager();
     ~StorageManager();

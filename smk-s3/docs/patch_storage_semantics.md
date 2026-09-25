@@ -1,8 +1,9 @@
 # Patch Identity vs. Storage Slot (Sound & Musicality M2.3)
 
-Status: implemented, host-validated. Patch format is unchanged
-(`kPatchFormatVersion == 5`). This document defines the contract between a
-patch's identity and where a user copy is stored.
+Status: implemented, host-validated. Current patch format is
+`kPatchFormatVersion == 6` (M3 added full FX persistence with v5 -> v6
+migration). This document defines the contract between a patch's identity and
+where a user copy is stored.
 
 ## 1. The two domains
 

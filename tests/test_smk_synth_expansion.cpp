@@ -124,6 +124,16 @@ public:
     std::vector<LevelCall> noise_calls;
     std::vector<EnvelopeCall> envelope_calls;
     std::vector<float> drive_calls;
+    std::vector<bool>  freeze_calls;
+    std::vector<float> tone_calls;
+
+    void setReverbFreeze(bool freeze) override {
+        freeze_calls.push_back(freeze);
+    }
+
+    void setMasterTone(float tone) override {
+        tone_calls.push_back(tone);
+    }
 
     void setEnvelope(uint8_t osc_id, float attack_ms, float decay_ms,
                      float sustain, float release_ms) override {
@@ -809,29 +819,29 @@ static void test_patch_manager_chorus_depth_and_modes() {
     // Switching from Off (0) to Juno (2) with depth near 0 must default depth to 1.0f
     assert(pm.fxControlState().chorus_depth == 1.0f);
     assert(!mock.chorus_calls.empty());
-    assert(std::abs(mock.chorus_calls.back().depth - 0.8f) < 0.01f);
-    assert(std::abs(mock.chorus_calls.back().rate - 0.6f) < 0.01f);
-    assert(std::abs(mock.chorus_calls.back().level - 0.85f) < 0.01f);
+    assert(std::abs(mock.chorus_calls.back().depth - 0.65f) < 0.01f);
+    assert(std::abs(mock.chorus_calls.back().rate - 0.45f) < 0.01f);
+    assert(std::abs(mock.chorus_calls.back().level - 0.80f) < 0.01f);
 
     // 2. Adjust Chorus Depth (Engine Knob 4 -> knob index 8+4=12) to 0.0f strictly produces level=0.0f and depth=0.0f
     pm.handleKnobInput(12, 0.0f);
     assert(pm.fxControlState().chorus_depth == 0.0f);
     assert(mock.chorus_calls.back().depth == 0.0f);
     assert(mock.chorus_calls.back().level == 0.0f);
-    assert(std::abs(mock.chorus_calls.back().rate - 0.6f) < 0.01f);
+    assert(std::abs(mock.chorus_calls.back().rate - 0.45f) < 0.01f);
 
     // 3. Test knob positions 0.25, 0.5, 1.0 on Juno using the squared wet curve.
     pm.handleKnobInput(12, 0.25f * 127.0f);
-    assert(std::abs(mock.chorus_calls.back().depth - (0.8f * wetFromNorm(0.25f))) < 0.01f);
-    assert(std::abs(mock.chorus_calls.back().level - (0.85f * wetFromNorm(0.25f))) < 0.01f);
+    assert(std::abs(mock.chorus_calls.back().depth - (0.65f * wetFromNorm(0.25f))) < 0.01f);
+    assert(std::abs(mock.chorus_calls.back().level - (0.80f * wetFromNorm(0.25f))) < 0.01f);
 
     pm.handleKnobInput(12, 0.5f * 127.0f);
-    assert(std::abs(mock.chorus_calls.back().depth - (0.8f * wetFromNorm(0.5f))) < 0.01f);
-    assert(std::abs(mock.chorus_calls.back().level - (0.85f * wetFromNorm(0.5f))) < 0.01f);
+    assert(std::abs(mock.chorus_calls.back().depth - (0.65f * wetFromNorm(0.5f))) < 0.01f);
+    assert(std::abs(mock.chorus_calls.back().level - (0.80f * wetFromNorm(0.5f))) < 0.01f);
 
     pm.handleKnobInput(12, 1.0f * 127.0f);
-    assert(std::abs(mock.chorus_calls.back().depth - 0.8f) < 0.01f);
-    assert(std::abs(mock.chorus_calls.back().level - 0.85f) < 0.01f);
+    assert(std::abs(mock.chorus_calls.back().depth - 0.65f) < 0.01f);
+    assert(std::abs(mock.chorus_calls.back().level - 0.80f) < 0.01f);
 
     // 4. Test Mode 0 (Off)
     pm.handleKnobInput(0, 0.0f);
@@ -843,12 +853,12 @@ static void test_patch_manager_chorus_depth_and_modes() {
     // 5. Test all other modes: Classic (1), Ensemble (3), Wide (4), Vibrato (5) at depths 0.0, 0.5, 1.0
     struct ModeSpec { float depth; float rate; float level; };
     const ModeSpec specs[6] = {
-        {0.0f, 0.0f, 0.0f},
-        {0.5f, 0.5f, 0.7f},
-        {0.8f, 0.6f, 0.85f},
-        {1.2f, 0.9f, 1.0f},
-        {1.5f, 0.4f, 0.9f},
-        {0.4f, 4.5f, 0.6f}
+        {0.00f, 0.00f, 0.00f}, // Off
+        {0.30f, 0.55f, 0.55f}, // Classic
+        {0.65f, 0.45f, 0.80f}, // Juno
+        {0.95f, 0.85f, 0.95f}, // Ensemble
+        {1.10f, 0.30f, 0.75f}, // Wide
+        {0.45f, 5.00f, 0.75f}  // Vibrato
     };
     for (uint8_t m = 1; m <= 5; ++m) {
         pm.handleKnobInput(0, ((float)m / 5.0f) * 127.0f);
@@ -914,27 +924,95 @@ static void test_storage_manager_real_files_and_migration() {
     StorageManager storage;
     assert(storage.begin(test_dir));
 
-    // A. Save and load v5 patch
-    SynthPatch p5 = *FactoryPatches::getPatchById(0);
-    p5.id = 55;
-    strncpy(p5.name, "V5 Test Patch", sizeof(p5.name));
-    p5.filter_type = static_cast<uint8_t>(SmkFilterType::Inherit);
-    p5.wave_type = toAmyWaveType(SmkWaveType::Pulse);
-    p5.chorus_mode = 2; // Juno
-    p5.drive_level = 0.35f;
-    p5.crc32 = calculatePatchCrc32(p5);
+    // A. Save and load a current (v6) patch, including the full FX state.
+    SynthPatch p6 = *FactoryPatches::getPatchById(0);
+    p6.id = 55;
+    strncpy(p6.name, "V6 Test Patch", sizeof(p6.name));
+    p6.filter_type = static_cast<uint8_t>(SmkFilterType::Inherit);
+    p6.wave_type = toAmyWaveType(SmkWaveType::Pulse);
+    p6.chorus_mode = 2; // Juno
+    p6.chorus_depth = 0.42f;
+    p6.delay_time_ms = 275.0f;
+    p6.delay_feedback = 0.55f;
+    p6.delay_mix = 0.31f;
+    p6.reverb_size = 0.62f;
+    p6.reverb_mix = 0.27f;
+    p6.drive_level = 0.35f;
+    p6.master_tone = -0.2f;
+    p6.crc32 = calculatePatchCrc32(p6);
 
-    assert(storage.savePatch(55, p5));
+    assert(storage.savePatch(55, p6));
     assert(storage.patchExists(55));
 
-    SynthPatch loaded5 = {};
-    assert(storage.loadPatch(55, loaded5));
-    assert(loaded5.crc32 == p5.crc32);
-    assert(loaded5.filter_type == static_cast<uint8_t>(SmkFilterType::Inherit));
-    assert(loaded5.wave_type == toAmyWaveType(SmkWaveType::Pulse));
-    assert(loaded5.chorus_mode == 2);
-    assert(std::abs(loaded5.drive_level - 0.35f) < 0.001f);
-    assert(strcmp(loaded5.name, "V5 Test Patch") == 0);
+    SynthPatch loaded6 = {};
+    assert(storage.loadPatch(55, loaded6));
+    assert(loaded6.crc32 == p6.crc32);
+    assert(loaded6.filter_type == static_cast<uint8_t>(SmkFilterType::Inherit));
+    assert(loaded6.wave_type == toAmyWaveType(SmkWaveType::Pulse));
+    assert(loaded6.chorus_mode == 2);
+    assert(std::abs(loaded6.chorus_depth - 0.42f) < 0.001f);
+    assert(std::abs(loaded6.delay_time_ms - 275.0f) < 0.001f);
+    assert(std::abs(loaded6.delay_feedback - 0.55f) < 0.001f);
+    assert(std::abs(loaded6.delay_mix - 0.31f) < 0.001f);
+    assert(std::abs(loaded6.reverb_size - 0.62f) < 0.001f);
+    assert(std::abs(loaded6.reverb_mix - 0.27f) < 0.001f);
+    assert(std::abs(loaded6.drive_level - 0.35f) < 0.001f);
+    assert(std::abs(loaded6.master_tone + 0.2f) < 0.001f);
+    assert(strcmp(loaded6.name, "V6 Test Patch") == 0);
+
+    // A2. Real v5 fixture migration. v5 never persisted chorus depth / delay /
+    // reverb; a v5 patch with a non-Off chorus mode migrates to full depth to
+    // keep the old first-load sound, while the delay/reverb fields take the v5
+    // runtime defaults. Header + payload are written by hand as the v5 firmware
+    // would have.
+    auto write_v5_fixture = [&](uint8_t slot, uint8_t chorus_mode) {
+        char path[128];
+        snprintf(path, sizeof(path), "%s/patch_%03d.s3p", test_dir, slot);
+        SynthPatchV5 v5 = {};
+        v5.id = slot;
+        strncpy(v5.name, "Legacy V5 Patch", sizeof(v5.name));
+        v5.wave_type = toAmyWaveType(SmkWaveType::SawDown);
+        v5.filter_cutoff = 2400.0f;
+        v5.chorus_mode = chorus_mode;
+        v5.drive_level = 0.44f;
+        v5.master_tone = 0.15f;
+        v5.crc32 = calculatePatchV5Crc32(v5);
+
+        PatchHeader h = {};
+        h.magic = kPatchMagic;
+        h.format_version = 5;
+        h.data_size = sizeof(SynthPatchV5);
+        h.crc32 = v5.crc32;
+
+        FILE* f = fopen(path, "wb");
+        assert(f != nullptr);
+        fwrite(&h, 1, sizeof(PatchHeader), f);
+        fwrite(&v5, 1, sizeof(SynthPatchV5), f);
+        fclose(f);
+    };
+
+    write_v5_fixture(50, 2); // Juno selected
+    SynthPatch mig_juno = {};
+    assert(storage.loadPatch(50, mig_juno));
+    assert(mig_juno.id == 50);
+    assert(strcmp(mig_juno.name, "Legacy V5 Patch") == 0);
+    assert(mig_juno.chorus_mode == 2);
+    assert(std::abs(mig_juno.chorus_depth - 1.0f) < 1e-6f); // v5 auto-enable
+    assert(std::abs(mig_juno.delay_time_ms - kV6DefaultDelayTimeMs) < 1e-6f);
+    assert(std::abs(mig_juno.delay_feedback - kV6DefaultDelayFeedback) < 1e-6f);
+    assert(std::abs(mig_juno.delay_mix - kV6DefaultDelayMix) < 1e-6f);
+    assert(std::abs(mig_juno.reverb_size - kV6DefaultReverbSize) < 1e-6f);
+    assert(std::abs(mig_juno.reverb_mix - kV6DefaultReverbMix) < 1e-6f);
+    assert(std::abs(mig_juno.drive_level - 0.44f) < 1e-6f);
+    assert(std::abs(mig_juno.master_tone - 0.15f) < 1e-6f);
+    assert(mig_juno.crc32 == calculatePatchCrc32(mig_juno));
+
+    write_v5_fixture(51, 0); // Off
+    SynthPatch mig_off = {};
+    assert(storage.loadPatch(51, mig_off));
+    assert(mig_off.chorus_mode == 0);
+    assert(std::abs(mig_off.chorus_depth - 0.0f) < 1e-6f);
+    assert(mig_off.crc32 == calculatePatchCrc32(mig_off));
 
     // B. Legacy v4 fixture migration. Legacy v4 is officially the first
     // Expansion v4: the old adapter forwarded filter_type only when > 0, so
@@ -1050,7 +1128,7 @@ static void test_storage_manager_real_files_and_migration() {
     write_header_only(72, 3, static_cast<uint16_t>(sizeof(SynthPatchV3) - 1));
     assert(!storage.loadPatch(72, reject_out));
 
-    printf("PASS: StorageManager disk I/O, v5 save/load, v4/v3 migration, CRC corruption and data_size rejection\n");
+    printf("PASS: StorageManager disk I/O, v6 save/load, v5/v4/v3 migration, CRC corruption and data_size rejection\n");
 }
 
 static void test_bank_b_fm_relative_and_detune() {
@@ -2513,14 +2591,367 @@ static void test_showcase_macro_smoke() {
     printf("PASS: showcase patches x every macro at 0/50/100 stay finite and in range\n");
 }
 
+// ─────────────────────────────────────────────────────────────
+// Sound & Musicality M3: full FX persistence, stale-state & safety
+// ─────────────────────────────────────────────────────────────
+struct FxSnapshot {
+    float   chorus_depth = 0.0f;
+    uint8_t chorus_mode  = 0;
+    float   delay_time   = 0.0f;
+    float   delay_fb     = 0.0f;
+    float   delay_mix    = 0.0f;
+    float   reverb_size  = 0.0f;
+    float   reverb_mix   = 0.0f;
+    float   drive        = 0.0f;
+    float   tone         = 0.0f;
+    uint8_t freeze       = 0;
+    float   macro[8]     = {0};
+};
+
+static FxSnapshot capture_fx(smk::PatchManager& pm) {
+    using namespace smk;
+    FxSnapshot s;
+    const FxControlState& fx = pm.fxControlState();
+    s.chorus_depth = fx.chorus_depth;
+    s.chorus_mode  = fx.chorus_mode;
+    s.delay_time   = fx.delay_time_ms;
+    s.delay_fb     = fx.delay_feedback;
+    s.delay_mix    = fx.delay_mix;
+    s.reverb_size  = fx.reverb_size;
+    s.reverb_mix   = fx.reverb_mix;
+    s.drive        = fx.drive;
+    s.tone         = fx.master_tone;
+    s.freeze       = pm.activePatch().reverb_freeze;
+    for (uint8_t i = 0; i < 8; ++i) s.macro[i] = pm.activePatch().macros[i].current_val;
+    return s;
+}
+
+static void assert_fx_close(const char* label, const FxSnapshot& a, const FxSnapshot& b) {
+    const float eps = 1e-3f;
+    auto near = [&](float x, float y) { return std::fabs(x - y) <= eps * (1.0f + std::fabs(y)); };
+    if (!near(a.chorus_depth, b.chorus_depth) || a.chorus_mode != b.chorus_mode ||
+        !near(a.delay_time, b.delay_time) || !near(a.delay_fb, b.delay_fb) ||
+        !near(a.delay_mix, b.delay_mix) || !near(a.reverb_size, b.reverb_size) ||
+        !near(a.reverb_mix, b.reverb_mix) || !near(a.drive, b.drive) ||
+        !near(a.tone, b.tone) || a.freeze != b.freeze) {
+        std::printf("FAIL: FX state mismatch after %s\n", label);
+        assert(false);
+    }
+    for (uint8_t i = 0; i < 8; ++i) {
+        if (!near(a.macro[i], b.macro[i])) {
+            std::printf("FAIL: macro %u mismatch after %s (%.3f vs %.3f)\n", i, label, a.macro[i], b.macro[i]);
+            assert(false);
+        }
+    }
+}
+
+// Set a full, non-neutral FX state on the relative-model test patch.
+static void configure_full_fx(smk::PatchManager& pm, bool freeze) {
+    using namespace smk;
+    pm.setKnobBank(KnobBank::BankD_Effects);
+    pm.handleKnobInput(0, (3.0f / 5.0f) * 127.0f);              // Ensemble
+    pm.handleKnobInput(12, wetToNorm(0.6f) * 127.0f);           // chorus depth (engine knob)
+    pm.handleKnobInput(13, delayMsToNorm(275.0f) * 127.0f);     // delay time (engine knob)
+    pm.handleKnobInput(2, (0.55f / control_ranges::kMaxDelayFeedback) * 127.0f); // feedback
+    pm.handleKnobInput(3, wetToNorm(0.5f) * 127.0f);            // delay mix
+    pm.handleKnobInput(4, 0.8f * 127.0f);                       // reverb size
+    pm.handleKnobInput(5, wetToNorm(0.5f) * 127.0f);            // reverb mix
+    pm.handleKnobInput(6, driveToNorm(0.4f) * 127.0f);          // drive
+    pm.handleKnobInput(7, 0.65f * 127.0f);                      // tone (-1..1)
+    pm.setMacro(0, 110.0f, true);                               // CHAR
+    pm.setMacro(6, 90.0f, true);                                // SPCE
+    pm.setMacro(7, 80.0f, true);                                // DRV
+    if (freeze) {
+        // Freeze is a patch-level flag with no runtime knob; apply it through a
+        // patch so the persistence path is exercised.
+        SynthPatch p = pm.buildPersistablePatch();
+        p.reverb_freeze = 1;
+        p.crc32 = 0;
+        pm.applyLoadedPatch(p);
+        // Re-apply the macro positions lost by the reload (factory defaults).
+        pm.setMacro(0, 110.0f, true);
+        pm.setMacro(6, 90.0f, true);
+        pm.setMacro(7, 80.0f, true);
+    }
+}
+
+static void test_full_fx_roundtrip() {
+    using namespace smk;
+    const char* dir = "build/test_storage_fx";
+    std::filesystem::create_directories(dir);
+    StorageManager storage;
+    assert(storage.begin(dir));
+
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.applyLoadedPatch(make_relative_test_patch(0)));
+    configure_full_fx(pm, /*freeze=*/true);
+
+    const FxSnapshot before = capture_fx(pm);
+    const ManualControlState manual_before = pm.manualControlState();
+
+    assert(persist_roundtrip(pm, storage, 80));
+
+    const FxSnapshot after = capture_fx(pm);
+    assert_fx_close("full FX save/load", before, after);
+    assert(pm.manualControlState().chorus_depth == manual_before.chorus_depth ||
+           std::fabs(pm.manualControlState().chorus_depth - manual_before.chorus_depth) < 1e-4f);
+    assert(std::fabs(pm.manualControlState().delay_time_ms - manual_before.delay_time_ms) < 1e-3f);
+    assert(std::fabs(pm.manualControlState().reverb_mix - manual_before.reverb_mix) < 1e-4f);
+    assert(after.freeze == 1);
+
+    printf("PASS: full FX (chorus/delay/reverb/drive/tone/freeze) + macros round-trip exactly\n");
+}
+
+static void test_no_stale_fx_across_patch_change() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+
+    // Patch A: extreme FX with freeze on.
+    SynthPatch a = make_relative_test_patch(0);
+    a.chorus_mode = 4;
+    a.chorus_depth = 1.0f;
+    a.delay_time_ms = 700.0f;
+    a.delay_feedback = 0.9f;
+    a.delay_mix = 0.9f;
+    a.reverb_size = 1.0f;
+    a.reverb_mix = 0.9f;
+    a.drive_level = 0.8f;
+    a.master_tone = 0.7f;
+    a.reverb_freeze = 1;
+    assert(pm.applyLoadedPatch(a));
+    assert(pm.fxControlState().chorus_depth > 0.5f);
+    assert(mock.freeze_calls.back() == true);
+
+    // Patch B: dry/neutral. Loading it must leave *exactly* B's FX, with none
+    // of A's chorus/delay/reverb/drive/tone/freeze surviving.
+    SynthPatch b = make_relative_test_patch(0);
+    b.chorus_mode = 0;
+    b.chorus_depth = 0.0f;
+    b.delay_time_ms = 350.0f;
+    b.delay_feedback = 0.4f;
+    b.delay_mix = 0.0f;
+    b.reverb_size = 0.7f;
+    b.reverb_mix = 0.0f;
+    b.drive_level = 0.0f;
+    b.master_tone = 0.0f;
+    b.reverb_freeze = 0;
+    assert(pm.applyLoadedPatch(b));
+
+    const FxControlState& fx = pm.fxControlState();
+    assert(fx.chorus_mode == 0);
+    assert(fx.chorus_depth == 0.0f);
+    assert(std::abs(fx.delay_mix - 0.0f) < 1e-6f);
+    assert(std::abs(fx.delay_feedback - 0.4f) < 1e-4f);
+    assert(std::abs(fx.delay_time_ms - 350.0f) < 1e-3f);
+    assert(std::abs(fx.reverb_size - 0.7f) < 1e-4f);
+    assert(std::abs(fx.reverb_mix - 0.0f) < 1e-6f);
+    assert(fx.drive == 0.0f);
+    assert(fx.master_tone == 0.0f);
+    assert(pm.activePatch().reverb_freeze == 0);
+    assert(mock.freeze_calls.back() == false); // ghost freeze cleared
+
+    printf("PASS: patch A (extreme FX + freeze) -> patch B (dry) leaves no stale FX\n");
+}
+
+static void test_fx_100_cycle_persistence() {
+    using namespace smk;
+    const char* dir = "build/test_storage_fx";
+    std::filesystem::create_directories(dir);
+    StorageManager storage;
+    assert(storage.begin(dir));
+
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.applyLoadedPatch(make_relative_test_patch(0)));
+    configure_full_fx(pm, /*freeze=*/true);
+
+    const FxSnapshot first = capture_fx(pm);
+    const ManualControlState manual_first = pm.manualControlState();
+
+    for (int i = 0; i < 100; ++i) {
+        assert(persist_roundtrip(pm, storage, 81));
+        const FxSnapshot now = capture_fx(pm);
+        assert_fx_close("100-cycle FX persistence", first, now);
+        assert(std::isfinite(now.chorus_depth));
+        assert(now.chorus_depth >= 0.0f && now.chorus_depth <= 1.0f);
+        assert(now.delay_time >= control_ranges::kDelayMinMs &&
+               now.delay_time <= control_ranges::kDelaySyncMaxMs);
+        assert(now.delay_fb >= 0.0f && now.delay_fb <= control_ranges::kMaxDelayFeedback);
+        assert(now.delay_mix >= 0.0f && now.delay_mix <= 1.0f);
+        assert(now.reverb_size >= 0.0f && now.reverb_size <= 1.0f);
+        assert(now.reverb_mix >= 0.0f && now.reverb_mix <= 1.0f);
+        assert(now.drive >= 0.0f && now.drive <= 1.0f);
+        assert(now.tone >= -1.0f && now.tone <= 1.0f);
+        assert(std::fabs(pm.manualControlState().chorus_depth - manual_first.chorus_depth) < 1e-3f);
+        assert(std::fabs(pm.manualControlState().delay_time_ms - manual_first.delay_time_ms) < 1e-2f);
+    }
+
+    printf("PASS: 100 FX save/load/apply cycles show no drift, NaN or range escape\n");
+}
+
+static void test_fx_safety_ranges() {
+    using namespace smk;
+    size_t n = 0;
+    const uint8_t* ids = FactoryPatches::showcaseIds(n);
+
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    const float vals[3] = { 0.0f, 63.5f, 127.0f };
+
+    for (size_t i = 0; i < n; ++i) {
+        assert(pm.selectPatch(ids[i]));
+        for (uint8_t m = 0; m < 8; ++m) {
+            for (float v : vals) {
+                pm.setMacro(m, v, true);
+                const FxControlState& fx = pm.fxControlState();
+                assert(std::isfinite(fx.chorus_depth) && fx.chorus_depth >= -1e-3f && fx.chorus_depth <= 1.0f + 1e-3f);
+                assert(fx.chorus_mode <= 5);
+                assert(std::isfinite(fx.delay_time_ms));
+                assert(fx.delay_time_ms >= control_ranges::kDelayMinMs - 1e-3f &&
+                       fx.delay_time_ms <= control_ranges::kDelaySyncMaxMs + 1e-3f);
+                assert(std::isfinite(fx.delay_feedback) &&
+                       fx.delay_feedback >= -1e-3f && fx.delay_feedback <= control_ranges::kMaxDelayFeedback + 1e-3f);
+                assert(std::isfinite(fx.delay_mix) && fx.delay_mix >= -1e-3f && fx.delay_mix <= 1.0f + 1e-3f);
+                assert(std::isfinite(fx.reverb_size) && fx.reverb_size >= -1e-3f && fx.reverb_size <= 1.0f + 1e-3f);
+                assert(std::isfinite(fx.reverb_mix) && fx.reverb_mix >= -1e-3f && fx.reverb_mix <= 1.0f + 1e-3f);
+                assert(std::isfinite(fx.drive) && fx.drive >= -1e-3f && fx.drive <= 1.0f + 1e-3f);
+                assert(std::isfinite(fx.master_tone) && fx.master_tone >= -1.0f - 1e-3f && fx.master_tone <= 1.0f + 1e-3f);
+            }
+        }
+        // Restore neutral for the next patch.
+        for (uint8_t m = 0; m < 8; ++m) {
+            pm.setMacro(m, pm.activePatch().macros[m].default_val, true);
+        }
+    }
+
+    printf("PASS: macro extremes keep every FX parameter finite and inside safe ranges\n");
+}
+
+// M3 14: macro overlaps on the same FX destination must be order independent,
+// and each macro must compose with the manual FX base rather than replace it.
+static smk::SynthPatch make_fx_macro_test_patch() {
+    using namespace smk;
+    SynthPatch p = *FactoryPatches::getPatchById(0);
+    for (uint8_t i = 0; i < 8; ++i) {
+        p.macros[i].mapping_count = 0;
+        p.macros[i].default_val = 50.0f;
+        p.macros[i].current_val = 50.0f;
+    }
+    p.macros[1].mapping_count = 1;
+    p.macros[1].mappings[0] = { 0xFFFF, static_cast<uint8_t>(MacroTarget::MasterToneRelative), -0.2f, 0.5f, 0 };
+    p.macros[6].mapping_count = 2;
+    p.macros[6].mappings[0] = { 0xFFFF, static_cast<uint8_t>(MacroTarget::ReverbMix), 0.0f, 0.6f, 0 };
+    p.macros[6].mappings[1] = { 0xFFFF, static_cast<uint8_t>(MacroTarget::DelayMix), 0.0f, 0.4f, 0 };
+    p.macros[7].mapping_count = 2;
+    p.macros[7].mappings[0] = { 0xFFFF, static_cast<uint8_t>(MacroTarget::DriveRelative), 0.0f, 0.7f, 0 };
+    p.macros[7].mappings[1] = { 0xFFFF, static_cast<uint8_t>(MacroTarget::MasterToneRelative), 0.0f, 0.2f, 0 };
+    return p;
+}
+
+static FxSnapshot run_fx_macro_order(float manual_reverb, float manual_delay,
+                                     float manual_drive, float manual_tone,
+                                     uint8_t first, float first_val,
+                                     uint8_t second, float second_val) {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.applyLoadedPatch(make_fx_macro_test_patch()));
+
+    pm.setKnobBank(KnobBank::BankD_Effects);
+    pm.handleKnobInput(3, wetToNorm(manual_delay) * 127.0f);   // delay mix
+    pm.handleKnobInput(5, wetToNorm(manual_reverb) * 127.0f);  // reverb mix
+    pm.handleKnobInput(6, driveToNorm(manual_drive) * 127.0f); // drive
+    pm.handleKnobInput(7, (manual_tone + 1.0f) * 0.5f * 127.0f); // tone
+
+    pm.setMacro(first, first_val, true);
+    pm.setMacro(second, second_val, true);
+    return capture_fx(pm);
+}
+
+static void test_fx_macro_order_independence() {
+    using namespace smk;
+    // SPCE raises reverb+delay+chorus; DRV raises drive+tone; BRTE raises tone.
+    const FxSnapshot spce_drv = run_fx_macro_order(0.3f, 0.2f, 0.25f, 0.1f, 6, 90.0f, 7, 80.0f);
+    const FxSnapshot drv_spce = run_fx_macro_order(0.3f, 0.2f, 0.25f, 0.1f, 7, 80.0f, 6, 90.0f);
+    assert_fx_close("SPCE/DRV order", spce_drv, drv_spce);
+
+    // BRTE and DRV both add to master tone.
+    const FxSnapshot brte_drv = run_fx_macro_order(0.3f, 0.2f, 0.25f, 0.1f, 1, 100.0f, 7, 60.0f);
+    const FxSnapshot drv_brte = run_fx_macro_order(0.3f, 0.2f, 0.25f, 0.1f, 7, 60.0f, 1, 100.0f);
+    assert_fx_close("BRTE/DRV order", brte_drv, drv_brte);
+
+    // Manual base is preserved: macro-neutral and manual-only agree.
+    const FxSnapshot manual_only = run_fx_macro_order(0.3f, 0.2f, 0.25f, 0.1f, 6, 0.0f, 7, 0.0f);
+    assert(std::abs(manual_only.reverb_mix - 0.3f) < 1e-3f);
+    assert(std::abs(manual_only.delay_mix - 0.2f) < 1e-3f);
+    assert(std::abs(manual_only.drive - 0.25f) < 1e-3f);
+    assert(std::abs(manual_only.tone - 0.1f) < 1e-3f);
+
+    printf("PASS: FX macro overlaps (SPCE/DRV/BRTE) are order independent over the manual FX base\n");
+}
+
+static void test_delay_sync_bpm_mapping() {
+    using namespace smk;
+    assert(kDelayDivisionCount == 7);
+    assert(std::abs(kDelayDivisions[0].beats - 0.25f) < 1e-6f);       // 1/16
+    assert(std::abs(kDelayDivisions[1].beats - 1.0f / 3.0f) < 1e-5f); // 1/8T
+    assert(std::abs(kDelayDivisions[2].beats - 0.5f) < 1e-6f);        // 1/8
+    assert(std::abs(kDelayDivisions[3].beats - 0.75f) < 1e-6f);       // 1/8D
+    assert(std::abs(kDelayDivisions[4].beats - 1.0f) < 1e-6f);        // 1/4
+    assert(std::abs(kDelayDivisions[5].beats - 1.5f) < 1e-6f);        // 1/4D
+    assert(std::abs(kDelayDivisions[6].beats - 2.0f) < 1e-6f);        // 1/2
+
+    // 120 BPM: one quarter note = 500 ms.
+    const float beat_ms = 60000.0f / 120.0f;
+    assert(std::abs(beat_ms * kDelayDivisions[4].beats - 500.0f) < 1e-3f);
+    assert(std::abs(beat_ms * kDelayDivisions[0].beats - 125.0f) < 1e-3f);
+    assert(std::abs(beat_ms * kDelayDivisions[6].beats - 1000.0f) < 1e-3f);
+    // 90 BPM: quarter = 666.7 ms, half note = 1333 ms (clamped by the engine).
+    const float slow_beat = 60000.0f / 90.0f;
+    assert(std::abs(slow_beat * kDelayDivisions[6].beats - 1333.3f) < 1.0f);
+
+    printf("PASS: BPM -> delay sync subdivisions (120 BPM 1/4 = 500 ms, 1/16 = 125 ms)\n");
+}
+
+static void test_slot_id_parsing() {
+    using namespace smk;
+    uint8_t slot = 0xAB;
+    assert(StorageManager::parseSlotId("0", slot) && slot == 0);
+    assert(StorageManager::parseSlotId("127", slot) && slot == 127);
+    assert(!StorageManager::parseSlotId("128", slot)); // no uint8 wrap to 0
+    assert(!StorageManager::parseSlotId("256", slot)); // no uint8 wrap to 0
+    assert(!StorageManager::parseSlotId("-1", slot));  // no uint8 wrap to 255
+    assert(!StorageManager::parseSlotId("", slot));
+    assert(!StorageManager::parseSlotId("abc", slot));
+    assert(!StorageManager::parseSlotId("12x", slot));
+    assert(!StorageManager::parseSlotId("-", slot));
+    assert(!StorageManager::parseSlotId(nullptr, slot));
+
+    printf("PASS: console slot parsing rejects 256/-1/non-numeric before narrowing\n");
+}
+
 static void test_patch_format_unchanged() {
     using namespace smk;
-    // The macro baseline is runtime only; the persisted v5 layout is unchanged.
-    assert(kPatchFormatVersion == 5);
+    // M3: the persisted format is v6 and carries the full FX musical state. The
+    // v5 layout is frozen separately for deterministic migration.
+    assert(kPatchFormatVersion == 6);
     assert(FactoryPatches::kCount == 256);
     assert(sizeof(SynthPatch::macros) / sizeof(MacroConfig) == 8);
     assert(sizeof(MacroMapping::param_type) == sizeof(uint8_t));
-    printf("PASS: patch format stays v5, 256 factory IDs and 8 persisted macros per patch\n");
+    assert(sizeof(SynthPatchV5) < sizeof(SynthPatch)); // v6 added FX fields
+    printf("PASS: patch format is v6 (full FX state), 256 factory IDs and 8 persisted macros per patch\n");
 }
 
 int main() {
@@ -2575,6 +3006,13 @@ int main() {
     test_fm_manual_and_macro_composition();
     test_legacy_and_mixed_macro_mapping_classification();
     test_showcase_macro_smoke();
+    test_full_fx_roundtrip();
+    test_no_stale_fx_across_patch_change();
+    test_fx_100_cycle_persistence();
+    test_fx_safety_ranges();
+    test_fx_macro_order_independence();
+    test_delay_sync_bpm_mapping();
+    test_slot_id_parsing();
     test_patch_format_unchanged();
     printf("=== ALL SMK SYNTH EXPANSION TESTS PASSED ===\n");
     return 0;

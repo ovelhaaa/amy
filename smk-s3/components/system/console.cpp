@@ -341,33 +341,51 @@ int Console::cmdStorageInfo(int argc, char** argv) {
 
 int Console::cmdPatchSave(int argc, char** argv) {
     if (!s_storage_manager || !s_patch_manager) return 1;
-    if (argc < 2) return 1;
-    uint8_t slot_id = (uint8_t)atoi(argv[1]);
+    if (argc < 2) {
+        ESP_LOGE(TAG, "Usage: patch_save <slot 0..%u>", (unsigned)(StorageManager::kMaxSlots - 1));
+        return 1;
+    }
+    // Parse as an integer and range-check before narrowing; a bare (uint8_t)atoi
+    // would silently wrap 256 -> 0 and -1 -> 255.
+    uint8_t slot_id = 0;
+    if (!StorageManager::parseSlotId(argv[1], slot_id)) {
+        ESP_LOGE(TAG, "Invalid slot '%s' (expected 0..%u)", argv[1],
+                 (unsigned)(StorageManager::kMaxSlots - 1));
+        return 1;
+    }
     // Explicit slot: independent of the active patch identity. On success this
     // also selects the slot, so a later unqualified Save repeats there.
-    if (s_patch_manager->saveActivePatch(*s_storage_manager, slot_id)) {
-        ESP_LOGI(TAG, "Successfully saved Patch to Flash Slot #%d (manual base + macro positions)", slot_id);
-    } else {
+    if (!s_patch_manager->saveActivePatch(*s_storage_manager, slot_id)) {
         ESP_LOGE(TAG, "Failed to save Patch to Flash Slot #%d", slot_id);
+        return 1;
     }
+    ESP_LOGI(TAG, "Successfully saved Patch to Flash Slot #%d (manual base + macro positions)", slot_id);
     return 0;
 }
 
 int Console::cmdPatchLoad(int argc, char** argv) {
     if (!s_storage_manager || !s_patch_manager) return 1;
-    if (argc < 2) return 1;
-    uint8_t slot_id = (uint8_t)atoi(argv[1]);
-    SynthPatch loaded_patch = {};
-    if (s_storage_manager->loadPatch(slot_id, loaded_patch)) {
-        // Apply the stored patch itself and record its slot. The loaded snapshot
-        // carries the manual base + macro positions and is recomposed through the
-        // normal apply path. The slot, not SynthPatch::id, is the save target.
-        s_patch_manager->applyLoadedPatch(loaded_patch, slot_id);
-        ESP_LOGI(TAG, "Successfully loaded Patch [%s] from Flash Slot #%d (active slot %u)",
-                 loaded_patch.name, slot_id, (unsigned)s_patch_manager->activeStorageSlot());
-    } else {
-        ESP_LOGE(TAG, "Failed to load Patch from Flash Slot #%d", slot_id);
+    if (argc < 2) {
+        ESP_LOGE(TAG, "Usage: patch_load <slot 0..%u>", (unsigned)(StorageManager::kMaxSlots - 1));
+        return 1;
     }
+    uint8_t slot_id = 0;
+    if (!StorageManager::parseSlotId(argv[1], slot_id)) {
+        ESP_LOGE(TAG, "Invalid slot '%s' (expected 0..%u)", argv[1],
+                 (unsigned)(StorageManager::kMaxSlots - 1));
+        return 1;
+    }
+    SynthPatch loaded_patch = {};
+    if (!s_storage_manager->loadPatch(slot_id, loaded_patch)) {
+        ESP_LOGE(TAG, "Failed to load Patch from Flash Slot #%d", slot_id);
+        return 1;
+    }
+    // Apply the stored patch itself and record its slot. The loaded snapshot
+    // carries the manual base + macro positions and is recomposed through the
+    // normal apply path. The slot, not SynthPatch::id, is the save target.
+    s_patch_manager->applyLoadedPatch(loaded_patch, slot_id);
+    ESP_LOGI(TAG, "Successfully loaded Patch [%s] from Flash Slot #%d (active slot %u)",
+             loaded_patch.name, slot_id, (unsigned)s_patch_manager->activeStorageSlot());
     return 0;
 }
 

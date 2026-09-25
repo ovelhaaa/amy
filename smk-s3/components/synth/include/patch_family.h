@@ -7,7 +7,7 @@ namespace smk {
 // ─────────────────────────────────────────────────────────────
 // Runtime synthesis family classification.
 //
-// PatchFamily is derived, never persisted: the patch format (v5) is unchanged
+// PatchFamily is derived, never persisted: the patch format carries no family
 // and SynthPatch has no family field. Classification is driven primarily by
 // wave_type; engine_patch ranges are only an auxiliary fallback for values
 // outside the known wave enum, so control routing does not depend on magic
