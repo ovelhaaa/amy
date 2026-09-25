@@ -24,6 +24,7 @@ struct AmyAdapterTestAccess {
 void ClockManager::setBpm(float) {}
 void HomeScreen::setPatchInfo(uint16_t, const char*, const char*) {}
 void HomeScreen::setMacroValues(const uint8_t[8]) {}
+void HomeScreen::setMacroLabels(const char[8][8]) {}
 void HomeScreen::setEngineValues(const uint8_t[8]) {}
 void HomeScreen::setHomeKnobBankView(HomeKnobBankView) {}
 void HomeScreen::setKnobBankLabel(const char*) {}
@@ -51,6 +52,7 @@ struct OpCapture {
 
 struct VoiceCapture {
     uint8_t algorithm = 0;
+    float feedback = 0.0f;
     OpCapture ops[MAX_ALGO_OPS];
 };
 
@@ -68,6 +70,7 @@ static bool captureVoice0(VoiceCapture& out) {
     const uint16_t base = voice_to_base_osc[voices[0]];
     if (!AMY_IS_SET(base)) return false;
     out.algorithm = synth[base]->algorithm;
+    out.feedback = synth[base]->feedback;
     for (int op = 0; op < MAX_ALGO_OPS; ++op) {
         const int16_t o = synth[base]->algo_source[op];
         out.ops[op].osc = o;
@@ -189,16 +192,94 @@ int main() {
     pm.handleKnobInput(10, 127.0f); assert_operators_match("Engine Attack");
     pm.handleKnobInput(11, 0.0f);   assert_operators_match("Engine Release");
 
-    // Macros ATK / REL
-    pm.setMacro(3, 100.0f, true); assert_operators_match("Macro SHAP");
-    pm.setMacro(4, 0.0f, true);   assert_operators_match("Macro ATK min");
-    pm.setMacro(4, 100.0f, true); assert_operators_match("Macro ATK max");
-    pm.setMacro(5, 100.0f, true); assert_operators_match("Macro REL");
-
     assert(pm.activePatch().amp_attack == atk_before);
     assert(pm.activePatch().amp_decay == dec_before);
     assert(pm.activePatch().amp_sustain == sus_before);
     assert(pm.activePatch().amp_release == rel_before);
+
+    // Sound & Musicality M2: the FM macro profile is CHAR / BRTE / MOTN /
+    // FDBK / RATIO / DTUNE / SPCE / EDGE. Ratio, detune and feedback are
+    // allowed to change the operators; the algorithm and routing must never
+    // change, and neutral must restore the captured baseline exactly.
+    assert(std::strcmp(pm.activePatch().macros[3].name, "FDBK") == 0);
+    assert(std::strcmp(pm.activePatch().macros[4].name, "RATIO") == 0);
+    assert(std::strcmp(pm.activePatch().macros[5].name, "DTUNE") == 0);
+    assert(std::strcmp(pm.activePatch().macros[6].name, "SPCE") == 0);
+    assert(std::strcmp(pm.activePatch().macros[7].name, "EDGE") == 0);
+
+    // The control state is pulled from the engine on the first FM interaction,
+    // so compare against the engine-captured baseline algorithm.
+    const uint8_t algo_baseline = baseline.algorithm;
+
+    auto assert_routing_unchanged = [&](const char* label) {
+        process(adapter, 2);
+        VoiceCapture now;
+        assert(captureVoice0(now));
+        if (now.algorithm != baseline.algorithm) {
+            std::printf("FAIL: FM algorithm changed after %s\n", label);
+            assert(false);
+        }
+        for (int op = 0; op < MAX_ALGO_OPS; ++op) {
+            if (now.ops[op].present != baseline.ops[op].present ||
+                now.ops[op].osc != baseline.ops[op].osc) {
+                std::printf("FAIL: FM routing changed after %s (op %d)\n", label, op);
+                assert(false);
+            }
+        }
+        if (pm.fmControlState().algorithm != algo_baseline) {
+            std::printf("FAIL: FM algorithm control changed after %s\n", label);
+            assert(false);
+        }
+    };
+
+    const float fm_vals[] = { 0.0f, 127.0f };
+    for (uint8_t m = 0; m < 8; ++m) {
+        for (float v : fm_vals) {
+            pm.setMacro(m, v, true);
+            assert_routing_unchanged("FM macro extreme");
+        }
+        pm.setMacro(m, pm.activePatch().macros[m].default_val, true);
+        assert_routing_unchanged("FM macro neutral");
+    }
+
+    // Every operator must be back at the captured baseline after neutral.
+    assert_operators_match("FM all macros neutral");
+
+    {
+        process(adapter, 2);
+        VoiceCapture restored;
+        assert(captureVoice0(restored));
+        if (std::fabs(restored.feedback - baseline.feedback) > 1e-6f) {
+            std::printf("FAIL: FM feedback not restored (%.6f vs %.6f)\n",
+                        restored.feedback, baseline.feedback);
+            assert(false);
+        }
+    }
+
+    // Sanity: the FDBK macro controls live engine feedback, and neutral restores it.
+    {
+        process(adapter, 2);
+        VoiceCapture before;
+        assert(captureVoice0(before));
+
+        pm.setMacro(3, 127.0f, true);
+        process(adapter, 2);
+        VoiceCapture raised;
+        assert(captureVoice0(raised));
+        assert(raised.feedback >= before.feedback - 1e-6f);
+        if (before.feedback < 0.16f - 1e-6f) {
+            assert(std::fabs(raised.feedback - before.feedback) > 1e-6f);
+        }
+
+        pm.setMacro(3, pm.activePatch().macros[3].default_val, true);
+        process(adapter, 2);
+        VoiceCapture back;
+        assert(captureVoice0(back));
+        assert(std::fabs(back.feedback - before.feedback) < 1e-6f);
+    }
+
+    std::printf("PASS: FM macros scale the timbre; algorithm/routing never change\n");
+    std::printf("PASS: FM neutral restores operator levels/ratios/freqs and feedback exactly\n");
 
     std::printf("DX7 algorithm=%u ops:", (unsigned)reference.algorithm);
     for (int op = 0; op < MAX_ALGO_OPS; ++op) {
@@ -206,6 +287,6 @@ int main() {
                     reference.ops[op].logratio, reference.ops[op].logfreq);
     }
     std::printf("\nPASS: DX7 via AmyAdapter == DX7 via PatchManager (operators untouched)\n");
-    std::printf("PASS: live FM ADSR controls (Bank C, Engine, Macros) leave operators at baseline\n");
+    std::printf("PASS: live FM ADSR controls (Bank C, Engine) leave operators at baseline\n");
     return 0;
 }

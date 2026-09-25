@@ -24,6 +24,7 @@ DiagnosticCounters& Diagnostics::counters() { return counters_; }
 void ClockManager::setBpm(float) {}
 void HomeScreen::setPatchInfo(uint16_t, const char*, const char*) {}
 void HomeScreen::setMacroValues(const uint8_t[8]) {}
+void HomeScreen::setMacroLabels(const char[8][8]) {}
 void HomeScreen::setEngineValues(const uint8_t[8]) {}
 void HomeScreen::setHomeKnobBankView(HomeKnobBankView) {}
 void HomeScreen::setKnobBankLabel(const char*) {}
@@ -1459,19 +1460,30 @@ static void test_subtractive_family_applies_envelope() {
     assert(std::abs(pm.activePatch().amp_release - envelopeMsFromNorm(1.0f)) < 1e-3f);
     assert(std::abs(mock.envelope_calls.back().release_ms - pm.activePatch().amp_release) < 1e-3f);
 
-    // Macro ATK (1..200 ms, linear) full knob -> 200 ms.
+    // Reload the pristine patch so the relative macros start from a known
+    // baseline, then verify the family-aware ATK/REL behavior.
+    assert(pm.selectPatch(0));
+    const float base_atk = pm.activePatch().amp_attack;
+    const float base_rel = pm.activePatch().amp_release;
     mock.envelope_calls.clear();
+
+    // Macro ATK at max -> 5x the baseline attack.
     pm.setMacro(4, 127.0f, true);
     assert(!mock.envelope_calls.empty());
-    assert(std::abs(pm.activePatch().amp_attack - 200.0f) < 0.5f);
+    assert(std::abs(pm.activePatch().amp_attack - std::clamp(base_atk * 5.0f, 1.0f, 5000.0f)) < 0.5f);
 
-    // Macro REL (10..1000 ms, linear) full knob -> 1000 ms.
-    mock.envelope_calls.clear();
+    // Macro REL at max -> 5x the baseline release (patch 0 is not bass/pad).
     pm.setMacro(5, 127.0f, true);
-    assert(!mock.envelope_calls.empty());
-    assert(std::abs(pm.activePatch().amp_release - 1000.0f) < 0.5f);
+    assert(std::abs(pm.activePatch().amp_release - std::clamp(base_rel * 5.0f, 1.0f, 5000.0f)) < 0.5f);
 
-    printf("PASS: Subtractive Bank C / Engine / Macro ATK+REL still drive the AMY envelope\n");
+    // Returning both to neutral restores the preset baseline exactly.
+    mock.envelope_calls.clear();
+    pm.setMacro(4, pm.activePatch().macros[4].default_val, true);
+    pm.setMacro(5, pm.activePatch().macros[5].default_val, true);
+    assert(std::abs(pm.activePatch().amp_attack - base_atk) < 1e-3f);
+    assert(std::abs(pm.activePatch().amp_release - base_rel) < 1e-3f);
+
+    printf("PASS: Subtractive Bank C / Engine ADSR plus family-aware relative ATK/REL macros\n");
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1508,6 +1520,304 @@ static void test_effect_knob_perceptual_curves() {
     printf("PASS: FX knobs use perceptual curves (drive^2, log delay time, wet^2)\n");
 }
 
+// ─────────────────────────────────────────────────────────────
+// Sound & Musicality M2: family-aware musical macros
+// ─────────────────────────────────────────────────────────────
+struct MacroStateView {
+    float cutoff = 0.0f;
+    float res = 0.0f;
+    float fenv = 0.0f;
+    float atk = 0.0f;
+    float dec = 0.0f;
+    float sus = 0.0f;
+    float rel = 0.0f;
+    float detune = 0.0f;
+    float chorus = 0.0f;
+    float delay_mix = 0.0f;
+    float reverb_mix = 0.0f;
+    float drive = 0.0f;
+    float tone = 0.0f;
+    float fm_mod = 1.0f;
+    float fm_ratio = 1.0f;
+    float fm_detune = 0.0f;
+    float fm_feedback = 0.0f;
+    uint8_t fm_algo = 1;
+};
+
+static bool macroNearlyEqual(float a, float b, float eps = 1e-3f) {
+    return std::fabs(a - b) <= eps * (1.0f + std::fabs(b));
+}
+
+static MacroStateView captureMacroState(smk::PatchManager& pm, MockAmyAdapter& mock) {
+    using namespace smk;
+    MacroStateView v;
+    pm.applyActiveFilterState();
+    if (!mock.filter_calls.empty()) {
+        const auto& f = mock.filter_calls.back();
+        v.cutoff = f.cutoff;
+        v.res = f.resonance;
+        v.fenv = f.env_amount;
+    }
+    v.atk = pm.activePatch().amp_attack;
+    v.dec = pm.activePatch().amp_decay;
+    v.sus = pm.activePatch().amp_sustain;
+    v.rel = pm.activePatch().amp_release;
+    v.detune = pm.activePatch().osc_detune;
+    v.chorus = pm.fxControlState().chorus_depth;
+    v.delay_mix = pm.fxControlState().delay_mix;
+    v.reverb_mix = pm.fxControlState().reverb_mix;
+    v.drive = pm.fxControlState().drive;
+    v.tone = pm.fxControlState().master_tone;
+    v.fm_mod = pm.fmControlState().mod_factor;
+    v.fm_ratio = pm.fmControlState().ratio_factor;
+    v.fm_detune = pm.fmControlState().detune_cents;
+    v.fm_feedback = pm.fmControlState().feedback;
+    v.fm_algo = pm.fmControlState().algorithm;
+    return v;
+}
+
+static void test_family_aware_macro_profiles() {
+    using namespace smk;
+    SynthPatch sub = *FactoryPatches::getPatchById(0);   // subtractive brass
+    SynthPatch pcm = *FactoryPatches::getPatchById(17);  // PCM drums
+    SynthPatch fm  = *FactoryPatches::getPatchById(128); // DX7 brass
+
+    assert(classifyPatch(sub) == PatchFamily::Subtractive);
+    assert(classifyPatch(pcm) == PatchFamily::PCM);
+    assert(classifyPatch(fm) == PatchFamily::FM);
+
+    // Labels are family dependent and stay within 7 characters + terminator.
+    assert(strcmp(sub.macros[3].name, "SHAP") == 0);
+    assert(strcmp(sub.macros[7].name, "DRV") == 0);
+    assert(strcmp(fm.macros[3].name, "FDBK") == 0);
+    assert(strcmp(fm.macros[4].name, "RATIO") == 0);
+    assert(strcmp(fm.macros[5].name, "DTUNE") == 0);
+    assert(strcmp(fm.macros[7].name, "EDGE") == 0);
+    for (uint8_t m = 0; m < 8; ++m) {
+        assert(strlen(fm.macros[m].name) <= 7);
+        assert(strlen(sub.macros[m].name) <= 7);
+    }
+
+    // Every factory profile uses only the new relative destinations, so old
+    // patches (legacy 0..7) and new presets can never disagree about meaning.
+    const SynthPatch* patches[3] = { &sub, &pcm, &fm };
+    for (const SynthPatch* p : patches) {
+        for (uint8_t m = 0; m < 8; ++m) {
+            assert(p->macros[m].mapping_count >= 1);
+            for (uint8_t r = 0; r < p->macros[m].mapping_count; ++r) {
+                assert(!isLegacyMacroTarget(p->macros[m].mappings[r].param_type));
+            }
+        }
+    }
+
+    // FM must never address the generic amp envelope destinations.
+    for (uint8_t m = 0; m < 8; ++m) {
+        for (uint8_t r = 0; r < fm.macros[m].mapping_count; ++r) {
+            const uint8_t t = fm.macros[m].mappings[r].param_type;
+            assert(t != static_cast<uint8_t>(MacroTarget::AmpAttackRelative));
+            assert(t != static_cast<uint8_t>(MacroTarget::AmpDecayRelative));
+            assert(t != static_cast<uint8_t>(MacroTarget::AmpSustainRelative));
+            assert(t != static_cast<uint8_t>(MacroTarget::AmpReleaseRelative));
+        }
+    }
+
+    printf("PASS: Subtractive/FM/fallback macro profiles, family labels and relative-only destinations\n");
+}
+
+static void test_relative_macro_neutral_restoration() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+
+    const uint8_t ids[] = { 0, 24, 32, 47, 128, 135, 142, 246 };
+    for (uint8_t id : ids) {
+        assert(pm.selectPatch(id));
+        const MacroStateView base = captureMacroState(pm, mock);
+
+        for (uint8_t m = 0; m < 8; ++m) {
+            const float neutral = pm.activePatch().macros[m].default_val;
+            pm.setMacro(m, 0.0f, true);
+            pm.setMacro(m, 127.0f, true);
+            pm.setMacro(m, neutral, true);
+        }
+
+        const MacroStateView end = captureMacroState(pm, mock);
+        assert(macroNearlyEqual(end.cutoff, base.cutoff));
+        assert(macroNearlyEqual(end.res, base.res));
+        assert(macroNearlyEqual(end.fenv, base.fenv));
+        assert(macroNearlyEqual(end.atk, base.atk));
+        assert(macroNearlyEqual(end.dec, base.dec));
+        assert(macroNearlyEqual(end.sus, base.sus));
+        assert(macroNearlyEqual(end.rel, base.rel));
+        assert(macroNearlyEqual(end.detune, base.detune));
+        assert(macroNearlyEqual(end.chorus, base.chorus));
+        assert(macroNearlyEqual(end.delay_mix, base.delay_mix));
+        assert(macroNearlyEqual(end.reverb_mix, base.reverb_mix));
+        assert(macroNearlyEqual(end.drive, base.drive));
+        assert(macroNearlyEqual(end.tone, base.tone));
+        assert(end.fm_algo == base.fm_algo);
+        if (classifyPatch(pm.activePatch()) == PatchFamily::FM) {
+            assert(macroNearlyEqual(end.fm_mod, base.fm_mod));
+            assert(macroNearlyEqual(end.fm_ratio, base.fm_ratio));
+            assert(macroNearlyEqual(end.fm_detune, base.fm_detune));
+            assert(macroNearlyEqual(end.fm_feedback, base.fm_feedback));
+        }
+    }
+
+    printf("PASS: macro extremes then neutral restore the preset baseline (no drift) for subtractive and FM\n");
+}
+
+struct MacroOrderResult {
+    float cutoff = 0.0f;
+    float res = 0.0f;
+    float chorus = 0.0f;
+};
+
+// Each ordering runs from a fresh manager so the comparison isolates macro
+// order and is not affected by the FX state persisting across patch loads.
+static MacroOrderResult run_macro_order(uint8_t first, float first_val,
+                                        uint8_t second, float second_val) {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.selectPatch(0));
+    pm.setMacro(first, first_val, true);
+    pm.setMacro(second, second_val, true);
+    const MacroStateView v = captureMacroState(pm, mock);
+    MacroOrderResult r;
+    r.cutoff = v.cutoff;
+    r.res = v.res;
+    r.chorus = v.chorus;
+    return r;
+}
+
+static void test_macro_order_independence() {
+    using namespace smk;
+
+    // CHAR and BRTE both contribute to the same cutoff accumulator.
+    const MacroOrderResult ab = run_macro_order(0, 80.0f, 1, 30.0f);
+    const MacroOrderResult ba = run_macro_order(1, 30.0f, 0, 80.0f);
+    assert(macroNearlyEqual(ab.cutoff, ba.cutoff));
+    assert(macroNearlyEqual(ab.res, ba.res));
+
+    // MOTN and SPCE both contribute to chorus depth.
+    const MacroOrderResult motn_spce = run_macro_order(2, 70.0f, 6, 90.0f);
+    const MacroOrderResult spce_motn = run_macro_order(6, 90.0f, 2, 70.0f);
+    assert(macroNearlyEqual(motn_spce.chorus, spce_motn.chorus));
+
+    printf("PASS: macro order independence for shared destinations (CHAR/BRTE cutoff, MOTN/SPCE chorus)\n");
+}
+
+static void test_macro_command_throttle() {
+    using namespace smk;
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+    assert(pm.selectPatch(0));
+
+    mock.filter_calls.clear();
+    pm.setMacro(0, 40.0f, true);
+    const size_t after_first = mock.filter_calls.size();
+    assert(after_first >= 1);
+
+    // Repeating the same macro position must not re-emit engine commands.
+    pm.setMacro(0, 40.0f, true);
+    assert(mock.filter_calls.size() == after_first);
+
+    // A neutral return followed by another neutral move stays silent.
+    pm.setMacro(0, pm.activePatch().macros[0].default_val, true);
+    const size_t after_neutral = mock.filter_calls.size();
+    pm.setMacro(0, pm.activePatch().macros[0].default_val, true);
+    assert(mock.filter_calls.size() == after_neutral);
+
+    printf("PASS: unchanged macro recomputes do not emit redundant engine commands\n");
+}
+
+static void test_showcase_macro_smoke() {
+    using namespace smk;
+    size_t n = 0;
+    const uint8_t* ids = FactoryPatches::showcaseIds(n);
+    assert(ids != nullptr);
+    assert(n >= 12 && n <= 16);
+
+    MockAmyAdapter mock;
+    PatchManager pm;
+    pm.begin(&mock, nullptr);
+    pm.softTakeover().setMode(TakeoverMode::Jump);
+
+    bool saw_sub = false;
+    bool saw_fm = false;
+    const float vals[3] = { 0.0f, 63.5f, 127.0f };
+
+    for (size_t i = 0; i < n; ++i) {
+        assert(pm.selectPatch(ids[i]));
+        const PatchFamily fam = classifyPatch(pm.activePatch());
+        saw_sub |= (fam == PatchFamily::Subtractive);
+        saw_fm |= (fam == PatchFamily::FM);
+
+        for (uint8_t m = 0; m < 8; ++m) {
+            for (float v : vals) {
+                pm.setMacro(m, v, true);
+                const SynthPatch& p = pm.activePatch();
+                assert(std::isfinite(p.filter_cutoff));
+                assert(p.filter_cutoff >= control_ranges::kCutoffMinHz - 1e-3f &&
+                       p.filter_cutoff <= control_ranges::kCutoffMaxHz + 1e-3f);
+                assert(std::isfinite(p.filter_res));
+                assert(p.filter_res >= control_ranges::kResonanceMin - 1e-3f &&
+                       p.filter_res <= control_ranges::kResonanceMax + 1e-3f);
+                assert(std::isfinite(p.amp_attack) &&
+                       p.amp_attack >= control_ranges::kEnvelopeMinMs - 1e-3f &&
+                       p.amp_attack <= control_ranges::kEnvelopeMaxMs + 1e-3f);
+                assert(std::isfinite(p.amp_decay) &&
+                       p.amp_decay >= control_ranges::kEnvelopeMinMs - 1e-3f &&
+                       p.amp_decay <= control_ranges::kEnvelopeMaxMs + 1e-3f);
+                assert(std::isfinite(p.amp_sustain) && p.amp_sustain >= -1e-3f && p.amp_sustain <= 1.0f + 1e-3f);
+                assert(std::isfinite(p.amp_release) &&
+                       p.amp_release >= control_ranges::kEnvelopeMinMs - 1e-3f &&
+                       p.amp_release <= control_ranges::kEnvelopeMaxMs + 1e-3f);
+                assert(std::isfinite(p.osc_detune) && std::fabs(p.osc_detune) <= 100.0f + 1e-3f);
+                assert(std::isfinite(p.drive_level) && p.drive_level >= -1e-3f && p.drive_level <= 1.0f + 1e-3f);
+                assert(std::isfinite(p.master_tone) && p.master_tone >= -1.0f - 1e-3f && p.master_tone <= 1.0f + 1e-3f);
+                assert(std::isfinite(pm.fxControlState().chorus_depth) &&
+                       pm.fxControlState().chorus_depth >= -1e-3f && pm.fxControlState().chorus_depth <= 1.0f + 1e-3f);
+                assert(std::isfinite(pm.fxControlState().reverb_mix) &&
+                       pm.fxControlState().reverb_mix >= -1e-3f && pm.fxControlState().reverb_mix <= 1.0f + 1e-3f);
+                assert(std::isfinite(pm.fxControlState().delay_mix) &&
+                       pm.fxControlState().delay_mix >= -1e-3f && pm.fxControlState().delay_mix <= 1.0f + 1e-3f);
+                if (fam == PatchFamily::FM) {
+                    const auto& f = pm.fmControlState();
+                    assert(std::isfinite(f.mod_factor));
+                    assert(f.mod_factor >= -1e-3f && f.mod_factor <= 8.0f + 1e-3f);
+                    assert(std::isfinite(f.ratio_factor));
+                    assert(f.ratio_factor > 0.0f);
+                    assert(std::isfinite(f.detune_cents));
+                    assert(std::isfinite(f.feedback) && f.feedback >= -1e-3f && f.feedback <= 0.16f + 1e-3f);
+                }
+            }
+        }
+        assert(pm.selectPatch(ids[i]));
+    }
+
+    assert(saw_sub);
+    assert(saw_fm);
+    printf("PASS: showcase patches x every macro at 0/50/100 stay finite and in range\n");
+}
+
+static void test_patch_format_unchanged() {
+    using namespace smk;
+    // The macro baseline is runtime only; the persisted v5 layout is unchanged.
+    assert(kPatchFormatVersion == 5);
+    assert(FactoryPatches::kCount == 256);
+    assert(sizeof(SynthPatch::macros) / sizeof(MacroConfig) == 8);
+    assert(sizeof(MacroMapping::param_type) == sizeof(uint8_t));
+    printf("PASS: patch format stays v5, 256 factory IDs and 8 persisted macros per patch\n");
+}
+
 int main() {
     printf("=== Running SMK Synth Expansion Host Test Suite ===\n");
     test_scale_quantizer();
@@ -1538,6 +1848,12 @@ int main() {
     test_effect_knob_perceptual_curves();
     test_macro_curves();
     test_amy_core_fixes();
+    test_family_aware_macro_profiles();
+    test_relative_macro_neutral_restoration();
+    test_macro_order_independence();
+    test_macro_command_throttle();
+    test_showcase_macro_smoke();
+    test_patch_format_unchanged();
     printf("=== ALL SMK SYNTH EXPANSION TESTS PASSED ===\n");
     return 0;
 }

@@ -26,6 +26,10 @@ public:
     void setUsbConnected(bool connected);
     void setMidiActivity(bool active);
     void setMacroValues(const uint8_t values[8]);
+    // Family-aware macro names (up to 7 chars + terminator each) supplied by the
+    // active patch, e.g. SHAP/ATK/REL/DRV for subtractive and FDBK/RATIO/
+    // DTUNE/EDGE for FM.
+    void setMacroLabels(const char labels[8][8]);
     void setEngineValues(const uint8_t values[8]);
     void setHomeKnobBankView(HomeKnobBankView view);
     HomeKnobBankView homeKnobBankView() const { return bank_view_; }
@@ -48,6 +52,7 @@ private:
     uint8_t observed_pad_bank_{0};  // 0 = unknown, 1 = A, 2 = B
     HomeKnobBankView bank_view_{HomeKnobBankView::BankA_Macros};
     uint8_t macro_values_[8]{62, 78, 31, 45, 8, 67, 34, 22};
+    char macro_labels_[8][8]{"CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV"};
     uint8_t engine_values_[8]{64, 40, 50, 45, 20, 30, 40, 15};
     uint8_t active_voices_{0};
     uint8_t max_voices_{8};

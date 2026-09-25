@@ -27,7 +27,6 @@ void HomeScreen::onEnter() {
 
 void HomeScreen::setHomeKnobBankView(HomeKnobBankView view) {
     bank_view_ = view;
-    static const char* kBankALabels[8] = { "CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV" };
     static const char* kBankBLabels[8] = { "CUTOFF", "RES", "ENV", "DCAY", "CHOR", "DLAY", "REVB", "DRV" };
 
     if (bank_view_ == HomeKnobBankView::BankB_Engine) {
@@ -40,9 +39,21 @@ void HomeScreen::setHomeKnobBankView(HomeKnobBankView view) {
     } else {
         snprintf(knob_bank_, sizeof(knob_bank_), "BANK A: MACROS");
         for (int i = 0; i < 8; ++i) {
-            gauges_[i].setLabel(kBankALabels[i]);
+            gauges_[i].setLabel(macro_labels_[i]);
             gauges_[i].setValue(macro_values_[i]);
             gauges_[i].setColors(DisplayDriver::kColorCyan, DisplayDriver::kColorWhite);
+        }
+    }
+}
+
+void HomeScreen::setMacroLabels(const char labels[8][8]) {
+    if (!labels) return;
+    for (int i = 0; i < 8; ++i) {
+        snprintf(macro_labels_[i], sizeof(macro_labels_[i]), "%s", labels[i]);
+    }
+    if (bank_view_ == HomeKnobBankView::BankA_Macros) {
+        for (int i = 0; i < 8; ++i) {
+            gauges_[i].setLabel(macro_labels_[i]);
         }
     }
 }

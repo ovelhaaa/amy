@@ -113,6 +113,235 @@ void PatchManager::syncFmStateFromBaseline() {
     // from here, so leaving the state uninitialized is safe.
 }
 
+bool PatchManager::usesRelativeMacros() const {
+    for (uint8_t i = 0; i < 8; ++i) {
+        const auto& macro = active_patch_.macros[i];
+        for (uint8_t m = 0; m < macro.mapping_count && m < 4; ++m) {
+            if (!isLegacyMacroTarget(macro.mappings[m].param_type)) return true;
+        }
+    }
+    return false;
+}
+
+void PatchManager::captureMacroBaseline() {
+    macro_baseline_ = MacroBaseline{};
+    macro_baseline_.filter_cutoff  = active_patch_.filter_cutoff;
+    macro_baseline_.filter_res     = active_patch_.filter_res;
+    macro_baseline_.filter_env     = active_filter_env_amt_;
+    macro_baseline_.amp_attack     = active_patch_.amp_attack;
+    macro_baseline_.amp_decay      = active_patch_.amp_decay;
+    macro_baseline_.amp_sustain    = active_patch_.amp_sustain;
+    macro_baseline_.amp_release    = active_patch_.amp_release;
+    macro_baseline_.osc_detune     = active_patch_.osc_detune;
+    macro_baseline_.chorus_depth   = fx_state_.chorus_depth;
+    macro_baseline_.delay_time_ms  = fx_state_.delay_time_ms;
+    macro_baseline_.delay_feedback = fx_state_.delay_feedback;
+    macro_baseline_.delay_mix      = fx_state_.delay_mix;
+    macro_baseline_.reverb_size    = fx_state_.reverb_size;
+    macro_baseline_.reverb_mix     = fx_state_.reverb_mix;
+    macro_baseline_.drive          = fx_state_.drive;
+    macro_baseline_.master_tone    = fx_state_.master_tone;
+    // FM baseline metadata is finalized lazily once the preset materializes.
+    macro_baseline_.fm_mod_factor   = 1.0f;
+    macro_baseline_.fm_ratio_factor = 1.0f;
+    macro_baseline_.fm_detune_cents = 0.0f;
+    macro_baseline_.fm_feedback     = 0.0f;
+    macro_baseline_.fm_algorithm    = 1;
+    macro_baseline_.fm_valid        = false;
+}
+
+void PatchManager::recomputeMacroTargets() {
+    if (!amy_adapter_) return;
+
+    const PatchFamily family = activeFamily();
+    const bool is_fm = (family == PatchFamily::FM);
+    const bool supports_env = supportsGenericAmpEnvelope(family);
+    const bool supports_osc = supportsSubtractiveOscControls(family);
+
+    // The engine materializes the preset asynchronously; pull the FM baseline
+    // as soon as it is available so feedback is relative to the real preset,
+    // never assumed to start at zero.
+    if (is_fm) {
+        syncFmStateFromBaseline();
+        if (fm_state_.initialized && !macro_baseline_.fm_valid) {
+            macro_baseline_.fm_feedback  = fm_state_.feedback;
+            macro_baseline_.fm_algorithm = fm_state_.algorithm;
+            macro_baseline_.fm_valid     = true;
+        }
+    }
+
+    // Accumulators default to the identity contribution.
+    float cutoff_oct     = 0.0f;
+    float res_factor     = 1.0f;
+    float fenv_off       = 0.0f;
+    float atk_factor     = 1.0f;
+    float dec_factor     = 1.0f;
+    float sus_off        = 0.0f;
+    float rel_factor     = 1.0f;
+    float detune_off     = 0.0f;
+    float chorus_off     = 0.0f;
+    float reverb_off     = 0.0f;
+    float delay_off      = 0.0f;
+    float drive_off      = 0.0f;
+    float tone_off       = 0.0f;
+    float fm_mod_factor  = 1.0f;
+    float fm_ratio_factor = 1.0f;
+    float fm_detune_off  = 0.0f;
+    float fm_fb_off      = 0.0f;
+
+    for (uint8_t i = 0; i < 8; ++i) {
+        const auto& macro = active_patch_.macros[i];
+        const float norm    = std::clamp(macro.current_val / 127.0f, 0.0f, 1.0f);
+        const float neutral = std::clamp(macro.default_val / 127.0f, 0.0f, 1.0f);
+        const float t = macroBipolar(norm, neutral);
+
+        for (uint8_t m = 0; m < macro.mapping_count && m < 4; ++m) {
+            const auto& map = macro.mappings[m];
+            if (isLegacyMacroTarget(map.param_type)) continue;
+            const float st = macroShapeBipolar(t, map.curve_type);
+            switch (static_cast<MacroTarget>(map.param_type)) {
+                case MacroTarget::FilterCutoffRelative:
+                    cutoff_oct += macroOffset(st, map.min_val, map.max_val); break;
+                case MacroTarget::FilterResRelative:
+                    res_factor *= macroFactor(st, map.min_val, map.max_val); break;
+                case MacroTarget::FilterEnvRelative:
+                    fenv_off += macroOffset(st, map.min_val, map.max_val); break;
+                case MacroTarget::AmpAttackRelative:
+                    atk_factor *= macroFactor(st, map.min_val, map.max_val); break;
+                case MacroTarget::AmpDecayRelative:
+                    dec_factor *= macroFactor(st, map.min_val, map.max_val); break;
+                case MacroTarget::AmpSustainRelative:
+                    sus_off += macroOffset(st, map.min_val, map.max_val); break;
+                case MacroTarget::AmpReleaseRelative:
+                    rel_factor *= macroFactor(st, map.min_val, map.max_val); break;
+                case MacroTarget::OscDetuneRelative:
+                    detune_off += macroOffset(st, map.min_val, map.max_val); break;
+                case MacroTarget::ChorusDepth:
+                    chorus_off += macroOffset(st, map.min_val, map.max_val); break;
+                case MacroTarget::ReverbMix:
+                    reverb_off += macroOffset(st, map.min_val, map.max_val); break;
+                case MacroTarget::DelayMix:
+                    delay_off += macroOffset(st, map.min_val, map.max_val); break;
+                case MacroTarget::DriveRelative:
+                    drive_off += macroOffset(st, map.min_val, map.max_val); break;
+                case MacroTarget::MasterToneRelative:
+                    tone_off += macroOffset(st, map.min_val, map.max_val); break;
+                case MacroTarget::FmModIndexRelative:
+                    fm_mod_factor *= macroFactor(st, map.min_val, map.max_val); break;
+                case MacroTarget::FmRatioRelative:
+                    fm_ratio_factor *= macroFactor(st, map.min_val, map.max_val); break;
+                case MacroTarget::FmDetuneRelative:
+                    fm_detune_off += macroOffset(st, map.min_val, map.max_val); break;
+                case MacroTarget::FmFeedbackRelative:
+                    fm_fb_off += macroOffset(st, map.min_val, map.max_val); break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    // Final target state, clamped to the safe engine ranges.
+    const float new_cutoff = std::clamp(macro_baseline_.filter_cutoff * std::exp2(cutoff_oct),
+                                        control_ranges::kCutoffMinHz, control_ranges::kCutoffMaxHz);
+    const float new_res    = std::clamp(macro_baseline_.filter_res * res_factor,
+                                        control_ranges::kResonanceMin, control_ranges::kResonanceMax);
+    const float new_fenv   = std::clamp(macro_baseline_.filter_env + fenv_off, -4.0f, 4.0f);
+    const float new_atk    = std::clamp(macro_baseline_.amp_attack * atk_factor,
+                                        control_ranges::kEnvelopeMinMs, control_ranges::kEnvelopeMaxMs);
+    const float new_dec    = std::clamp(macro_baseline_.amp_decay * dec_factor,
+                                        control_ranges::kEnvelopeMinMs, control_ranges::kEnvelopeMaxMs);
+    const float new_sus    = std::clamp(macro_baseline_.amp_sustain + sus_off, 0.0f, 1.0f);
+    const float new_rel    = std::clamp(macro_baseline_.amp_release * rel_factor,
+                                        control_ranges::kEnvelopeMinMs, control_ranges::kEnvelopeMaxMs);
+    const float new_detune = std::clamp(macro_baseline_.osc_detune + detune_off, -100.0f, 100.0f);
+    const float new_chorus = std::clamp(macro_baseline_.chorus_depth + chorus_off, 0.0f, 1.0f);
+    const float new_reverb = std::clamp(macro_baseline_.reverb_mix + reverb_off, 0.0f, 1.0f);
+    const float new_delay  = std::clamp(macro_baseline_.delay_mix + delay_off, 0.0f, 1.0f);
+    const float new_drive  = std::clamp(macro_baseline_.drive + drive_off, 0.0f, 1.0f);
+    const float new_tone   = std::clamp(macro_baseline_.master_tone + tone_off, -1.0f, 1.0f);
+    const float new_fm_fb  = std::clamp(macro_baseline_.fm_feedback + fm_fb_off, 0.0f, 0.16f);
+
+    const float eps = 1e-4f;
+
+    // Filter: one command when any filter parameter moved.
+    bool filter_changed = false;
+    if (std::fabs(new_cutoff - active_patch_.filter_cutoff) > eps) {
+        active_patch_.filter_cutoff = new_cutoff; filter_changed = true;
+    }
+    if (std::fabs(new_res - active_patch_.filter_res) > eps) {
+        active_patch_.filter_res = new_res; filter_changed = true;
+    }
+    if (std::fabs(new_fenv - active_filter_env_amt_) > eps) {
+        active_filter_env_amt_ = new_fenv;
+        active_patch_.filter_env_amount = new_fenv;
+        filter_changed = true;
+    }
+    if (filter_changed) applyActiveFilterState();
+
+    // Generic amp envelope: never issued for FM/DX7, whose operators own it.
+    if (supports_env) {
+        bool env_changed = false;
+        if (std::fabs(new_atk - active_patch_.amp_attack) > eps) { active_patch_.amp_attack = new_atk; env_changed = true; }
+        if (std::fabs(new_dec - active_patch_.amp_decay) > eps) { active_patch_.amp_decay = new_dec; env_changed = true; }
+        if (std::fabs(new_sus - active_patch_.amp_sustain) > eps) { active_patch_.amp_sustain = new_sus; env_changed = true; }
+        if (std::fabs(new_rel - active_patch_.amp_release) > eps) { active_patch_.amp_release = new_rel; env_changed = true; }
+        if (env_changed) {
+            amy_adapter_->setEnvelope(1, active_patch_.amp_attack, active_patch_.amp_decay,
+                                      active_patch_.amp_sustain, active_patch_.amp_release);
+        }
+    }
+
+    // Subtractive oscillator detune: base+1 is an operator slot in FM voices.
+    if (supports_osc && std::fabs(new_detune - active_patch_.osc_detune) > eps) {
+        active_patch_.osc_detune = new_detune;
+        amy_adapter_->setOscDetune(1, new_detune);
+    }
+
+    // FX: independent commands, only when the value actually moved.
+    if (std::fabs(new_chorus - fx_state_.chorus_depth) > eps) {
+        fx_state_.chorus_depth = new_chorus;
+        applyActiveChorusState();
+    }
+    if (std::fabs(new_reverb - fx_state_.reverb_mix) > eps) {
+        fx_state_.reverb_mix = new_reverb;
+        amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, new_reverb);
+    }
+    if (std::fabs(new_delay - fx_state_.delay_mix) > eps) {
+        fx_state_.delay_mix = new_delay;
+        amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, new_delay);
+    }
+    if (std::fabs(new_drive - fx_state_.drive) > eps) {
+        fx_state_.drive = new_drive;
+        active_patch_.drive_level = new_drive;
+        amy_adapter_->setDrive(new_drive);
+    }
+    if (std::fabs(new_tone - fx_state_.master_tone) > eps) {
+        fx_state_.master_tone = new_tone;
+        active_patch_.master_tone = new_tone;
+        amy_adapter_->setMasterTone(new_tone);
+    }
+
+    // FM relative controls. These compose with the Bank B runtime controls.
+    if (is_fm) {
+        if (std::fabs(fm_mod_factor - fm_state_.mod_factor) > eps) {
+            fm_state_.mod_factor = fm_mod_factor;
+            amy_adapter_->setFmModIndex(1, fm_mod_factor);
+        }
+        if (std::fabs(fm_ratio_factor - fm_state_.ratio_factor) > eps) {
+            fm_state_.ratio_factor = fm_ratio_factor;
+            amy_adapter_->setFmRatio(1, fm_ratio_factor * fm_state_.freq_mult);
+        }
+        if (std::fabs(fm_detune_off - fm_state_.detune_cents) > eps) {
+            fm_state_.detune_cents = fm_detune_off;
+            amy_adapter_->setOscDetune(1, fm_detune_off);
+        }
+        if (std::fabs(new_fm_fb - fm_state_.feedback) > eps) {
+            fm_state_.feedback = new_fm_fb;
+            amy_adapter_->setFmFeedback(1, new_fm_fb);
+        }
+    }
+}
+
 void PatchManager::handleKnobInput(uint8_t knob_idx, float physical_val) {
     if (knob_idx >= 16) return;
 
@@ -647,8 +876,13 @@ bool PatchManager::selectPatch(uint8_t patch_id) {
     // Update UI overlay and HomeScreen
     if (ui_manager_) {
         uint8_t m_vals[8];
-        for (int i = 0; i < 8; ++i) m_vals[i] = static_cast<uint8_t>(active_patch_.macros[i].current_val);
+        char m_labels[8][8];
+        for (int i = 0; i < 8; ++i) {
+            m_vals[i] = static_cast<uint8_t>(active_patch_.macros[i].current_val);
+            snprintf(m_labels[i], sizeof(m_labels[i]), "%s", active_patch_.macros[i].name);
+        }
         ui_manager_->homeScreen().setPatchInfo(active_patch_.id, active_patch_.name, "SYNTH");
+        ui_manager_->homeScreen().setMacroLabels(m_labels);
         ui_manager_->homeScreen().setMacroValues(m_vals);
         ui_manager_->homeScreen().setActiveVoices(amy_adapter_ ? amy_adapter_->activeVoices() : 0, active_patch_.voice_count);
         ui_manager_->triggerParameterOverlay("PATCH LOAD", "BANK A", (float)active_patch_.id, 0.0f, active_patch_.name, TakeoverStatus::Captured);
@@ -716,7 +950,14 @@ void PatchManager::setMacro(uint8_t macro_idx, float physical_val, bool from_phy
         sequencer_->recordLiveMotion(macro_idx, effective_val);
     }
 
-    applyMacroToEngine(macro_idx, effective_val);
+    if (usesRelativeMacros()) {
+        // Family-aware factory profiles: rebuild every target from the immutable
+        // baseline so results are deterministic and order-independent.
+        recomputeMacroTargets();
+    } else {
+        // Legacy patches keep their original absolute macro behavior.
+        applyMacroToEngine(macro_idx, effective_val);
+    }
 
     if (ui_manager_) {
         uint8_t m_vals[8];
@@ -792,6 +1033,11 @@ void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     // 5. Set default reverb & delay effect levels
     amy_adapter_->setReverb(fx_state_.reverb_size, 0.7f, fx_state_.reverb_mix);
     amy_adapter_->setDelay(fx_state_.delay_time_ms, fx_state_.delay_feedback, fx_state_.delay_mix);
+
+    // 5b. Capture the immutable per-session macro baseline now that the patch
+    // and its FX state are fully configured. Macros are always recomputed from
+    // this snapshot; the patch format itself is untouched.
+    captureMacroBaseline();
 
     // 6. Update UI macro status without destructively overriding preset internals
     if (ui_manager_) {

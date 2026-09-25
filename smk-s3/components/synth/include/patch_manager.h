@@ -1,6 +1,7 @@
 #pragma once
 #include "patch_types.h"
 #include "patch_family.h"
+#include "macro_profile.h"
 #include "control_mappings.h"
 #include "soft_takeover.h"
 #include "factory_patches.h"
@@ -126,10 +127,23 @@ private:
     PatchFamily activeFamily() const { return classifyPatch(active_patch_); }
 
     void applyPatchToEngine(const SynthPatch& patch);
+    // Legacy absolute macro path, kept for patches whose persisted mappings use
+    // the original param_type 0..7 destinations.
     void applyMacroToEngine(uint8_t macro_idx, float effective_val);
     // Pull the algorithm/feedback baseline from the engine once the loaded
     // preset has materialized. Safe to call on every FM knob event; cheap.
     void syncFmStateFromBaseline();
+
+    // Sound & Musicality M2: deterministic family-aware macro model.
+    // Returns true when the active patch uses at least one relative macro
+    // destination (all factory profiles do; legacy patches do not).
+    bool usesRelativeMacros() const;
+    // Capture the immutable per-session baseline from the loaded patch and the
+    // FX/FM state that applyPatchToEngine just configured.
+    void captureMacroBaseline();
+    // Recompute every target from the baseline and the eight macro positions,
+    // then reconcile only the engine parameters that actually changed.
+    void recomputeMacroTargets();
 
     AmyAdapter*    amy_adapter_    = nullptr;
     UIManager*     ui_manager_     = nullptr;
@@ -145,6 +159,10 @@ private:
     float          active_filter_key_track_ = 0.0f;
     float          active_filter_vel_track_ = 1.5f;
     uint8_t        active_filter_type_      = 0;
+
+    // Immutable per-session baseline for the relative macro model. Captured on
+    // patch load; never stored in the patch (format stays v5).
+    MacroBaseline  macro_baseline_;
 };
 
 } // namespace smk

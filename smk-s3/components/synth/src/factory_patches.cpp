@@ -1,4 +1,6 @@
 #include "factory_patches.h"
+#include "patch_family.h"
+#include "macro_profile.h"
 #include <cstring>
 
 namespace smk {
@@ -45,14 +47,200 @@ uint32_t calculatePatchV4LegacyCrc32(const SynthPatchV4Legacy& patch) {
     return ~crc;
 }
 
-static MacroConfig makeMacro(const char* name, float val, uint8_t param_type, float min_val, float max_val) {
+// A single macro route. min_val/max_val are interpreted by the destination:
+// multiplicative factors for *Relative factor targets, additive offsets for
+// offset targets (octaves for cutoff). The macro's neutral position always maps
+// to the identity contribution (1.0x or +0).
+struct MacroRouteDef {
+    MacroTarget target;
+    float       min_val;
+    float       max_val;
+    uint8_t     curve;
+};
+
+static MacroConfig makeMacroEx(const char* name, float def_val,
+                               const MacroRouteDef* routes, uint8_t route_count) {
     MacroConfig m = {};
     strncpy(m.name, name, sizeof(m.name) - 1);
-    m.default_val = val;
-    m.current_val = val;
-    m.mapping_count = 1;
-    m.mappings[0] = { 0xFFFF, param_type, min_val, max_val, 0 };
+    m.default_val = def_val;
+    m.current_val = def_val;
+    m.mapping_count = (route_count > 4) ? 4 : route_count;
+    for (uint8_t i = 0; i < m.mapping_count; ++i) {
+        m.mappings[i] = { 0xFFFF, static_cast<uint8_t>(routes[i].target),
+                          routes[i].min_val, routes[i].max_val, routes[i].curve };
+    }
     return m;
+}
+
+static bool categoryHas(const SynthPatch& p, const char* key) {
+    return strstr(p.category, key) != nullptr;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sound & Musicality M2: family-aware factory macro profiles.
+// ─────────────────────────────────────────────────────────────
+
+// Subtractive: the eight knobs behave like a classic analog performance panel.
+// Ranges are intentionally conservative and category-aware.
+static void configureSubtractiveMacroProfile(SynthPatch& out) {
+    const bool is_bass = categoryHas(out, "BASS");
+    const bool is_lead = categoryHas(out, "LEAD");
+    const bool is_pad  = categoryHas(out, "PAD") || categoryHas(out, "STRINGS");
+
+    const float char_cut_up = is_bass ? 1.2f : 2.5f;             // octaves
+    const float rel_up      = is_pad ? 6.0f : (is_bass ? 2.5f : 5.0f);
+    const float motn_ch_up  = is_lead ? 0.7f : 0.6f;
+    const float motn_dt_up  = is_lead ? 15.0f : 12.0f;           // cents
+    const float spce_rev_up = is_pad ? 0.8f : 0.6f;
+    const float spce_dly_up = is_pad ? 0.5f : 0.4f;
+    const float drv_up      = is_lead ? 0.9f : 0.8f;
+
+    const MacroRouteDef char_routes[] = {
+        { MacroTarget::FilterCutoffRelative, -2.0f, char_cut_up, 0 },
+        { MacroTarget::FilterResRelative,     0.5f, 2.5f,       0 },
+        { MacroTarget::FilterEnvRelative,    -2.0f, 2.0f,       0 },
+    };
+    const MacroRouteDef brte_routes[] = {
+        { MacroTarget::FilterCutoffRelative, -1.0f, 2.0f, 0 },
+        { MacroTarget::MasterToneRelative,   -0.2f, 0.5f, 0 },
+    };
+    const MacroRouteDef motn_routes[] = {
+        { MacroTarget::ChorusDepth,       0.0f, motn_ch_up, 0 },
+        { MacroTarget::OscDetuneRelative, 0.0f, motn_dt_up, 0 },
+    };
+    const MacroRouteDef shap_routes[] = {
+        { MacroTarget::FilterEnvRelative, -1.5f, 2.5f, 0 },
+        { MacroTarget::AmpAttackRelative,  0.5f, 1.8f, 0 },
+        { MacroTarget::AmpDecayRelative,   0.6f, 2.0f, 0 },
+    };
+    const MacroRouteDef atk_routes[] = {
+        { MacroTarget::AmpAttackRelative, 0.2f, 5.0f, 0 },
+    };
+    const MacroRouteDef rel_routes[] = {
+        { MacroTarget::AmpReleaseRelative, 0.2f, rel_up, 0 },
+    };
+    const MacroRouteDef spce_routes[] = {
+        { MacroTarget::ReverbMix,   0.0f, spce_rev_up, 0 },
+        { MacroTarget::DelayMix,    0.0f, spce_dly_up, 0 },
+        { MacroTarget::ChorusDepth, 0.0f, 0.3f,        0 },
+    };
+    const MacroRouteDef drv_routes[] = {
+        { MacroTarget::DriveRelative,      0.0f, drv_up, 0 },
+        { MacroTarget::MasterToneRelative, 0.0f, 0.2f,   0 },
+    };
+
+    out.macros[0] = makeMacroEx("CHAR", 50.0f, char_routes, 3);
+    out.macros[1] = makeMacroEx("BRTE", 50.0f, brte_routes, 2);
+    out.macros[2] = makeMacroEx("MOTN",  0.0f, motn_routes, 2);
+    out.macros[3] = makeMacroEx("SHAP", 50.0f, shap_routes, 3);
+    out.macros[4] = makeMacroEx("ATK",  50.0f, atk_routes, 1);
+    out.macros[5] = makeMacroEx("REL",  50.0f, rel_routes, 1);
+    out.macros[6] = makeMacroEx("SPCE",  0.0f, spce_routes, 3);
+    out.macros[7] = makeMacroEx("DRV",   0.0f, drv_routes, 2);
+}
+
+// FM: mod index / ratio / detune / feedback are all relative to the preset.
+// The generic amp ADSR is deliberately never referenced here.
+static void configureFmMacroProfile(SynthPatch& out) {
+    const MacroRouteDef char_routes[] = {
+        { MacroTarget::FmModIndexRelative, 0.0f, 4.0f, 0 },
+    };
+    const MacroRouteDef brte_routes[] = {
+        { MacroTarget::FilterCutoffRelative, -1.0f, 2.0f, 0 },
+        { MacroTarget::MasterToneRelative,   -0.2f, 0.5f, 0 },
+    };
+    const MacroRouteDef motn_routes[] = {
+        { MacroTarget::ChorusDepth,      0.0f, 0.6f, 0 },
+        { MacroTarget::FmDetuneRelative, 0.0f, 8.0f, 0 },
+    };
+    const MacroRouteDef fdbk_routes[] = {
+        { MacroTarget::FmFeedbackRelative, -0.06f, 0.06f, 0 },
+    };
+    const MacroRouteDef ratio_routes[] = {
+        { MacroTarget::FmRatioRelative, 0.5f, 2.0f, 0 },
+    };
+    const MacroRouteDef dtune_routes[] = {
+        { MacroTarget::FmDetuneRelative, -25.0f, 25.0f, 0 },
+    };
+    const MacroRouteDef spce_routes[] = {
+        { MacroTarget::ReverbMix,   0.0f, 0.6f, 0 },
+        { MacroTarget::DelayMix,    0.0f, 0.4f, 0 },
+        { MacroTarget::ChorusDepth, 0.0f, 0.3f, 0 },
+    };
+    const MacroRouteDef edge_routes[] = {
+        { MacroTarget::DriveRelative,      0.0f, 0.7f, 0 },
+        { MacroTarget::MasterToneRelative, 0.0f, 0.2f, 0 },
+    };
+
+    out.macros[0] = makeMacroEx("CHAR",  50.0f, char_routes, 1);
+    out.macros[1] = makeMacroEx("BRTE",  50.0f, brte_routes, 2);
+    out.macros[2] = makeMacroEx("MOTN",   0.0f, motn_routes, 2);
+    out.macros[3] = makeMacroEx("FDBK",  50.0f, fdbk_routes, 1);
+    out.macros[4] = makeMacroEx("RATIO", 50.0f, ratio_routes, 1);
+    out.macros[5] = makeMacroEx("DTUNE", 50.0f, dtune_routes, 1);
+    out.macros[6] = makeMacroEx("SPCE",   0.0f, spce_routes, 3);
+    out.macros[7] = makeMacroEx("EDGE",   0.0f, edge_routes, 2);
+}
+
+// Conservative fallback for PCM / Karplus-Strong / Noise / Generic. It must not
+// pretend those engines are subtractive, so it avoids oscillator topology and
+// stays in mild filter, amp and FX territory.
+static void configureConservativeMacroProfile(SynthPatch& out) {
+    const MacroRouteDef char_routes[] = {
+        { MacroTarget::FilterCutoffRelative, -1.5f, 1.5f, 0 },
+        { MacroTarget::FilterResRelative,     0.6f, 1.8f, 0 },
+    };
+    const MacroRouteDef brte_routes[] = {
+        { MacroTarget::FilterCutoffRelative, -0.5f, 1.0f, 0 },
+        { MacroTarget::MasterToneRelative,   -0.2f, 0.3f, 0 },
+    };
+    const MacroRouteDef motn_routes[] = {
+        { MacroTarget::ChorusDepth, 0.0f, 0.4f, 0 },
+    };
+    const MacroRouteDef shap_routes[] = {
+        { MacroTarget::FilterEnvRelative, -1.0f, 1.5f, 0 },
+        { MacroTarget::AmpAttackRelative,  0.6f, 1.5f, 0 },
+    };
+    const MacroRouteDef atk_routes[] = {
+        { MacroTarget::AmpAttackRelative, 0.3f, 4.0f, 0 },
+    };
+    const MacroRouteDef rel_routes[] = {
+        { MacroTarget::AmpReleaseRelative, 0.3f, 4.0f, 0 },
+    };
+    const MacroRouteDef spce_routes[] = {
+        { MacroTarget::ReverbMix, 0.0f, 0.5f, 0 },
+        { MacroTarget::DelayMix,  0.0f, 0.3f, 0 },
+    };
+    const MacroRouteDef drv_routes[] = {
+        { MacroTarget::DriveRelative, 0.0f, 0.5f, 0 },
+    };
+
+    out.macros[0] = makeMacroEx("CHAR", 50.0f, char_routes, 2);
+    out.macros[1] = makeMacroEx("BRTE", 50.0f, brte_routes, 2);
+    out.macros[2] = makeMacroEx("MOTN",  0.0f, motn_routes, 1);
+    out.macros[3] = makeMacroEx("SHAP", 50.0f, shap_routes, 2);
+    out.macros[4] = makeMacroEx("ATK",  50.0f, atk_routes, 1);
+    out.macros[5] = makeMacroEx("REL",  50.0f, rel_routes, 1);
+    out.macros[6] = makeMacroEx("SPCE",  0.0f, spce_routes, 2);
+    out.macros[7] = makeMacroEx("DRV",   0.0f, drv_routes, 1);
+}
+
+static void configureFactoryMacroProfile(SynthPatch& out) {
+    switch (classifyPatch(out)) {
+        case PatchFamily::Subtractive:
+            configureSubtractiveMacroProfile(out);
+            break;
+        case PatchFamily::FM:
+            configureFmMacroProfile(out);
+            break;
+        case PatchFamily::PCM:
+        case PatchFamily::KarplusStrong:
+        case PatchFamily::Noise:
+        case PatchFamily::Generic:
+        default:
+            configureConservativeMacroProfile(out);
+            break;
+    }
 }
 
 struct PatchDescriptor {
@@ -391,15 +579,10 @@ static void buildPatchFromDescriptor(const PatchDescriptor& desc, SynthPatch& ou
     out.chorus_mode = 0;
     out.reverb_freeze = 0;
 
-    // Configure standard clean macros
-    out.macros[0] = makeMacro("CHAR", 50.0f, 0, 500.0f, 12000.0f);
-    out.macros[1] = makeMacro("BRTE", 50.0f, 2, 200.0f, 14000.0f);
-    out.macros[2] = makeMacro("MOTN",  0.0f, 5,   0.0f,     1.0f);
-    out.macros[3] = makeMacro("SHAP", 40.0f, 3,   5.0f,   500.0f);
-    out.macros[4] = makeMacro("ATK",  10.0f, 3,   1.0f,   200.0f);
-    out.macros[5] = makeMacro("REL",  30.0f, 4,  10.0f,  1000.0f);
-    out.macros[6] = makeMacro("SPCE",  0.0f, 6,   0.0f,     0.5f); // Clean default reverb (no noise leak)
-    out.macros[7] = makeMacro("DRV",   0.0f, 7,   0.0f,    0.16f); // Safe FM feedback / drive
+    // Configure family-aware musical macros. The profile is chosen from the
+    // same classifier used at runtime, so a factory preset and its macros can
+    // never disagree about the family.
+    configureFactoryMacroProfile(out);
 
     out.crc32 = calculatePatchCrc32(out);
 }
@@ -424,6 +607,29 @@ const SynthPatch* FactoryPatches::getPatchByIndex(size_t index) {
         buildPatchFromDescriptor(s_patch_table[index], s_patch_cache);
     }
     return &s_patch_cache;
+}
+
+// Curated existing presets for quickly auditioning the family-aware macros.
+// No duplicate patches are introduced and kCount is unchanged.
+static const uint8_t s_showcase_ids[] = {
+      0, // Subtractive brass
+      4, // Subtractive strings
+     24, // Subtractive bass
+     32, // Subtractive lead
+     47, // Subtractive pad
+    128, // FM brass
+    135, // FM piano
+    142, // FM bass
+    153, // FM bell
+    154, // FM perc
+    224, // FM synth lead
+    246, // FM pad
+    248, // FM FX
+};
+
+const uint8_t* FactoryPatches::showcaseIds(size_t& out_count) {
+    out_count = sizeof(s_showcase_ids) / sizeof(s_showcase_ids[0]);
+    return s_showcase_ids;
 }
 
 } // namespace smk
