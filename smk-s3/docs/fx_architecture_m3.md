@@ -161,6 +161,59 @@ reachable through the raw AMY console passthrough.
   brightens for positive values; `BRTE`/`EDGE` compose their tone offsets on top
   of the manual tone.
 
+### 7.1 Reverb freeze is a requested state (M3.1)
+
+`AmyAdapter::reverb_freeze_` is the **requested freeze state**, not "the last
+attempt to apply freeze". It is an `std::atomic<bool>` written when a
+`ReverbFreeze` command is executed.
+
+AMY allocates the reverb tank lazily: `config_reverb()` only creates it once
+`reverb level > 0`. Boot starts at `REVERB_DEFAULT_LEVEL == 0`, so a fresh engine
+has `amy_global.bus[0]->reverb.rev == NULL`. `config_reverb_freeze()` is a no-op
+while the tank is absent:
+
+```cpp
+void config_reverb_freeze(uint8_t bus, uint8_t freeze) {
+    if (amy_global.bus[bus] && amy_global.bus[bus]->reverb.rev) {
+        amy_global.bus[bus]->reverb.rev->freeze = freeze;
+    }
+}
+```
+
+A patch that is loaded with `reverb_mix > 0` and `reverb_freeze = 1` queues both
+commands; if Freeze runs before the tank exists the request would be silently
+lost. The fix reconciles the requested state with the real tank at the only point
+where the tank is guaranteed to have been materialized for this block: after
+`amy_execute_deltas()` and before `amy_render()` in `AmyAdapter::renderEngine()`.
+
+```cpp
+amy_execute_deltas();
+config_reverb_freeze(0, reverb_freeze_.load(std::memory_order_relaxed) ? 1 : 0);
+amy_render(0, AMY_OSCS, 0);
+```
+
+Consequences:
+
+* The final DSP state is independent of command order (Freeze -> Reverb or
+  Reverb -> Freeze). Before every render, `tank->freeze == requested` whenever the
+  tank exists.
+* Freeze can remain **requested** while the tank is unallocated. It is applied the
+  moment the tank appears (e.g. when the user later raises reverb mix), so a dry
+  patch (`reverb_mix = 0`, `reverb_freeze = 1`) is a valid, non-allocating state.
+* Freeze alone never allocates the tank; allocation stays the responsibility of
+  `reverb level > 0`.
+* Patch switching cannot leave a ghost freeze: every patch load overwrites both
+  the requested state and (after reconciliation) the live `tank->freeze`.
+* The per-block reconciliation is an atomic load plus a byte store onto an
+  existing tank. It allocates nothing, takes no lock, queues no command, and
+  touches no filesystem, so it is real-time safe and O(1).
+
+Regression coverage: `tests/test_smk_reverb_freeze.cpp` (run by
+`tests/run_smk_patch_integrity.ps1`) starts a fresh engine and drives the real
+`PatchManager` + `AmyAdapter` + AMY chain: tank-absent freeze request, delayed
+materialization, Reverb-first order, disable after materialization, A frozen ->
+B unfrozen/dry (no ghost freeze) and a v6 save/load round-trip.
+
 ## 8. Command efficiency
 
 `recomputeMacroTargets()` emits a command only when the derived effective value

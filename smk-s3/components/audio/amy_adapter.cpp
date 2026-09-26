@@ -358,6 +358,17 @@ void AmyAdapter::setMasterGain(float gain) {
 
 int16_t* AmyAdapter::renderEngine() {
     amy_execute_deltas();
+    // M3.1: reconcile the requested reverb-freeze state with the actual DSP tank.
+    // config_reverb() allocates the tank lazily only once reverb level > 0, and
+    // events queued earlier in this block (Freeze before Reverb, Reverb before
+    // Freeze) only materialize it during amy_execute_deltas(). config_reverb_freeze()
+    // is a no-op while the tank is absent, so the immediate call in
+    // executeReverbFreeze() can be lost on a fresh engine. Re-applying the desired
+    // state here, after deltas and before render, makes the final state
+    // independent of command order. It is an atomic load plus a byte store onto an
+    // existing tank: no allocation, no lock, no new queued command, and a dry
+    // patch (no tank) stays unallocated.
+    config_reverb_freeze(0, reverb_freeze_.load(std::memory_order_relaxed) ? 1 : 0);
     amy_render(0, AMY_OSCS, 0);
     int16_t* buf = amy_fill_buffer();
     if (buf) {

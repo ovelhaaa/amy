@@ -49,6 +49,31 @@ try {
     if ($errors) { Write-Host $errors }
     if ($result -ne 0) { throw "Patch integrity test failed: $result" }
     if ($errors) { throw 'Unexpected AMY diagnostics during patch integrity test' }
+
+    # M3.1 real-AMY reverb freeze regression: fresh engine, lazy tank allocation,
+    # disable, patch switching, order independence and v6 save/reload. Link a
+    # second executable so the AMY engine starts from a clean (tank-absent) state.
+    $frozenExe = Join-Path $build 'test_smk_reverb_freeze.exe'
+    & g++ -std=c++17 -pthread @flags tests/test_smk_reverb_freeze.cpp `
+        smk-s3/components/audio/amy_adapter.cpp `
+        smk-s3/components/audio/amy_commands.cpp `
+        smk-s3/components/synth/src/patch_manager.cpp `
+        smk-s3/components/synth/src/factory_patches.cpp `
+        smk-s3/components/synth/src/soft_takeover.cpp `
+        smk-s3/components/sequencer/src/step_sequencer.cpp `
+        smk-s3/components/midi/event_bus.cpp `
+        smk-s3/components/midi/controller_profile.cpp `
+        smk-s3/components/storage/src/storage_manager.cpp `
+        @objects -lm -o $frozenExe
+    if ($LASTEXITCODE -ne 0) { throw 'Reverb freeze test link failed' }
+
+    $frozenStderr = Join-Path $build 'stderr_freeze.log'
+    & $frozenExe 2> $frozenStderr
+    $frozenResult = $LASTEXITCODE
+    $frozenErrors = Get-Content $frozenStderr -Raw
+    if ($frozenErrors) { Write-Host $frozenErrors }
+    if ($frozenResult -ne 0) { throw "Reverb freeze test failed: $frozenResult" }
+    if ($frozenErrors) { throw 'Unexpected AMY diagnostics during reverb freeze test' }
 } finally {
     Pop-Location
 }
