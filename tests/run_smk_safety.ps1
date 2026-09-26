@@ -12,4 +12,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Audio safety test compilation failed' }
     & ./build/smk_safety/test_audio.exe
     if ($LASTEXITCODE -ne 0) { throw 'Audio safety tests failed' }
+    & g++ -std=c++17 -O2 -pthread @includes smk-s3/components/system/console_args.cpp tests/test_smk_console_args.cpp -o build/smk_safety/test_console_args.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Console args test compilation failed' }
+    & ./build/smk_safety/test_console_args.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Console args tests failed' }
 } finally { Pop-Location }

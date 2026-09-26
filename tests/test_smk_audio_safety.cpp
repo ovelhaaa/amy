@@ -167,6 +167,9 @@ static void testDiagnosticFormulas() {
     assert(std::fabs(audioRenderLoadPercent(2666, 256, 48000) - 50.0f) < 0.5f);
     // A doubled render time doubles the load (format is a percentage, not a fraction).
     assert(std::fabs(audioRenderLoadPercent(2666, 128, 48000) - 100.0f) < 1.0f);
+    // M4.1: over-budget renders are reported unclamped, so a 150% deadline
+    // overrun is visible instead of being silently capped at 100%.
+    assert(std::fabs(audioRenderLoadPercent(4000, 128, 48000) - 150.0f) < 1.0f);
     assert(audioRenderLoadPercent(0, 128, 48000) == 0.0f);
     assert(audioRenderLoadPercent(10000, 0, 0) == 0.0f); // divide-by-zero guard
 }
@@ -174,5 +177,5 @@ static void testDiagnosticFormulas() {
 int main() {
     testDiagnosticFormulas();
     testOutput(); testTask();
-    std::puts("PASS: block budget/load semantics, DMA silence before enable, I2S faults, task creation failure, bounded write failure and stereo fade-in");
+    std::puts("PASS: block budget/load semantics (incl. >100% overrun), DMA silence before enable, I2S faults, task creation failure, bounded write failure and stereo fade-in");
 }

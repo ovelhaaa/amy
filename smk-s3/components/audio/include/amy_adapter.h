@@ -15,6 +15,10 @@ public:
     void onAudioStopped() override;
     // Control task propagates an emergency queue reset to note generators.
     bool takeRecoveryRequest();
+    // Restarts the synthesis owner's internal render-time EWMA from the next
+    // rendered block. Called by audio_reset so a fresh qualification window is
+    // not blended with pre-reset timing. Lock-free; safe from any task.
+    void resetRenderAverage();
     void noteOn(uint8_t channel, uint8_t note, uint8_t velocity) override;
     void noteOff(uint8_t channel, uint8_t note) override;
     void pitchBend(uint8_t channel, int16_t value) override;
@@ -92,6 +96,10 @@ private:
     bool initialized_ = false;
     static void workerRoutine(void* arg);
     bool serviceBlock(); // Single owner, also driven synchronously by host tests.
+    // Host-test access to the synthesis owner's private render-time EWMA. Not
+    // part of the runtime control path; the owner is the only runtime writer.
+    uint64_t renderAverageUsForTest() const;
+    void setRenderAverageUsForTest(uint64_t average_us);
     void submit(uint8_t type, uint8_t channel, uint16_t id,
                 float a = 0, float b = 0, float c = 0, float d = 0,
                 float e = 0, float f = 0, float g = 0);

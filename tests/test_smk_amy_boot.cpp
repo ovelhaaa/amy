@@ -14,6 +14,10 @@ Diagnostics& Diagnostics::instance() { static Diagnostics instance; return insta
 DiagnosticCounters& Diagnostics::counters() { return counters_; }
 struct AmyAdapterTestAccess {
     static bool service(AmyAdapter& adapter) { return adapter.serviceBlock(); }
+    static uint64_t average(AmyAdapter& adapter) { return adapter.renderAverageUsForTest(); }
+    static void setAverage(AmyAdapter& adapter, uint64_t average_us) {
+        adapter.setRenderAverageUsForTest(average_us);
+    }
 };
 }
 
@@ -292,6 +296,34 @@ static void run_headroom_telemetry(smk::AmyAdapter& adapter) {
     }
 }
 
+// M4.1: audio_reset must restart the synthesis owner's private EWMA, not only
+// the published Diagnostics::avg_render_us. Seed a huge stale average, request
+// a reset, and confirm the next rendered block starts a clean window instead of
+// blending 15/16 of the pre-reset value.
+static void run_render_average_reset(smk::AmyAdapter& adapter) {
+    adapter.loadPreset(1, 47, 8);
+    for (int i = 0; i < 2; ++i) {
+        assert(smk::AmyAdapterTestAccess::service(adapter));
+        adapter.render();
+    }
+
+    const uint64_t seeded = 16'000'000;
+    smk::AmyAdapterTestAccess::setAverage(adapter, seeded);
+
+    adapter.resetRenderAverage();
+    assert(smk::AmyAdapterTestAccess::service(adapter));
+    adapter.render();
+    // A working reset replaces the seed with a single block's elapsed time; a
+    // no-op reset would leave ~15/16 of the stale value in place.
+    assert(smk::AmyAdapterTestAccess::average(adapter) < 1'000'000);
+
+    // Control: without a reset request, the seeded stale average persists.
+    smk::AmyAdapterTestAccess::setAverage(adapter, seeded);
+    assert(smk::AmyAdapterTestAccess::service(adapter));
+    adapter.render();
+    assert(smk::AmyAdapterTestAccess::average(adapter) > 1'000'000);
+}
+
 int main(int argc, char** argv) {
     if (argc == 2 && std::strcmp(argv[1], "--legacy") == 0) {
         amy_config_t config = amy_default_config();
@@ -399,6 +431,7 @@ int main(int argc, char** argv) {
     run_real_amy_fm_relative(adapter);
     run_real_amy_fm_algorithm_change(adapter);
     run_real_amy_fm_patch_switch(adapter);
+    run_render_average_reset(adapter);
     run_headroom_telemetry(adapter);
-    std::puts("PASS: boot, complete voice allocation, 256 patch changes, MIDI CC, note release, drums, Panic, FM and headroom telemetry");
+    std::puts("PASS: boot, complete voice allocation, 256 patch changes, MIDI CC, note release, drums, Panic, FM, EWMA reset and headroom telemetry");
 }

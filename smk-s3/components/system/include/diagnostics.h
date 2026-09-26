@@ -16,7 +16,8 @@ constexpr float audioBlockBudgetUs(uint32_t block_size, uint32_t sample_rate_hz)
         : 1000000.0f * static_cast<float>(block_size) / static_cast<float>(sample_rate_hz);
 }
 
-// Render load as a percentage in 0..100 (not a 0..1 fraction).
+// Render load as a percentage (not a 0..1 fraction). Values above 100 mean the
+// block render missed its deadline; they are reported as-is and never clamped.
 constexpr float audioRenderLoadPercent(uint32_t render_us, uint32_t block_size,
                                        uint32_t sample_rate_hz) {
     const float budget = audioBlockBudgetUs(block_size, sample_rate_hz);
@@ -91,9 +92,10 @@ public:
         uint32_t block_size;
         uint32_t sample_rate_hz;
         float block_budget_us;
-        // render_load is a percentage in 0..100 (not a 0..1 fraction):
+        // render_load is a percentage (not a 0..1 fraction) and is not clamped:
         //   render_load     = avg_render_us / block_budget_us * 100
         //   max_render_load = max_render_us / block_budget_us * 100
+        // A value above 100 means the render deadline was missed.
         float render_load;
         float max_render_load;
         uint32_t peak_abs_sample;

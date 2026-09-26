@@ -33,12 +33,16 @@ budget_us = 1'000'000 * kBlockSize / kSampleRateHz
 
 ### 1.2 Render load
 
-`render_load` is a **percentage in 0..100**, not a 0..1 fraction:
+`render_load` is a **percentage**, not a 0..1 fraction. It is not clamped to
+100%; a value above 100% is a real deadline overrun:
 
 ```text
 avg_load = avg_render_us / block_budget_us * 100
 max_load = max_render_us / block_budget_us * 100
 ```
+
+Example: a 128-frame build (budget 2666.7 us) with a 4000 us render reports
+`150%`, not `100%`.
 
 The same equivalent workload must report a coherent percentage on both block
 sizes. A 128-frame build is *not* assumed to be better or worse; see section 12.

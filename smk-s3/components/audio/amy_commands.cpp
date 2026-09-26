@@ -84,6 +84,10 @@ struct AmyAdapter::State {
     std::atomic<uint32_t> written{0}, read{0};
     int16_t output[kSamples]{}; // Output task owns this copy, including fade-in.
     uint64_t average_us = 0;
+    // Set by the control/console task, consumed by the synthesis owner at the
+    // start of the next rendered block. Keeps average_us single-writer while
+    // still allowing audio_reset to restart the EWMA.
+    std::atomic<bool> average_reset_requested{false};
 
     ~State() { if (wake) vSemaphoreDelete(wake); }
     void enqueue(Command& c) {
@@ -204,6 +208,18 @@ bool AmyAdapter::takeRecoveryRequest() {
     return state_ && state_->recovery_requested.exchange(false, std::memory_order_acq_rel);
 }
 
+void AmyAdapter::resetRenderAverage() {
+    if (state_) state_->average_reset_requested.store(true, std::memory_order_release);
+}
+
+uint64_t AmyAdapter::renderAverageUsForTest() const {
+    return state_ ? state_->average_us : 0;
+}
+
+void AmyAdapter::setRenderAverageUsForTest(uint64_t average_us) {
+    if (state_) state_->average_us = average_us;
+}
+
 void AmyAdapter::workerRoutine(void* arg) {
     auto& self = *static_cast<AmyAdapter*>(arg);
     auto& s = *self.state_;
@@ -278,6 +294,11 @@ bool AmyAdapter::serviceBlock() {
     auto& s = *state_;
     const uint32_t written = s.written.load(std::memory_order_relaxed);
     if (written - s.read.load(std::memory_order_acquire) >= config::kSynthPcmBlocks) return false;
+    // Consume any pending window reset before timing starts, so the first block
+    // rendered after audio_reset begins a clean EWMA (average = elapsed).
+    if (s.average_reset_requested.exchange(false, std::memory_order_acq_rel)) {
+        s.average_us = 0;
+    }
     const int64_t start_us = esp_timer_get_time();
     auto& diag = Diagnostics::instance().counters();
     // Command phase belongs to the synthesis owner, outside the output task.

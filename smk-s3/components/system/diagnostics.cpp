@@ -1,7 +1,6 @@
 #include "diagnostics.h"
 #include "audio_config.h"
 #include "firmware_info.h"
-#include <algorithm>
 #include "esp_system.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -43,16 +42,15 @@ Diagnostics::Snapshot Diagnostics::takeSnapshot() const {
     s.psram_size = esp_psram_get_size();
 
     // Audio block budget is derived from the active build, never hard-coded.
-    // This keeps the load percentage comparable across block sizes.
+    // This keeps the load percentage comparable across block sizes. The load is
+    // deliberately not clamped: a value above 100% is a real deadline overrun.
     s.block_size = config::kBlockSize;
     s.sample_rate_hz = config::kSampleRateHz;
     s.block_budget_us = audioBlockBudgetUs(config::kBlockSize, config::kSampleRateHz);
-    s.render_load = std::clamp(
-        audioRenderLoadPercent(s.avg_render_us, config::kBlockSize, config::kSampleRateHz),
-        0.0f, 100.0f);
-    s.max_render_load = std::clamp(
-        audioRenderLoadPercent(s.max_render_us, config::kBlockSize, config::kSampleRateHz),
-        0.0f, 100.0f);
+    s.render_load =
+        audioRenderLoadPercent(s.avg_render_us, config::kBlockSize, config::kSampleRateHz);
+    s.max_render_load =
+        audioRenderLoadPercent(s.max_render_us, config::kBlockSize, config::kSampleRateHz);
     s.peak_abs_sample = counters_.peak_abs_sample.load();
     s.near_clip_samples = counters_.near_clip_samples.load();
     s.hard_clip_samples = counters_.hard_clip_samples.load();

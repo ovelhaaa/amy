@@ -1,4 +1,5 @@
 #include "console.h"
+#include "console_args.h"
 #include "diagnostics.h"
 #include "ui_manager.h"
 #include "patch_manager.h"
@@ -191,6 +192,10 @@ int Console::cmdAudioStatus(int argc, char** argv) {
 
 int Console::cmdAudioReset(int argc, char** argv) {
     Diagnostics::instance().resetAudioMetrics();
+    // The published counter is only half the window: the synthesis owner also
+    // keeps a private EWMA. Ask it to restart from the next block so the new
+    // window is not blended with pre-reset timing.
+    if (s_amy_adapter) s_amy_adapter->resetRenderAverage();
     ESP_LOGI(TAG, "Audio qualification metrics reset (timing, headroom, drops, starvation).");
     return 0;
 }
@@ -203,21 +208,16 @@ int Console::cmdDiagReset(int argc, char** argv) {
         return 1;
     }
     Diagnostics::instance().resetAudioMetrics();
+    if (s_amy_adapter) s_amy_adapter->resetRenderAverage();
     ESP_LOGI(TAG, "Diagnostics reset: audio metrics cleared.");
     return 0;
 }
 
 int Console::cmdNoteOn(int argc, char** argv) {
     if (!s_event_bus) return 1;
-    if (argc < 3) {
+    NoteOnArgs args{};
+    if (parseNoteOnArgs(argc, argv, args) != ArgStatus::Ok) {
         ESP_LOGE(TAG, "Usage: note_on <note 0..127> <vel 1..127> [channel 0..15]");
-        return 1;
-    }
-    int note = atoi(argv[1]);
-    int vel = atoi(argv[2]);
-    int channel = (argc >= 4) ? atoi(argv[3]) : 0;
-    if (note < 0 || note > 127 || vel < 0 || vel > 127 || channel < 0 || channel > 15) {
-        ESP_LOGE(TAG, "note_on: out-of-range argument");
         return 1;
     }
     // Same application event path as USB MIDI, so qualification exercises the
@@ -226,29 +226,24 @@ int Console::cmdNoteOn(int argc, char** argv) {
     SynthEvent event{};
     event.type = EventType::NoteOn;
     event.source = EventSource::Console;
-    event.channel = (uint8_t)channel;
-    event.id = (uint16_t)note;
-    event.value = vel;
+    event.channel = args.channel;
+    event.id = args.note;
+    event.value = args.velocity;
     return s_event_bus->send(event) ? 0 : 1;
 }
 
 int Console::cmdNoteOff(int argc, char** argv) {
     if (!s_event_bus) return 1;
-    if (argc < 2) {
+    NoteOffArgs args{};
+    if (parseNoteOffArgs(argc, argv, args) != ArgStatus::Ok) {
         ESP_LOGE(TAG, "Usage: note_off <note 0..127> [channel 0..15]");
-        return 1;
-    }
-    int note = atoi(argv[1]);
-    int channel = (argc >= 3) ? atoi(argv[2]) : 0;
-    if (note < 0 || note > 127 || channel < 0 || channel > 15) {
-        ESP_LOGE(TAG, "note_off: out-of-range argument");
         return 1;
     }
     SynthEvent event{};
     event.type = EventType::NoteOff;
     event.source = EventSource::Console;
-    event.channel = (uint8_t)channel;
-    event.id = (uint16_t)note;
+    event.channel = args.channel;
+    event.id = args.note;
     event.value = 0;
     return s_event_bus->send(event) ? 0 : 1;
 }
