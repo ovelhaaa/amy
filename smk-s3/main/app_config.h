@@ -2,6 +2,7 @@
 #include <cstdint>
 #include "synth_config.h"
 #include "audio_config.h"
+#include "firmware_info.h"
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 
@@ -120,7 +121,7 @@ constexpr uint16_t kEventQueueCapacity = 256;
 // ═══════════════════════════════════════════════
 // Firmware Info
 // ═══════════════════════════════════════════════
-constexpr const char* kFirmwareVersion = "0.1.0";
-constexpr const char* kProjectName = "SMK-S3 Synth";
+// kFirmwareVersion / kProjectName now live in firmware_info.h so the boot
+// banner and the diagnostics snapshot share one definition.
 
 } // namespace smk::config

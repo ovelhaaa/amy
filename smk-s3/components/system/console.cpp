@@ -22,6 +22,7 @@
 #include "driver/uart_vfs.h"
 #include <cstring>
 #include <cstdlib>
+#include <cmath>
 
 static const char* TAG = "Console";
 
@@ -84,7 +85,11 @@ bool Console::begin() {
     }
 
     registerCommand("status", "Show system status snapshot", cmdStatus);
-    registerCommand("audio_status", "Show audio subsystem status", cmdAudioStatus);
+    registerCommand("audio_status", "Show audio qualification snapshot", cmdAudioStatus);
+    registerCommand("audio_reset", "Reset runtime audio qualification metrics", cmdAudioReset);
+    registerCommand("diag_reset", "Reset diagnostics metrics (diag_reset [audio])", cmdDiagReset);
+    registerCommand("note_on", "Inject Note On <note 0..127> <vel 1..127> [channel 0..15]", cmdNoteOn);
+    registerCommand("note_off", "Inject Note Off <note 0..127> [channel 0..15]", cmdNoteOff);
     registerCommand("panic", "Trigger engine panic (all notes off)", cmdPanic);
     registerCommand("memory", "Show detailed memory report", cmdMemory);
     registerCommand("midi_monitor", "Toggle MIDI monitor", cmdMidiMonitor);
@@ -153,16 +158,99 @@ int Console::cmdStatus(int argc, char** argv) {
 }
 
 int Console::cmdAudioStatus(int argc, char** argv) {
-    auto& counters = Diagnostics::instance().counters();
-    ESP_LOGI(TAG, "Audio Underruns: %lu", counters.audio_underruns.load());
-    ESP_LOGI(TAG, "Max Render Us: %lu", counters.max_render_us.load());
-    ESP_LOGI(TAG, "Avg Render Us: %lu", counters.avg_render_us.load());
-    ESP_LOGI(TAG, "Frames Rendered: %lu", counters.frames_rendered.load());
-    ESP_LOGI(TAG, "Synth: PCM gaps=%lu, command drops=%lu, queue high-water=%lu, panics applied=%lu",
-             counters.synth_pcm_starvations.load(), counters.synth_commands_dropped.load(),
-             counters.synth_queue_high_water.load(), counters.synth_panics.load());
-    ESP_LOGI(TAG, "Synth max command wait: %lu us", counters.synth_max_command_wait_us.load());
+    // One coherent copy so the printed window is self-consistent. The compact
+    // key=value form is intended to be copied straight out of the serial log.
+    const Diagnostics::Snapshot s = Diagnostics::instance().takeSnapshot();
+    const float peak_dbfs = (s.peak_abs_sample > 0)
+        ? 20.0f * log10f(static_cast<float>(s.peak_abs_sample) / 32768.0f)
+        : -120.0f;
+
+    ESP_LOGI(TAG, "=== AUDIO QUAL ===");
+    ESP_LOGI(TAG, "block=%lu rate=%lu budget_us=%.1f",
+             (unsigned long)s.block_size, (unsigned long)s.sample_rate_hz, s.block_budget_us);
+    ESP_LOGI(TAG, "avg_us=%lu max_us=%lu frames=%lu",
+             (unsigned long)s.avg_render_us, (unsigned long)s.max_render_us,
+             (unsigned long)s.frames_rendered);
+    ESP_LOGI(TAG, "avg_load=%.1f max_load=%.1f", s.render_load, s.max_render_load);
+    ESP_LOGI(TAG, "voices=%lu", (unsigned long)s.active_voices);
+    ESP_LOGI(TAG, "peak=%lu peak_dbfs=%.1f near_clip=%lu hard_clip=%lu",
+             (unsigned long)s.peak_abs_sample, peak_dbfs,
+             (unsigned long)s.near_clip_samples, (unsigned long)s.hard_clip_samples);
+    ESP_LOGI(TAG, "underrun=%lu starvation=%lu",
+             (unsigned long)s.audio_underruns,
+             (unsigned long)Diagnostics::instance().counters().synth_pcm_starvations.load());
+    ESP_LOGI(TAG, "cmd_drop=%lu queue_hwm=%lu cmd_wait_max_us=%lu",
+             (unsigned long)Diagnostics::instance().counters().synth_commands_dropped.load(),
+             (unsigned long)Diagnostics::instance().counters().synth_queue_high_water.load(),
+             (unsigned long)Diagnostics::instance().counters().synth_max_command_wait_us.load());
+    ESP_LOGI(TAG, "int_free=%lu int_largest=%lu psram_free=%lu psram_largest=%lu",
+             (unsigned long)s.free_internal_ram, (unsigned long)s.largest_free_internal_block,
+             (unsigned long)s.free_psram, (unsigned long)s.largest_free_psram_block);
     return 0;
+}
+
+int Console::cmdAudioReset(int argc, char** argv) {
+    Diagnostics::instance().resetAudioMetrics();
+    ESP_LOGI(TAG, "Audio qualification metrics reset (timing, headroom, drops, starvation).");
+    return 0;
+}
+
+int Console::cmdDiagReset(int argc, char** argv) {
+    // Only the audio window is resettable in M4. Permanent state (USB link,
+    // connection counters) is never cleared by a diagnostic reset.
+    if (argc >= 2 && strcasecmp(argv[1], "audio") != 0) {
+        ESP_LOGW(TAG, "Usage: diag_reset [audio]");
+        return 1;
+    }
+    Diagnostics::instance().resetAudioMetrics();
+    ESP_LOGI(TAG, "Diagnostics reset: audio metrics cleared.");
+    return 0;
+}
+
+int Console::cmdNoteOn(int argc, char** argv) {
+    if (!s_event_bus) return 1;
+    if (argc < 3) {
+        ESP_LOGE(TAG, "Usage: note_on <note 0..127> <vel 1..127> [channel 0..15]");
+        return 1;
+    }
+    int note = atoi(argv[1]);
+    int vel = atoi(argv[2]);
+    int channel = (argc >= 4) ? atoi(argv[3]) : 0;
+    if (note < 0 || note > 127 || vel < 0 || vel > 127 || channel < 0 || channel > 15) {
+        ESP_LOGE(TAG, "note_on: out-of-range argument");
+        return 1;
+    }
+    // Same application event path as USB MIDI, so qualification exercises the
+    // production routing (arpeggiator/sequencer rules included) without a
+    // controller attached.
+    SynthEvent event{};
+    event.type = EventType::NoteOn;
+    event.source = EventSource::Console;
+    event.channel = (uint8_t)channel;
+    event.id = (uint16_t)note;
+    event.value = vel;
+    return s_event_bus->send(event) ? 0 : 1;
+}
+
+int Console::cmdNoteOff(int argc, char** argv) {
+    if (!s_event_bus) return 1;
+    if (argc < 2) {
+        ESP_LOGE(TAG, "Usage: note_off <note 0..127> [channel 0..15]");
+        return 1;
+    }
+    int note = atoi(argv[1]);
+    int channel = (argc >= 3) ? atoi(argv[2]) : 0;
+    if (note < 0 || note > 127 || channel < 0 || channel > 15) {
+        ESP_LOGE(TAG, "note_off: out-of-range argument");
+        return 1;
+    }
+    SynthEvent event{};
+    event.type = EventType::NoteOff;
+    event.source = EventSource::Console;
+    event.channel = (uint8_t)channel;
+    event.id = (uint16_t)note;
+    event.value = 0;
+    return s_event_bus->send(event) ? 0 : 1;
 }
 
 int Console::cmdPanic(int argc, char** argv) {
@@ -173,8 +261,15 @@ int Console::cmdPanic(int argc, char** argv) {
 }
 
 int Console::cmdMemory(int argc, char** argv) {
-    ESP_LOGI(TAG, "Internal RAM Free: %zu", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-    ESP_LOGI(TAG, "PSRAM Free: %zu", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    const Diagnostics::Snapshot s = Diagnostics::instance().takeSnapshot();
+    ESP_LOGI(TAG, "=== MEMORY ===");
+    ESP_LOGI(TAG, "int_free=%lu int_largest=%lu",
+             (unsigned long)s.free_internal_ram, (unsigned long)s.largest_free_internal_block);
+    ESP_LOGI(TAG, "psram_free=%lu psram_largest=%lu",
+             (unsigned long)s.free_psram, (unsigned long)s.largest_free_psram_block);
+    ESP_LOGI(TAG, "cpu_mhz=%lu flash_size=%lu psram_size=%lu",
+             (unsigned long)s.cpu_freq_mhz, (unsigned long)s.flash_size,
+             (unsigned long)s.psram_size);
     return 0;
 }
 
@@ -800,7 +895,11 @@ int Console::cmdDisplayBl(int argc, char** argv) {
 int Console::cmdHelp(int argc, char** argv) {
     ESP_LOGI(TAG, "--- Available Commands ---");
     ESP_LOGI(TAG, " status        - Show system status snapshot");
-    ESP_LOGI(TAG, " audio_status  - Show audio subsystem status");
+    ESP_LOGI(TAG, " audio_status  - Show audio qualification snapshot");
+    ESP_LOGI(TAG, " audio_reset   - Reset runtime audio qualification metrics");
+    ESP_LOGI(TAG, " diag_reset    - Reset diagnostics metrics [audio]");
+    ESP_LOGI(TAG, " note_on       - Inject Note On <note> <vel> [channel]");
+    ESP_LOGI(TAG, " note_off      - Inject Note Off <note> [channel]");
     ESP_LOGI(TAG, " panic         - Trigger engine panic");
     ESP_LOGI(TAG, " memory        - Show detailed memory report");
     ESP_LOGI(TAG, " patch_list    - List embedded factory patches");
@@ -866,6 +965,12 @@ void Console::consoleTask(void* arg) {
                             has_alias = true;
                         } else if (strncmp(line_buf, "audio status", 12) == 0) {
                             snprintf(alias_buf, sizeof(alias_buf), "audio_status%s", line_buf + 12);
+                            has_alias = true;
+                        } else if (strncmp(line_buf, "audio reset", 11) == 0) {
+                            snprintf(alias_buf, sizeof(alias_buf), "audio_reset%s", line_buf + 11);
+                            has_alias = true;
+                        } else if (strncmp(line_buf, "diag reset", 10) == 0) {
+                            snprintf(alias_buf, sizeof(alias_buf), "diag_reset%s", line_buf + 10);
                             has_alias = true;
                         } else if (strncmp(line_buf, "midi monitor", 12) == 0) {
                             snprintf(alias_buf, sizeof(alias_buf), "midi_monitor%s", line_buf + 12);

@@ -46,6 +46,10 @@ private:
     static EventBus* s_event_bus;
     static int cmdStatus(int argc, char** argv);
     static int cmdAudioStatus(int argc, char** argv);
+    static int cmdAudioReset(int argc, char** argv);
+    static int cmdDiagReset(int argc, char** argv);
+    static int cmdNoteOn(int argc, char** argv);
+    static int cmdNoteOff(int argc, char** argv);
     static int cmdPanic(int argc, char** argv);
     static int cmdMemory(int argc, char** argv);
     static int cmdMidiMonitor(int argc, char** argv);

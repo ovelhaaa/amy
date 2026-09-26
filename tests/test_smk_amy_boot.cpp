@@ -232,6 +232,66 @@ static void run_real_amy_fm_patch_switch(smk::AmyAdapter& adapter) {
     std::printf("PASS: real AMY FM patch switch A(%d) -> B(%d): snapshot tracks the loaded patch\n", first, second);
 }
 
+// M4 host guardrail: exercise a representative heavy signal chain (polyphonic
+// subtractive pad + chorus + delay + reverb + drive + tone) on the real engine
+// and verify the new headroom telemetry matches an independent scan of the
+// exact block stream. Broad guardrails only: the point is to catch NaN/invalid
+// state, telemetry divergence and command/starvation explosions, not to pin a
+// musical peak. Musical loudness is confirmed on hardware.
+static void run_headroom_telemetry(smk::AmyAdapter& adapter) {
+    constexpr uint32_t kNear = 32106;
+    constexpr uint32_t kHard = 32767;
+
+    adapter.loadPreset(1, 47, 8); // Subtractive pad showcase.
+    fm_service_render(adapter);
+    adapter.setChorus(0.6f, 0.5f, 0.7f);
+    adapter.setDelay(350.0f, 0.4f, 0.4f);
+    adapter.setReverb(0.7f, 0.5f, 0.4f);
+    adapter.setDrive(0.3f);
+    adapter.setMasterTone(0.2f);
+    for (uint8_t note : {48, 52, 55, 60}) adapter.noteOn(0, note, 100);
+
+    // Reset after all enqueues so the window contains exactly the loop below.
+    smk::Diagnostics::instance().resetAudioMetrics();
+    auto& diag = smk::Diagnostics::instance().counters();
+
+    uint32_t manual_peak = 0, manual_near = 0, manual_hard = 0;
+    bool signal = false;
+    for (int block = 0; block < 64; ++block) {
+        assert(smk::AmyAdapterTestAccess::service(adapter));
+        const int16_t* samples = adapter.render();
+        assert(samples != nullptr);
+        for (int i = 0; i < AMY_BLOCK_SIZE * AMY_NCHANS; ++i) {
+            const int16_t sample = samples[i];
+            if (sample != 0) signal = true;
+            const uint32_t magnitude = (sample < 0)
+                ? static_cast<uint32_t>(-static_cast<int32_t>(sample))
+                : static_cast<uint32_t>(sample);
+            if (magnitude > manual_peak) manual_peak = magnitude;
+            if (magnitude >= kNear) ++manual_near;
+            if (magnitude >= kHard) ++manual_hard;
+        }
+    }
+    assert(signal);
+    assert(manual_peak > 0);
+    // Telemetry must describe exactly the block stream the consumer observed.
+    assert(diag.peak_abs_sample.load() == manual_peak);
+    assert(diag.near_clip_samples.load() == manual_near);
+    assert(diag.hard_clip_samples.load() == manual_hard);
+    // No command starvation or PCM gap while a full FX chain runs.
+    assert(diag.synth_pcm_starvations.load() == 0);
+    assert(diag.synth_commands_dropped.load() == 0);
+    const float peak_dbfs = 20.0f * std::log10(static_cast<float>(manual_peak) / 32768.0f);
+    std::printf("PASS: headroom telemetry (pad + chorus/delay/reverb/drive): peak=%u (%.1f dBFS), near=%u, hard=%u, starvation=0, drops=0\n",
+                manual_peak, peak_dbfs, manual_near, manual_hard);
+
+    adapter.panic();
+    for (int i = 0; i < 600; ++i) {
+        assert(smk::AmyAdapterTestAccess::service(adapter));
+        adapter.render();
+    }
+}
+
 int main(int argc, char** argv) {
     if (argc == 2 && std::strcmp(argv[1], "--legacy") == 0) {
         amy_config_t config = amy_default_config();
@@ -339,5 +399,6 @@ int main(int argc, char** argv) {
     run_real_amy_fm_relative(adapter);
     run_real_amy_fm_algorithm_change(adapter);
     run_real_amy_fm_patch_switch(adapter);
-    std::puts("PASS: boot, complete voice allocation, 256 patch changes, MIDI CC, note release, drums, Panic and FM");
+    run_headroom_telemetry(adapter);
+    std::puts("PASS: boot, complete voice allocation, 256 patch changes, MIDI CC, note release, drums, Panic, FM and headroom telemetry");
 }

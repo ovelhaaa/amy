@@ -1,4 +1,6 @@
 #include "diagnostics.h"
+#include "audio_config.h"
+#include "firmware_info.h"
 #include <algorithm>
 #include "esp_system.h"
 #include "esp_heap_caps.h"
@@ -37,10 +39,23 @@ Diagnostics::Snapshot Diagnostics::takeSnapshot() const {
     uint32_t flash_size = 0;
     esp_flash_get_size(NULL, &flash_size);
     s.flash_size = flash_size;
-    
-    // Audio block budget at 48kHz with 256 frames: (256 * 1000000) / 48000 = ~5333.33 us
-    constexpr float kBlockBudgetUs = 5333.33f;
-    s.render_load = std::clamp(((float)s.avg_render_us / kBlockBudgetUs) * 100.0f, 0.0f, 100.0f);
+    // Real PSRAM size from ESP-IDF; 0 when the part is absent or not initialized.
+    s.psram_size = esp_psram_get_size();
+
+    // Audio block budget is derived from the active build, never hard-coded.
+    // This keeps the load percentage comparable across block sizes.
+    s.block_size = config::kBlockSize;
+    s.sample_rate_hz = config::kSampleRateHz;
+    s.block_budget_us = audioBlockBudgetUs(config::kBlockSize, config::kSampleRateHz);
+    s.render_load = std::clamp(
+        audioRenderLoadPercent(s.avg_render_us, config::kBlockSize, config::kSampleRateHz),
+        0.0f, 100.0f);
+    s.max_render_load = std::clamp(
+        audioRenderLoadPercent(s.max_render_us, config::kBlockSize, config::kSampleRateHz),
+        0.0f, 100.0f);
+    s.peak_abs_sample = counters_.peak_abs_sample.load();
+    s.near_clip_samples = counters_.near_clip_samples.load();
+    s.hard_clip_samples = counters_.hard_clip_samples.load();
     s.active_voices = counters_.active_voices.load();
     
     s.midi_parse_errors = counters_.midi_parse_errors.load();
@@ -50,7 +65,7 @@ Diagnostics::Snapshot Diagnostics::takeSnapshot() const {
     s.usb_reconnects = counters_.usb_reconnects.load();
     s.panic_count = counters_.panic_count.load();
     s.usb_connected = counters_.usb_connected.load(std::memory_order_relaxed);
-    s.firmware_version = "0.1.0"; 
+    s.firmware_version = config::kFirmwareVersion;
     
     return s;
 }
@@ -58,8 +73,13 @@ Diagnostics::Snapshot Diagnostics::takeSnapshot() const {
 void Diagnostics::logSnapshot() const {
     Snapshot s = takeSnapshot();
     ESP_LOGI(TAG, "=== System Diagnostics Snapshot ===");
-    ESP_LOGI(TAG, "Audio: Underruns=%lu, MaxRenderUs=%lu, AvgRenderUs=%lu, FramesRendered=%lu",
-             s.audio_underruns, s.max_render_us, s.avg_render_us, s.frames_rendered);
+    ESP_LOGI(TAG, "Audio: Block=%lu, Rate=%luHz, Budget=%.1fus, AvgRender=%luus (%.1f%%), MaxRender=%luus (%.1f%%)",
+             s.block_size, s.sample_rate_hz, s.block_budget_us,
+             s.avg_render_us, s.render_load, s.max_render_us, s.max_render_load);
+    ESP_LOGI(TAG, "Audio: Underruns=%lu, PCMStarvations=%lu, FramesRendered=%lu, Voices=%lu",
+             s.audio_underruns, counters_.synth_pcm_starvations.load(), s.frames_rendered, s.active_voices);
+    ESP_LOGI(TAG, "Headroom: PeakAbs=%lu, NearClip=%lu, HardClip=%lu",
+             s.peak_abs_sample, s.near_clip_samples, s.hard_clip_samples);
     ESP_LOGI(TAG, "Memory: FreeInternal=%lu, FreePSRAM=%lu, MaxFreeInternalBlock=%lu, MaxFreePSRAMBlock=%lu",
              s.free_internal_ram, s.free_psram, s.largest_free_internal_block, s.largest_free_psram_block);
     ESP_LOGI(TAG, "Hardware: CPUFreq=%luMHz, FlashSize=%lu, PSRAMSize=%lu",

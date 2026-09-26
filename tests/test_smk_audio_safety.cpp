@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <vector>
 
@@ -155,7 +156,23 @@ static void testTask() {
     assert(AudioTask::getMaxRenderUs() == 12345);
 }
 
+// M4: the block budget must come from the active build, and the same equivalent
+// workload must report a coherent percentage on 128 and 256 builds.
+static void testDiagnosticFormulas() {
+    assert(std::fabs(audioBlockBudgetUs(128, 48000) - 2666.6667f) < 0.01f);
+    assert(std::fabs(audioBlockBudgetUs(256, 48000) - 5333.3333f) < 0.01f);
+    // 128-frame build: half budget is ~1333 us -> ~50%.
+    assert(std::fabs(audioRenderLoadPercent(1333, 128, 48000) - 50.0f) < 0.5f);
+    // 256-frame build: half budget is ~2666 us -> ~50%.
+    assert(std::fabs(audioRenderLoadPercent(2666, 256, 48000) - 50.0f) < 0.5f);
+    // A doubled render time doubles the load (format is a percentage, not a fraction).
+    assert(std::fabs(audioRenderLoadPercent(2666, 128, 48000) - 100.0f) < 1.0f);
+    assert(audioRenderLoadPercent(0, 128, 48000) == 0.0f);
+    assert(audioRenderLoadPercent(10000, 0, 0) == 0.0f); // divide-by-zero guard
+}
+
 int main() {
+    testDiagnosticFormulas();
     testOutput(); testTask();
-    std::puts("PASS: DMA silence before enable, I2S faults, task creation failure, bounded write failure and stereo fade-in");
+    std::puts("PASS: block budget/load semantics, DMA silence before enable, I2S faults, task creation failure, bounded write failure and stereo fade-in");
 }

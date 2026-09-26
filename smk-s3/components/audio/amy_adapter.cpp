@@ -30,6 +30,12 @@ extern "C" {
 static constexpr uint8_t FM_OUT_BUS_ONE = 1 << 0;
 static constexpr uint8_t FM_OUT_BUS_TWO = 1 << 1;
 
+// Headroom telemetry thresholds on the final 16-bit PCM block.
+//   near clip: 0.98 * 32767 = 32105.66, rounded up to 32106
+//   hard clip: the largest representable magnitude, 32767 (and -32768)
+static constexpr uint32_t kNearClipThreshold = 32106;
+static constexpr uint32_t kHardClipThreshold = 32767;
+
 // A DX7 operator is a modulator when the *current* algorithm routes its output
 // onto a modulation bus. This must be evaluated at control time, not cached in
 // the snapshot, because changing the algorithm reclassifies operators.
@@ -387,12 +393,31 @@ int16_t* AmyAdapter::renderEngine() {
             }
         }
 
-        // Fast copy for oscilloscope UI (no zero-crossing in real-time audio thread)
+        // Single pass over the final block: oscilloscope capture plus cheap
+        // peak/headroom telemetry. Both thresholds and the running peak are
+        // plain integer compares, so this stays realtime-safe. The scan always
+        // covers the whole block; only the scope copy is capped.
         size_t copy_samples = (total_samples < kRawScopeBufferSize)
                               ? total_samples : kRawScopeBufferSize;
-        for (size_t i = 0; i < copy_samples; ++i) {
-            scope_buffer_[i].store(buf[i], std::memory_order_relaxed);
+        uint32_t peak = 0, near_clip = 0, hard_clip = 0;
+        for (size_t i = 0; i < total_samples; ++i) {
+            const int16_t sample = buf[i];
+            if (i < copy_samples) {
+                scope_buffer_[i].store(sample, std::memory_order_relaxed);
+            }
+            const uint32_t magnitude = (sample < 0)
+                ? static_cast<uint32_t>(-static_cast<int32_t>(sample))
+                : static_cast<uint32_t>(sample);
+            if (magnitude > peak) peak = magnitude;
+            if (magnitude >= kNearClipThreshold) ++near_clip;
+            if (magnitude >= kHardClipThreshold) ++hard_clip;
         }
+        auto& counters = Diagnostics::instance().counters();
+        if (peak > counters.peak_abs_sample.load(std::memory_order_relaxed)) {
+            counters.peak_abs_sample.store(peak, std::memory_order_relaxed);
+        }
+        if (near_clip) counters.near_clip_samples.fetch_add(near_clip, std::memory_order_relaxed);
+        if (hard_clip) counters.hard_clip_samples.fetch_add(hard_clip, std::memory_order_relaxed);
     }
     render_load_snapshot_.store(amy_get_render_load(), std::memory_order_relaxed);
     return buf;
