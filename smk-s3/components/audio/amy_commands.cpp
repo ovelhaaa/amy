@@ -357,6 +357,8 @@ bool AmyAdapter::serviceBlock() {
     std::memcpy(block.samples, samples, sizeof(block.samples));
     block.generation = s.applied_generation;
     const uint32_t elapsed_us = static_cast<uint32_t>(esp_timer_get_time() - start_us);
+    if (elapsed_us > audioBlockBudgetUs(config::kBlockSize, config::kSampleRateHz))
+        diag.render_deadline_misses.fetch_add(1, std::memory_order_relaxed);
     if (elapsed_us > diag.max_render_us.load(std::memory_order_relaxed))
         diag.max_render_us.store(elapsed_us, std::memory_order_relaxed);
     s.average_us = s.average_us ? (s.average_us * 15 + elapsed_us) / 16 : elapsed_us;

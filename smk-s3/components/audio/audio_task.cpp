@@ -15,16 +15,22 @@ SynthEngine* AudioTask::_engine = nullptr;
 AudioOutput* AudioTask::_output = nullptr;
 TaskHandle_t AudioTask::_task_handle = nullptr;
 std::atomic<bool> AudioTask::_running{false};
+std::atomic<bool> AudioTask::_active{false};
+SemaphoreHandle_t AudioTask::_stopped = nullptr;
 std::atomic<bool> AudioTask::_failed{false};
 std::atomic<uint32_t> AudioTask::_max_render_us{0};
 std::atomic<uint32_t> AudioTask::_avg_render_us{0};
 
 bool AudioTask::start(SynthEngine* engine, AudioOutput* output, uint8_t core_id, uint8_t priority, uint32_t stack_size_bytes) {
-    if (_running || _task_handle || !engine || !output || stack_size_bytes == 0) return false;
+    if (_active.load(std::memory_order_acquire) || !engine || !output || stack_size_bytes == 0) return false;
+    if (!_stopped) _stopped = xSemaphoreCreateBinary();
+    if (!_stopped) return false;
+    xSemaphoreTake(_stopped, 0);
     
     _engine = engine;
     _output = output;
     _running = true;
+    _active = true;
     _failed = false;
     _max_render_us = 0;
     _avg_render_us = 0;
@@ -42,6 +48,7 @@ bool AudioTask::start(SynthEngine* engine, AudioOutput* output, uint8_t core_id,
         _running = false;
         _failed = true;
         _task_handle = nullptr;
+        _active.store(false, std::memory_order_release);
         return false;
     }
     return true;
@@ -50,6 +57,12 @@ bool AudioTask::start(SynthEngine* engine, AudioOutput* output, uint8_t core_id,
 void AudioTask::stop() {
     _running = false;
     // Task will self-terminate on next loop iteration.
+}
+
+bool AudioTask::waitStopped(uint32_t timeout_ms) {
+    if (!_active.load(std::memory_order_acquire)) return true;
+    if (_stopped) xSemaphoreTake(_stopped, pdMS_TO_TICKS(timeout_ms));
+    return !_active.load(std::memory_order_acquire);
 }
 
 uint32_t AudioTask::getMaxRenderUs() { return Diagnostics::instance().counters().max_render_us.load(); }
@@ -104,6 +117,8 @@ void AudioTask::taskRoutine(void* arg) {
         // Sync with Diagnostics subsystem
         auto& diag = Diagnostics::instance().counters();
         if (!_engine->bufferedOutput()) {
+            if (render_time > audioBlockBudgetUs(frames, config::kSampleRateHz))
+                diag.render_deadline_misses.fetch_add(1, std::memory_order_relaxed);
             diag.max_render_us.store(_max_render_us.load(), std::memory_order_relaxed);
             diag.avg_render_us.store(avg_us, std::memory_order_relaxed);
             diag.frames_rendered.fetch_add(frames, std::memory_order_relaxed);
@@ -120,7 +135,9 @@ void AudioTask::taskRoutine(void* arg) {
     // Mute on failure/stop; the control task reports any failure, including stop.
     if (!_output->stop()) _failed = true;
     _engine->onAudioStopped();
-    _task_handle = nullptr;
+    // No engine/output access after publication. Lifecycle caller may now free them.
+    _active.store(false, std::memory_order_release);
+    xSemaphoreGive(_stopped);
     vTaskDelete(nullptr);
 }
 

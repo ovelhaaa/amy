@@ -28,7 +28,11 @@ struct DiagnosticCounters {
     // Audio render timing. These describe the synthesis owner's per-block work
     // (command application + AMY render); see audio_config.h for the block
     // budget they are compared against.
+    // Legacy metric: I2S write errors/short writes, NOT observed DMA underruns.
     std::atomic<uint32_t> audio_underruns{0};
+    std::atomic<uint32_t> i2s_write_errors{0};
+    std::atomic<uint32_t> i2s_write_timeouts{0};
+    std::atomic<uint32_t> render_deadline_misses{0};
     std::atomic<uint32_t> max_render_us{0};
     std::atomic<uint32_t> avg_render_us{0};
     std::atomic<uint32_t> frames_rendered{0};
@@ -57,7 +61,10 @@ struct DiagnosticCounters {
     std::atomic<uint32_t> events_dropped{0};
     std::atomic<uint32_t> event_queue_overflows{0};
     
-    // USB
+    // USB (updated by host owner, independent of EventBus delivery)
+    std::atomic<uint32_t> usb_submit_failures{0};
+    std::atomic<uint32_t> usb_transfer_errors{0};
+    std::atomic<uint32_t> midi_events_dropped{0};
     std::atomic<uint32_t> usb_disconnects{0};
     std::atomic<uint32_t> usb_reconnects{0};
     std::atomic<bool>     usb_connected{false};
@@ -122,6 +129,9 @@ public:
     void resetAudioMetrics() {
         auto& c = counters_;
         c.audio_underruns.store(0, std::memory_order_relaxed);
+        c.i2s_write_errors = 0;
+        c.i2s_write_timeouts = 0;
+        c.render_deadline_misses = 0;
         c.max_render_us.store(0, std::memory_order_relaxed);
         c.avg_render_us.store(0, std::memory_order_relaxed);
         c.frames_rendered.store(0, std::memory_order_relaxed);

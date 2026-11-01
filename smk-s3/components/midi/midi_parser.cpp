@@ -94,12 +94,21 @@ void MidiParser::setChannel(uint8_t default_channel) {
 }
 
 void MidiParser::processUsbMidiPacket(const uint8_t* packet) {
+    if (!packet) { countParseError(); return; }
     uint8_t cin = packet[0] & 0x0F;
     if (cin == 0x0) return; // Skip CIN=0
 
     uint8_t status = packet[1];
     uint8_t data1 = packet[2];
     uint8_t data2 = packet[3];
+
+    if (cin >= 8 && cin <= 14 &&
+        ((status >> 4) != cin || data1 >= 128 ||
+         (cin != 12 && cin != 13 && data2 >= 128))) {
+        countParseError();
+        return;
+    }
+    if (cin == 15 && status < 0xf8) { countParseError(); return; }
 
     uint8_t channel = status & 0x0F;
 
@@ -152,6 +161,25 @@ void MidiParser::processUsbMidiPacket(const uint8_t* packet) {
     }
 }
 
+void MidiParser::countParseError() {
+    parse_errors_.fetch_add(1, std::memory_order_relaxed);
+    Diagnostics::instance().counters().midi_parse_errors.fetch_add(1, std::memory_order_relaxed);
+}
+
+void MidiParser::reset() {
+    running_status_ = 0;
+    data_index_ = 0;
+    expected_bytes_ = 0;
+    data_bytes_[0] = data_bytes_[1] = 0;
+}
+
+bool MidiParser::processUsbMidiTransfer(const uint8_t* data, size_t bytes) {
+    if ((!data && bytes) || bytes % 4 != 0) { countParseError(); return false; }
+    const uint32_t errors = parseErrorCount();
+    for (size_t offset = 0; offset < bytes; offset += 4) processUsbMidiPacket(data + offset);
+    return parseErrorCount() == errors;
+}
+
 void MidiParser::processByte(uint8_t byte) {
     // Handle realtime messages immediately regardless of running status
     if (byte >= 0xF8) {
@@ -169,7 +197,8 @@ void MidiParser::processByte(uint8_t byte) {
 
     if (byte & 0x80) {
         if (byte >= 0xF0) {
-            // System common, ignored for now
+            // System common/SysEx cancels running status; data cannot become notes.
+            reset();
             return;
         }
         

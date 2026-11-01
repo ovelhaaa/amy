@@ -1,321 +1,245 @@
 #include "usb_midi_host.h"
+#include "usb_midi_descriptor.h"
+#include "diagnostics.h"
 #include "esp_log.h"
-#include <cstring>
 #include "esp_timer.h"
 
 static const char* TAG = "UsbMidiHost";
-
 namespace smk {
-
-UsbMidiHost::UsbMidiHost(EventBus& event_bus) : event_bus_(event_bus) {
+UsbMidiHost::UsbMidiHost(EventBus& bus) : event_bus_(bus) {
     parser_.setSource(EventSource::UsbMidi);
     parser_.setCallback(onMidiEvent, this);
-    device_sem_ = xSemaphoreCreateBinary();
+    startup_ = xSemaphoreCreateBinary();
+    client_done_ = xSemaphoreCreateBinary();
+    host_done_ = xSemaphoreCreateBinary();
 }
-
 UsbMidiHost::~UsbMidiHost() {
     stop();
-    if (device_sem_) {
-        vSemaphoreDelete(device_sem_);
-    }
+    if (startup_) vSemaphoreDelete(startup_);
+    if (client_done_) vSemaphoreDelete(client_done_);
+    if (host_done_) vSemaphoreDelete(host_done_);
 }
-
 bool UsbMidiHost::begin() {
-    ESP_LOGI(TAG, "Initializing USB Host Library");
-    
-    usb_host_config_t host_config = {};
-    host_config.skip_phy_setup = false;
-    host_config.intr_flags = ESP_INTR_FLAG_LEVEL1;
-
-    esp_err_t err = usb_host_install(&host_config);
-    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-        ESP_LOGE(TAG, "Failed to install USB host: %s", esp_err_to_name(err));
-        return false;
+    if (installed_ || !startup_ || !client_done_ || !host_done_ || !event_bus_.ready()) return false;
+    usb_host_config_t config{};
+    config.intr_flags = ESP_INTR_FLAG_LEVEL1;
+    if (usb_host_install(&config) != ESP_OK) { state_ = State::Error; return false; }
+    installed_ = true;
+    state_ = State::Disconnected;
+    pending_dev_addr_ = 0;
+    parser_.reset();
+    stop_host_ = false;
+    stop_client_ = false;
+    client_ready_ = false;
+    if (xTaskCreatePinnedToCore(usbHostTask, "usb_host", kHostTaskStackSize, this, 5, &host_task_handle_, 0) != pdPASS) {
+        host_task_handle_ = nullptr;
+        ESP_LOGE(TAG, "USB host task creation failed");
+        stop(); state_ = State::Error; return false;
     }
-    
-    xTaskCreatePinnedToCore(usbHostTask, "usb_host", kHostTaskStackSize, this, 5, &host_task_handle_, 0);
-    xTaskCreatePinnedToCore(midiClientTask, "midi_client", kClientTaskStackSize, this, 5, &client_task_handle_, 0);
-    
+    if (xTaskCreatePinnedToCore(midiClientTask, "midi_client", kClientTaskStackSize, this, 5, &client_task_handle_, 0) != pdPASS) {
+        client_task_handle_ = nullptr;
+        ESP_LOGE(TAG, "MIDI client task creation failed");
+        stop(); state_ = State::Error; return false;
+    }
+    xSemaphoreTake(startup_, portMAX_DELAY);
+    if (!client_ready_) { ESP_LOGE(TAG, "USB client registration failed"); stop(); state_ = State::Error; return false; }
     return true;
 }
-
 void UsbMidiHost::stop() {
-    if (host_task_handle_) {
-        vTaskDelete(host_task_handle_);
-        host_task_handle_ = nullptr;
-    }
+    if (!installed_) return;
+    stop_client_.store(true, std::memory_order_release);
     if (client_task_handle_) {
-        vTaskDelete(client_task_handle_);
+        xSemaphoreTake(client_done_, portMAX_DELAY);
         client_task_handle_ = nullptr;
     }
-    usb_host_uninstall();
+    stop_host_.store(true, std::memory_order_release);
+    if (host_task_handle_) {
+        xSemaphoreTake(host_done_, portMAX_DELAY);
+        host_task_handle_ = nullptr;
+    }
+    if (usb_host_uninstall() == ESP_OK) { installed_ = false; state_ = State::Disconnected; }
+    else { state_ = State::Error; ESP_LOGE(TAG, "USB host uninstall failed"); }
 }
-
-bool UsbMidiHost::isDeviceConnected() const {
-    return device_connected_.load(std::memory_order_relaxed);
-}
-
-uint16_t UsbMidiHost::deviceVid() const {
-    return device_vid_;
-}
-
-uint16_t UsbMidiHost::devicePid() const {
-    return device_pid_;
-}
-
-uint32_t UsbMidiHost::disconnectCount() const {
-    return disconnect_count_.load(std::memory_order_relaxed);
-}
-
-uint32_t UsbMidiHost::reconnectCount() const {
-    return reconnect_count_.load(std::memory_order_relaxed);
-}
-
 void UsbMidiHost::usbHostTask(void* arg) {
-    (void)arg;
+    auto* self = static_cast<UsbMidiHost*>(arg);
+    bool freeing = false;
     while (true) {
-        uint32_t event_flags;
-        esp_err_t err = usb_host_lib_handle_events(portMAX_DELAY, &event_flags);
-        if (err == ESP_OK) {
-            if (event_flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS) {
-                esp_err_t ret = usb_host_device_free_all();
-                if (ret == ESP_OK) {
-                    ESP_LOGI(TAG, "All devices freed");
-                }
-            }
-            if (event_flags & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE) {
-                ESP_LOGI(TAG, "USB Host All free");
-            }
+        uint32_t flags = 0;
+        usb_host_lib_handle_events(pdMS_TO_TICKS(kEventWaitMs), &flags);
+        if (self->stop_host_.load(std::memory_order_acquire)) {
+            if ((freeing && (flags & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE)) ||
+                usb_host_device_free_all() == ESP_OK) break;
+            freeing = true;
+        } else if (flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS) {
+            usb_host_device_free_all();
         }
     }
+    xSemaphoreGive(self->host_done_);
+    vTaskDelete(nullptr);
 }
-
 void UsbMidiHost::midiClientTask(void* arg) {
-    UsbMidiHost* self = static_cast<UsbMidiHost*>(arg);
-    
-    usb_host_client_config_t client_config = {
-        .is_synchronous = false,
-        .max_num_event_msg = 5,
-        .async = {
-            .client_event_callback = clientEventCallback,
-            .callback_arg = self,
-        }
-    };
-    
-    esp_err_t err = usb_host_client_register(&client_config, &self->client_handle_);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to register USB client: %s", esp_err_to_name(err));
-        vTaskDelete(nullptr);
-        return;
-    }
-    
-    while (true) {
-        usb_host_client_handle_events(self->client_handle_, pdMS_TO_TICKS(50));
-        
-        if (xSemaphoreTake(self->device_sem_, 0) == pdTRUE) {
-            self->handleDeviceConnection(self->pending_dev_addr_);
-        }
-    }
-}
-
-void UsbMidiHost::clientEventCallback(const usb_host_client_event_msg_t* event, void* arg) {
-    UsbMidiHost* self = static_cast<UsbMidiHost*>(arg);
-    
-    if (event->event == USB_HOST_CLIENT_EVENT_NEW_DEV) {
-        self->pending_dev_addr_ = event->new_dev.address;
-        xSemaphoreGive(self->device_sem_);
-    } else if (event->event == USB_HOST_CLIENT_EVENT_DEV_GONE) {
-        ESP_LOGI(TAG, "Device Gone");
-        self->handleDeviceDisconnection();
-    }
-}
-
-void UsbMidiHost::handleDeviceConnection(uint8_t dev_addr) {
-    esp_err_t err = usb_host_device_open(client_handle_, dev_addr, &device_handle_);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to open device");
-        return;
-    }
-    
-    const usb_device_desc_t* dev_desc;
-    err = usb_host_get_device_descriptor(device_handle_, &dev_desc);
-    if (err == ESP_OK) {
-        device_vid_ = dev_desc->idVendor;
-        device_pid_ = dev_desc->idProduct;
-        ESP_LOGI(TAG, "Connected VID: %04X PID: %04X", device_vid_, device_pid_);
-    }
-    
-    if (findMidiInterface(device_handle_)) {
-        err = usb_host_interface_claim(client_handle_, device_handle_, midi_interface_num_, 0);
-        if (err == ESP_OK) {
-            device_connected_ = true;
-            reconnect_count_.fetch_add(1, std::memory_order_relaxed);
-            startMidiIn();
-
-            SynthEvent connect_evt;
-            connect_evt.type = EventType::UsbConnect;
-            connect_evt.source = EventSource::UsbMidi;
-            connect_evt.channel = 0;
-            connect_evt.id = device_vid_;
-            connect_evt.value = device_pid_;
-            connect_evt.timestamp_us = (uint32_t)esp_timer_get_time();
-            event_bus_.send(connect_evt);
-        } else {
-            ESP_LOGE(TAG, "Failed to claim MIDI interface");
-            usb_host_device_close(client_handle_, device_handle_);
-            device_handle_ = nullptr;
-        }
-    } else {
-        ESP_LOGE(TAG, "No MIDI interface found");
-        usb_host_device_close(client_handle_, device_handle_);
-        device_handle_ = nullptr;
-    }
-}
-
-bool UsbMidiHost::findMidiInterface(usb_device_handle_t dev_handle) {
-    const usb_config_desc_t* config_desc;
-    esp_err_t err = usb_host_get_active_config_descriptor(dev_handle, &config_desc);
-    if (err != ESP_OK) return false;
-    
-    const uint8_t* p = (const uint8_t*)config_desc;
-    const uint8_t* end = p + config_desc->wTotalLength;
-    
-    bool found_midi = false;
-    
-    while (p < end) {
-        uint8_t len = p[0];
-        uint8_t type = p[1];
-        if (len == 0) break; // Guard against malformed descriptor infinite loop
-        
-        if (type == USB_B_DESCRIPTOR_TYPE_INTERFACE) {
-            const usb_intf_desc_t* intf = (const usb_intf_desc_t*)p;
-            
-            // Audio class (1) and MIDIStreaming subclass (3) OR Vendor Specific (255)
-            if ((intf->bInterfaceClass == 0x01 && intf->bInterfaceSubClass == 0x03) || 
-                (intf->bInterfaceClass == 255)) {
-                
-                midi_interface_num_ = intf->bInterfaceNumber;
-                
-                // Search for bulk IN endpoint within this interface
-                const uint8_t* ep_ptr = p + len;
-                while (ep_ptr < end && ep_ptr[1] != USB_B_DESCRIPTOR_TYPE_INTERFACE) {
-                    if (ep_ptr[0] == 0) break; // Guard against malformed descriptor infinite loop
-                    if (ep_ptr[1] == USB_B_DESCRIPTOR_TYPE_ENDPOINT) {
-                        const usb_ep_desc_t* ep = (const usb_ep_desc_t*)ep_ptr;
-                        if (USB_EP_DESC_GET_EP_DIR(ep) && 
-                            USB_EP_DESC_GET_XFERTYPE(ep) == USB_BM_ATTRIBUTES_XFER_BULK) {
-                            midi_in_endpoint_ = USB_EP_DESC_GET_EP_NUM(ep);
-                            midi_in_max_packet_ = USB_EP_DESC_GET_MPS(ep);
-                            found_midi = true;
-                            ESP_LOGI(TAG, "Found MIDI Interface: %d, Endpoint IN: 0x%02X", midi_interface_num_, midi_in_endpoint_ | USB_B_ENDPOINT_ADDRESS_EP_DIR_MASK);
-                            break;
-                        }
-                    }
-                    ep_ptr += ep_ptr[0];
-                }
+    auto* self = static_cast<UsbMidiHost*>(arg);
+    usb_host_client_config_t config{};
+    config.max_num_event_msg = 5;
+    config.async.client_event_callback = clientEventCallback;
+    config.async.callback_arg = self;
+    const bool registered = usb_host_client_register(&config, &self->client_handle_) == ESP_OK;
+    self->client_ready_ = registered;
+    xSemaphoreGive(self->startup_);
+    if (registered) {
+        while (!self->stop_client_.load(std::memory_order_acquire)) {
+            usb_host_client_handle_events(self->client_handle_, pdMS_TO_TICKS(kEventWaitMs));
+            if (self->draining_) self->cleanupDevice();
+            if (self->pending_dev_addr_ ) {
+                const uint8_t address = self->pending_dev_addr_;
+                self->pending_dev_addr_ = 0;
+                self->handleDeviceConnection(address);
             }
         }
-        if (found_midi) break;
-        p += len;
+        if (self->device_handle_) {
+            self->notifyDisconnect();
+            self->state_ = State::Recovering;
+            self->draining_ = true;
+        }
+        // Flush callbacks must complete before release/close/deregister. Never
+        // free an in-flight transfer or force-delete the task owning callbacks.
+        while (!self->cleanupDevice())
+            usb_host_client_handle_events(self->client_handle_, pdMS_TO_TICKS(kEventWaitMs));
+        while (usb_host_client_deregister(self->client_handle_) != ESP_OK)
+            usb_host_client_handle_events(self->client_handle_, pdMS_TO_TICKS(kEventWaitMs));
+        self->client_handle_ = nullptr;
     }
-    
-    return found_midi;
+    xSemaphoreGive(self->client_done_);
+    vTaskDelete(nullptr);
 }
-
-void UsbMidiHost::startMidiIn() {
-    esp_err_t err = usb_host_transfer_alloc(kTransferBufferSize, 0, &in_transfer_);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to allocate transfer");
+void UsbMidiHost::clientEventCallback(const usb_host_client_event_msg_t* event, void* arg) {
+    auto* self = static_cast<UsbMidiHost*>(arg);
+    if (event->event == USB_HOST_CLIENT_EVENT_NEW_DEV && !self->stop_client_)
+        self->pending_dev_addr_ = event->new_dev.address;
+    else if (event->event == USB_HOST_CLIENT_EVENT_DEV_GONE && event->dev_gone.dev_hdl == self->device_handle_)
+        self->handleDeviceDisconnection();
+}
+void UsbMidiHost::handleDeviceConnection(uint8_t address) {
+    if (device_handle_ || stop_client_) return;
+    state_ = State::Enumerating;
+    gone_ = false;
+    parser_.reset();
+    if (usb_host_device_open(client_handle_, address, &device_handle_) != ESP_OK) {
+        state_ = State::Error;
+        ESP_LOGE(TAG, "USB device open failed");
         return;
     }
-    
+    const usb_device_desc_t* descriptor = nullptr;
+    if (usb_host_get_device_descriptor(device_handle_, &descriptor) != ESP_OK || !descriptor) { failReception(); return; }
+    device_vid_ = descriptor->idVendor;
+    device_pid_ = descriptor->idProduct;
+    state_ = State::Configuring;
+    if (!findMidiInterface(device_handle_) ||
+        usb_host_interface_claim(client_handle_, device_handle_, midi_interface_num_, 0) != ESP_OK) {
+        failReception(); return;
+    }
+    claimed_ = true;
+    if (!startMidiIn()) { failReception(); return; }
+    state_ = State::Ready;
+    reconnect_count_.fetch_add(1);
+    auto& diag = Diagnostics::instance().counters();
+    diag.usb_reconnects.fetch_add(1);
+    diag.usb_connected = true;
+    event_bus_.send({EventType::UsbConnect, EventSource::UsbMidi, 0, deviceVid(), devicePid(), static_cast<uint32_t>(esp_timer_get_time())});
+}
+bool UsbMidiHost::findMidiInterface(usb_device_handle_t device) {
+    const usb_config_desc_t* descriptor = nullptr;
+    if (usb_host_get_active_config_descriptor(device, &descriptor) != ESP_OK || !descriptor) return false;
+    MidiEndpoint endpoint;
+    // ESP-IDF owns this cached, enumerated allocation. Its API provides no
+    // separate allocation length; wTotalLength is the SDK's accessible span.
+    if (!findMidiEndpoint(reinterpret_cast<const uint8_t*>(descriptor), descriptor->wTotalLength, endpoint)) return false;
+    midi_interface_num_ = endpoint.interface_number;
+    midi_in_endpoint_ = endpoint.address;
+    return true;
+}
+bool UsbMidiHost::startMidiIn() {
+    if (usb_host_transfer_alloc(kTransferBufferSize, 0, &in_transfer_) != ESP_OK) return false;
     in_transfer_->device_handle = device_handle_;
-    in_transfer_->bEndpointAddress = midi_in_endpoint_ | USB_B_ENDPOINT_ADDRESS_EP_DIR_MASK;
+    in_transfer_->bEndpointAddress = midi_in_endpoint_;
     in_transfer_->callback = transferCallback;
     in_transfer_->context = this;
     in_transfer_->num_bytes = kTransferBufferSize;
-    
-    err = usb_host_transfer_submit(in_transfer_);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to submit transfer");
-        usb_host_transfer_free(in_transfer_);
+    if (usb_host_transfer_submit(in_transfer_) != ESP_OK) {
+        Diagnostics::instance().counters().usb_submit_failures.fetch_add(1);
+        return false;
+    }
+    in_flight_ = true;
+    return true;
+}
+void UsbMidiHost::transferCallback(usb_transfer_t* transfer) {
+    auto* self = static_cast<UsbMidiHost*>(transfer->context);
+    self->in_flight_ = false;
+    if (self->draining_ || self->stop_client_) return;
+    if (transfer->status != USB_TRANSFER_STATUS_COMPLETED || transfer->actual_num_bytes < 0 ||
+        transfer->actual_num_bytes > transfer->num_bytes || transfer->actual_num_bytes > transfer->data_buffer_size) {
+        Diagnostics::instance().counters().usb_transfer_errors.fetch_add(1);
+        self->failReception(); return;
+    }
+    // Reject the whole malformed transfer: a missing release requires Panic.
+    if (!self->parser_.processUsbMidiTransfer(transfer->data_buffer, transfer->actual_num_bytes)) {
+        self->failReception(); return;
+    }
+    transfer->num_bytes = kTransferBufferSize;
+    if (usb_host_transfer_submit(transfer) != ESP_OK) {
+        Diagnostics::instance().counters().usb_submit_failures.fetch_add(1);
+        self->failReception(); return;
+    }
+    self->in_flight_ = true;
+}
+void UsbMidiHost::onMidiEvent(const SynthEvent& event, void* ctx) {
+    auto* self = static_cast<UsbMidiHost*>(ctx);
+    if (!self->event_bus_.send(event)) Diagnostics::instance().counters().midi_events_dropped.fetch_add(1);
+}
+void UsbMidiHost::notifyDisconnect() {
+    // Connection truth is updated independently of possibly saturated UI events.
+    Diagnostics::instance().counters().usb_connected = false;
+    event_bus_.send({EventType::UsbDisconnect, EventSource::UsbMidi, 0, deviceVid(), devicePid(), static_cast<uint32_t>(esp_timer_get_time())});
+}
+void UsbMidiHost::failReception() {
+    notifyDisconnect();
+    state_ = State::Recovering;
+    draining_ = true;
+    ESP_LOGE(TAG, "MIDI reception failed; Panic requested, draining device resources");
+}
+void UsbMidiHost::handleDeviceDisconnection() {
+    if (!device_handle_ || gone_) return;
+    gone_ = true;
+    disconnect_count_.fetch_add(1);
+    Diagnostics::instance().counters().usb_disconnects.fetch_add(1);
+    if (!draining_) notifyDisconnect();
+    state_ = State::Recovering;
+    draining_ = true;
+    parser_.reset();
+}
+bool UsbMidiHost::cleanupDevice() {
+    if (in_flight_) {
+        // Host calls are task-owned, not ISR/audio operations. On an API error
+        // retain ownership and retry while servicing callbacks, never free early.
+        if (usb_host_endpoint_halt(device_handle_, midi_in_endpoint_) == ESP_OK)
+            usb_host_endpoint_flush(device_handle_, midi_in_endpoint_);
+        return false;
+    }
+    if (in_transfer_) {
+        if (usb_host_transfer_free(in_transfer_) != ESP_OK) return false;
         in_transfer_ = nullptr;
     }
-}
-
-void UsbMidiHost::transferCallback(usb_transfer_t* transfer) {
-    UsbMidiHost* self = static_cast<UsbMidiHost*>(transfer->context);
-    
-    // If device was disconnected or transfer cancelled, free transfer safely
-    if (!self->isDeviceConnected() || 
-        transfer->status == USB_TRANSFER_STATUS_CANCELED || 
-        transfer->status == USB_TRANSFER_STATUS_NO_DEVICE) {
-        usb_host_transfer_free(transfer);
-        self->in_transfer_ = nullptr;
-        return;
+    if (claimed_) {
+        if (usb_host_interface_release(client_handle_, device_handle_, midi_interface_num_) != ESP_OK) return false;
+        claimed_ = false;
     }
-
-    if (transfer->status == USB_TRANSFER_STATUS_COMPLETED) {
-        for (int i = 0; i < transfer->actual_num_bytes; i += 4) {
-            self->parser_.processUsbMidiPacket(transfer->data_buffer + i);
-        }
-        
-        // Re-submit if still connected
-        if (self->isDeviceConnected()) {
-            transfer->num_bytes = kTransferBufferSize;
-            esp_err_t ret = usb_host_transfer_submit(transfer);
-            if (ret != ESP_OK) {
-                usb_host_transfer_free(transfer);
-                self->in_transfer_ = nullptr;
-            }
-        } else {
-            usb_host_transfer_free(transfer);
-            self->in_transfer_ = nullptr;
-        }
-    } else {
-        // Re-submit on transient non-fatal errors if device is still connected
-        if (self->isDeviceConnected()) {
-            transfer->num_bytes = kTransferBufferSize;
-            esp_err_t ret = usb_host_transfer_submit(transfer);
-            if (ret != ESP_OK) {
-                usb_host_transfer_free(transfer);
-                self->in_transfer_ = nullptr;
-            }
-        } else {
-            usb_host_transfer_free(transfer);
-            self->in_transfer_ = nullptr;
-        }
-    }
-}
-
-void UsbMidiHost::onMidiEvent(const SynthEvent& event, void* ctx) {
-    UsbMidiHost* self = static_cast<UsbMidiHost*>(ctx);
-    self->event_bus_.send(event);
-}
-
-void UsbMidiHost::handleDeviceDisconnection() {
-    device_connected_ = false;
-    disconnect_count_.fetch_add(1, std::memory_order_relaxed);
-    
-    SynthEvent disconnect_evt;
-    disconnect_evt.type = EventType::UsbDisconnect;
-    disconnect_evt.source = EventSource::UsbMidi;
-    disconnect_evt.channel = 0;
-    disconnect_evt.id = device_vid_;
-    disconnect_evt.value = device_pid_;
-    disconnect_evt.timestamp_us = (uint32_t)esp_timer_get_time();
-    event_bus_.send(disconnect_evt);
-
-    // EventBus latches Panic even if the disconnect notification cannot fit.
-    
-    // Note: in_transfer_ is in flight and will be safely freed in transferCallback
-    // when it returns with status CANCELED / NO_DEVICE
-    
     if (device_handle_) {
-        usb_host_interface_release(client_handle_, device_handle_, midi_interface_num_);
-        usb_host_device_close(client_handle_, device_handle_);
+        if (usb_host_device_close(client_handle_, device_handle_) != ESP_OK) return false;
         device_handle_ = nullptr;
     }
+    parser_.reset();
+    draining_ = false;
+    state_ = State::Disconnected;
+    return true;
 }
-
 } // namespace smk

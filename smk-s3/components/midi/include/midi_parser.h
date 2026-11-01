@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <atomic>
+#include <cstddef>
 #include "synth_event.h"
 
 namespace smk {
@@ -30,6 +31,9 @@ public:
     
     // Process raw USB-MIDI event packet (4 bytes: CIN+cable, status, data1, data2)
     void processUsbMidiPacket(const uint8_t* packet);
+    bool processUsbMidiTransfer(const uint8_t* data, size_t bytes);
+    // USB owner only; retain callback, curve and cumulative diagnostics.
+    void reset();
     
     // Process raw MIDI bytes (for future serial MIDI)
     void processByte(uint8_t byte);
@@ -38,6 +42,7 @@ public:
     uint32_t parseErrorCount() const;
     
 private:
+    void countParseError();
     void emitEvent(EventType type, uint8_t channel, uint16_t id, int32_t value);
     
     EventCallback callback_ = nullptr;

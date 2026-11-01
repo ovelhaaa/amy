@@ -9,6 +9,7 @@ using gpio_num_t = int;
 using i2s_chan_handle_t = void*;
 constexpr int ESP_OK = 0;
 constexpr int ESP_FAIL = -1;
+constexpr int ESP_ERR_TIMEOUT = 0x107;
 constexpr int I2S_NUM_AUTO = -1;
 constexpr int I2S_GPIO_UNUSED = -1;
 constexpr int I2S_ROLE_MASTER = 1;
@@ -30,7 +31,7 @@ namespace mock_i2s {
 struct State {
     bool created = false, enabled = false;
     bool fail_create = false, fail_init = false, fail_enable = false;
-    bool short_preload = false, short_write = false, fail_write = false;
+    bool short_preload = false, short_write = false, fail_write = false, timeout_write = false;
     size_t preload_bytes = 0;
     int deletes = 0, disables = 0, writes = 0, preloads = 0;
     int mute_level = 0;
@@ -79,5 +80,5 @@ inline esp_err_t i2s_channel_write(i2s_chan_handle_t, const void*, size_t size, 
     ++state.writes;
     state.last_timeout_ms = timeout_ms;
     *written = state.short_write ? size / 2 : size;
-    return state.fail_write ? ESP_FAIL : ESP_OK;
+    return state.timeout_write ? ESP_ERR_TIMEOUT : state.fail_write ? ESP_FAIL : ESP_OK;
 }

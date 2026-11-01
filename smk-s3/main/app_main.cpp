@@ -696,8 +696,6 @@ static void app_init_task(void* arg) {
                     uint16_t vid = event.id;
                     uint16_t pid = (uint16_t)event.value;
                     ESP_LOGI(TAG, "USB MIDI Device Connected! VID: 0x%04X, PID: 0x%04X", vid, pid);
-                    smk::Diagnostics::instance().counters().usb_reconnects.fetch_add(1, std::memory_order_relaxed);
-                    smk::Diagnostics::instance().counters().usb_connected.store(true, std::memory_order_relaxed);
 
                     char prof_filename[32];
                     snprintf(prof_filename, sizeof(prof_filename), "prof_%04X_%04X", vid, pid);
@@ -724,8 +722,6 @@ static void app_init_task(void* arg) {
                     uint16_t vid = event.id;
                     uint16_t pid = (uint16_t)event.value;
                     ESP_LOGW(TAG, "USB MIDI Device Disconnected! (VID: 0x%04X, PID: 0x%04X)", vid, pid);
-                    smk::Diagnostics::instance().counters().usb_disconnects.fetch_add(1, std::memory_order_relaxed);
-                    smk::Diagnostics::instance().counters().usb_connected.store(false, std::memory_order_relaxed);
                     if (ui_manager) {
                         ui_manager->homeScreen().setUsbConnected(false);
                         ui_manager->triggerParameterOverlay("USB DISCONNECTED", "PANIC", 0.0f, 0.0f, "", smk::TakeoverStatus::Captured);

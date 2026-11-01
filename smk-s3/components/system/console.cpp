@@ -180,6 +180,10 @@ int Console::cmdAudioStatus(int argc, char** argv) {
     ESP_LOGI(TAG, "underrun=%lu starvation=%lu",
              (unsigned long)s.audio_underruns,
              (unsigned long)Diagnostics::instance().counters().synth_pcm_starvations.load());
+    ESP_LOGI(TAG, "i2s_write_errors=%lu i2s_timeouts=%lu render_deadline_misses=%lu dma_underrun=unobserved",
+             (unsigned long)Diagnostics::instance().counters().i2s_write_errors.load(),
+             (unsigned long)Diagnostics::instance().counters().i2s_write_timeouts.load(),
+             (unsigned long)Diagnostics::instance().counters().render_deadline_misses.load());
     ESP_LOGI(TAG, "cmd_drop=%lu queue_hwm=%lu cmd_wait_max_us=%lu",
              (unsigned long)Diagnostics::instance().counters().synth_commands_dropped.load(),
              (unsigned long)Diagnostics::instance().counters().synth_queue_high_water.load(),

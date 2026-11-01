@@ -17,10 +17,12 @@ using namespace smk;
 
 struct Engine : SynthEngine {
     int renders = 0;
+    bool slow = false;
     int stop_notifications = 0;
     bool buffered = false;
     bool null_buffer = false;
     int stop_after = 5;
+    uint16_t frames = config::kBlockSize;
     int16_t sample_value = 12000;
     std::array<int16_t, config::kBlockSize * 2> samples{};
     bool begin(uint32_t) override { return true; }
@@ -32,12 +34,13 @@ struct Engine : SynthEngine {
     void panic() override {}
     int16_t* render() override {
         ++renders;
+        if (slow) std::this_thread::sleep_for(std::chrono::milliseconds(10));
         assert(renders <= 6); // A write fault must not cause a busy render loop.
         if (renders == stop_after) AudioTask::stop();
         samples.fill(sample_value);
         return null_buffer ? nullptr : samples.data();
     }
-    uint16_t blockSize() const override { return config::kBlockSize; }
+    uint16_t blockSize() const override { return frames; }
     float renderLoad() const override { return 0; }
     uint32_t activeVoices() const override { return 0; }
     bool bufferedOutput() const override { return buffered; }
@@ -77,6 +80,14 @@ static void testOutput() {
         assert(!output.write(silence, config::kBlockSize));
         assert(output.underrunCount() == 1);
         assert(output.framesWritten() == config::kBlockSize);
+        auto& counters = Diagnostics::instance().counters();
+        assert(counters.i2s_write_errors == 1 && counters.i2s_write_timeouts == 0);
+        counters.audio_underruns = 0; // A diagnostic reset must start a new window.
+        mock_i2s::state.short_write = false;
+        mock_i2s::state.timeout_write = true;
+        assert(!output.write(silence, config::kBlockSize));
+        assert(counters.i2s_write_errors == 2 && counters.i2s_write_timeouts == 1);
+        assert(counters.audio_underruns == 1 && output.underrunCount() == 2);
         assert(output.stop() && output.stop());
         assert(mock_i2s::state.mute_level == 0 && mock_i2s::state.disables == 1);
     }
@@ -102,8 +113,15 @@ static void testTask() {
     assert(AudioTask::failed() && engine.renders == 0);
     mock_task::create_result = pdPASS;
     assert(AudioTask::start(&engine, &output, 1, 24, 16384));
+    assert(!AudioTask::start(&engine, &output, 1, 24, 16384));
+    AudioTask::stop();
+    assert(!AudioTask::waitStopped(0)); // stop request cannot authorize destruction.
+    // Let the mock execute the task after the asynchronous stop request.
     mock_task::run();
-    assert(!AudioTask::failed() && output.stops == 1 && output.writes == 5);
+    assert(AudioTask::waitStopped(0) && output.writes == 0);
+    assert(AudioTask::start(&engine, &output, 1, 24, 16384));
+    mock_task::run();
+    assert(!AudioTask::failed() && output.stops == 2 && output.writes == 5);
     assert(output.samples.front() == 0);
     for (size_t i = 0; i < output.samples.size() / 2; ++i) {
         assert(output.samples[i * 2] == output.samples[i * 2 + 1]);
@@ -129,6 +147,13 @@ static void testTask() {
     mock_task::run();
     assert(AudioTask::failed() && write_engine.renders == 1 && bad_output.stops == 1);
     assert(write_engine.stop_notifications == 1);
+    assert(AudioTask::waitStopped(0));
+    Engine invalid_engine;
+    invalid_engine.frames = config::kBlockSize - 1;
+    Output invalid_output;
+    assert(AudioTask::start(&invalid_engine, &invalid_output, 1, 24, 16384));
+    mock_task::run();
+    assert(AudioTask::failed() && invalid_output.writes == 0 && invalid_engine.stop_notifications == 1);
     Engine null_engine;
     null_engine.null_buffer = true;
     Output null_output;
@@ -142,6 +167,14 @@ static void testTask() {
     assert(AudioTask::start(&stop_engine, &stop_output, 1, 24, 16384));
     mock_task::run();
     assert(AudioTask::failed() && stop_output.stops == 1);
+    Engine slow_engine;
+    slow_engine.slow = true;
+    slow_engine.stop_after = 1;
+    Output slow_output;
+    const auto deadlines = Diagnostics::instance().counters().render_deadline_misses.load();
+    assert(AudioTask::start(&slow_engine, &slow_output, 1, 24, 16384));
+    mock_task::run();
+    assert(Diagnostics::instance().counters().render_deadline_misses == deadlines + 1);
     Engine buffered_engine;
     buffered_engine.buffered = true;
     buffered_engine.stop_after = 1;

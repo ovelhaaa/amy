@@ -1,5 +1,8 @@
 #pragma once
 #include "FreeRTOS.h"
+#include <thread>
+#include <vector>
+#include <string>
 
 static inline TickType_t xTaskGetTickCount(void) { return 0; }
 static inline void vTaskDelay(TickType_t ticks) {}
@@ -9,13 +12,23 @@ static inline void vTaskDelete(TaskHandle_t h) {}
 #ifdef __cplusplus
 namespace mock_task {
 inline BaseType_t create_result = pdPASS;
+inline bool async = false;
+inline std::string fail_name;
+inline std::vector<std::thread> threads;
+inline void join() { for (auto& thread : threads) thread.join(); threads.clear(); }
 inline void (*routine)(void*) = nullptr;
 inline void* argument = nullptr;
 inline void run() { routine(argument); }
 }
-inline BaseType_t xTaskCreatePinnedToCore(void (*routine)(void*), const char*, uint32_t,
+inline BaseType_t xTaskCreatePinnedToCore(void (*routine)(void*), const char* name, uint32_t,
                                         void* argument, UBaseType_t, TaskHandle_t* handle, BaseType_t) {
+    if (mock_task::fail_name == name) return pdFALSE;
     if (mock_task::create_result != pdPASS) return mock_task::create_result;
+    if (mock_task::async) {
+        *handle = reinterpret_cast<TaskHandle_t>(1);
+        mock_task::threads.emplace_back(routine, argument);
+        return pdPASS;
+    }
     mock_task::routine = routine;
     mock_task::argument = argument;
     *handle = reinterpret_cast<TaskHandle_t>(1);

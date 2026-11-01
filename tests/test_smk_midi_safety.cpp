@@ -44,6 +44,33 @@ static void testParser() {
     }
 }
 
+static void testMalformedMidi() {
+    MidiParser parser;
+    parser.setCallback(capture, nullptr);
+    parsed.clear();
+    const uint8_t valid[] = {9, 0x90, 60, 100, 8, 0x80, 60, 0};
+    for (size_t length : {size_t(1), size_t(2), size_t(3), size_t(5), size_t(6), size_t(7)}) {
+        assert(!parser.processUsbMidiTransfer(valid, length));
+        assert(parsed.empty());
+    }
+    assert(parser.processUsbMidiTransfer(valid, sizeof(valid)));
+    assert(parsed.size() == 2 && parsed[0].type == EventType::NoteOn && parsed[1].type == EventType::NoteOff);
+    parsed.clear();
+    for (auto packet : {std::vector<uint8_t>{9,0x80,60,100}, {9,0x90,128,100},
+                        {14,0xe0,0,128}, {15,0x90,60,100}}) {
+        assert(!parser.processUsbMidiTransfer(packet.data(), packet.size()));
+        assert(parsed.empty());
+    }
+    // Unsupported aftertouch and SysEx do not synthesize notes or errors.
+    const uint8_t ignored[] = {10,0xa0,60,1,4,0xf0,1,2};
+    assert(parser.processUsbMidiTransfer(ignored, sizeof(ignored)) && parsed.empty());
+    parser.processByte(0x90); parser.processByte(60);
+    parser.reset(); parser.processByte(100);
+    assert(parsed.empty());
+    parser.processByte(0x90); parser.processByte(60); parser.processByte(0xf0);
+    parser.processByte(100); assert(parsed.empty());
+}
+
 static void testQueue() {
     EventBus bus(4); // 3 ordinary slots, 1 reserved release slot.
     SynthEvent received{};
@@ -96,6 +123,24 @@ static void testQueue() {
 
     EventBus unavailable(0);
     assert(!unavailable.ready() && !unavailable.send(event(EventType::NoteOn)));
+}
+
+static void testLostCriticalEvents() {
+    for (auto release : {event(EventType::NoteOff), event(EventType::AllNotesOff),
+                         event(EventType::TransportStop), event(EventType::ControlChange,64,0)}) {
+        EventBus bus(4);
+        for (int i = 0; i < 4; ++i) assert(bus.send(event(EventType::NoteOff, i, 0)));
+        const auto before = Diagnostics::instance().counters().events_dropped.load();
+        assert(!bus.sendFromISR(release));
+        assert(bus.overflowCount() == 1);
+        SynthEvent value{};
+        assert(bus.tryReceive(value) && value.type == EventType::Panic);
+        bus.acknowledgePanic();
+        assert(!bus.tryReceive(value));
+        assert(Diagnostics::instance().counters().events_dropped == before + 5);
+        assert(bus.send(event(EventType::NoteOn)));
+        assert(bus.tryReceive(value) && value.type == EventType::NoteOn);
+    }
 }
 
 static void testWakeAndConcurrentProducers() {
@@ -156,6 +201,6 @@ static void testLearn() {
 }
 
 int main() {
-    testParser(); testQueue(); testWakeAndConcurrentProducers(); testLearn();
+    testParser(); testMalformedMidi(); testQueue(); testLostCriticalEvents(); testWakeAndConcurrentProducers(); testLearn();
     std::puts("PASS: MIDI targets, release ordering/reserve, Panic/ISR/epochs, wakeup, concurrent producers and Learn safety");
 }

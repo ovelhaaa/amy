@@ -215,6 +215,7 @@ static void testConcurrent(AmyAdapter& adapter) {
         std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
     adapter.onAudioStopped();
+    assert(!adapter.startWorker(1, 23, 16384)); // A stopped owner cannot be restarted on existing engine state.
     worker.join();
     assert(adapter.activeVoices() == 0);
 }

@@ -1,5 +1,9 @@
 # SMK-S3 Synth: Phase 1 Hardware Test Procedure
 
+For the current stabilization audit, fault-injection results, metric definitions
+and hardware qualification steps, see [Phase 1 stability audit](phase1_stability_audit.md).
+The historical GPIO examples below are not a confirmed final wiring diagram.
+
 This document outlines the procedure to verify the Phase 1 firmware implementation on the hardware. 
 
 ## 1. Prerequisites

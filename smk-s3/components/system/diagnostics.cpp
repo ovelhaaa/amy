@@ -76,6 +76,10 @@ void Diagnostics::logSnapshot() const {
              s.avg_render_us, s.render_load, s.max_render_us, s.max_render_load);
     ESP_LOGI(TAG, "Audio: Underruns=%lu, PCMStarvations=%lu, FramesRendered=%lu, Voices=%lu",
              s.audio_underruns, counters_.synth_pcm_starvations.load(), s.frames_rendered, s.active_voices);
+    ESP_LOGI(TAG, "I2S: WriteErrors=%lu, Timeouts=%lu, RenderDeadlineMisses=%lu; DMA underrun not measured",
+             counters_.i2s_write_errors.load(), counters_.i2s_write_timeouts.load(), counters_.render_deadline_misses.load());
+    ESP_LOGI(TAG, "USB: SubmitFailures=%lu, TransferErrors=%lu, MidiDrops=%lu",
+             counters_.usb_submit_failures.load(), counters_.usb_transfer_errors.load(), counters_.midi_events_dropped.load());
     ESP_LOGI(TAG, "Headroom: PeakAbs=%lu, NearClip=%lu, HardClip=%lu",
              s.peak_abs_sample, s.near_clip_samples, s.hard_clip_samples);
     ESP_LOGI(TAG, "Memory: FreeInternal=%lu, FreePSRAM=%lu, MaxFreeInternalBlock=%lu, MaxFreePSRAMBlock=%lu",

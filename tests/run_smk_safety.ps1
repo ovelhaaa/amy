@@ -8,6 +8,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'MIDI safety test compilation failed' }
     & ./build/smk_safety/test_midi.exe
     if ($LASTEXITCODE -ne 0) { throw 'MIDI safety tests failed' }
+    & g++ -std=c++17 -O2 -pthread @includes tests/test_smk_usb_safety.cpp smk-s3/components/midi/usb_midi_host.cpp smk-s3/components/midi/event_bus.cpp smk-s3/components/midi/midi_parser.cpp -o build/smk_safety/test_usb.exe
+    if ($LASTEXITCODE -ne 0) { throw 'USB safety test compilation failed' }
+    & ./build/smk_safety/test_usb.exe
+    if ($LASTEXITCODE -ne 0) { throw 'USB safety tests failed' }
     & g++ -std=c++17 -O2 -pthread @includes -Ismk-s3/components/audio/include tests/test_smk_audio_safety.cpp smk-s3/components/audio/audio_task.cpp smk-s3/components/audio/pcm5102_output.cpp -o build/smk_safety/test_audio.exe
     if ($LASTEXITCODE -ne 0) { throw 'Audio safety test compilation failed' }
     & ./build/smk_safety/test_audio.exe

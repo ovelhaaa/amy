@@ -136,9 +136,12 @@ bool PCM5102Output::write(const int16_t* interleaved_stereo, size_t frames) {
     // Non-infinite timeout (20ms) to ensure high-priority audio task never freezes if I2S DMA stalls
     esp_err_t res = i2s_channel_write(_tx_handle, interleaved_stereo, required_bytes, &bytes_written, config::kAudioWriteTimeoutMs);
     
-    if (res != ESP_OK || bytes_written < required_bytes) {
+    if (res != ESP_OK || bytes_written != required_bytes) {
         _underruns++;
-        Diagnostics::instance().counters().audio_underruns.store(_underruns, std::memory_order_relaxed);
+        auto& counters = Diagnostics::instance().counters();
+        counters.i2s_write_errors.fetch_add(1, std::memory_order_relaxed);
+        if (res == ESP_ERR_TIMEOUT) counters.i2s_write_timeouts.fetch_add(1, std::memory_order_relaxed);
+        Diagnostics::instance().counters().audio_underruns.fetch_add(1, std::memory_order_relaxed);
         return false;
     }
     
