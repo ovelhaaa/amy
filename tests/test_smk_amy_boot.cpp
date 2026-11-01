@@ -384,6 +384,20 @@ int main(int argc, char** argv) {
     adapter.noteOff(0, 60);
     render_signal(adapter, 1000);
     assert(!render_signal(adapter, 16));
+
+    // Duplicate channel/pitch references share a MIDI release identity: the
+    // first Note Off must not release a still-held matching reference.
+    adapter.noteOn(0, 60, 100);
+    adapter.noteOn(0, 60, 110);
+    assert(render_signal(adapter, 32));
+    assert(adapter.activeVoices() == 2);
+    adapter.noteOff(0, 60);
+    render_signal(adapter, 32);
+    assert(adapter.activeVoices() == 1);
+    adapter.noteOff(0, 60);
+    render_signal(adapter, 1000);
+    assert(adapter.activeVoices() == 0);
+    assert(!render_signal(adapter, 16));
     // Exercise every boot voice, including the voice the legacy boot left empty.
     for (int voice = 0; voice < smk::config::kDefaultVoiceCount; ++voice) {
         adapter.noteOn(0, 60 + voice, 100);

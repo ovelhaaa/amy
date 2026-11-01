@@ -236,8 +236,9 @@ void AmyAdapter::executeNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) 
 void AmyAdapter::executeNoteOff(uint8_t channel, uint8_t note) {
     channel &= 0x0F;
     note &= 0x7F;
-    if (active_notes_[channel][note] > 0) {
-        active_notes_[channel][note]--;
+    const uint8_t note_references = active_notes_[channel][note];
+    if (note_references > 0) {
+        active_notes_[channel][note] = static_cast<uint8_t>(note_references - 1);
     } else {
         return; // Note was already released or cleared by Panic / AllNotesOff
     }
@@ -251,6 +252,12 @@ void AmyAdapter::executeNoteOff(uint8_t channel, uint8_t note) {
         amy_add_event(&e);
         return;
     }
+
+    // AMY receives note commands by channel/pitch, without an application
+    // voice token. Keep a repeated pitch alive until its final matching release
+    // so an overlapping keyboard/arp/sequence reference cannot cut it early.
+    if (!mono_mode_ && active_voices_ > 0) active_voices_--;
+    if (note_references > 1) return;
 
     // Main Synth (Synth 1)
     if (mono_mode_) {
@@ -287,7 +294,6 @@ void AmyAdapter::executeNoteOff(uint8_t channel, uint8_t note) {
         // If was not top, the currently sounding note continues playing uninterrupted
     } else {
         // Polyphonic Mode
-        if (active_voices_ > 0) active_voices_--;
         amy_event e = amy_default_event();
         e.synth = 1;
         e.midi_note = (float)note;
