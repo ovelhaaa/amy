@@ -32,12 +32,14 @@ public:
     struct HeldNote {
         uint8_t note;
         uint8_t velocity;
+        uint8_t channel = 0;
     };
 
     Arpeggiator();
+    void setEventBus(EventBus* bus) { event_bus_ = bus; }
 
-    void noteOn(uint8_t note, uint8_t velocity);
-    void noteOff(uint8_t note);
+    void noteOn(uint8_t note, uint8_t velocity, uint8_t channel = 0);
+    void noteOff(uint8_t note, uint8_t channel = 0);
 
     void processTick(uint32_t tick_count, EventBus& event_bus, MusicalTiming timing = {});
 
@@ -66,6 +68,9 @@ public:
     void reset(EventBus& event_bus);
 
 private:
+    EventBus* event_bus_ = nullptr;
+    uint64_t next_note_token_ = 0, last_note_token_ = 0;
+    std::array<uint64_t, 16> chord_tokens_{};
     uint32_t previous_tick_ = 0;
     uint64_t extended_tick_ = 0;
     bool tick_seen_ = false;

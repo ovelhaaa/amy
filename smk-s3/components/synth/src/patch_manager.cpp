@@ -1122,6 +1122,7 @@ void PatchManager::setMacro(uint8_t macro_idx, float physical_val, bool from_phy
 void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     if (!amy_adapter_) return;
 
+    if (note_reset_callback_) note_reset_callback_(note_reset_context_);
     mixed_macro_warning_emitted_ = false;
 
     // A new preset establishes a new FM baseline. Drop the previous patch's

@@ -168,6 +168,16 @@ static void app_init_task(void* arg) {
     patch_manager->setClockManager(clock_manager);
     patch_manager->setArpeggiator(arpeggiator);
     patch_manager->setStepSequencer(step_sequencer);
+    arpeggiator->setEventBus(event_bus);
+    step_sequencer->setEventBus(event_bus);
+    struct NoteResetContext { smk::EventBus* bus; smk::Arpeggiator* arp; smk::StepSequencer* seq; };
+    NoteResetContext note_reset_context{event_bus, arpeggiator, step_sequencer};
+    patch_manager->setNoteResetCallback([](void* context) {
+        auto& state = *static_cast<NoteResetContext*>(context);
+        state.bus->invalidateMusical();
+        state.arp->reset();
+        state.seq->stop();
+    }, &note_reset_context);
 
     if (ui_manager) {
         ui_manager->sequencerScreen().setSequencer(step_sequencer);
@@ -463,7 +473,11 @@ static void app_init_task(void* arg) {
                                     step_sequencer->toggleStep(step_sequencer->selectedTrack(), step_idx, (uint8_t)event.value);
                                     // Audio preview hit
                                     if (amy_adapter) {
-                                        amy_adapter->noteOn(9, step_sequencer->trackNote(step_sequencer->selectedTrack()), (uint8_t)event.value);
+                                        smk::NoteRoute preview{};
+                                        preview.identity = {smk::NoteSource::Pad, pad_idx, 0, pad_idx, 0};
+                                        preview.count = 1; preview.velocity = static_cast<uint8_t>(event.value);
+                                        preview.outputs[0] = {10, step_sequencer->trackNote(step_sequencer->selectedTrack())};
+                                        amy_adapter->routeNoteOn(preview);
                                     }
                                 }
                             } else {
@@ -525,7 +539,7 @@ static void app_init_task(void* arg) {
                                         break;
                                     case 3: // Pad 4 (B): Toggle Arpeggiator On/Off
                                         if (arpeggiator) {
-                                            arpeggiator->setEnabled(!arpeggiator->isEnabled());
+                                            arpeggiator->setEnabled(!arpeggiator->isEnabled(), event_bus);
                                             if (ui_manager) {
                                                 ui_manager->triggerParameterOverlay("ARPEGGIATOR", "ARP", arpeggiator->isEnabled() ? 1.0f : 0.0f, 0.0f, arpeggiator->isEnabled() ? "ON" : "OFF", smk::TakeoverStatus::Captured);
                                             }
@@ -579,11 +593,7 @@ static void app_init_task(void* arg) {
                                 ui_manager->triggerParameterOverlay("SAVE CANCELLED", "HOLD PAD 16", 0.0f, 0.0f, "", smk::TakeoverStatus::Captured);
                             }
                         } else if (pad_idx < 8) {
-                            if (ui_manager && ui_manager->activeScreenId() == smk::ScreenId::Sequencer && step_sequencer && !step_sequencer->isRecording()) {
-                                if (amy_adapter) amy_adapter->noteOff(9, step_sequencer->trackNote(step_sequencer->selectedTrack()));
-                            } else if (pad_manager) {
-                                pad_manager->handlePadRelease(pad_idx, amy_adapter);
-                            }
+                            if (pad_manager) pad_manager->handlePadRelease(pad_idx, amy_adapter);
                         }
                     }
                     if (amy_adapter && ui_manager && patch_manager) {
@@ -637,18 +647,35 @@ static void app_init_task(void* arg) {
                         if (clock_manager && !clock_manager->isRunning()) {
                             clock_manager->start();
                         }
-                        arpeggiator->noteOn((uint8_t)event.id, (uint8_t)event.value);
+                        arpeggiator->noteOn((uint8_t)event.id, (uint8_t)event.value, event.channel);
                     } else {
-                        amy_adapter->noteOnBefore(event.channel, static_cast<uint8_t>(event.id),
-                                              static_cast<uint8_t>(event.value), event.timestamp_us, event.deadline_us);
+                        smk::NoteSource source = smk::NoteSource::Internal;
+                        switch (event.source) {
+                            case smk::EventSource::UsbMidi: source = smk::NoteSource::Keyboard; break;
+                            case smk::EventSource::Sequencer: source = smk::NoteSource::Sequencer; break;
+                            case smk::EventSource::Arpeggiator: source = smk::NoteSource::Arpeggiator; break;
+                            default: break;
+                        }
+                        smk::NoteRoute route{};
+                        route.identity = {source, event.source_instance, event.channel,
+                                          static_cast<uint8_t>(event.id), event.note_token};
+                        route.count = 1; route.velocity = static_cast<uint8_t>(event.value);
+                        route.outputs[0] = {static_cast<uint8_t>(event.channel == 9 ? 10 : 1), static_cast<uint8_t>(event.id)};
+                        amy_adapter->routeNoteOn(route, event.timestamp_us, event.deadline_us);
                     }
                     break;
-                case smk::EventType::NoteOff:
-                    if (event.source == smk::EventSource::UsbMidi && arpeggiator->isEnabled()) {
-                        arpeggiator->noteOff((uint8_t)event.id);
-                    } else {
-                        amy_adapter->noteOffAt(event.channel, static_cast<uint8_t>(event.id), event.timestamp_us, event.deadline_us);
-                    }
+                case smk::EventType::NoteOff: {
+                    if (event.source == smk::EventSource::UsbMidi) arpeggiator->noteOff(static_cast<uint8_t>(event.id), event.channel);
+                    const auto source = event.source == smk::EventSource::UsbMidi ? smk::NoteSource::Keyboard :
+                        event.source == smk::EventSource::Arpeggiator ? smk::NoteSource::Arpeggiator :
+                        event.source == smk::EventSource::Sequencer ? smk::NoteSource::Sequencer : smk::NoteSource::Internal;
+                    amy_adapter->routeNoteOff({source, event.source_instance, event.channel,
+                                              static_cast<uint8_t>(event.id), event.note_token}, event.timestamp_us, event.deadline_us);
+                    break;
+                }
+                case smk::EventType::SourceStop:
+                    if (event.source == smk::EventSource::Arpeggiator) amy_adapter->stopNoteSource(smk::NoteSource::Arpeggiator);
+                    if (event.source == smk::EventSource::Sequencer) amy_adapter->stopNoteSource(smk::NoteSource::Sequencer);
                     break;
                 case smk::EventType::PitchBend:
                     amy_adapter->pitchBendAt(event.channel, static_cast<int16_t>(event.value), event.timestamp_us);
@@ -663,8 +690,9 @@ static void app_init_task(void* arg) {
                     if (event.id >= 1 && event.id <= 8) {
                         patch_manager->handleKnobInput(event.id - 1, (float)event.value);
                     } else {
-                        amy_adapter->controlChangeAt(event.channel, static_cast<uint8_t>(event.id),
-                                                     static_cast<uint8_t>(event.value), event.timestamp_us);
+                        if (event.id == 64) amy_adapter->routeSustain(event.channel, event.value >= 64, event.timestamp_us);
+                        else amy_adapter->controlChangeAt(event.channel, static_cast<uint8_t>(event.id),
+                                                          static_cast<uint8_t>(event.value), event.timestamp_us);
                         if (ui_manager) {
                             char cc_title[32];
                             snprintf(cc_title, sizeof(cc_title), "CC #%d", event.id);
@@ -693,7 +721,8 @@ static void app_init_task(void* arg) {
                         case smk::ButtonId::Stop:
                             step_sequencer->stop();
                             arpeggiator->reset();
-                            request_musical_reset();
+                            clock_manager->stop();
+                            scene_manager->cancelPendingTransition();
                             break;
                         case smk::ButtonId::Record:
                             step_sequencer->record();
@@ -743,7 +772,7 @@ static void app_init_task(void* arg) {
                         clock_manager->onExternalStop();
                         step_sequencer->stop();
                         if (arpeggiator) arpeggiator->reset();
-                        if (amy_adapter) request_musical_reset();
+                        if (scene_manager) scene_manager->cancelPendingTransition();
                     }
                     break;
                 case smk::EventType::AllNotesOff:

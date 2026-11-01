@@ -16,6 +16,7 @@ Arpeggiator::Arpeggiator() {
 }
 
 void Arpeggiator::setEnabled(bool enable, EventBus* event_bus) {
+    if (!event_bus) event_bus = event_bus_;
     enabled_ = enable;
     if (!enabled_) {
         if (event_bus != nullptr) {
@@ -42,16 +43,16 @@ void Arpeggiator::setLatch(bool enable) {
     portEXIT_CRITICAL(&mux_);
 }
 
-void Arpeggiator::noteOn(uint8_t note, uint8_t velocity) {
+void Arpeggiator::noteOn(uint8_t note, uint8_t velocity, uint8_t channel) {
     portENTER_CRITICAL(&mux_);
     // Check if note already present
-    auto it = std::find_if(held_notes_.begin(), held_notes_.end(), [note](const HeldNote& hn) {
-        return hn.note == note;
+    auto it = std::find_if(held_notes_.begin(), held_notes_.end(), [note, channel](const HeldNote& hn) {
+        return hn.note == note && hn.channel == channel;
     });
 
-    if (it == held_notes_.end()) {
-        held_notes_.push_back({note, velocity});
-    } else {
+    if (it == held_notes_.end() && held_notes_.size() < 16) {
+        held_notes_.push_back({note, velocity, channel});
+    } else if (it != held_notes_.end()) {
         it->velocity = velocity;
     }
 
@@ -61,10 +62,10 @@ void Arpeggiator::noteOn(uint8_t note, uint8_t velocity) {
     portEXIT_CRITICAL(&mux_);
 }
 
-void Arpeggiator::noteOff(uint8_t note) {
+void Arpeggiator::noteOff(uint8_t note, uint8_t channel) {
     portENTER_CRITICAL(&mux_);
-    auto it = std::find_if(held_notes_.begin(), held_notes_.end(), [note](const HeldNote& hn) {
-        return hn.note == note;
+    auto it = std::find_if(held_notes_.begin(), held_notes_.end(), [note, channel](const HeldNote& hn) {
+        return hn.note == note && hn.channel == channel;
     });
 
     if (it != held_notes_.end()) {
@@ -74,6 +75,7 @@ void Arpeggiator::noteOff(uint8_t note) {
 }
 
 void Arpeggiator::reset() {
+    if (event_bus_) event_bus_->cancelNotes(EventSource::Arpeggiator);
     tick_seen_ = false;
     previous_tick_ = 0; extended_tick_ = 0;
     portENTER_CRITICAL(&mux_);
@@ -97,6 +99,7 @@ void Arpeggiator::reset(EventBus& event_bus) {
                 off_ev.source = EventSource::Arpeggiator;
                 off_ev.channel = 0;
                 off_ev.id = (uint16_t)active_chord_notes_[i];
+                off_ev.note_token = chord_tokens_[i];
                 off_ev.value = 0;
                 off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
                 event_bus.send(off_ev);
@@ -110,6 +113,7 @@ void Arpeggiator::reset(EventBus& event_bus) {
         off_ev.source = EventSource::Arpeggiator;
         off_ev.channel = 0;
         off_ev.id = (uint16_t)last_played_note_;
+        off_ev.note_token = last_note_token_;
         off_ev.value = 0;
         off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
         event_bus.send(off_ev);
@@ -187,6 +191,7 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus, MusicalT
                     off_ev.source = EventSource::Arpeggiator;
                     off_ev.channel = 0;
                     off_ev.id = (uint16_t)active_chord_notes_[i];
+                    off_ev.note_token = chord_tokens_[i];
                     off_ev.value = 0;
                     off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
                     off_ev.deadline_us = timing.releaseDeadline(tick_count, note_off_tick_);
@@ -202,6 +207,7 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus, MusicalT
             off_ev.source = EventSource::Arpeggiator;
             off_ev.channel = 0;
             off_ev.id = (uint16_t)last_played_note_;
+            off_ev.note_token = last_note_token_;
             off_ev.value = 0;
             off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
             off_ev.deadline_us = timing.releaseDeadline(tick_count, note_off_tick_);
@@ -291,6 +297,7 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus, MusicalT
                 on_ev.source = EventSource::Arpeggiator;
                 on_ev.channel = 0;
                 on_ev.id = hn.note;
+                on_ev.note_token = chord_tokens_[i] = ++next_note_token_;
                 on_ev.value = hn.velocity;
                 on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());
                 on_ev.deadline_us = timing.deadline(std::max<uint32_t>(1, static_cast<uint32_t>(ticks_per_step * gate_percent_ / 100.0f)));
@@ -305,6 +312,7 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus, MusicalT
             on_ev.source = EventSource::Arpeggiator;
             on_ev.channel = 0;
             on_ev.id = current_hn.note;
+            on_ev.note_token = last_note_token_ = ++next_note_token_;
             on_ev.value = current_hn.velocity;
             on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());
             on_ev.deadline_us = timing.deadline(std::max<uint32_t>(1, static_cast<uint32_t>(ticks_per_step * gate_percent_ / 100.0f)));

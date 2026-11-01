@@ -29,6 +29,9 @@ public:
     // Single consumer: call only after clearing engine and producer note state.
     // Musical input is suppressed until this acknowledgement.
     void acknowledgePanic();
+    // Control-side fences. Lifecycle entries always survive invalidation.
+    void cancelNotes(EventSource source);
+    void invalidateMusical();
     
     // Diagnostics
     uint32_t overflowCount() const;
@@ -42,6 +45,7 @@ private:
     struct Entry {
         SynthEvent event;
         uint32_t generation;
+        uint32_t source_generation;
     };
     bool enqueueLocked(const SynthEvent& event);
     void panicLocked(const SynthEvent& event);
@@ -53,6 +57,7 @@ private:
     size_t release_reserve_ = 0;
     size_t head_ = 0;
     size_t count_ = 0;
+    uint32_t source_generations_[6]{};
     uint32_t generation_ = 0;
     uint32_t delivered_generation_ = 0;
     bool panic_pending_ = false;
