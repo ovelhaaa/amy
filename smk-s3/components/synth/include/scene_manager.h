@@ -44,6 +44,7 @@ public:
      * @brief Check and execute pending scene transition if queued.
      */
     void processPendingTransition();
+    void cancelPendingTransition() { pending_scene_index_ = -1; }
 
     void nextScene();
     void previousScene();

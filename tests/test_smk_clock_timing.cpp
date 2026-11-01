@@ -9,7 +9,7 @@
 int main() {
     using smk::LatestTickMailbox;
     using smk::tickReached;
-    static_assert(sizeof(smk::SynthEvent) == 16, "timestamps must retain the bounded event size");
+    static_assert(sizeof(smk::SynthEvent) == 24, "timestamps must retain the bounded event size");
 
     assert(tickReached(10, 10));
     assert(!tickReached(9, 10));

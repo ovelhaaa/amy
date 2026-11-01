@@ -1,5 +1,6 @@
 #include "step_sequencer.h"
 #include "clock_timing.h"
+#include "diagnostics.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 #if defined(ESP_PLATFORM)
@@ -316,6 +317,8 @@ void StepSequencer::recordLiveHit(uint8_t note, uint8_t velocity) {
 }
 
 void StepSequencer::play() {
+    tick_seen_ = false;
+    previous_tick_ = 0; extended_tick_ = 0;
     state_ = SequencerState::Playing;
     current_step_ = 0;
     for (auto& pb : track_playback_) {
@@ -365,7 +368,7 @@ void StepSequencer::record() {
     ESP_LOGI(TAG, "StepSequencer STATE: %d", static_cast<int>(state_));
 }
 
-void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
+void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, MusicalTiming timing) {
     if (state_ == SequencerState::Stopped) return;
 
     constexpr uint32_t ticks_per_step = 6;
@@ -383,6 +386,29 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
         is_step_tick = (mod12 == 0) || (mod12 == tick_split);
     }
 
+    if (tick_seen_ && tick_count == previous_tick_) return;
+    const uint64_t old_tick = extended_tick_;
+    extended_tick_ += static_cast<uint32_t>(tick_count - previous_tick_);
+    const uint32_t split = swing_percent_ > 50 ? static_cast<uint32_t>(std::round(12.f * swing_percent_ / 100.f)) : 6;
+    uint64_t crossed = stepBoundaries(extended_tick_, 6, split) - stepBoundaries(old_tick, 6, split);
+    if (!tick_seen_ && tick_count == 0) crossed = 1;
+    previous_tick_ = tick_count; tick_seen_ = true;
+    // Skip positions and pattern chains arithmetically, never replay triggers.
+    const uint64_t missed = crossed - (is_step_tick && crossed ? 1 : 0);
+    if (missed) {
+        const uint64_t position = current_step_ + missed;
+        const uint64_t wraps = position / pattern_length_;
+        current_step_ = position % pattern_length_;
+        if (wraps && chain_.enabled && chain_.length > 1) {
+            const uint64_t next = chain_.current_index + wraps;
+            if (!chain_.loop && next >= chain_.length) { stop(event_bus); return; }
+            chain_.current_index = next % chain_.length;
+            current_pattern_ = chain_.patterns[chain_.current_index];
+        }
+        for (auto& pb : track_playback_) pb.active = pb.passed_probability = false;
+    }
+    const bool allow_trigger = timing.triggerAllowed();
+    if (!allow_trigger) Diagnostics::instance().counters().musical_triggers_late.fetch_add(1, std::memory_order_relaxed);
     uint32_t step_tick_offset = tick_count % ticks_per_step;
 
     for (size_t t = 0; t < kMaxTracks; ++t) {
@@ -390,6 +416,8 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
 
         // Process scheduled NoteOff
         if (pb.last_played_note >= 0 && tickReached(tick_count, pb.note_off_tick)) {
+            if (tick_count != pb.note_off_tick || !timing.triggerAllowed())
+                Diagnostics::instance().counters().musical_releases_late.fetch_add(1, std::memory_order_relaxed);
             SynthEvent off_ev;
             off_ev.type = EventType::NoteOff;
             off_ev.source = EventSource::Sequencer;
@@ -415,7 +443,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
             pb.gate_percent = s.gate_percent;
             pb.active = s.active;
 
-            if (pb.active) {
+            if (pb.active && allow_trigger) {
                 // Evaluate probability exactly once at step onset
                 if (s.probability < 100) {
                     uint32_t roll = (randomU32() % 100) + 1;
@@ -428,7 +456,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
             }
 
             // Dispatch Parameter Lock Automation Event if present on step onset
-            if (pb.active && pb.passed_probability && s.has_plock && s.locked_param < 8) {
+            if (allow_trigger && pb.active && pb.passed_probability && s.has_plock && s.locked_param < 8) {
                 SynthEvent plock_ev;
                 plock_ev.type = EventType::ControlChange;
                 plock_ev.source = EventSource::Sequencer;
@@ -440,7 +468,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
             }
 
             // Trigger step onset NoteOn if active and passed probability
-            if (pb.active && pb.passed_probability) {
+            if (allow_trigger && pb.active && pb.passed_probability) {
                 if (pb.last_played_note >= 0) {
                     SynthEvent off_ev;
                     off_ev.type = EventType::NoteOff;
@@ -459,7 +487,8 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
                 on_ev.channel = track_channels_[t];
                 on_ev.id = pb.note;
                 on_ev.value = pb.velocity;
-                on_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
+                on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());
+                on_ev.deadline_us = timing.deadline(pb.ratchet > 1 ? (pb.ratchet == 2 ? 2 : 1) : std::max(1u, static_cast<uint32_t>(ticks_per_step * pb.gate_percent / 100.f)));
                 event_bus.send(on_ev);
 
                 pb.last_played_note = pb.note;
@@ -474,7 +503,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
             }
         } else {
             // Intermediate ratchet ticks: read EXCLUSIVELY from latched track_playback_
-            if (pb.active && pb.passed_probability && pb.ratchet > 1) {
+            if (allow_trigger && pb.active && pb.passed_probability && pb.ratchet > 1) {
                 bool is_ratchet_tick = false;
                 uint32_t ratchet_gate = 1;
                 if (pb.ratchet == 2 && step_tick_offset == 3) {
@@ -507,7 +536,8 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
                     on_ev.channel = track_channels_[t];
                     on_ev.id = pb.note;
                     on_ev.value = pb.velocity;
-                    on_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
+                    on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());
+                    on_ev.deadline_us = timing.deadline(ratchet_gate);
                     event_bus.send(on_ev);
 
                     pb.last_played_note = pb.note;

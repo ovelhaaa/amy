@@ -15,6 +15,29 @@ constexpr bool tickReached(uint32_t now, uint32_t deadline) {
     return static_cast<int32_t>(now - deadline) >= 0;
 }
 
+// One half of a PPQN period is the default trigger lateness budget. It is
+// shorter than the minimum one-tick gate; releases are never age-filtered.
+struct MusicalTiming {
+    uint64_t timestamp_us = 0;
+    uint64_t now_us = 0;
+    uint64_t period_us = 0;
+    uint32_t lateness_numerator = 1, lateness_denominator = 2;
+    bool triggerAllowed() const {
+        return !period_us || !timestamp_us ||
+            (now_us >= timestamp_us && now_us - timestamp_us <
+             period_us * lateness_numerator / (lateness_denominator ? lateness_denominator : 1));
+    }
+    uint64_t deadline(uint32_t gate_ticks) const {
+        return timestamp_us && period_us ? timestamp_us + period_us * gate_ticks : 0;
+    }
+};
+
+// Count step boundaries on an extended tick axis (including tick zero).
+inline uint64_t stepBoundaries(uint64_t tick, uint32_t ticks_per_step, uint32_t swing_split = 6) {
+    if (ticks_per_step != 6) return tick / ticks_per_step + 1;
+    return tick / 12 * 2 + (tick % 12 >= swing_split ? 1 : 0) + 1;
+}
+
 // Short, fixed-size snapshots only. ESP uses a port critical section, never a
 // blocking task mutex. Host uses a mutex so thread tests follow the C++ model.
 class TemporalLock {

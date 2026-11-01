@@ -49,6 +49,9 @@ struct DiagnosticCounters {
     std::atomic<uint32_t> clock_ticks_coalesced{0};
     std::atomic<uint32_t> clock_max_ticks_coalesced{0};
     std::atomic<uint32_t> midi_max_receive_to_control_us{0};
+    std::atomic<uint32_t> musical_releases_late{0};
+    std::atomic<uint32_t> musical_triggers_late{0};
+    std::atomic<uint32_t> musical_deadline_recoveries{0};
     // FM operator controls with no valid patch baseline were ignored rather
     // than overwriting the preset's operator topology with absolute values.
     std::atomic<uint32_t> fm_controls_ignored{0};

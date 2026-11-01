@@ -3,6 +3,7 @@
 #include <array>
 #include <algorithm>
 #include "event_bus.h"
+#include "clock_timing.h"
 
 namespace smk {
 
@@ -128,7 +129,7 @@ public:
     void recordLiveHit(uint8_t note, uint8_t velocity);
     void recordLiveTrackHit(uint8_t track_idx, uint8_t velocity);
 
-    void processTick(uint32_t tick_count, EventBus& event_bus);
+    void processTick(uint32_t tick_count, EventBus& event_bus, MusicalTiming timing = {});
     void reset();
 
     struct TrackPlaybackState {
@@ -151,6 +152,9 @@ public:
     static uint32_t randomU32();
 
 private:
+    uint32_t previous_tick_ = 0;
+    uint64_t extended_tick_ = 0;
+    bool tick_seen_ = false;
     std::array<std::array<std::array<StepData, kMaxSteps>, kMaxTracks>, kMaxPatterns> patterns_;
     SequencerState                                                                     state_ = SequencerState::Stopped;
     uint8_t                                                                            current_step_ = 0;

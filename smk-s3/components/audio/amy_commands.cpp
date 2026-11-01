@@ -29,6 +29,7 @@ struct Command {
     uint32_t generation;
     uint64_t timestamp_us;
     uint64_t source_timestamp_us;
+    uint64_t deadline_us;
     union { float values[8]; char message[config::kSynthMessageBytes]; } data;
 };
 bool release(const Command& c) {
@@ -236,11 +237,12 @@ void AmyAdapter::workerRoutine(void* arg) {
 
 void AmyAdapter::submit(uint8_t type, uint8_t channel, uint16_t id,
                         float a, float b, float c, float d,
-                        float e, float f, float g, uint64_t source_timestamp_us) {
+                        float e, float f, float g, uint64_t source_timestamp_us, uint64_t deadline_us) {
     if (!state_ || !state_->wake) return;
     Command command{};
     command.type = type; command.channel = channel; command.id = id;
     command.source_timestamp_us = source_timestamp_us;
+    command.deadline_us = deadline_us;
     command.data.values[0] = a; command.data.values[1] = b;
     command.data.values[2] = c; command.data.values[3] = d;
     command.data.values[4] = e; command.data.values[5] = f;
@@ -251,6 +253,7 @@ void AmyAdapter::submit(uint8_t type, uint8_t channel, uint16_t id,
 void AmyAdapter::noteOn(uint8_t ch, uint8_t note, uint8_t vel) { submit(NoteOn, ch, note, vel); }
 void AmyAdapter::noteOff(uint8_t ch, uint8_t note) { submit(NoteOff, ch, note); }
 void AmyAdapter::noteOnAt(uint8_t ch, uint8_t note, uint8_t vel, uint64_t source_us) { submit(NoteOn, ch, note, vel, 0, 0, 0, 0, 0, 0, source_us); }
+void AmyAdapter::noteOnBefore(uint8_t ch, uint8_t note, uint8_t vel, uint64_t source_us, uint64_t deadline_us) { submit(NoteOn, ch, note, vel, 0, 0, 0, 0, 0, 0, source_us, deadline_us); }
 void AmyAdapter::noteOffAt(uint8_t ch, uint8_t note, uint64_t source_us) { submit(NoteOff, ch, note, 0, 0, 0, 0, 0, 0, 0, source_us); }
 void AmyAdapter::pitchBend(uint8_t ch, int16_t bend) { submit(Bend, ch, 0, bend); }
 void AmyAdapter::pitchBendAt(uint8_t ch, int16_t bend, uint64_t source_us) { submit(Bend, ch, 0, bend, 0, 0, 0, 0, 0, 0, source_us); }
@@ -326,6 +329,13 @@ bool AmyAdapter::serviceBlock() {
             const uint32_t source_wait_us = static_cast<uint32_t>(std::min<uint64_t>(now_us - c.source_timestamp_us, UINT32_MAX));
             if (source_wait_us > diag.synth_max_source_to_owner_us.load(std::memory_order_relaxed))
                 diag.synth_max_source_to_owner_us.store(source_wait_us, std::memory_order_relaxed);
+        }
+        if (c.type == NoteOn && c.data.values[0] > 0 && c.deadline_us && now_us >= c.deadline_us) {
+            diag.musical_deadline_recoveries.fetch_add(1, std::memory_order_relaxed);
+            Command reset{}; reset.type = Panic;
+            s.enqueue(reset);
+            s.recovery_requested.store(true, std::memory_order_release);
+            continue;
         }
         const float* v = c.data.values;
         switch (c.type) {

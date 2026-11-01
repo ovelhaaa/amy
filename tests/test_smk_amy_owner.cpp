@@ -143,6 +143,16 @@ static void testBoundaries(AmyAdapter& adapter) {
     adapter.noteOffAt(0, 72, 2);
     pump(adapter, 2);
 
+    // Expiry at the owner is a generation recovery, never a late onset with
+    // a logically elapsed release. Also clears other pending musical commands.
+    const uint32_t late_recoveries = diag.musical_deadline_recoveries;
+    adapter.noteOnBefore(0, 75, 100, 1, 1);
+    adapter.noteOn(0, 76, 100);
+    pump(adapter, 3);
+    assert(diag.musical_deadline_recoveries == late_recoveries + 1);
+    assert(adapter.takeRecoveryRequest());
+    assert(adapter.activeNoteReferences() == 0);
+
     // Ordinary commands fill only their budget; releases retain reserve.
     const uint32_t prior_drops = diag.synth_commands_dropped;
     for (int i = 0; i < config::kSynthCommandCapacity - config::kSynthReleaseReserve; ++i)

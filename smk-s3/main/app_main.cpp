@@ -258,6 +258,14 @@ static void app_init_task(void* arg) {
     bool learning_was_active = false;
     bool audio_fault_reported = false;
 
+    auto request_musical_reset = [&] {
+        if (clock_manager) clock_manager->stop();
+        if (scene_manager) scene_manager->cancelPendingTransition();
+        amy_adapter->panic();
+        smk::SynthEvent barrier{};
+        barrier.type = smk::EventType::Panic;
+        event_bus->send(barrier);
+    };
     while (true) {
         if (amy_adapter->takeRecoveryRequest()) {
             // A lost release in the AMY mailbox also resets application-owned
@@ -307,12 +315,20 @@ static void app_init_task(void* arg) {
                 while (skipped_ticks > previous &&
                        !counters.clock_max_ticks_coalesced.compare_exchange_weak(previous, skipped_ticks, std::memory_order_relaxed)) {}
             }
-            arpeggiator->processTick(latest_tick, *event_bus);
-            step_sequencer->processTick(latest_tick, *event_bus);
-            if (latest_tick % 24 == 0 && scene_manager) scene_manager->processPendingTransition();
+            smk::MusicalTiming timing{tick_timestamp_us, static_cast<uint64_t>(esp_timer_get_time()),
+                clock_manager->tickPeriodUs()};
+            arpeggiator->processTick(latest_tick, *event_bus, timing);
+            step_sequencer->processTick(latest_tick, *event_bus, timing);
+            if (timing.triggerAllowed() && latest_tick % 24 == 0 && scene_manager) scene_manager->processPendingTransition();
         }
         smk::SynthEvent event;
-        if (event_bus->receive(event, 10)) {
+        if (event_bus->receive(event, 1)) {
+            if (smk::expiredTrigger(event, static_cast<uint64_t>(esp_timer_get_time()))) {
+                smk::Diagnostics::instance().counters().musical_deadline_recoveries.fetch_add(1);
+                event.type = smk::EventType::Panic;
+                event_bus->send(event);
+                continue;
+            }
             if (event.source == smk::EventSource::UsbMidi && event.timestamp_us != 0) {
                 const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - event.timestamp_us;
                 auto& max_latency = smk::Diagnostics::instance().counters().midi_max_receive_to_control_us;
@@ -551,7 +567,7 @@ static void app_init_task(void* arg) {
                                 midi_learn->skipStep();
                                 if (ui_manager) ui_manager->midiLearnScreen().triggerFeedback("PASSO PULADO", smk::DisplayDriver::kColorAmber);
                             } else {
-                                step_sequencer->stop(); arpeggiator->reset(); amy_adapter->allNotesOff();
+                                step_sequencer->stop(); arpeggiator->reset(); request_musical_reset();
                             }
                         }
                         continue;
@@ -578,8 +594,8 @@ static void app_init_task(void* arg) {
                         }
                         arpeggiator->noteOn((uint8_t)event.id, (uint8_t)event.value);
                     } else {
-                        amy_adapter->noteOnAt(event.channel, static_cast<uint8_t>(event.id),
-                                              static_cast<uint8_t>(event.value), event.timestamp_us);
+                        amy_adapter->noteOnBefore(event.channel, static_cast<uint8_t>(event.id),
+                                              static_cast<uint8_t>(event.value), event.timestamp_us, event.deadline_us);
                     }
                     break;
                 case smk::EventType::NoteOff:
@@ -632,7 +648,7 @@ static void app_init_task(void* arg) {
                         case smk::ButtonId::Stop:
                             step_sequencer->stop();
                             arpeggiator->reset();
-                            amy_adapter->allNotesOff();
+                            request_musical_reset();
                             break;
                         case smk::ButtonId::Record:
                             step_sequencer->record();
@@ -682,16 +698,18 @@ static void app_init_task(void* arg) {
                         clock_manager->onExternalStop();
                         step_sequencer->stop();
                         if (arpeggiator) arpeggiator->reset();
-                        if (amy_adapter) amy_adapter->allNotesOff();
+                        if (amy_adapter) request_musical_reset();
                     }
                     break;
                 case smk::EventType::AllNotesOff:
                     arpeggiator->reset();
                     step_sequencer->stop();
-                    amy_adapter->allNotesOff();
+                    request_musical_reset();
                     break;
                 case smk::EventType::Panic:
                     ESP_LOGW(TAG, "PANIC received! Silencing engine.");
+                    clock_manager->stop();
+                    scene_manager->cancelPendingTransition();
                     arpeggiator->reset();
                     step_sequencer->stop();
                     amy_adapter->panic();
