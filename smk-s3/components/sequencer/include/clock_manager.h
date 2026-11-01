@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <atomic>
+#include <mutex>
 #include "clock_timing.h"
 #include "esp_timer.h"
 
@@ -35,6 +36,7 @@ public:
     // Single control-task consumer. Skipped edges are reported so musical
     // triggers can be dropped while release deadlines still get serviced.
     bool takePendingTick(uint32_t& tick, uint32_t& skipped, uint64_t& timestamp_us) {
+        TemporalGuard guard(timing_lock_);
         return pending_ticks_.consume(tick, skipped, timestamp_us);
     }
 
@@ -43,9 +45,15 @@ public:
     void onExternalStop();
 
 private:
+    friend struct ClockManagerTestAccess;
     static void timerCallback(void* arg);
     void updateTimerPeriod();
 
+    // Task-side API calls (including console) serialize timer API operations.
+    // Callback takes only timing_lock_; no timer APIs or task mutex under it.
+    std::recursive_mutex api_mutex_;
+    TemporalLock timing_lock_;
+    uint64_t next_tick_us_ = 0;
     std::atomic<float>      bpm_{120.0f};
     std::atomic<uint8_t>    swing_percent_{50}; // 50% = Straight, 67% = Triplet, 75% = Dotted
     std::atomic<ClockSource> clock_source_{ClockSource::Internal};

@@ -1,6 +1,10 @@
 #pragma once
 
-#include <atomic>
+#ifdef ESP_PLATFORM
+#include "freertos/FreeRTOS.h"
+#else
+#include <mutex>
+#endif
 #include <cstdint>
 
 namespace smk {
@@ -11,42 +15,68 @@ constexpr bool tickReached(uint32_t now, uint32_t deadline) {
     return static_cast<int32_t>(now - deadline) >= 0;
 }
 
-// Clock edges are state, not a backlog of commands. Keep only the newest edge:
-// the consumer can release notes whose deadlines passed, but must not replay
-// stale note triggers in a burst after it was busy.
+// Short, fixed-size snapshots only. ESP uses a port critical section, never a
+// blocking task mutex. Host uses a mutex so thread tests follow the C++ model.
+class TemporalLock {
+public:
+    void lock() {
+#ifdef ESP_PLATFORM
+        portENTER_CRITICAL(&mux_);
+#else
+        mux_.lock();
+#endif
+    }
+    void unlock() {
+#ifdef ESP_PLATFORM
+        portEXIT_CRITICAL(&mux_);
+#else
+        mux_.unlock();
+#endif
+    }
+private:
+#ifdef ESP_PLATFORM
+    portMUX_TYPE mux_ = portMUX_INITIALIZER_UNLOCKED;
+#else
+    std::mutex mux_;
+#endif
+};
+class TemporalGuard {
+public:
+    explicit TemporalGuard(TemporalLock& lock) : lock_(lock) { lock_.lock(); }
+    ~TemporalGuard() { lock_.unlock(); }
+    TemporalGuard(const TemporalGuard&) = delete;
+    TemporalGuard& operator=(const TemporalGuard&) = delete;
+private:
+    TemporalLock& lock_;
+};
+
+// Clock edges are state, not a backlog. Tick, time and consumed
+// position are copied together; no retry loop or informal non-atomic seqlock.
 class LatestTickMailbox {
 public:
     void publish(uint32_t tick, uint64_t timestamp_us = 0) {
-        timestamp_us_.store(timestamp_us, std::memory_order_relaxed);
-        latest_.store(tick, std::memory_order_release);
+        TemporalGuard guard(lock_);
+        latest_ = tick;
+        timestamp_us_ = timestamp_us;
     }
-
     bool consume(uint32_t& tick, uint32_t& skipped, uint64_t& timestamp_us) {
-        uint32_t latest = latest_.load(std::memory_order_acquire);
-        const uint32_t previous = consumed_;
-        if (latest == previous) return false;
-        timestamp_us = timestamp_us_.load(std::memory_order_relaxed);
-        const uint32_t confirm = latest_.load(std::memory_order_acquire);
-        if (confirm != latest) {
-            latest = confirm;
-            timestamp_us = timestamp_us_.load(std::memory_order_relaxed);
-        }
-        skipped = latest - previous - 1;
-        consumed_ = latest;
-        tick = latest;
+        TemporalGuard guard(lock_);
+        if (latest_ == consumed_) return false;
+        tick = latest_;
+        timestamp_us = timestamp_us_;
+        skipped = latest_ - consumed_ - 1;
+        consumed_ = latest_;
         return true;
     }
-
     void reset(uint32_t tick = 0) {
-        timestamp_us_.store(0, std::memory_order_relaxed);
-        latest_.store(tick, std::memory_order_release);
-        consumed_ = tick;
+        TemporalGuard guard(lock_);
+        latest_ = consumed_ = tick;
+        timestamp_us_ = 0;
     }
-
 private:
-    std::atomic<uint32_t> latest_{0};
-    std::atomic<uint64_t> timestamp_us_{0};
-    uint32_t consumed_ = 0; // Single control-task consumer.
+    TemporalLock lock_;
+    uint32_t latest_ = 0, consumed_ = 0;
+    uint64_t timestamp_us_ = 0;
 };
 
 } // namespace smk

@@ -24,4 +24,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Clock timing test compilation failed' }
     & ./build/smk_safety/test_clock_timing.exe
     if ($LASTEXITCODE -ne 0) { throw 'Clock timing tests failed' }
+    & g++ -std=c++17 -O2 -pthread -DSMK_TEST_CLOCK @includes -Ismk-s3/components/sequencer/include tests/test_smk_clock_manager.cpp smk-s3/components/sequencer/src/clock_manager.cpp -o build/smk_safety/test_clock_manager.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Clock manager compilation failed' }
+    & ./build/smk_safety/test_clock_manager.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Clock manager tests failed' }
 } finally { Pop-Location }

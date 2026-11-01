@@ -3,6 +3,8 @@
 
 #include <cassert>
 #include <cstdint>
+#include <atomic>
+#include <thread>
 
 int main() {
     using smk::LatestTickMailbox;
@@ -49,5 +51,27 @@ int main() {
     assert(mailbox.consume(tick, skipped, timestamp));
     assert(timestamp == after_32_bit_wrap);
 
+    mailbox.reset();
+    std::atomic<bool> done{false};
+    std::thread producer([&] {
+        for (uint32_t i = 1; i <= 500000; ++i) mailbox.publish(i, uint64_t{i} * 1000);
+        done.store(true);
+    });
+    do {
+        if (mailbox.consume(tick, skipped, timestamp)) assert(timestamp == uint64_t{tick} * 1000);
+    } while (!done.load());
+    producer.join();
+    done = false;
+    std::thread resetting([&] {
+        for (uint32_t i=0; i<10000; ++i) mailbox.reset();
+    });
+    std::thread publishing([&] {
+        for (uint32_t i=1; i<=100000; ++i) mailbox.publish(i, uint64_t{i} * 1000);
+        done = true;
+    });
+    do {
+        if (mailbox.consume(tick, skipped, timestamp)) assert(timestamp == uint64_t{tick} * 1000);
+    } while (!done.load());
+    publishing.join(); resetting.join();
     return 0;
 }
