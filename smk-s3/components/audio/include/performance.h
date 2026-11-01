@@ -159,13 +159,21 @@ inline PerformanceRoute routePerformance(const PerformanceConfig& config,
     for (uint8_t i = 0; i < 2; ++i) {
         const auto& layer = config.layers[i];
         const auto& z = layer.zone;
-        if ((i && config.mode == PerformanceMode::Single) || !ready[i] ||
+        if ((i && config.mode == PerformanceMode::Single) ||
             !layer.enabled || layer.mute || identity.input_note < z.low_note ||
             identity.input_note > z.high_note || velocity < z.low_velocity ||
             velocity > z.high_velocity || !(z.midi_channel_mask & (1u << identity.channel))) continue;
         const int note = static_cast<int>(identity.input_note) + layer.transpose;
         // AMY uses note 0 as sentinel. Preserve the existing adapter restriction.
         if (note <= 0 || note > 127) continue;
+        // A matching requested destination must exist before publishing any
+        // part of this onset. Never silently degrade an overlap to one layer.
+        if (!ready[i]) {
+            PerformanceRoute rejected{};
+            rejected.notes.identity = identity;
+            rejected.notes.velocity = velocity;
+            return rejected;
+        }
         const auto out = result.notes.count++;
         result.notes.outputs[out] = {static_cast<uint8_t>(i + 1), static_cast<uint8_t>(note)};
         result.volumes[out] = layer.volume;

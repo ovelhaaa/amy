@@ -31,15 +31,23 @@ static void routing() {
     auto r = routePerformance(c, key(), 100, true, true);
     assert(r.notes.count == 2 && r.notes.outputs[1].instrument == 2);
     assert(r.notes.outputs[0].note == 60 && r.notes.outputs[1].note == 60);
-    assert(routePerformance(c, key(), 100, true, false).notes.count == 1);
+    assert(routePerformance(c, key(), 100, true, false).notes.count == 0);
+    assert(routePerformance(c, key(), 100, false, true).notes.count == 0);
     assert(routePerformance(c, key(), 100, false, false).notes.count == 0);
     c.layers[0].zone = {0, 59, 1, 127, 0xffff};
     c.layers[1].zone = {60, 127, 1, 127, 0xffff};
     c.mode = PerformanceMode::Split;
     assert(routePerformance(c, key(59), 100, true, true).notes.outputs[0].instrument == 1);
     assert(routePerformance(c, key(60), 100, true, true).notes.outputs[0].instrument == 2);
+    // An unavailable nonmatching split destination does not suppress A.
+    assert(routePerformance(c, key(59), 100, true, false).notes.count == 1);
+    assert(routePerformance(c, key(60), 100, true, false).notes.count == 0);
     c.layers[0].zone.high_note = 64; // Overlap is intentional.
     assert(routePerformance(c, key(), 100, true, true).notes.count == 2);
+    assert(routePerformance(c, key(), 100, true, false).notes.count == 0);
+    c.layers[1].mute = true;
+    assert(routePerformance(c, key(), 100, true, false).notes.count == 1);
+    c.layers[1].mute = false;
     c.layers[0].zone.high_note = 58;
     c.layers[1].zone.low_note = 61;
     assert(routePerformance(c, key(), 100, true, true).notes.count == 0); // Gap.
