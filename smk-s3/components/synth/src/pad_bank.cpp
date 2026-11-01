@@ -72,7 +72,7 @@ void PadManager::nextBank() {
 }
 
 void PadManager::setBank(PadBank bank) {
-    if (active_bank_ == bank) return;
+    if (static_cast<uint8_t>(bank) >= bank_configs_.size() || active_bank_ == bank) return;
     active_bank_ = bank;
     const char* bname = "BANK A: DRUMS";
     switch (active_bank_) {
@@ -96,13 +96,14 @@ void PadManager::handlePadPress(uint8_t pad_idx, uint8_t velocity, AmyAdapter* e
         return;
     }
 
-    // Single note or multi-note chord trigger
-    uint8_t pad_channel = (active_bank_ == PadBank::BankA_Drums) ? 9 : 0;
-    for (uint8_t i = 0; i < config.note_count; ++i) {
-        if (engine) {
-            engine->noteOn(pad_channel, config.notes[i], velocity);
-        }
-    }
+    // Capture all destinations atomically in the identity's accepted onset.
+    NoteRoute route{};
+    route.identity = {NoteSource::Pad, pad_idx, 0, pad_idx, 0};
+    route.count = config.note_count;
+    route.velocity = velocity;
+    for (uint8_t i = 0; i < route.count && i < smk::config::kNoteFanOut; ++i)
+        route.outputs[i] = {static_cast<uint8_t>(active_bank_ == PadBank::BankA_Drums ? 10 : 1), config.notes[i]};
+    if (engine) engine->routeNoteOn(route);
 
     if (ui) {
         ui->triggerParameterOverlay(config.name, "PAD TRIGGER", (float)velocity, 64.0f, "", TakeoverStatus::Captured);
@@ -111,16 +112,7 @@ void PadManager::handlePadPress(uint8_t pad_idx, uint8_t velocity, AmyAdapter* e
 
 void PadManager::handlePadRelease(uint8_t pad_idx, AmyAdapter* engine) {
     if (pad_idx >= 8) return;
-    const auto& config = bank_configs_[static_cast<uint8_t>(active_bank_)][pad_idx];
-
-    if (!config.is_fx) {
-        uint8_t pad_channel = (active_bank_ == PadBank::BankA_Drums) ? 9 : 0;
-        for (uint8_t i = 0; i < config.note_count; ++i) {
-            if (engine) {
-                engine->noteOff(pad_channel, config.notes[i]);
-            }
-        }
-    }
+    if (engine) engine->routeNoteOff({NoteSource::Pad, pad_idx, 0, pad_idx, 0});
 }
 
 } // namespace smk

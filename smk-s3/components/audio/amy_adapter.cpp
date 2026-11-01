@@ -172,11 +172,11 @@ bool AmyAdapter::beginEngine(uint32_t sample_rate_hz) {
 }
 
 void AmyAdapter::executeNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
-    channel &= 0x0F;
+    channel = channel == 9 ? 9 : 0; // Actual destination is synth 1 or 10.
     note &= 0x7F;
     if (velocity > 0) {
-        if (active_notes_[channel][note] < 255) {
-            active_notes_[channel][note]++;
+        if (active_notes_[channel == 9 ? 1 : 0][note] < UINT16_MAX) {
+            active_notes_[channel == 9 ? 1 : 0][note]++;
             active_note_references_++;
         }
 
@@ -231,17 +231,18 @@ void AmyAdapter::executeNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) 
 }
 
 void AmyAdapter::executeNoteOff(uint8_t channel, uint8_t note) {
-    channel &= 0x0F;
+    channel = channel == 9 ? 9 : 0; // Actual destination is synth 1 or 10.
     note &= 0x7F;
-    const uint8_t note_references = active_notes_[channel][note];
+    const uint16_t note_references = active_notes_[channel == 9 ? 1 : 0][note];
     if (note_references > 0) {
-        active_notes_[channel][note] = static_cast<uint8_t>(note_references - 1);
+        active_notes_[channel == 9 ? 1 : 0][note] = static_cast<uint16_t>(note_references - 1);
         if (active_note_references_ > 0) active_note_references_--;
     } else {
         return; // Note was already released or cleared by Panic / AllNotesOff
     }
 
     if (channel == 9) {
+        if (note_references > 1) return;
         amy_event e = amy_default_event();
         e.synth = 10;
         e.midi_note = (float)note;
@@ -308,7 +309,7 @@ void AmyAdapter::executePitchBend(uint8_t channel, int16_t value) {
 
 void AmyAdapter::executeControlChange(uint8_t channel, uint8_t controller, uint8_t value) {
     uint8_t target_synth = (channel == 9) ? 10 : 1;
-    if (controller == 64) { // Sustain Pedal
+    if (controller == 64) { // Legacy diagnostic API; routed sustain lives in ownership.
         amy_event e = amy_default_event();
         e.synth = target_synth;
         e.pedal = value;
@@ -322,6 +323,7 @@ void AmyAdapter::executeControlChange(uint8_t channel, uint8_t controller, uint8
 }
 
 void AmyAdapter::executeAllNotesOff() {
+    note_ownership_.clear();
     std::memset(active_notes_, 0, sizeof(active_notes_));
     active_note_references_.store(0);
     mono_stack_size_ = 0;

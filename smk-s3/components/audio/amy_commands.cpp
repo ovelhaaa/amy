@@ -20,25 +20,26 @@ enum CommandType : uint8_t {
     NoteOn, NoteOff, Bend, CC, AllOff, Panic, Filter, Wave, Envelope,
     Portamento, Preset, Message, FmIndex, FmFeedback, FmRatio, FmAlgorithm,
     Chorus, Reverb, Delay, Mono, Drive, MasterTone, ReverbFreeze, ChorusMode,
-    OscDetune, SubOsc, Noise, OscMix
+    OscDetune, SubOsc, Noise, OscMix, RoutedOn, RoutedOff, SourceStop, RoutedPedal
 };
 struct Command {
     uint8_t type;
     uint8_t channel;
     uint16_t id;
     uint32_t generation;
+    uint32_t source_generation;
     uint64_t timestamp_us;
     uint64_t source_timestamp_us;
     uint64_t deadline_us;
-    union { float values[8]; char message[config::kSynthMessageBytes]; } data;
+    union { float values[8]; char message[config::kSynthMessageBytes]; NoteRoute route; } data;
 };
 bool release(const Command& c) {
-    return c.type == NoteOff || c.type == AllOff ||
+    return (c.type == RoutedPedal && c.data.values[0] == 0) || c.type == RoutedOff || c.type == SourceStop || c.type == NoteOff || c.type == AllOff ||
            (c.type == NoteOn && c.data.values[0] == 0) ||
            (c.type == CC && ((c.id == 64 && c.data.values[0] < 64) || c.id == 120 || c.id == 123));
 }
 bool musical(const Command& c) {
-    return c.type <= AllOff || c.type == Message;
+    return c.type <= AllOff || c.type == Message || c.type == RoutedOn || c.type == RoutedOff || c.type == SourceStop || c.type == RoutedPedal;
 }
 bool is_continuous(uint8_t type) {
     switch (type) {
@@ -75,6 +76,7 @@ struct AmyAdapter::State {
     Command commands[config::kSynthCommandCapacity]{};
     size_t head = 0, count = 0;
     std::atomic<uint32_t> requested_generation{0};
+    uint32_t source_generations[static_cast<size_t>(NoteSource::Count)]{};
     uint32_t applied_generation = 0; // Synthesis owner only.
     uint64_t panic_timestamp_us = 0; // Protected by mux.
     SemaphoreHandle_t wake = xSemaphoreCreateBinary();
@@ -108,7 +110,8 @@ struct AmyAdapter::State {
                     // Never move a controller update across a patch or note
                     // boundary, or attach it to an invalidated generation.
                     if (commands[idx].type == Preset || commands[idx].type == NoteOn ||
-                        commands[idx].type == NoteOff || commands[idx].type == AllOff) break;
+                        commands[idx].type == NoteOff || commands[idx].type == AllOff ||
+                        commands[idx].type == RoutedOn || commands[idx].type == RoutedOff || commands[idx].type == SourceStop) break;
                     if (commands[idx].generation == requested_generation.load(std::memory_order_relaxed) &&
                         commands[idx].type == c.type &&
                         commands[idx].channel == c.channel &&
@@ -139,6 +142,10 @@ struct AmyAdapter::State {
                     panic_timestamp_us = c.timestamp_us;
                     requested_generation.fetch_add(1, std::memory_order_release);
                 }
+                if (c.type == SourceStop)
+                    ++source_generations[static_cast<size_t>(c.data.route.identity.source)];
+                if (c.type == RoutedOn || c.type == RoutedOff || c.type == SourceStop)
+                    c.source_generation = source_generations[static_cast<size_t>(c.data.route.identity.source)];
                 c.generation = requested_generation.load(std::memory_order_relaxed);
                 commands[(head + count) % config::kSynthCommandCapacity] = c;
                 ++count;
@@ -165,6 +172,9 @@ struct AmyAdapter::State {
             portEXIT_CRITICAL(&mux);
             return false;
         }
+        if ((c.type == RoutedOn || c.type == RoutedOff || c.type == SourceStop) &&
+            c.source_generation != source_generations[static_cast<size_t>(c.data.route.identity.source)])
+            c.generation = applied_generation - 1; // Invalidated selective source generation.
         portEXIT_CRITICAL(&mux);
         return true;
     }
@@ -261,6 +271,32 @@ void AmyAdapter::submit(uint8_t type, uint8_t channel, uint16_t id,
     state_->enqueue(command);
 }
 
+void AmyAdapter::routeNoteOn(const NoteRoute& route, uint64_t source_us, uint64_t deadline_us) {
+    if (!state_) return;
+    if (!NoteOwnership::valid(route.identity)) {
+        Diagnostics::instance().counters().note_identities_rejected.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    if (!route.velocity) { routeNoteOff(route.identity, source_us, deadline_us); return; }
+    Command c{}; c.type = RoutedOn; c.data.route = route;
+    c.source_timestamp_us = source_us; c.deadline_us = deadline_us;
+    state_->enqueue(c);
+}
+void AmyAdapter::routeNoteOff(const NoteIdentity& identity, uint64_t source_us, uint64_t deadline_us) {
+    if (!state_ || !NoteOwnership::valid(identity)) return;
+    Command c{}; c.type = RoutedOff; c.data.route.identity = identity;
+    c.source_timestamp_us = source_us; c.deadline_us = deadline_us;
+    state_->enqueue(c);
+}
+void AmyAdapter::routeSustain(uint8_t channel, bool down, uint64_t source_us) {
+    if (channel < 16) submit(RoutedPedal, channel, 0, down ? 1 : 0, 0, 0, 0, 0, 0, 0, source_us);
+}
+void AmyAdapter::stopNoteSource(NoteSource source) {
+    if (!state_ || source >= NoteSource::Count) return;
+    Command c{}; c.type = SourceStop; c.data.route.identity.source = source;
+    state_->enqueue(c);
+}
+
 void AmyAdapter::noteOn(uint8_t ch, uint8_t note, uint8_t vel) { submit(NoteOn, ch, note, vel); }
 void AmyAdapter::noteOff(uint8_t ch, uint8_t note) { submit(NoteOff, ch, note); }
 void AmyAdapter::noteOnAt(uint8_t ch, uint8_t note, uint8_t vel, uint64_t source_us) { submit(NoteOn, ch, note, vel, 0, 0, 0, 0, 0, 0, source_us); }
@@ -341,7 +377,7 @@ bool AmyAdapter::serviceBlock() {
             if (source_wait_us > diag.synth_max_source_to_owner_us.load(std::memory_order_relaxed))
                 diag.synth_max_source_to_owner_us.store(source_wait_us, std::memory_order_relaxed);
         }
-        if (c.type == NoteOn && c.data.values[0] > 0 && c.deadline_us && now_us >= c.deadline_us) {
+        if (((c.type == NoteOn && c.data.values[0] > 0) || c.type == RoutedOn) && c.deadline_us && now_us >= c.deadline_us) {
             diag.musical_deadline_recoveries.fetch_add(1, std::memory_order_relaxed);
             diag.musical_triggers_late.fetch_add(1, std::memory_order_relaxed);
             Command reset{}; reset.type = Panic;
@@ -349,10 +385,22 @@ bool AmyAdapter::serviceBlock() {
             s.recovery_requested.store(true, std::memory_order_release);
             continue;
         }
-        if (c.type == NoteOff && c.deadline_us && now_us > c.deadline_us)
+        if ((c.type == NoteOff || c.type == RoutedOff) && c.deadline_us && now_us > c.deadline_us)
             diag.synth_release_deadlines_missed.fetch_add(1, std::memory_order_relaxed);
         const float* v = c.data.values;
+        auto off = [this](NoteOutput output) { executeNoteOff(output.instrument == 10 ? 9 : 0, output.note); };
         switch (c.type) {
+            case RoutedOn: {
+                const auto result = note_ownership_.on(c.data.route, [this](NoteOutput output, uint8_t velocity) {
+                    executeNoteOn(output.instrument == 10 ? 9 : 0, output.note, velocity);
+                });
+                if (result == NoteOwnership::Result::Full || result == NoteOwnership::Result::Invalid)
+                    diag.note_identities_rejected.fetch_add(1, std::memory_order_relaxed);
+                break;
+            }
+            case RoutedPedal: note_ownership_.pedal(c.channel, v[0] != 0, off); break;
+            case RoutedOff: note_ownership_.off(c.data.route.identity, off); break;
+            case SourceStop: note_ownership_.cancel(c.data.route.identity.source, off); break;
             case NoteOn: executeNoteOn(c.channel, static_cast<uint8_t>(c.id), static_cast<uint8_t>(v[0])); break;
             case NoteOff: executeNoteOff(c.channel, static_cast<uint8_t>(c.id)); break;
             case Bend: executePitchBend(c.channel, static_cast<int16_t>(v[0])); break;
@@ -381,7 +429,7 @@ bool AmyAdapter::serviceBlock() {
             case SubOsc: executeSubOscLevel(c.channel, v[0]); break;
             case Noise: executeNoiseLevel(c.channel, v[0]); break;
             case OscMix: executeOscMix(c.channel, v[0]); break;
-            case Mono: mono_mode_ = v[0] != 0; mono_stack_size_ = 0; break;
+            case Mono: executeAllNotesOff(); mono_mode_ = v[0] != 0; mono_stack_size_ = 0; break;
         }
     }
     mono_snapshot_.store(mono_mode_, std::memory_order_relaxed);

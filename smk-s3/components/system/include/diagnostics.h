@@ -38,6 +38,7 @@ struct DiagnosticCounters {
     std::atomic<uint32_t> frames_rendered{0};
     std::atomic<uint32_t> synth_pcm_starvations{0};
     std::atomic<uint32_t> synth_commands_dropped{0};
+    std::atomic<uint32_t> note_identities_rejected{0};
     std::atomic<uint32_t> synth_queue_high_water{0};
     std::atomic<uint32_t> synth_panics{0};
     std::atomic<uint32_t> synth_max_command_wait_us{0};
@@ -151,6 +152,7 @@ public:
         c.frames_rendered.store(0, std::memory_order_relaxed);
         c.synth_pcm_starvations.store(0, std::memory_order_relaxed);
         c.synth_commands_dropped.store(0, std::memory_order_relaxed);
+        c.note_identities_rejected.store(0, std::memory_order_relaxed);
         c.synth_queue_high_water.store(0, std::memory_order_relaxed);
         c.synth_panics.store(0, std::memory_order_relaxed);
         c.synth_max_command_wait_us.store(0, std::memory_order_relaxed);

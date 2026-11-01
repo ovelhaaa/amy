@@ -90,6 +90,10 @@ void StepSequencer::reset() {
 
 void StepSequencer::selectPattern(uint8_t pattern_idx) {
     if (pattern_idx < kMaxPatterns) {
+        if (event_bus_ && current_pattern_ != pattern_idx) {
+            event_bus_->cancelNotes(EventSource::Sequencer);
+            for (auto& playback : track_playback_) playback = TrackPlaybackState{};
+        }
         current_pattern_ = pattern_idx;
         ESP_LOGI(TAG, "Switched to Sequencer Pattern %d", current_pattern_);
     }
@@ -317,6 +321,7 @@ void StepSequencer::recordLiveHit(uint8_t note, uint8_t velocity) {
 }
 
 void StepSequencer::play() {
+    if (event_bus_) event_bus_->cancelNotes(EventSource::Sequencer);
     tick_seen_ = false;
     previous_tick_ = 0; extended_tick_ = 0;
     state_ = SequencerState::Playing;
@@ -330,6 +335,7 @@ void StepSequencer::play() {
 }
 
 void StepSequencer::stop() {
+    if (event_bus_) event_bus_->cancelNotes(EventSource::Sequencer);
     state_ = SequencerState::Stopped;
     current_step_ = 0;
     for (auto& pb : track_playback_) {
@@ -341,12 +347,15 @@ void StepSequencer::stop() {
 }
 
 void StepSequencer::stop(EventBus& event_bus) {
+    if (event_bus_ == &event_bus) { stop(); return; }
     for (size_t t = 0; t < kMaxTracks; ++t) {
         if (track_playback_[t].last_played_note >= 0) {
             SynthEvent off_ev;
             off_ev.type = EventType::NoteOff;
             off_ev.source = EventSource::Sequencer;
-            off_ev.channel = track_channels_[t];
+            off_ev.channel = track_playback_[t].output_channel;
+            off_ev.source_instance = static_cast<uint8_t>(t);
+            off_ev.note_token = track_playback_[t].note_token;
             off_ev.id = (uint16_t)track_playback_[t].last_played_note;
             off_ev.value = 0;
             off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
@@ -420,7 +429,9 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
             SynthEvent off_ev;
             off_ev.type = EventType::NoteOff;
             off_ev.source = EventSource::Sequencer;
-            off_ev.channel = track_channels_[t];
+            off_ev.channel = track_playback_[t].output_channel;
+            off_ev.source_instance = static_cast<uint8_t>(t);
+            off_ev.note_token = track_playback_[t].note_token;
             off_ev.id = (uint16_t)pb.last_played_note;
             off_ev.value = 0;
             off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
@@ -477,7 +488,9 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
                     SynthEvent off_ev;
                     off_ev.type = EventType::NoteOff;
                     off_ev.source = EventSource::Sequencer;
-                    off_ev.channel = track_channels_[t];
+                    off_ev.channel = track_playback_[t].output_channel;
+                    off_ev.source_instance = static_cast<uint8_t>(t);
+                    off_ev.note_token = track_playback_[t].note_token;
                     off_ev.id = (uint16_t)pb.last_played_note;
                     off_ev.value = 0;
                     off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
@@ -489,6 +502,13 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
                 on_ev.type = EventType::NoteOn;
                 on_ev.source = EventSource::Sequencer;
                 on_ev.channel = track_channels_[t];
+                pb.output_channel = on_ev.channel;
+                on_ev.source_instance = static_cast<uint8_t>(t);
+                on_ev.note_token = pb.note_token = allocateNoteToken(next_note_token_);
+                if (!on_ev.note_token) {
+                    Diagnostics::instance().counters().note_identities_rejected.fetch_add(1, std::memory_order_relaxed);
+                    continue;
+                }
                 on_ev.id = pb.note;
                 on_ev.value = pb.velocity;
                 on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());
@@ -530,7 +550,9 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
                         SynthEvent off_ev;
                         off_ev.type = EventType::NoteOff;
                         off_ev.source = EventSource::Sequencer;
-                        off_ev.channel = track_channels_[t];
+                        off_ev.channel = track_playback_[t].output_channel;
+                        off_ev.source_instance = static_cast<uint8_t>(t);
+                        off_ev.note_token = track_playback_[t].note_token;
                         off_ev.id = (uint16_t)pb.last_played_note;
                         off_ev.value = 0;
                         off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
@@ -542,6 +564,13 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
                     on_ev.type = EventType::NoteOn;
                     on_ev.source = EventSource::Sequencer;
                     on_ev.channel = track_channels_[t];
+                    pb.output_channel = on_ev.channel;
+                    on_ev.source_instance = static_cast<uint8_t>(t);
+                    on_ev.note_token = pb.note_token = allocateNoteToken(next_note_token_);
+                    if (!on_ev.note_token) {
+                        Diagnostics::instance().counters().note_identities_rejected.fetch_add(1, std::memory_order_relaxed);
+                        continue;
+                    }
                     on_ev.id = pb.note;
                     on_ev.value = pb.velocity;
                     on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());

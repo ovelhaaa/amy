@@ -94,6 +94,9 @@ public:
     void setArpeggiator(Arpeggiator* arp) { arpeggiator_ = arp; }
     void setStepSequencer(StepSequencer* seq) { sequencer_ = seq; }
 
+    void setNoteResetCallback(void (*callback)(void*), void* context) {
+        note_reset_callback_ = callback; note_reset_context_ = context;
+    }
     bool selectPatch(uint8_t patch_id);
     bool selectPatchByIndex(size_t index);
     void nextPatch();
@@ -235,6 +238,8 @@ private:
     AmyAdapter*    amy_adapter_    = nullptr;
     UIManager*     ui_manager_     = nullptr;
     ClockManager*  clock_manager_  = nullptr;
+    void (*note_reset_callback_)(void*) = nullptr;
+    void* note_reset_context_ = nullptr;
     Arpeggiator*   arpeggiator_    = nullptr;
     StepSequencer* sequencer_      = nullptr;
     SynthPatch     active_patch_;

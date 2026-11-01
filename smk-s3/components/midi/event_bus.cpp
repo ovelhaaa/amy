@@ -47,6 +47,7 @@ void EventBus::panicLocked(const SynthEvent& event) {
 }
 
 bool EventBus::enqueueLocked(const SynthEvent& event) {
+    if (static_cast<size_t>(event.source) >= static_cast<size_t>(EventSource::Count)) { countDropLocked(false); return false; }
     if (event.type == EventType::Panic) {
         panicLocked(event);
         return true;
@@ -67,7 +68,7 @@ bool EventBus::enqueueLocked(const SynthEvent& event) {
         if (isReleaseEvent(event)) panicLocked(event);
         return false;
     }
-    entries_[(head_ + count_) % capacity_] = {event, generation_};
+    entries_[(head_ + count_) % capacity_] = {event, generation_, source_generations_[static_cast<size_t>(event.source)]};
     ++count_;
     auto& high_water = Diagnostics::instance().counters().event_queue_high_water;
     if (count_ > high_water.load(std::memory_order_relaxed))
@@ -114,7 +115,8 @@ bool EventBus::tryReceive(SynthEvent& event) {
         head_ = (head_ + 1) % capacity_;
         --count_;
         const bool valid = isUsbLifecycleEvent(entry.event) ||
-                           (!panic_pending_ && entry.generation == generation_);
+                           (!panic_pending_ && entry.generation == generation_ &&
+                            entry.source_generation == source_generations_[static_cast<size_t>(entry.event.source)]);
         if (!valid) countDropLocked(false);
         portEXIT_CRITICAL(&mux_);
         if (valid) {
@@ -131,6 +133,22 @@ bool EventBus::receive(SynthEvent& event, uint32_t timeout_ms) {
     // Semaphore is only a wake hint; entries and Panic live under mux_.
     xSemaphoreTake(wake_, pdMS_TO_TICKS(timeout_ms));
     return tryReceive(event);
+}
+
+void EventBus::invalidateMusical() {
+    portENTER_CRITICAL(&mux_);
+    if (!panic_pending_) ++generation_;
+    portEXIT_CRITICAL(&mux_);
+}
+
+void EventBus::cancelNotes(EventSource source) {
+    if (!ready() || static_cast<size_t>(source) >= static_cast<size_t>(EventSource::Count)) return;
+    SynthEvent stop{}; stop.type = EventType::SourceStop; stop.source = source;
+    portENTER_CRITICAL(&mux_);
+    ++source_generations_[static_cast<size_t>(source)];
+    enqueueLocked(stop);
+    portEXIT_CRITICAL(&mux_);
+    xSemaphoreGive(wake_);
 }
 
 void EventBus::acknowledgePanic() {

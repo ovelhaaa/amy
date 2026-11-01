@@ -13,5 +13,8 @@ constexpr uint16_t kSynthReleaseReserve = 8;
 constexpr uint16_t kSynthCommandsPerBlock = 16;
 constexpr uint16_t kSynthMessageBytes = 256;
 constexpr uint8_t kSynthPcmBlocks = 2;
+constexpr uint8_t kNoteIdentityCapacity = 64;
+constexpr uint8_t kNoteFanOut = 4; // Existing chord pads already need four outputs.
+constexpr uint8_t kNoteSourceInstances = 16;
 
 } // namespace smk::config

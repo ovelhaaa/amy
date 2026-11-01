@@ -44,6 +44,7 @@ public:
     };
 
     StepSequencer();
+    void setEventBus(EventBus* bus) { event_bus_ = bus; }
 
     void setStep(uint8_t track_idx, uint8_t step_idx, uint8_t note, uint8_t velocity, bool active, bool slide = false);
     void setStep(uint8_t step_idx, uint8_t note, uint8_t velocity, bool active, bool slide = false); // Track 0 overload
@@ -141,6 +142,8 @@ public:
         bool     passed_probability = false;
         int16_t  last_played_note = -1;
         uint32_t note_off_tick = 0;
+        uint64_t note_token = 0;
+        uint8_t output_channel = 9;
     };
 
     const TrackPlaybackState& trackPlayback(uint8_t track_idx) const {
@@ -152,6 +155,8 @@ public:
     static uint32_t randomU32();
 
 private:
+    EventBus* event_bus_ = nullptr;
+    uint64_t next_note_token_ = 0;
     uint32_t previous_tick_ = 0;
     uint64_t extended_tick_ = 0;
     bool tick_seen_ = false;

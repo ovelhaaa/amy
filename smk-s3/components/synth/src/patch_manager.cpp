@@ -949,7 +949,9 @@ bool PatchManager::applyLoadedPatch(const SynthPatch& patch) {
         soft_takeover_.reset(i, active_patch_.macros[i].current_val);
     }
 
-    if (amy_adapter_) amy_adapter_->allNotesOff();
+    // Out-of-band barrier also cancels future AMY deltas if the following
+    // preset/configuration commands cannot fit in the mailbox.
+    if (amy_adapter_) amy_adapter_->panic();
 
     applyPatchToEngine(active_patch_);
 
@@ -1122,6 +1124,7 @@ void PatchManager::setMacro(uint8_t macro_idx, float physical_val, bool from_phy
 void PatchManager::applyPatchToEngine(const SynthPatch& patch) {
     if (!amy_adapter_) return;
 
+    if (note_reset_callback_) note_reset_callback_(note_reset_context_);
     mixed_macro_warning_emitted_ = false;
 
     // A new preset establishes a new FM baseline. Drop the previous patch's

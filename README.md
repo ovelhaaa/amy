@@ -248,3 +248,7 @@ The separate ESP32-S3 application lives in `smk-s3/`. Its reproducible 128/256-f
 PlatformIO environments, ESP-IDF CI matrix, timing policies, host tests and hardware
 qualification limits are documented in [the phase 2.5 results](smk-s3/docs/phase25_realtime_results.md).
 The AMY engine and other platform builds are unchanged by this application layer.
+
+Note ownership, source-specific Stop, sustain and saved pad/track routing are
+implemented in the application layer. See [the phase 3A report](smk-s3/docs/phase3a_note_routing_results.md)
+for duplicate-note policy, fixed capacity, real-AMY regressions and pending hardware qualification.

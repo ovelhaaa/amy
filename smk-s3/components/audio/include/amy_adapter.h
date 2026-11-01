@@ -1,5 +1,6 @@
 #pragma once
 #include "synth_engine.h"
+#include "note_routing.h"
 #include <atomic>
 
 namespace smk {
@@ -19,6 +20,10 @@ public:
     // rendered block. Called by audio_reset so a fresh qualification window is
     // not blended with pre-reset timing. Lock-free; safe from any task.
     void resetRenderAverage();
+    void routeNoteOn(const NoteRoute& route, uint64_t source_us = 0, uint64_t deadline_us = 0);
+    void routeNoteOff(const NoteIdentity& identity, uint64_t source_us = 0, uint64_t deadline_us = 0);
+    void stopNoteSource(NoteSource source);
+    void routeSustain(uint8_t channel, bool down, uint64_t source_us = 0);
     void noteOn(uint8_t channel, uint8_t note, uint8_t velocity) override;
     void noteOff(uint8_t channel, uint8_t note) override;
     void noteOnAt(uint8_t channel, uint8_t note, uint8_t velocity, uint64_t source_timestamp_us);
@@ -148,10 +153,11 @@ private:
     std::atomic<float> drive_level_{0.0f};
     std::atomic<float> master_tone_{0.0f};
     std::atomic<bool>  reverb_freeze_{false};
-    uint8_t active_notes_[16][128]{};
+    NoteOwnership note_ownership_;
+    uint16_t active_notes_[2][128]{}; // Main/drums destination pitch references.
     std::atomic<int16_t> scope_buffer_[kRawScopeBufferSize]{};
 
-    static constexpr size_t kMonoStackCap = 16;
+    static constexpr size_t kMonoStackCap = 128; // One slot per destination pitch.
     uint8_t mono_stack_[kMonoStackCap]{};
     uint8_t mono_stack_size_{0};
     bool mono_mode_{false};

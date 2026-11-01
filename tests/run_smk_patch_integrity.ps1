@@ -32,6 +32,7 @@ try {
     & g++ -std=c++17 -pthread @flags tests/test_smk_patch_integrity.cpp `
         smk-s3/components/audio/amy_adapter.cpp `
         smk-s3/components/audio/amy_commands.cpp `
+        smk-s3/components/synth/src/pad_bank.cpp `
         smk-s3/components/synth/src/patch_manager.cpp `
         smk-s3/components/synth/src/factory_patches.cpp `
         smk-s3/components/synth/src/soft_takeover.cpp `
@@ -57,6 +58,7 @@ try {
     & g++ -std=c++17 -pthread @flags tests/test_smk_reverb_freeze.cpp `
         smk-s3/components/audio/amy_adapter.cpp `
         smk-s3/components/audio/amy_commands.cpp `
+        smk-s3/components/synth/src/pad_bank.cpp `
         smk-s3/components/synth/src/patch_manager.cpp `
         smk-s3/components/synth/src/factory_patches.cpp `
         smk-s3/components/synth/src/soft_takeover.cpp `
