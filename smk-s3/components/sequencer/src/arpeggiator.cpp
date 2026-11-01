@@ -289,7 +289,7 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus, MusicalT
                 on_ev.id = hn.note;
                 on_ev.value = hn.velocity;
                 on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());
-                on_ev.deadline_us = timing.deadline(std::max(1u, static_cast<uint32_t>(ticks_per_step * gate_percent_ / 100.0f)));
+                on_ev.deadline_us = timing.deadline(std::max<uint32_t>(1, static_cast<uint32_t>(ticks_per_step * gate_percent_ / 100.0f)));
                 event_bus.send(on_ev);
             }
             last_played_note_ = -1;
@@ -303,7 +303,7 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus, MusicalT
             on_ev.id = current_hn.note;
             on_ev.value = current_hn.velocity;
             on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());
-            on_ev.deadline_us = timing.deadline(std::max(1u, static_cast<uint32_t>(ticks_per_step * gate_percent_ / 100.0f)));
+            on_ev.deadline_us = timing.deadline(std::max<uint32_t>(1, static_cast<uint32_t>(ticks_per_step * gate_percent_ / 100.0f)));
                 event_bus.send(on_ev);
             last_played_note_ = current_hn.note;
         }

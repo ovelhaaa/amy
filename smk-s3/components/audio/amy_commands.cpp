@@ -322,11 +322,11 @@ bool AmyAdapter::serviceBlock() {
             continue;
         }
         const uint64_t now_us = static_cast<uint64_t>(esp_timer_get_time());
-        const uint32_t wait_us = static_cast<uint32_t>(std::min<uint64_t>(now_us - c.timestamp_us, UINT32_MAX));
+        const uint32_t wait_us = static_cast<uint32_t>(std::min<uint64_t>(now_us >= c.timestamp_us ? now_us - c.timestamp_us : 0, UINT32_MAX));
         if (wait_us > diag.synth_max_command_wait_us.load(std::memory_order_relaxed))
             diag.synth_max_command_wait_us.store(wait_us, std::memory_order_relaxed);
         if (c.source_timestamp_us) {
-            const uint32_t source_wait_us = static_cast<uint32_t>(std::min<uint64_t>(now_us - c.source_timestamp_us, UINT32_MAX));
+            const uint32_t source_wait_us = static_cast<uint32_t>(std::min<uint64_t>(now_us >= c.source_timestamp_us ? now_us - c.source_timestamp_us : 0, UINT32_MAX));
             if (source_wait_us > diag.synth_max_source_to_owner_us.load(std::memory_order_relaxed))
                 diag.synth_max_source_to_owner_us.store(source_wait_us, std::memory_order_relaxed);
         }

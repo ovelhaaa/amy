@@ -12,6 +12,7 @@ class Arpeggiator;
 class StepSequencer;
 class PadManager;
 class StorageManager;
+class StorageWorker;
 class UIManager;
 
 class SceneManager {
@@ -44,6 +45,7 @@ public:
      * @brief Check and execute pending scene transition if queued.
      */
     void processPendingTransition();
+    void setStorageWorker(StorageWorker* worker) { storage_worker_ = worker; }
     void cancelPendingTransition() { pending_scene_index_ = -1; }
 
     void nextScene();
@@ -76,6 +78,7 @@ private:
     Arpeggiator*    arpeggiator_     = nullptr;
     StepSequencer*  sequencer_       = nullptr;
     PadManager*     pad_manager_     = nullptr;
+    StorageWorker* storage_worker_ = nullptr;
     StorageManager* storage_manager_ = nullptr;
     UIManager*      ui_manager_      = nullptr;
 

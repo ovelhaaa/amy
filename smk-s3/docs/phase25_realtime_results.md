@@ -39,3 +39,29 @@ Ativação no owner foi adiada: AMY avalia deltas antes do render, `amy_sysclock
 Não se alterou a timeline global nem o core AMY. Antes de ativar: medir lead PCM/DMA e drift, definir âncora de reprodução, validar patches/Note Off/CC/sustain no mesmo domínio e limites do pool de deltas. O engine atual tem resolução de ms e execução por bloco: não é sample-accurate.
 
 PASS: teste isolado de conversão (44.1/48 kHz, bloco atual/próximo, atraso, lookahead, geração, overflow, rollover/sentinela e ausência de truncamento acumulado). A suíte AMY real conserva a regressão de deltas futuros cancelados por Panic e passou com expiração no owner.
+
+## Entrega D — operações lentas e telemetria
+
+Worker de storage no core 0, prioridade 2, stack 8 KiB, um Job pré-alocado (2.064 bytes no host). Protocolo Idle → Filling → Pending → Working → Done → Idle com release/acquire. O controle reserva sem bloquear e copia valores estáveis; o worker só toca o Job e StorageManager. Não recebe referência a patches/cenas/perfis vivos. Resultado fica estável até o controle liberá-lo. Capacidade um, rejeição visível/busy contabilizada e sem backlog ilimitado. Falha de criação deixa runtime storage indisponível com erro explícito.
+
+| Operação | Antes / frequência | Depois | Pior duração física |
+| --- | --- | --- | --- |
+| MIDI Learn saveProfile | Controle, fim do wizard | Snapshot ao worker; QUEUED e conclusão separadas | MANUAL |
+| Long hold: patch + perfil + 8 cenas | Controle, ação deliberada | Um snapshot de bundle ao worker; sucesso só se todas as escritas concluírem | MANUAL |
+| Captura de cena | Controle, gesto de pad | Captura em RAM e save de snapshot no worker | MANUAL |
+| Load de perfil USB | Controle, conexão/reconexão | Worker carrega específico/fallback; controle aceita token vigente e aplica com Panic | MANUAL |
+| NVS boot / cenas boot | Antes do loop musical | Permanece síncrono na inicialização | MANUAL |
+| NVS e load/save de console | Tarefa console prioridade 5 | Permanece síncrono nessa tarefa; I/O StorageManager serializado com worker | MANUAL |
+| Troca de patch / macros | Controle → fila AMY | Preservada; materialização no owner pode consumir deadline | MANUAL |
+| Switch de tela | Controle podia chamar brightness/invalidate do driver | Flag atômica; hardware executado na tarefa UI | MANUAL |
+| Logs | Controle/console, vários caminhos | Telemetria agregada disponível em `status`, sem novos logs por evento | MANUAL |
+
+StorageManager serializa I/O entre worker e console com mutex de tarefa; getters de capacidade/uso são atômicos. Controle não adquire esse mutex. São preservados formatos/CRC/migrações e snapshot sem dupla aplicação de macros. SaveProfile antes ignorava retorno de fwrite e todos os saves ignoravam fclose; agora falhas são propagadas. Não há nova garantia de tolerância a queda de energia: perfil/cena ainda usam escrita direta preexistente, patch usa temporário seguido de remove/rename (não é transação multi-arquivo). Um bundle pode salvar parcialmente antes de reportar falha.
+
+Enquanto o perfil carrega, usa-se o default já existente; um perfil concluído válido substitui-o com Panic, que pode interromper notas tocadas nesse intervalo. Token cancela resultado após desconexão/nova conexão/wizard concluído. Falha mantém default. Nenhuma alteração de mapeamento persistido foi feita.
+
+PASS: regressão host com I/O deliberadamente retido no mutex enquanto FIFO aceita release/Panic, capacidade um, snapshots, CRC de patch, fallback de perfil, erro real de caminho e falha de criação da tarefa. Esse teste demonstra independência do roteamento; não mede stalls de cache/Flash do ESP32.
+
+Métricas novas: tentativas storage busy/rejeitadas, falhas, máximo de duração de Job, triggers late, lotes de releases late, recuperações por deadline. Valores atômicos expostos por `status`, resetados com `audio_reset`. Max render continua incluindo fase de comandos + síntese + cópia. PCM starvation e erros I2S permanecem distintos de underrun DMA não medido. Timestamp futuro é limitado a idade zero no owner, sem underflow de diagnóstico.
+
+Persistem riscos preexistentes de UI/console lendo/mutando objetos de controle em paralelo e logs síncronos no controle. O worker não recebe esses objetos nem amplia esse compartilhamento. Eliminar todas essas condições exige ownership de UI/console em outra entrega; não se declara deadline garantido ou prontidão de palco.

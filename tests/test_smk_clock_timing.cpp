@@ -37,6 +37,12 @@ int main() {
 
     // Unsigned subtraction and the half-range deadline rule both handle clock
     // rollover without turning a due release into a multi-day wait.
+    smk::TickSnapshot snapshot;
+    mailbox.reset(); mailbox.publish(1, 12, 345, true);
+    assert(mailbox.consume(snapshot) && snapshot.external && snapshot.period_us == 345);
+    const auto generation = snapshot.generation;
+    mailbox.reset(); mailbox.publish(1, 24, 678, false);
+    assert(mailbox.consume(snapshot) && !snapshot.external && snapshot.period_us == 678 && snapshot.generation != generation);
     mailbox.reset(UINT32_MAX - 1);
     mailbox.publish(UINT32_MAX, 10);
     assert(mailbox.consume(tick, skipped, timestamp));

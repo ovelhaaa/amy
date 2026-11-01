@@ -100,7 +100,7 @@ void ClockManager::onExternalTick(uint64_t timestamp_us) {
             ? (external_period_average_us_ * 7 + interval_us) / 8 : interval_us;
     }
     if (timestamp_us) previous_external_tick_us_ = timestamp_us;
-    pending_ticks_.publish(tick, timestamp_us);
+    pending_ticks_.publish(tick, timestamp_us, external_period_average_us_ ? external_period_average_us_ : static_cast<uint64_t>(60000000.0 / bpm() / kPpqn), true);
 }
 
 void ClockManager::onExternalStart() {
@@ -203,7 +203,7 @@ void ClockManager::timerCallback(void* arg) {
         if (jitter_us > observed) max_jitter.store(jitter_us, std::memory_order_relaxed);
     }
     self->previous_tick_us_.store(now_us, std::memory_order_relaxed);
-    self->pending_ticks_.publish(tick, deadline_us);
+    self->pending_ticks_.publish(tick, deadline_us, period_us, false);
 }
 
 } // namespace smk

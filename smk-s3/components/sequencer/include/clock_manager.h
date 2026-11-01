@@ -45,6 +45,10 @@ public:
         return clockSource() == ClockSource::UsbMidi && external_period_average_us_
             ? external_period_average_us_ : static_cast<uint64_t>(60000000.0 / bpm() / kPpqn);
     }
+    bool takePendingTick(TickSnapshot& tick) {
+        TemporalGuard guard(timing_lock_);
+        return pending_ticks_.consume(tick);
+    }
     void onExternalTick(uint64_t timestamp_us = 0);
     void onExternalStart();
     void onExternalStop();

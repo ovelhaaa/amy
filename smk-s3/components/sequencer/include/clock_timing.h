@@ -73,33 +73,47 @@ private:
     TemporalLock& lock_;
 };
 
+struct TickSnapshot {
+    uint32_t tick = 0, skipped = 0, generation = 0;
+    uint64_t timestamp_us = 0, period_us = 0;
+    bool external = false;
+};
+
 // Clock edges are state, not a backlog. Tick, time and consumed
 // position are copied together; no retry loop or informal non-atomic seqlock.
 class LatestTickMailbox {
 public:
-    void publish(uint32_t tick, uint64_t timestamp_us = 0) {
+    void publish(uint32_t tick, uint64_t timestamp_us = 0, uint64_t period_us = 0, bool external = false) {
         TemporalGuard guard(lock_);
         latest_ = tick;
         timestamp_us_ = timestamp_us;
+        period_us_ = period_us; external_ = external;
     }
     bool consume(uint32_t& tick, uint32_t& skipped, uint64_t& timestamp_us) {
+        TickSnapshot s;
+        if (!consume(s)) return false;
+        tick = s.tick; skipped = s.skipped; timestamp_us = s.timestamp_us;
+        return true;
+    }
+    bool consume(TickSnapshot& s) {
         TemporalGuard guard(lock_);
         if (latest_ == consumed_) return false;
-        tick = latest_;
-        timestamp_us = timestamp_us_;
-        skipped = latest_ - consumed_ - 1;
+        s = {latest_, latest_ - consumed_ - 1, generation_, timestamp_us_, period_us_, external_};
         consumed_ = latest_;
         return true;
     }
     void reset(uint32_t tick = 0) {
         TemporalGuard guard(lock_);
+        ++generation_;
         latest_ = consumed_ = tick;
         timestamp_us_ = 0;
     }
 private:
     TemporalLock lock_;
     uint32_t latest_ = 0, consumed_ = 0;
-    uint64_t timestamp_us_ = 0;
+    uint32_t generation_ = 0;
+    uint64_t timestamp_us_ = 0, period_us_ = 0;
+    bool external_ = false;
 };
 
 } // namespace smk

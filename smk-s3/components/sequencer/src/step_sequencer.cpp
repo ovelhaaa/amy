@@ -488,7 +488,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
                 on_ev.id = pb.note;
                 on_ev.value = pb.velocity;
                 on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());
-                on_ev.deadline_us = timing.deadline(pb.ratchet > 1 ? (pb.ratchet == 2 ? 2 : 1) : std::max(1u, static_cast<uint32_t>(ticks_per_step * pb.gate_percent / 100.f)));
+                on_ev.deadline_us = timing.deadline(pb.ratchet > 1 ? (pb.ratchet == 2 ? 2 : 1) : std::max<uint32_t>(1, static_cast<uint32_t>(ticks_per_step * pb.gate_percent / 100.f)));
                 event_bus.send(on_ev);
 
                 pb.last_played_note = pb.note;

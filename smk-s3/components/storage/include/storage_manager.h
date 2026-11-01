@@ -2,6 +2,8 @@
 #include <cstdint>
 #include <cstddef>
 #include <cstdlib>
+#include <mutex>
+#include <atomic>
 #include "patch_types.h"
 #include "controller_profile.h"
 #include "scene_types.h"
@@ -98,10 +100,12 @@ private:
     void getSlotPath(uint8_t slot_id, char* path_out, size_t max_len, const char* ext = ".s3p") const;
     void updateStorageStats();
 
+    friend struct StorageWorkerTestAccess;
+    mutable std::recursive_mutex io_mutex_;
     bool   mounted_ = false;
     char   base_path_[64] = "/spiffs";
-    size_t total_bytes_ = 0;
-    size_t used_bytes_ = 0;
+    std::atomic<size_t> total_bytes_{0};
+    std::atomic<size_t> used_bytes_{0};
 };
 
 } // namespace smk

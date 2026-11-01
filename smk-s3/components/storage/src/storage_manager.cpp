@@ -88,11 +88,15 @@ void StorageManager::getSlotPath(uint8_t slot_id, char* path_out, size_t max_len
 void StorageManager::updateStorageStats() {
     if (!mounted_) return;
 #ifdef ESP_PLATFORM
-    esp_spiffs_info("storage", &total_bytes_, &used_bytes_);
+    size_t total = 0, used = 0;
+    esp_spiffs_info("storage", &total, &used);
+    total_bytes_.store(total, std::memory_order_relaxed);
+    used_bytes_.store(used, std::memory_order_relaxed);
 #endif
 }
 
 bool StorageManager::patchExists(uint8_t slot_id) const {
+    std::lock_guard<std::recursive_mutex> io_guard(io_mutex_);
     if (!mounted_) return false;
     char path[128];
     getSlotPath(slot_id, path, sizeof(path));
@@ -105,6 +109,7 @@ bool StorageManager::patchExists(uint8_t slot_id) const {
 }
 
 bool StorageManager::savePatch(uint8_t slot_id, const SynthPatch& patch) {
+    std::lock_guard<std::recursive_mutex> io_guard(io_mutex_);
     if (!mounted_) return false;
     if (slot_id >= kMaxSlots) return false;
 
@@ -135,9 +140,9 @@ bool StorageManager::savePatch(uint8_t slot_id, const SynthPatch& patch) {
 
     size_t hdr_written = fwrite(&header, 1, sizeof(PatchHeader), f);
     size_t payload_written = fwrite(&p_copy, 1, sizeof(SynthPatch), f);
-    fclose(f);
+    const bool closed = fclose(f) == 0;
 
-    if (hdr_written != sizeof(PatchHeader) || payload_written != sizeof(SynthPatch)) {
+    if (!closed || hdr_written != sizeof(PatchHeader) || payload_written != sizeof(SynthPatch)) {
         ESP_LOGE(TAG, "Write size mismatch: hdr %zu/%zu, payload %zu/%zu bytes", 
                  hdr_written, sizeof(PatchHeader), payload_written, sizeof(SynthPatch));
         remove(tmp_path);
@@ -159,6 +164,7 @@ bool StorageManager::savePatch(uint8_t slot_id, const SynthPatch& patch) {
 }
 
 bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
+    std::lock_guard<std::recursive_mutex> io_guard(io_mutex_);
     if (!mounted_) return false;
     if (slot_id >= kMaxSlots) return false;
 
@@ -477,6 +483,7 @@ bool StorageManager::loadPatch(uint8_t slot_id, SynthPatch& patch_out) {
 }
 
 bool StorageManager::saveProfile(const char* name, const ControllerProfile& profile) {
+    std::lock_guard<std::recursive_mutex> io_guard(io_mutex_);
     if (!mounted_ || !name) return false;
 
     char path[128];
@@ -497,9 +504,12 @@ bool StorageManager::saveProfile(const char* name, const ControllerProfile& prof
         return false;
     }
 
-    fwrite(&header, 1, sizeof(ProfileHeader), f);
-    fwrite(&prof_copy, 1, sizeof(ControllerProfile), f);
-    fclose(f);
+    const size_t header_written = fwrite(&header, 1, sizeof(ProfileHeader), f);
+    const size_t profile_written = fwrite(&prof_copy, 1, sizeof(ControllerProfile), f);
+    const bool closed = fclose(f) == 0;
+    if (!closed || header_written != sizeof(ProfileHeader) || profile_written != sizeof(ControllerProfile)) {
+        return false;
+    }
 
     updateStorageStats();
     ESP_LOGI(TAG, "Saved Controller Profile [%s] (.s3m) to Flash (CRC32: 0x%08X)", 
@@ -508,6 +518,7 @@ bool StorageManager::saveProfile(const char* name, const ControllerProfile& prof
 }
 
 bool StorageManager::loadProfile(const char* name, ControllerProfile& profile_out) {
+    std::lock_guard<std::recursive_mutex> io_guard(io_mutex_);
     if (!mounted_ || !name) return false;
 
     char path[128];
@@ -589,6 +600,7 @@ uint32_t calculateSceneCrc32(const Scene& scene) {
 }
 
 bool StorageManager::saveScene(const char* name, const Scene& scene) {
+    std::lock_guard<std::recursive_mutex> io_guard(io_mutex_);
     if (!mounted_) return false;
     char path[128];
     snprintf(path, sizeof(path), "%s/scene_%s.s3s", base_path_, name);
@@ -612,13 +624,14 @@ bool StorageManager::saveScene(const char* name, const Scene& scene) {
         return false;
     }
 
-    fclose(f);
+    if (fclose(f) != 0) return false;
     updateStorageStats();
     ESP_LOGI(TAG, "Saved Scene [%s] (.s3s) to Flash", name);
     return true;
 }
 
 bool StorageManager::loadScene(const char* name, Scene& scene_out) {
+    std::lock_guard<std::recursive_mutex> io_guard(io_mutex_);
     if (!mounted_) return false;
     char path[128];
     snprintf(path, sizeof(path), "%s/scene_%s.s3s", base_path_, name);

@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "src/storage_manager.cpp"
+        "src/storage_worker.cpp"
         "src/nvs_storage.cpp"
     INCLUDE_DIRS
         "include"
