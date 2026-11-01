@@ -269,8 +269,8 @@ void MidiParser::emitEvent(EventType type, uint8_t channel, uint16_t id, int32_t
     ev.source = source_;
     ev.channel = channel;
     ev.id = id;
-    ev.value = value;
-    ev.timestamp_us = (uint32_t)esp_timer_get_time();
+    ev.value = static_cast<int16_t>(value);
+    ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
     
     callback_(ev, callback_ctx_);
 }

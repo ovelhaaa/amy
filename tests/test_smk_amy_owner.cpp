@@ -135,6 +135,14 @@ static void testBoundaries(AmyAdapter& adapter) {
     pump(adapter);
     assert(adapter.activeVoices() == 0);
 
+    // Preserve the MIDI receive timestamp through the application command
+    // queue so firmware can report source-to-AMY-owner delay separately.
+    adapter.noteOnAt(0, 72, 100, 1);
+    pump(adapter, 2);
+    assert(diag.synth_max_source_to_owner_us > 0);
+    adapter.noteOffAt(0, 72, 2);
+    pump(adapter, 2);
+
     // Ordinary commands fill only their budget; releases retain reserve.
     const uint32_t prior_drops = diag.synth_commands_dropped;
     for (int i = 0; i < config::kSynthCommandCapacity - config::kSynthReleaseReserve; ++i)

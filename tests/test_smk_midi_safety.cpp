@@ -14,7 +14,7 @@ DiagnosticCounters& Diagnostics::counters() { return counters_; }
 using namespace smk;
 
 static SynthEvent event(EventType type, uint16_t id = 60, int32_t value = 100) {
-    return {type, EventSource::UsbMidi, 0, id, value, 1234};
+    return {type, EventSource::UsbMidi, 0, id, static_cast<int16_t>(value), 1234};
 }
 static std::vector<SynthEvent> parsed;
 static void capture(const SynthEvent& value, void*) { parsed.push_back(value); }

@@ -1,4 +1,5 @@
 #include "arpeggiator.h"
+#include "clock_timing.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 #include <algorithm>
@@ -94,7 +95,7 @@ void Arpeggiator::reset(EventBus& event_bus) {
                 off_ev.channel = 0;
                 off_ev.id = (uint16_t)active_chord_notes_[i];
                 off_ev.value = 0;
-                off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+                off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
                 event_bus.send(off_ev);
             }
         }
@@ -107,7 +108,7 @@ void Arpeggiator::reset(EventBus& event_bus) {
         off_ev.channel = 0;
         off_ev.id = (uint16_t)last_played_note_;
         off_ev.value = 0;
-        off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+        off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
         event_bus.send(off_ev);
         last_played_note_ = -1;
     }
@@ -171,7 +172,7 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
     uint32_t ticks_per_step = getTicksPerStep();
 
     // Check if we need to emit NoteOff for the previous arpeggiated note(s)
-    if (tick_count >= note_off_tick_) {
+    if (tickReached(tick_count, note_off_tick_)) {
         if (active_chord_count_ > 0) {
             for (size_t i = 0; i < active_chord_count_; ++i) {
                 if (active_chord_notes_[i] >= 0) {
@@ -181,7 +182,7 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
                     off_ev.channel = 0;
                     off_ev.id = (uint16_t)active_chord_notes_[i];
                     off_ev.value = 0;
-                    off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+                    off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
                     event_bus.send(off_ev);
                 }
             }
@@ -195,7 +196,7 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
             off_ev.channel = 0;
             off_ev.id = (uint16_t)last_played_note_;
             off_ev.value = 0;
-            off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+            off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
             event_bus.send(off_ev);
 
             last_played_note_ = -1;
@@ -276,7 +277,7 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
                 on_ev.channel = 0;
                 on_ev.id = hn.note;
                 on_ev.value = hn.velocity;
-                on_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+                on_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
                 event_bus.send(on_ev);
             }
             last_played_note_ = -1;
@@ -289,7 +290,7 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
             on_ev.channel = 0;
             on_ev.id = current_hn.note;
             on_ev.value = current_hn.velocity;
-            on_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+            on_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
             event_bus.send(on_ev);
             last_played_note_ = current_hn.note;
         }

@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <atomic>
+#include "clock_timing.h"
 #include "esp_timer.h"
 
 namespace smk {
@@ -14,42 +15,46 @@ class ClockManager {
 public:
     static constexpr uint32_t kPpqn = 24; // 24 pulses per quarter note (standard MIDI clock)
 
-    using TickCallback = void(*)(uint32_t tick_count, void* ctx);
-
     ClockManager();
     ~ClockManager();
 
     bool begin();
     void setBpm(float bpm);
-    float bpm() const { return bpm_; }
+    float bpm() const { return bpm_.load(std::memory_order_relaxed); }
 
     void setSwing(uint8_t swing_percent);
-    uint8_t swing() const { return swing_percent_; }
+    uint8_t swing() const { return swing_percent_.load(std::memory_order_relaxed); }
 
     void setClockSource(ClockSource source);
-    ClockSource clockSource() const { return clock_source_; }
+    ClockSource clockSource() const { return clock_source_.load(std::memory_order_relaxed); }
 
     void start();
     void stop();
-    bool isRunning() const { return running_; }
+    bool isRunning() const { return running_.load(std::memory_order_relaxed); }
 
-    void onExternalTick();
+    // Single control-task consumer. Skipped edges are reported so musical
+    // triggers can be dropped while release deadlines still get serviced.
+    bool takePendingTick(uint32_t& tick, uint32_t& skipped, uint64_t& timestamp_us) {
+        return pending_ticks_.consume(tick, skipped, timestamp_us);
+    }
+
+    void onExternalTick(uint64_t timestamp_us = 0);
     void onExternalStart();
     void onExternalStop();
-
-    void setCallback(TickCallback callback, void* ctx);
 
 private:
     static void timerCallback(void* arg);
     void updateTimerPeriod();
 
-    float                   bpm_ = 120.0f;
-    uint8_t                 swing_percent_ = 50; // 50% = Straight, 67% = Triplet, 75% = Dotted
-    ClockSource             clock_source_ = ClockSource::Internal;
+    std::atomic<float>      bpm_{120.0f};
+    std::atomic<uint8_t>    swing_percent_{50}; // 50% = Straight, 67% = Triplet, 75% = Dotted
+    std::atomic<ClockSource> clock_source_{ClockSource::Internal};
     std::atomic<bool>       running_{false};
-    uint32_t                tick_count_ = 0;
-    TickCallback            callback_ = nullptr;
-    void*                   callback_ctx_ = nullptr;
+    std::atomic<uint32_t>   tick_count_{0};
+    LatestTickMailbox       pending_ticks_;
+    std::atomic<uint64_t>   previous_tick_us_{0};
+    uint64_t                previous_external_tick_us_ = 0; // Control-task owner.
+    uint64_t                external_period_average_us_ = 0;
     esp_timer_handle_t      timer_handle_ = nullptr;
 };
 

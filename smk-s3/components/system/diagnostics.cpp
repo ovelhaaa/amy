@@ -88,6 +88,12 @@ void Diagnostics::logSnapshot() const {
              s.cpu_freq_mhz, s.flash_size, s.psram_size);
     ESP_LOGI(TAG, "MIDI/USB: EventsReceived=%lu, ParseErrors=%lu, QueueOverflows=%lu, Disconnects=%lu, Reconnects=%lu",
              s.events_received, s.midi_parse_errors, s.event_queue_overflows, s.usb_disconnects, s.usb_reconnects);
+    ESP_LOGI(TAG, "Timing: MIDI receive->control max=%luus; clock interval error max=%luus, control delay max=%luus, coalesced=%lu (max batch=%lu)",
+             counters_.midi_max_receive_to_control_us.load(),
+             counters_.clock_max_interval_error_us.load(), counters_.clock_max_control_delay_us.load(),
+             counters_.clock_ticks_coalesced.load(), counters_.clock_max_ticks_coalesced.load());
+    ESP_LOGI(TAG, "Timing: MIDI source->AMY owner max=%luus; command enqueue->owner max=%luus",
+             counters_.synth_max_source_to_owner_us.load(), counters_.synth_max_command_wait_us.load());
     ESP_LOGI(TAG, "System: Panics=%lu, Version=%s", s.panic_count, s.firmware_version);
 }
 

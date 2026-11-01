@@ -6,6 +6,12 @@
 
 static const char* TAG = "UsbMidiHost";
 namespace smk {
+namespace {
+int16_t encodeUsbPid(uint16_t pid) {
+    return pid <= INT16_MAX ? static_cast<int16_t>(pid)
+                            : static_cast<int16_t>(static_cast<int32_t>(pid) - 65536);
+}
+}
 UsbMidiHost::UsbMidiHost(EventBus& bus) : event_bus_(bus) {
     parser_.setSource(EventSource::UsbMidi);
     parser_.setCallback(onMidiEvent, this);
@@ -145,7 +151,8 @@ void UsbMidiHost::handleDeviceConnection(uint8_t address) {
     auto& diag = Diagnostics::instance().counters();
     diag.usb_reconnects.fetch_add(1);
     diag.usb_connected = true;
-    event_bus_.send({EventType::UsbConnect, EventSource::UsbMidi, 0, deviceVid(), devicePid(), static_cast<uint32_t>(esp_timer_get_time())});
+    event_bus_.send({EventType::UsbConnect, EventSource::UsbMidi, 0, deviceVid(),
+                     encodeUsbPid(devicePid()), static_cast<uint64_t>(esp_timer_get_time())});
 }
 bool UsbMidiHost::findMidiInterface(usb_device_handle_t device) {
     const usb_config_desc_t* descriptor = nullptr;
@@ -199,7 +206,8 @@ void UsbMidiHost::onMidiEvent(const SynthEvent& event, void* ctx) {
 void UsbMidiHost::notifyDisconnect() {
     // Connection truth is updated independently of possibly saturated UI events.
     Diagnostics::instance().counters().usb_connected = false;
-    event_bus_.send({EventType::UsbDisconnect, EventSource::UsbMidi, 0, deviceVid(), devicePid(), static_cast<uint32_t>(esp_timer_get_time())});
+    event_bus_.send({EventType::UsbDisconnect, EventSource::UsbMidi, 0, deviceVid(),
+                     encodeUsbPid(devicePid()), static_cast<uint64_t>(esp_timer_get_time())});
 }
 void UsbMidiHost::failReception() {
     notifyDisconnect();

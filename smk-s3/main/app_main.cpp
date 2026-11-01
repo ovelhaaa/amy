@@ -33,25 +33,6 @@
 
 static const char* TAG = "Main";
 
-struct SequencerContext {
-    smk::Arpeggiator*   arpeggiator;
-    smk::StepSequencer* sequencer;
-    smk::SceneManager*  scene_manager;
-    smk::EventBus*      event_bus;
-};
-
-static void onClockTick(uint32_t tick_count, void* ctx) {
-    auto* s_ctx = static_cast<SequencerContext*>(ctx);
-    // The timer publishes ticks only. Note generation/reset and scene changes
-    // run on the control task, so a timer cannot refill notes during Panic.
-    smk::SynthEvent event{};
-    event.type = smk::EventType::Clock;
-    event.source = smk::EventSource::Internal;
-    event.value = static_cast<int32_t>(tick_count);
-    event.timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
-    s_ctx->event_bus->send(event);
-}
-
 static void app_init_task(void* arg) {
     ESP_LOGI(TAG, "=========================================");
     ESP_LOGI(TAG, " Project: %s", smk::config::kProjectName);
@@ -205,9 +186,7 @@ static void app_init_task(void* arg) {
     arpeggiator->setEnabled(false);
     step_sequencer->stop();
 
-    SequencerContext* seq_ctx = new SequencerContext{ arpeggiator, step_sequencer, scene_manager, event_bus };
     clock_manager->begin();
-    clock_manager->setCallback(onClockTick, seq_ctx);
 
     // Restore saved NVS configuration if present
     smk::SystemConfig sys_cfg = {};
@@ -286,7 +265,7 @@ static void app_init_task(void* arg) {
             smk::SynthEvent panic{};
             panic.type = smk::EventType::Panic;
             panic.source = smk::EventSource::Internal;
-            panic.timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
+            panic.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
             event_bus->send(panic);
         }
         if (smk::AudioTask::failed() && !audio_fault_reported) {
@@ -306,8 +285,41 @@ static void app_init_task(void* arg) {
             event_bus->send(panic);
         }
         learning_was_active = learning_now;
+        // Clock edges have a dedicated latest-value mailbox instead of sharing
+        // the MIDI/UI FIFO. If control was busy, process the newest musical
+        // position once: generators service expired Note Offs but do not replay
+        // old triggers as an audible burst.
+        uint32_t latest_tick = 0;
+        uint32_t skipped_ticks = 0;
+        uint64_t tick_timestamp_us = 0;
+        if (clock_manager && clock_manager->takePendingTick(latest_tick, skipped_ticks, tick_timestamp_us)) {
+            if (tick_timestamp_us) {
+                const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - tick_timestamp_us;
+                auto& max_lateness = smk::Diagnostics::instance().counters().clock_max_control_delay_us;
+                uint32_t observed = max_lateness.load(std::memory_order_relaxed);
+                const uint32_t elapsed_us = elapsed > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(elapsed);
+                while (elapsed_us > observed && !max_lateness.compare_exchange_weak(observed, elapsed_us, std::memory_order_relaxed)) {}
+            }
+            if (skipped_ticks) {
+                auto& counters = smk::Diagnostics::instance().counters();
+                counters.clock_ticks_coalesced.fetch_add(skipped_ticks, std::memory_order_relaxed);
+                uint32_t previous = counters.clock_max_ticks_coalesced.load(std::memory_order_relaxed);
+                while (skipped_ticks > previous &&
+                       !counters.clock_max_ticks_coalesced.compare_exchange_weak(previous, skipped_ticks, std::memory_order_relaxed)) {}
+            }
+            arpeggiator->processTick(latest_tick, *event_bus);
+            step_sequencer->processTick(latest_tick, *event_bus);
+            if (latest_tick % 24 == 0 && scene_manager) scene_manager->processPendingTransition();
+        }
         smk::SynthEvent event;
         if (event_bus->receive(event, 10)) {
+            if (event.source == smk::EventSource::UsbMidi && event.timestamp_us != 0) {
+                const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - event.timestamp_us;
+                auto& max_latency = smk::Diagnostics::instance().counters().midi_max_receive_to_control_us;
+                const uint32_t elapsed_us = elapsed > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(elapsed);
+                uint32_t observed = max_latency.load(std::memory_order_relaxed);
+                while (elapsed_us > observed && !max_latency.compare_exchange_weak(observed, elapsed_us, std::memory_order_relaxed)) {}
+            }
             if (audio_fault_reported && !smk::bypassMidiLearn(event)) continue;
             // Forward event to UI Manager (for MidiMonitor, Pad hit animations, etc.)
             if (ui_manager) {
@@ -566,21 +578,22 @@ static void app_init_task(void* arg) {
                         }
                         arpeggiator->noteOn((uint8_t)event.id, (uint8_t)event.value);
                     } else {
-                        amy_adapter->noteOn(event.channel, (uint8_t)event.id, (uint8_t)event.value);
+                        amy_adapter->noteOnAt(event.channel, static_cast<uint8_t>(event.id),
+                                              static_cast<uint8_t>(event.value), event.timestamp_us);
                     }
                     break;
                 case smk::EventType::NoteOff:
                     if (event.source == smk::EventSource::UsbMidi && arpeggiator->isEnabled()) {
                         arpeggiator->noteOff((uint8_t)event.id);
                     } else {
-                        amy_adapter->noteOff(event.channel, (uint8_t)event.id);
+                        amy_adapter->noteOffAt(event.channel, static_cast<uint8_t>(event.id), event.timestamp_us);
                     }
                     break;
                 case smk::EventType::PitchBend:
-                    amy_adapter->pitchBend(event.channel, (int16_t)event.value);
+                    amy_adapter->pitchBendAt(event.channel, static_cast<int16_t>(event.value), event.timestamp_us);
                     break;
                 case smk::EventType::Modulation:
-                    amy_adapter->controlChange(event.channel, 1, (uint8_t)event.value);
+                    amy_adapter->controlChangeAt(event.channel, 1, static_cast<uint8_t>(event.value), event.timestamp_us);
                     if (ui_manager) {
                         ui_manager->triggerParameterOverlay("MODULATION", "PERFORM", (float)event.value, 0.0f, "", smk::TakeoverStatus::Captured);
                     }
@@ -589,7 +602,8 @@ static void app_init_task(void* arg) {
                     if (event.id >= 1 && event.id <= 8) {
                         patch_manager->handleKnobInput(event.id - 1, (float)event.value);
                     } else {
-                        amy_adapter->controlChange(event.channel, (uint8_t)event.id, (uint8_t)event.value);
+                        amy_adapter->controlChangeAt(event.channel, static_cast<uint8_t>(event.id),
+                                                     static_cast<uint8_t>(event.value), event.timestamp_us);
                         if (ui_manager) {
                             char cc_title[32];
                             snprintf(cc_title, sizeof(cc_title), "CC #%d", event.id);
@@ -653,13 +667,8 @@ static void app_init_task(void* arg) {
                     }
                     break;
                 case smk::EventType::Clock:
-                    if (event.source == smk::EventSource::Internal) {
-                        const uint32_t tick = static_cast<uint32_t>(event.value);
-                        arpeggiator->processTick(tick, *event_bus);
-                        step_sequencer->processTick(tick, *event_bus);
-                        if (tick % 24 == 0) scene_manager->processPendingTransition();
-                    } else if (clock_manager) {
-                        clock_manager->onExternalTick();
+                    if (event.source != smk::EventSource::Internal && clock_manager) {
+                        clock_manager->onExternalTick(event.timestamp_us);
                     }
                     break;
                 case smk::EventType::TransportPlay:

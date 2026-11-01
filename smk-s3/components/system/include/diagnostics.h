@@ -41,6 +41,14 @@ struct DiagnosticCounters {
     std::atomic<uint32_t> synth_queue_high_water{0};
     std::atomic<uint32_t> synth_panics{0};
     std::atomic<uint32_t> synth_max_command_wait_us{0};
+    std::atomic<uint32_t> synth_max_source_to_owner_us{0};
+    // Absolute deviation of internal esp_timer tick intervals from the
+    // configured PPQN period, and internal ticks coalesced while control was busy.
+    std::atomic<uint32_t> clock_max_interval_error_us{0};
+    std::atomic<uint32_t> clock_max_control_delay_us{0};
+    std::atomic<uint32_t> clock_ticks_coalesced{0};
+    std::atomic<uint32_t> clock_max_ticks_coalesced{0};
+    std::atomic<uint32_t> midi_max_receive_to_control_us{0};
     // FM operator controls with no valid patch baseline were ignored rather
     // than overwriting the preset's operator topology with absolute values.
     std::atomic<uint32_t> fm_controls_ignored{0};
@@ -140,9 +148,15 @@ public:
         c.synth_queue_high_water.store(0, std::memory_order_relaxed);
         c.synth_panics.store(0, std::memory_order_relaxed);
         c.synth_max_command_wait_us.store(0, std::memory_order_relaxed);
+        c.synth_max_source_to_owner_us.store(0, std::memory_order_relaxed);
         c.peak_abs_sample.store(0, std::memory_order_relaxed);
         c.near_clip_samples.store(0, std::memory_order_relaxed);
         c.hard_clip_samples.store(0, std::memory_order_relaxed);
+        c.clock_max_interval_error_us.store(0, std::memory_order_relaxed);
+        c.clock_max_control_delay_us.store(0, std::memory_order_relaxed);
+        c.clock_ticks_coalesced.store(0, std::memory_order_relaxed);
+        c.clock_max_ticks_coalesced.store(0, std::memory_order_relaxed);
+        c.midi_max_receive_to_control_us.store(0, std::memory_order_relaxed);
     }
     
 private:

@@ -46,13 +46,13 @@ enum class EventSource : uint8_t {
     Internal,
 };
 
-struct SynthEvent {
+struct alignas(8) SynthEvent {
     EventType type;
     EventSource source;
     uint8_t channel;        // MIDI channel 0-15
     uint16_t id;            // note number, CC number, program number
-    int32_t value;          // velocity, bend value (-8192..8191), CC value (0-127)
-    uint32_t timestamp_us;  // microsecond timestamp from esp_timer_get_time()
+    int16_t value;          // velocity, bend (-8192..8191), CC, or bit-preserving USB PID
+    uint64_t timestamp_us;  // microsecond timestamp from esp_timer_get_time()
 };
 
 // These events must reach the application even while MIDI Learn consumes input.

@@ -6,6 +6,7 @@
 #include <freertos/task.h>
 #include <freertos/semphr.h>
 #include <esp_timer.h>
+#include <algorithm>
 #include <cstring>
 #include <cstdlib>
 #include <new>
@@ -26,7 +27,8 @@ struct Command {
     uint8_t channel;
     uint16_t id;
     uint32_t generation;
-    uint32_t timestamp_us;
+    uint64_t timestamp_us;
+    uint64_t source_timestamp_us;
     union { float values[8]; char message[config::kSynthMessageBytes]; } data;
 };
 bool release(const Command& c) {
@@ -73,7 +75,7 @@ struct AmyAdapter::State {
     size_t head = 0, count = 0;
     std::atomic<uint32_t> requested_generation{0};
     uint32_t applied_generation = 0; // Synthesis owner only.
-    uint32_t panic_timestamp_us = 0; // Protected by mux.
+    uint64_t panic_timestamp_us = 0; // Protected by mux.
     SemaphoreHandle_t wake = xSemaphoreCreateBinary();
     TaskHandle_t worker = nullptr;
     std::atomic<bool> running{false}, active{false}, failed{false};
@@ -92,7 +94,7 @@ struct AmyAdapter::State {
     ~State() { if (wake) vSemaphoreDelete(wake); }
     void enqueue(Command& c) {
         auto& diag = Diagnostics::instance().counters();
-        c.timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
+        c.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
         portENTER_CRITICAL(&mux);
         if (c.type == Panic) {
             panic_timestamp_us = c.timestamp_us;
@@ -107,6 +109,7 @@ struct AmyAdapter::State {
                         commands[idx].id == c.id) {
                         commands[idx].data = c.data;
                         commands[idx].timestamp_us = c.timestamp_us;
+                        commands[idx].source_timestamp_us = c.source_timestamp_us;
                         portEXIT_CRITICAL(&mux);
                         xSemaphoreGive(wake);
                         return;
@@ -233,10 +236,11 @@ void AmyAdapter::workerRoutine(void* arg) {
 
 void AmyAdapter::submit(uint8_t type, uint8_t channel, uint16_t id,
                         float a, float b, float c, float d,
-                        float e, float f, float g) {
+                        float e, float f, float g, uint64_t source_timestamp_us) {
     if (!state_ || !state_->wake) return;
     Command command{};
     command.type = type; command.channel = channel; command.id = id;
+    command.source_timestamp_us = source_timestamp_us;
     command.data.values[0] = a; command.data.values[1] = b;
     command.data.values[2] = c; command.data.values[3] = d;
     command.data.values[4] = e; command.data.values[5] = f;
@@ -246,8 +250,12 @@ void AmyAdapter::submit(uint8_t type, uint8_t channel, uint16_t id,
 
 void AmyAdapter::noteOn(uint8_t ch, uint8_t note, uint8_t vel) { submit(NoteOn, ch, note, vel); }
 void AmyAdapter::noteOff(uint8_t ch, uint8_t note) { submit(NoteOff, ch, note); }
+void AmyAdapter::noteOnAt(uint8_t ch, uint8_t note, uint8_t vel, uint64_t source_us) { submit(NoteOn, ch, note, vel, 0, 0, 0, 0, 0, 0, source_us); }
+void AmyAdapter::noteOffAt(uint8_t ch, uint8_t note, uint64_t source_us) { submit(NoteOff, ch, note, 0, 0, 0, 0, 0, 0, 0, source_us); }
 void AmyAdapter::pitchBend(uint8_t ch, int16_t bend) { submit(Bend, ch, 0, bend); }
+void AmyAdapter::pitchBendAt(uint8_t ch, int16_t bend, uint64_t source_us) { submit(Bend, ch, 0, bend, 0, 0, 0, 0, 0, 0, source_us); }
 void AmyAdapter::controlChange(uint8_t ch, uint8_t cc, uint8_t value) { submit(CC, ch, cc, value); }
+void AmyAdapter::controlChangeAt(uint8_t ch, uint8_t cc, uint8_t value, uint64_t source_us) { submit(CC, ch, cc, value, 0, 0, 0, 0, 0, 0, source_us); }
 void AmyAdapter::allNotesOff() { submit(AllOff, 0, 0); }
 void AmyAdapter::panic() { submit(Panic, 0, 0); }
 void AmyAdapter::setFilter(uint8_t id, float cutoff, float res,
@@ -310,9 +318,15 @@ bool AmyAdapter::serviceBlock() {
             diag.synth_commands_dropped.fetch_add(1, std::memory_order_relaxed);
             continue;
         }
-        const uint32_t wait_us = static_cast<uint32_t>(esp_timer_get_time()) - c.timestamp_us;
+        const uint64_t now_us = static_cast<uint64_t>(esp_timer_get_time());
+        const uint32_t wait_us = static_cast<uint32_t>(std::min<uint64_t>(now_us - c.timestamp_us, UINT32_MAX));
         if (wait_us > diag.synth_max_command_wait_us.load(std::memory_order_relaxed))
             diag.synth_max_command_wait_us.store(wait_us, std::memory_order_relaxed);
+        if (c.source_timestamp_us) {
+            const uint32_t source_wait_us = static_cast<uint32_t>(std::min<uint64_t>(now_us - c.source_timestamp_us, UINT32_MAX));
+            if (source_wait_us > diag.synth_max_source_to_owner_us.load(std::memory_order_relaxed))
+                diag.synth_max_source_to_owner_us.store(source_wait_us, std::memory_order_relaxed);
+        }
         const float* v = c.data.values;
         switch (c.type) {
             case NoteOn: executeNoteOn(c.channel, static_cast<uint8_t>(c.id), static_cast<uint8_t>(v[0])); break;

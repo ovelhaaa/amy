@@ -21,6 +21,10 @@ public:
     void resetRenderAverage();
     void noteOn(uint8_t channel, uint8_t note, uint8_t velocity) override;
     void noteOff(uint8_t channel, uint8_t note) override;
+    void noteOnAt(uint8_t channel, uint8_t note, uint8_t velocity, uint64_t source_timestamp_us);
+    void noteOffAt(uint8_t channel, uint8_t note, uint64_t source_timestamp_us);
+    void pitchBendAt(uint8_t channel, int16_t value, uint64_t source_timestamp_us);
+    void controlChangeAt(uint8_t channel, uint8_t controller, uint8_t value, uint64_t source_timestamp_us);
     void pitchBend(uint8_t channel, int16_t value) override;
     void controlChange(uint8_t channel, uint8_t controller, uint8_t value) override;
     void allNotesOff() override;
@@ -102,7 +106,8 @@ private:
     void setRenderAverageUsForTest(uint64_t average_us);
     void submit(uint8_t type, uint8_t channel, uint16_t id,
                 float a = 0, float b = 0, float c = 0, float d = 0,
-                float e = 0, float f = 0, float g = 0);
+                float e = 0, float f = 0, float g = 0,
+                uint64_t source_timestamp_us = 0);
     bool beginEngine(uint32_t sample_rate_hz);
     void endEngine();
     void executeNoteOn(uint8_t channel, uint8_t note, uint8_t velocity);

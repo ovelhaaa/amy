@@ -1,4 +1,5 @@
 #include "step_sequencer.h"
+#include "clock_timing.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 #if defined(ESP_PLATFORM)
@@ -345,7 +346,7 @@ void StepSequencer::stop(EventBus& event_bus) {
             off_ev.channel = track_channels_[t];
             off_ev.id = (uint16_t)track_playback_[t].last_played_note;
             off_ev.value = 0;
-            off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+            off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
             event_bus.send(off_ev);
             track_playback_[t].last_played_note = -1;
             track_playback_[t].active = false;
@@ -388,14 +389,14 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
         auto& pb = track_playback_[t];
 
         // Process scheduled NoteOff
-        if (pb.last_played_note >= 0 && tick_count >= pb.note_off_tick) {
+        if (pb.last_played_note >= 0 && tickReached(tick_count, pb.note_off_tick)) {
             SynthEvent off_ev;
             off_ev.type = EventType::NoteOff;
             off_ev.source = EventSource::Sequencer;
             off_ev.channel = track_channels_[t];
             off_ev.id = (uint16_t)pb.last_played_note;
             off_ev.value = 0;
-            off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+            off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
             event_bus.send(off_ev);
 
             pb.last_played_note = -1;
@@ -434,7 +435,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
                 plock_ev.channel = track_channels_[t];
                 plock_ev.id = static_cast<uint16_t>(s.locked_param + 1); // CC 1..8 for Macro 1..8
                 plock_ev.value = static_cast<int32_t>(s.locked_val);
-                plock_ev.timestamp_us = static_cast<uint32_t>(esp_timer_get_time());
+                plock_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
                 event_bus.send(plock_ev);
             }
 
@@ -447,7 +448,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
                     off_ev.channel = track_channels_[t];
                     off_ev.id = (uint16_t)pb.last_played_note;
                     off_ev.value = 0;
-                    off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+                    off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
                     event_bus.send(off_ev);
                     pb.last_played_note = -1;
                 }
@@ -458,7 +459,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
                 on_ev.channel = track_channels_[t];
                 on_ev.id = pb.note;
                 on_ev.value = pb.velocity;
-                on_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+                on_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
                 event_bus.send(on_ev);
 
                 pb.last_played_note = pb.note;
@@ -495,7 +496,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
                         off_ev.channel = track_channels_[t];
                         off_ev.id = (uint16_t)pb.last_played_note;
                         off_ev.value = 0;
-                        off_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+                        off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
                         event_bus.send(off_ev);
                         pb.last_played_note = -1;
                     }
@@ -506,7 +507,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus) {
                     on_ev.channel = track_channels_[t];
                     on_ev.id = pb.note;
                     on_ev.value = pb.velocity;
-                    on_ev.timestamp_us = (uint32_t)esp_timer_get_time();
+                    on_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
                     event_bus.send(on_ev);
 
                     pb.last_played_note = pb.note;
