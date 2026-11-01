@@ -1204,6 +1204,144 @@ uint8_t patches_voices_for_load_synth(amy_event *e, uint16_t voices[]) {
     return num_voices;
 }
 
+// Resource admission is serialized by the engine owner. Plan exact blocks before
+// releasing old voices. No heap proportional to the configurable osc pool.
+static bool patch_voice_in_list(uint16_t voice, const uint16_t *voices, int count) {
+    for (int i = 0; i < count; ++i)
+        if (voices[i] == voice) return true;
+    return false;
+}
+
+amy_patch_result patches_load_patch_checked(amy_event *e) {
+    if (e == NULL || AMY_IS_UNSET(e->synth) || e->synth >= instruments_max_instruments() ||
+        (AMY_IS_SET(e->num_voices) && e->num_voices > MAX_VOICES_PER_INSTRUMENT) ||
+        (AMY_IS_SET(e->bus) && e->bus >= AMY_NUM_BUSES))
+        return AMY_PATCH_INVALID_REQUEST;
+    uint16_t old_voices[MAX_VOICES_PER_INSTRUMENT];
+    const int old_count = instrument_get_num_voices(e->synth, old_voices);
+    // Explicit deletion keeps its legacy MIDI-mapping semantics.
+    if (AMY_IS_SET(e->num_voices) && e->num_voices == 0) {
+        for (int i = 0; i < old_count; ++i) release_voice_oscs(old_voices[i], e->time);
+        midi_clear_channel_mappings(e->synth, MIDI_MAP_TYPE_ANY);
+        instrument_release(e->synth);
+        AMY_UNSET(e->synth);
+        return AMY_PATCH_RESOURCES_ASSIGNED;
+    }
+    uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
+    uint16_t bases[MAX_VOICES_PER_INSTRUMENT];
+    const int num_voices = AMY_IS_SET(e->num_voices) ? e->num_voices : (old_count ? old_count : 1);
+    uint16_t oscs_per_voice = 0;
+    uint16_t patch_number = e->patch_number;
+    // At this point, we have the voices[] array and num_voices set up to be initialized.
+    char *message = NULL;
+    struct delta *deltas = NULL;
+    // Figure out the #oscs per voice, setup message or deltas if available.
+    if (AMY_IS_SET(e->oscs_per_voice)) {
+        oscs_per_voice = e->oscs_per_voice;
+    } else {
+        if (AMY_IS_UNSET(patch_number))
+            patch_number = instrument_get_patch_number(e->synth);
+        if(patch_number < _PATCHES_FIRST_USER_PATCH) {
+            // Built-in patch. The table has reserved (NULL) gaps -- e.g. 259-383
+            // before the drum kit bank at 384 -- and ends well before the user
+            // range, so check both before dereferencing.
+            if (patch_number >= _PATCHES_NUM_BUILTIN || patch_commands[patch_number] == NULL)
+                return AMY_PATCH_UNKNOWN_PATCH;
+            message = (char*)patch_commands[patch_number];
+            oscs_per_voice = patch_oscs[patch_number];
+        } else {
+            // User-defined patch
+            uint32_t patch_index = patch_number - _PATCHES_FIRST_USER_PATCH;
+            if (patch_index >= max_num_memory_patches || memory_patch_deltas[patch_index] == NULL)
+                return AMY_PATCH_UNKNOWN_PATCH;
+            oscs_per_voice = memory_patch_oscs[patch_index];
+            deltas = memory_patch_deltas[patch_index];
+        }
+    }
+    if (oscs_per_voice == 0 || oscs_per_voice > AMY_OSCS || oscs_per_voice > UINT8_MAX)
+        return AMY_PATCH_INVALID_COST;
+
+    if (num_voices == old_count) {
+        for (int v = 0; v < num_voices; ++v) voices[v] = old_voices[v];
+    } else {
+        int selected = 0;
+        for (uint32_t v = 0; v < amy_global.config.max_voices && selected < num_voices; ++v) {
+            if (AMY_IS_UNSET(voice_to_base_osc[v]) || patch_voice_in_list(v, old_voices, old_count))
+                voices[selected++] = v;
+        }
+        if (selected != num_voices) return AMY_PATCH_NO_VOICES;
+    }
+    for (int v = 0; v < num_voices; ++v) {
+        bool found = false;
+        uint16_t osc_start = AMY_OSCS / 2;
+#ifdef TULIP
+        if (voices[v] % 3 == 2) osc_start = 0;
+#else
+        if (voices[v] % 2 == 1) osc_start = 0;
+#endif
+        for (uint32_t i = 0; i < AMY_OSCS && !found; ++i) {
+            uint16_t base = (osc_start + i) % AMY_OSCS;
+            if (base > AMY_OSCS - oscs_per_voice) continue;
+            bool available = true;
+            for (int prior = 0; prior < v; ++prior) {
+                if (base < bases[prior] + oscs_per_voice && bases[prior] < base + oscs_per_voice) {
+                    available = false;
+                    break;
+                }
+            }
+            for (uint16_t osc = base; available && osc < base + oscs_per_voice; ++osc) {
+                if (AMY_IS_SET(osc_to_voice[osc]) &&
+                    !patch_voice_in_list(osc_to_voice[osc], old_voices, old_count))
+                    available = false;
+            }
+            if (available) { bases[v] = base; found = true; }
+        }
+        if (!found) return AMY_PATCH_NO_OSCS;
+    }
+    const uint32_t flags = AMY_IS_SET(e->synth_flags) ? e->synth_flags : 0;
+    const uint8_t bus = AMY_IS_SET(e->bus) ? e->bus : 0;
+    struct instrument_info *prepared = instrument_prepare(e->synth, num_voices, voices,
+                                                          patch_number, oscs_per_voice, bus, flags);
+    if (prepared == NULL) return AMY_PATCH_NO_INSTRUMENT_MEMORY;
+    // End of non-destructive admission. Materialization below is NOT a full
+    // transaction: reset/configuration deltas and osc buffers can still OOM.
+    for (int v = 0; v < old_count; ++v) release_voice_oscs(old_voices[v], e->time);
+    for (int v = 0; v < num_voices; ++v) {
+        voice_to_base_osc[voices[v]] = bases[v];
+        for (uint16_t osc = bases[v]; osc < bases[v] + oscs_per_voice; ++osc) {
+            osc_to_voice[osc] = voices[v];
+            schedule_osc_reset(e->time, osc, NULL);
+        }
+    }
+
+    instrument_commit(e->synth, prepared);
+    // Now actually initialize the newly-allocated osc blocks with the patch
+    bool is_first_voice = true;  // flag for once-only messages.
+    for(uint8_t v = 0; v < num_voices; v++) {
+        if(AMY_IS_SET(voice_to_base_osc[voices[v]])) {
+            if (deltas) {
+                add_deltas_to_queue_with_baseosc(deltas, voice_to_base_osc[voices[v]], &amy_global.delta_queue, e->time);
+            } else if (message) {
+                parse_patch_string_to_queue(message, voice_to_base_osc[voices[v]], &amy_global.delta_queue, e->synth, e->time, is_first_voice);
+            }
+            // Or maybe there's no deltas and no message, in which case we just set oscs_per_voice, waiting for config.
+            is_first_voice = false;
+        }
+    }
+    return AMY_PATCH_RESOURCES_ASSIGNED;
+}
+
+
+// Opt-in adoption: the upstream demo can deliberately overcommit its default
+// instruments. Preserve other platforms' legacy behavior until they adopt the
+// stricter admission contract explicitly. The checked API is always available.
+#ifdef AMY_PATCH_CHECKED_RESOURCE_ADMISSION
+void patches_load_patch(amy_event *e) {
+    amy_patch_result result = patches_load_patch_checked(e);
+    if (result != AMY_PATCH_RESOURCES_ASSIGNED)
+        fprintf(stderr, "patch resource admission failed: %d\n", (int)result);
+}
+#else
 void patches_load_patch(amy_event *e) {
     // Given an event with a synth (instrument) set up a synth.
     // Common case is to call with a patch to load, but can also have just
@@ -1346,3 +1484,5 @@ void patches_load_patch(amy_event *e) {
         }
     }
 }
+
+#endif

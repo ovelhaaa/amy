@@ -12,7 +12,7 @@ try {
         Where-Object { $_ -notin @('amy-message.c', 'amy-piano.c') }
 
     $flags = @(
-        '-O2', '-DAMY_NO_MINIAUDIO', '-DAMY_SAMPLE_RATE=48000', '-DAMY_BLOCK_SIZE=256',
+        '-O2', '-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1', '-DAMY_NO_MINIAUDIO', '-DAMY_SAMPLE_RATE=48000', '-DAMY_BLOCK_SIZE=256',
         '-DBLOCK_SIZE_BITS=8', '-Isrc', '-Itests/mock',
         '-Ismk-s3/components/audio/include', '-Ismk-s3/components/system/include',
         '-Ismk-s3/components/synth/include', '-Ismk-s3/components/sequencer/include',

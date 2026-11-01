@@ -583,8 +583,14 @@ int main(int argc, char** argv) {
             while (osc < AMY_OSCS && osc_to_voice[osc] == UINT16_MAX) ++osc;
             std::printf("Legacy free block: %d..%d (%d oscs)\n", start, osc - 1, osc - start);
         }
-        assert(required == 117);
-        assert(assigned == 111);
+        // The upstream demo may now reject an infeasible instrument instead
+        // of advertising partially assigned voices. Historical baseline was
+        // 117 declared /111 assigned; every surviving instrument must be full.
+#ifdef AMY_PATCH_CHECKED_RESOURCE_ADMISSION
+        assert(required == assigned);
+#else
+        assert(required == 117 && assigned == 111); // Unchanged upstream demo.
+#endif
         amy_stop();
         return 0;
     }
@@ -593,24 +599,14 @@ int main(int argc, char** argv) {
         smk::AmyAdapter adapter; assert(adapter.begin(AMY_SAMPLE_RATE));
         engine_preset(1, 128, 4);
         engine_preset(2, 135, 8); // 32 + 64 + drums 32 > pool 120.
-        assert(instrument_get_num_voices(2, nullptr) == 8);
-        const int partial = allocated_oscs(2, false);
-        assert(partial < 64);
-        int free_oscs = 0, largest_free = 0, run = 0;
-        for (int osc = 0; osc < AMY_OSCS; ++osc) {
-            if (AMY_IS_UNSET(osc_to_voice[osc])) {
-                ++free_oscs; largest_free = std::max(largest_free, ++run);
-            } else run = 0;
-        }
-        assert(free_oscs >= 8 && largest_free < 8); // Fragmentation, not just sum.
+        assert(!instrument_number_exists(2, nullptr));
         assert(allocated_oscs(1, true) == 32 && allocated_oscs(10, true) == 32);
-        // Test-only explicit teardown/rebuild, not an atomic rollback API.
-        amy_event remove = amy_default_event(); remove.synth = 2; remove.num_voices = 0;
-        amy_add_event(&remove); amy_execute_deltas();
+        // Rejection leaves the complete old setup usable; the next feasible
+        // request succeeds without tearing down a partial instrument.
         engine_preset(2, 135, 4);
         assert(allocated_oscs(2, true) == 32 && allocated_oscs(1, true) == 32);
         assert(allocated_oscs(10, true) == 32);
-        std::printf("PASS: negative allocation probe: B reports 8 voices but owns %d/64 oscs; free=%d largest=%d; explicit recovery to 4 complete voices\n", partial, free_oscs, largest_free);
+        std::puts("PASS: negative allocation probe: infeasible B8 rejected before publication; A/drums intact, B4 succeeds");
         return 0;
     }
 

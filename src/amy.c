@@ -701,7 +701,17 @@ void amy_event_to_deltas_queue(amy_event *e, uint16_t base_osc, struct delta **q
     if (AMY_IS_SET(e->synth)) {
         if (AMY_IS_SET(e->patch_number) || AMY_IS_SET(e->num_voices) || AMY_IS_SET(e->oscs_per_voice)) {
             amy_execute_deltas();
+#ifdef AMY_PATCH_CHECKED_RESOURCE_ADMISSION
+            amy_patch_result result = patches_load_patch_checked(e);
+            if (result != AMY_PATCH_RESOURCES_ASSIGNED) {
+                fprintf(stderr, "patch resource admission failed: %d\n", (int)result);
+                // Do not apply the remainder (notes, controls, synth-tier
+                // properties) of a rejected load to the previous instrument.
+                goto end;
+            }
+#else
             patches_load_patch(e);
+#endif
         }
         // Execute any other commands in this event.
         patches_event_has_voices(e, queue);

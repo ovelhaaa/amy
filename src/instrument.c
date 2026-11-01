@@ -206,7 +206,6 @@ struct instrument_info *instrument_init(int id, int num_voices, uint16_t* amy_vo
         voice_fifo_put(instrument->released_voices, voice);
         instrument->note_per_voice[voice] = _INSTRUMENT_NO_NOTE;
         instrument->pending_release[voice] = false;
-        _voice_level_set(amy_voices[voice], 1.0f);
     }
     _instrument_reset_forgotten_pool(instrument);
     return instrument;
@@ -411,11 +410,44 @@ bool instrument_number_exists(int instrument_number, const char *tag) {
 }
 
 void instrument_add_new(int instrument_number, int num_voices, uint16_t *amy_voices, uint16_t patch_number, uint16_t oscs_per_voice, uint8_t bus, uint32_t flags) {
-    if (!instrument_number_ok(instrument_number, "add_new")) return;
+    struct instrument_info *prepared = instrument_prepare(instrument_number, num_voices, amy_voices, patch_number, oscs_per_voice, bus, flags);
+    if (prepared != NULL) instrument_commit(instrument_number, prepared);
+}
+
+struct instrument_info *instrument_prepare(int instrument_number, int num_voices, uint16_t *amy_voices, uint16_t patch_number, uint16_t oscs_per_voice, uint8_t bus, uint32_t flags) {
+    if (!instrument_number_ok(instrument_number, NULL) || instrument_number > UINT8_MAX || amy_voices == NULL ||
+        num_voices <= 0 || num_voices > MAX_VOICES_PER_INSTRUMENT ||
+        oscs_per_voice == 0 || oscs_per_voice > AMY_OSCS || oscs_per_voice > UINT8_MAX || bus >= AMY_NUM_BUSES)
+        return NULL;
+    for (int i = 0; i < num_voices; ++i) {
+        if (amy_voices[i] >= amy_global.config.max_voices) return NULL;
+        for (int j = 0; j < i; ++j)
+            if (amy_voices[i] == amy_voices[j]) return NULL;
+    }
+    return instrument_init(instrument_number, num_voices, amy_voices, patch_number, oscs_per_voice, bus, flags);
+}
+
+void instrument_discard(struct instrument_info *prepared) {
+    // Unlike instrument_free, never touch the active owner's voice levels.
+    if (prepared == NULL) return;
+    voice_fifo_free(prepared->active_voices);
+    voice_fifo_free(prepared->released_voices);
+    free(prepared);
+}
+
+void instrument_commit(int instrument_number, struct instrument_info *prepared) {
+    // Preconditions established by instrument_prepare, on the same owner.
+    if (prepared == NULL) return;
+    if (!instrument_number_ok(instrument_number, NULL) || prepared->id != instrument_number) {
+        instrument_discard(prepared);
+        return;
+    }
     if(instruments[instrument_number]) {
         instrument_free(instruments[instrument_number]);
     }
-    instruments[instrument_number] = instrument_init(instrument_number, num_voices, amy_voices, patch_number, oscs_per_voice, bus, flags);
+    instruments[instrument_number] = prepared;
+    for (int i = 0; i < prepared->num_voices; ++i)
+        _voice_level_set(prepared->amy_voices[i], prepared->level);
     // Make sure we start listning to this channel.
     midi_active_channel_set(instrument_number, true);
 }

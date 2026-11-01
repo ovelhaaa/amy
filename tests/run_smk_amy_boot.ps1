@@ -1,7 +1,12 @@
-param([switch]$Legacy)
+param([switch]$Legacy, [switch]$ResourcesOnly, [ValidateSet(128, 256)][int]$BlockSize = 256)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $build = Join-Path $repo 'build/smk_amy_boot'
+if ($Legacy) { $build = Join-Path $repo 'build/smk_amy_legacy' }
+if ($BlockSize -eq 128) {
+    if (!$ResourcesOnly) { throw '128-frame host mode currently supports -ResourcesOnly' }
+    $build = Join-Path $repo 'build/smk_amy_resources_128'
+}
 New-Item -ItemType Directory -Force -Path $build | Out-Null
 Push-Location $repo
 try {
@@ -10,15 +15,29 @@ try {
     $sources = [regex]::Matches($cmake, '\$\{AMY_SRC_DIR\}/([^"\r\n]+\.c)') |
         ForEach-Object { $_.Groups[1].Value } |
         Where-Object { $_ -notin @('amy-message.c', 'amy-piano.c') }
-    $flags = @('-O2', '-DAMY_NO_MINIAUDIO', '-DAMY_SAMPLE_RATE=48000', '-DAMY_BLOCK_SIZE=256',
-               '-DBLOCK_SIZE_BITS=8', '-Isrc', '-Itests/mock', '-Ismk-s3/components/audio/include',
+    $blockBits = if ($BlockSize -eq 128) { 7 } else { 8 }
+    $flags = @('-O2', '-DAMY_NO_MINIAUDIO', '-DAMY_SAMPLE_RATE=48000', "-DAMY_BLOCK_SIZE=$BlockSize",
+               "-DBLOCK_SIZE_BITS=$blockBits", '-Isrc', '-Itests/mock', '-Ismk-s3/components/audio/include',
                '-Ismk-s3/components/system/include')
+    if (!$Legacy) { $flags += '-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1' }
     $objects = @()
     foreach ($source in $sources) {
         $obj = Join-Path $build ($source + '.o')
         & gcc -std=gnu11 @flags -c "src/$source" -o $obj
         if ($LASTEXITCODE -ne 0) { throw "Compile failed: $source" }
         $objects += $obj
+    }
+    if (!$Legacy) {
+        $resourcesExe = Join-Path $build 'test_smk_instrument_resources.exe'
+        $resourceAmy = Join-Path $build 'amy_resources.o'
+        & gcc -std=gnu11 @flags -DMALLOC_CAPS_DEFINED -c src/amy.c -o $resourceAmy
+        if ($LASTEXITCODE -ne 0) { throw 'Resource-test AMY compilation failed' }
+        $resourceObjects = @($objects | Where-Object { (Split-Path $_ -Leaf) -ne 'amy.c.o' }) + @($resourceAmy)
+        & g++ -std=c++17 @flags tests/test_smk_instrument_resources.cpp @resourceObjects '-Wl,--wrap=free' -lm -o $resourcesExe
+        if ($LASTEXITCODE -ne 0) { throw 'Instrument resources test link failed' }
+        & $resourcesExe
+        if ($LASTEXITCODE -ne 0) { throw 'Instrument resources test failed' }
+        if ($ResourcesOnly) { return }
     }
     $exe = Join-Path $build 'test_smk_amy_boot.exe'
     & g++ -std=c++17 -pthread @flags tests/test_smk_amy_boot.cpp smk-s3/components/audio/amy_adapter.cpp smk-s3/components/audio/amy_commands.cpp @objects -lm -o $exe
@@ -33,14 +52,14 @@ try {
     if (!$Legacy -and $errors) { throw 'Unexpected AMY diagnostics during regression test' }
     if (!$Legacy) {
         # Deliberately exhaust the real oscillator pool in a separate process.
-        # Only the allocator diagnostic is expected; never render partial voices.
+        # Resource admission must reject the entire request before publication.
         $failureLog = Join-Path $build 'dual_allocation_failure.log'
         & $exe --dual-allocation-failure 2> $failureLog
         if ($LASTEXITCODE -ne 0) { throw 'Dual allocation negative probe failed' }
         $expected = @(Get-Content $failureLog)
         if (!$expected.Count) { throw 'Negative probe did not exercise allocation failure' }
         foreach ($line in $expected) {
-            if ($line -notmatch '^cannot find 8 oscs for patch 135 for voice [0-9]+\. not setting this voice$') {
+            if ($line -ne 'patch resource admission failed: 5') {
                 throw "Unexpected diagnostic in negative probe: $line"
             }
         }

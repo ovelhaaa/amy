@@ -1181,6 +1181,20 @@ extern void interp_partials_note_on(uint16_t osc);
 extern void interp_partials_note_off(uint16_t osc);
 extern int interp_partials_max_partials_for_patch(int interp_partials_patch_number);
 extern void patches_load_patch(amy_event *e); 
+// Owner-only resource admission. Normal event loads opt in with
+// AMY_PATCH_CHECKED_RESOURCE_ADMISSION; the default loader remains compatible.
+// ASSIGNED is NOT a materialization/Ready ACK:
+// patch parsing and delta execution still have void/drop-on-OOM paths.
+typedef enum {
+    AMY_PATCH_RESOURCES_ASSIGNED,
+    AMY_PATCH_INVALID_REQUEST,
+    AMY_PATCH_UNKNOWN_PATCH,
+    AMY_PATCH_INVALID_COST,
+    AMY_PATCH_NO_VOICES,
+    AMY_PATCH_NO_OSCS,
+    AMY_PATCH_NO_INSTRUMENT_MEMORY
+} amy_patch_result;
+extern amy_patch_result patches_load_patch_checked(amy_event *e);
 extern void patches_event_has_voices(amy_event *e, struct delta **queue);
 extern void patches_reset_patch(int patch_number);
 extern void patches_reset();
@@ -1212,6 +1226,12 @@ extern void instruments_init(int num_instruments);
 extern void instruments_deinit();
 extern void instruments_reset();
 extern void instrument_add_new(int instrument_number, int num_voices, uint16_t *amy_voices, uint16_t patch_number, uint16_t oscs_per_voice, uint8_t bus, uint32_t flags);
+// Detached container + FIFOs only; no voice/DSP/MIDI side effects until commit.
+// Single engine owner; caller must commit or discard exactly once.
+struct instrument_info;
+extern struct instrument_info *instrument_prepare(int instrument_number, int num_voices, uint16_t *amy_voices, uint16_t patch_number, uint16_t oscs_per_voice, uint8_t bus, uint32_t flags);
+extern void instrument_commit(int instrument_number, struct instrument_info *prepared);
+extern void instrument_discard(struct instrument_info *prepared);
 extern void instrument_release(int instrument_number);
 extern void instrument_change_number(int old_instrument_number, int new_instrument_number);
 // "no voice" sentinel. Must stay outside the range of a real voice index:
