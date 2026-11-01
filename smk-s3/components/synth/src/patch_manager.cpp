@@ -949,7 +949,9 @@ bool PatchManager::applyLoadedPatch(const SynthPatch& patch) {
         soft_takeover_.reset(i, active_patch_.macros[i].current_val);
     }
 
-    if (amy_adapter_) amy_adapter_->allNotesOff();
+    // Out-of-band barrier also cancels future AMY deltas if the following
+    // preset/configuration commands cannot fit in the mailbox.
+    if (amy_adapter_) amy_adapter_->panic();
 
     applyPatchToEngine(active_patch_);
 

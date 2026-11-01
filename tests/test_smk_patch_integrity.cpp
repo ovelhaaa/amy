@@ -6,6 +6,8 @@
 #include "storage_manager.h"
 #include "amy_adapter.h"
 #include "pad_bank.h"
+#include "step_sequencer.h"
+#include "event_bus.h"
 #include "synth_config.h"
 #include "diagnostics.h"
 #include "ui_manager.h"
@@ -118,6 +120,43 @@ static void test_pad_routes(smk::AmyAdapter& adapter) {
     puts("PASS: real PadManager chord/bank snapshots, duplicate press, keyboard overlap and preview release");
 }
 
+static void test_patch_note_barrier(smk::AmyAdapter& adapter) {
+    using namespace smk;
+    PatchManager patches; assert(patches.begin(&adapter,nullptr)); process(adapter,8);
+    EventBus bus; StepSequencer seq; seq.setEventBus(&bus);
+    struct Context { EventBus* bus; StepSequencer* seq; bool called=false; } context{&bus,&seq};
+    patches.setNoteResetCallback([](void* raw) {
+        auto& c=*static_cast<Context*>(raw); c.called=true;
+        c.bus->invalidateMusical(); c.seq->stop();
+    },&context);
+    seq.play(); SynthEvent event{}; while(bus.tryReceive(event)) {}
+    seq.processTick(0,bus); // Old execution still waiting in the application FIFO.
+    NoteRoute key{}; key.identity={NoteSource::Keyboard,0,0,60,0};
+    key.count=1; key.velocity=100; key.outputs[0]={1,60};
+    adapter.routeSustain(0,true); adapter.routeNoteOn(key); adapter.routeNoteOff(key.identity);
+    process(adapter,8); assert(adapter.activeNoteReferences()==1);
+    // Real future AMY delta, not a mock: it must also be canceled if the patch
+    // command itself is rejected by capacity after this barrier.
+    amy_event future=amy_default_event(); future.synth=1; future.midi_note=72; future.velocity=1;
+    future.time=amy_sysclock()+200; amy_add_event(&future);
+    for(int i=0;i<config::kSynthCommandCapacity-config::kSynthReleaseReserve;++i)
+        adapter.noteOn(0,64,100);
+    const auto drops=Diagnostics::instance().counters().synth_commands_dropped.load();
+    assert(patches.selectPatch(1));
+    assert(context.called && !seq.isPlaying());
+    while(bus.tryReceive(event)) assert(event.type==EventType::SourceStop);
+    process(adapter,16); assert(adapter.activeNoteReferences()==0);
+    assert(Diagnostics::instance().counters().synth_commands_dropped>drops);
+    process(adapter,1000);
+    assert(AmyAdapterTestAccess::service(adapter));
+    const auto* silent=adapter.render();
+    for(int i=0;i<AMY_BLOCK_SIZE*2;++i) assert(silent[i]==0);
+    adapter.routeNoteOff(key.identity); adapter.routeSustain(0,false); process(adapter,8);
+    assert(adapter.activeNoteReferences()==0);
+    patches.setNoteResetCallback(nullptr,nullptr);
+    puts("PASS: real PatchManager FIFO/generator/pedal barrier and canceled future AMY delta with full mailbox");
+}
+
 int main() {
     // The factory DX7 patch carries subtractive defaults (osc_mix 0.5, detune 0,
     // sub 0, noise 0). These must not reach the FM operators.
@@ -131,6 +170,7 @@ int main() {
     smk::AmyAdapter adapter;
     assert(adapter.begin(AMY_SAMPLE_RATE));
     test_pad_routes(adapter);
+    test_patch_note_barrier(adapter);
 
     // 1. Reference: the preset loaded directly through AmyAdapter.
     adapter.loadPreset(1, 128, p128->voice_count);
