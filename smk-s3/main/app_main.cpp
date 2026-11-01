@@ -34,6 +34,19 @@
 
 static const char* TAG = "Main";
 
+static smk::NoteIdentity noteIdentity(const smk::SynthEvent& event) {
+    smk::NoteSource source = smk::NoteSource::Internal;
+    switch (event.source) {
+        case smk::EventSource::UsbMidi: source = smk::NoteSource::Keyboard; break;
+        case smk::EventSource::Sequencer: source = smk::NoteSource::Sequencer; break;
+        case smk::EventSource::Arpeggiator: source = smk::NoteSource::Arpeggiator; break;
+        case smk::EventSource::Console: source = smk::NoteSource::ExternalMidi; break;
+        default: break;
+    }
+    const uint8_t instance = event.source == smk::EventSource::Ui ? 15 : event.source_instance;
+    return {source, instance, event.channel, static_cast<uint8_t>(event.id), event.note_token};
+}
+
 static void app_init_task(void* arg) {
     ESP_LOGI(TAG, "=========================================");
     ESP_LOGI(TAG, " Project: %s", smk::config::kProjectName);
@@ -366,6 +379,12 @@ static void app_init_task(void* arg) {
         }
         smk::SynthEvent event;
         if (event_bus->receive(event, 1)) {
+            if ((event.type == smk::EventType::NoteOn || event.type == smk::EventType::NoteOff) &&
+                (event.channel >= 16 || event.id >= 128 || event.value < 0 || event.value > 127)) {
+                smk::Diagnostics::instance().counters().midi_parse_errors.fetch_add(1, std::memory_order_relaxed);
+                continue;
+            }
+            if (event.type == smk::EventType::NoteOn && event.value == 0) event.type = smk::EventType::NoteOff;
             if (smk::expiredTrigger(event, static_cast<uint64_t>(esp_timer_get_time()))) {
                 smk::Diagnostics::instance().counters().musical_deadline_recoveries.fetch_add(1);
                 smk::Diagnostics::instance().counters().musical_triggers_late.fetch_add(1);
@@ -622,7 +641,10 @@ static void app_init_task(void* arg) {
                                 midi_learn->skipStep();
                                 if (ui_manager) ui_manager->midiLearnScreen().triggerFeedback("PASSO PULADO", smk::DisplayDriver::kColorAmber);
                             } else {
-                                step_sequencer->stop(); arpeggiator->reset(); request_musical_reset();
+                                step_sequencer->stop();
+                                arpeggiator->reset();
+                                clock_manager->stop();
+                                scene_manager->cancelPendingTransition();
                             }
                         }
                         continue;
@@ -649,16 +671,8 @@ static void app_init_task(void* arg) {
                         }
                         arpeggiator->noteOn((uint8_t)event.id, (uint8_t)event.value, event.channel);
                     } else {
-                        smk::NoteSource source = smk::NoteSource::Internal;
-                        switch (event.source) {
-                            case smk::EventSource::UsbMidi: source = smk::NoteSource::Keyboard; break;
-                            case smk::EventSource::Sequencer: source = smk::NoteSource::Sequencer; break;
-                            case smk::EventSource::Arpeggiator: source = smk::NoteSource::Arpeggiator; break;
-                            default: break;
-                        }
                         smk::NoteRoute route{};
-                        route.identity = {source, event.source_instance, event.channel,
-                                          static_cast<uint8_t>(event.id), event.note_token};
+                        route.identity = noteIdentity(event);
                         route.count = 1; route.velocity = static_cast<uint8_t>(event.value);
                         route.outputs[0] = {static_cast<uint8_t>(event.channel == 9 ? 10 : 1), static_cast<uint8_t>(event.id)};
                         amy_adapter->routeNoteOn(route, event.timestamp_us, event.deadline_us);
@@ -666,11 +680,7 @@ static void app_init_task(void* arg) {
                     break;
                 case smk::EventType::NoteOff: {
                     if (event.source == smk::EventSource::UsbMidi) arpeggiator->noteOff(static_cast<uint8_t>(event.id), event.channel);
-                    const auto source = event.source == smk::EventSource::UsbMidi ? smk::NoteSource::Keyboard :
-                        event.source == smk::EventSource::Arpeggiator ? smk::NoteSource::Arpeggiator :
-                        event.source == smk::EventSource::Sequencer ? smk::NoteSource::Sequencer : smk::NoteSource::Internal;
-                    amy_adapter->routeNoteOff({source, event.source_instance, event.channel,
-                                              static_cast<uint8_t>(event.id), event.note_token}, event.timestamp_us, event.deadline_us);
+                    amy_adapter->routeNoteOff(noteIdentity(event), event.timestamp_us, event.deadline_us);
                     break;
                 }
                 case smk::EventType::SourceStop:

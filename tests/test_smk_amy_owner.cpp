@@ -208,6 +208,18 @@ static void testBoundaries(AmyAdapter& adapter) {
     assert(diag.synth_panics == prior_panics + 1 && adapter.activeNoteReferences() == 0);
     assert(diag.synth_queue_high_water == config::kSynthCommandCapacity);
 
+    // Routed commands use the same release reserve and out-of-band recovery.
+    NoteRoute routed{}; routed.identity={NoteSource::Keyboard,0,0,60,0};
+    routed.count=1; routed.velocity=100; routed.outputs[0]={1,60};
+    adapter.routeNoteOn(routed); pump(adapter);
+    const auto routed_panics=diag.synth_panics.load();
+    for(int i=0;i<config::kSynthCommandCapacity-config::kSynthReleaseReserve;++i)
+        adapter.routeNoteOn(routed);
+    for(int i=0;i<config::kSynthReleaseReserve;++i) adapter.routeNoteOff(routed.identity);
+    adapter.stopNoteSource(NoteSource::Keyboard); // Reserved slots also exhausted.
+    assert(adapter.takeRecoveryRequest()); pump(adapter,8);
+    assert(diag.synth_panics==routed_panics+1 && adapter.activeNoteReferences()==0);
+
     // A stalled owner must not block PCM delivery. Panic arriving in the
     // middle of render invalidates the result even after it is published.
     adapter.noteOn(0, 60, 100);
@@ -236,9 +248,11 @@ static void testConcurrent(AmyAdapter& adapter) {
     std::atomic<int> producers{2};
     std::thread keyboard([&] {
         for (int i = 0; i < 200; ++i) {
-            adapter.noteOn(0, 60 + i % 12, 100);
+            NoteRoute r{}; r.identity={NoteSource::Keyboard,0,0,static_cast<uint8_t>(60+i%12),static_cast<uint64_t>(i+1)};
+            r.count=1; r.velocity=100; r.outputs[0]={1,r.identity.input_note};
+            adapter.routeNoteOn(r);
             adapter.pitchBend(0, i * 32);
-            adapter.noteOff(0, 60 + i % 12);
+            adapter.routeNoteOff(r.identity);
             std::this_thread::sleep_for(std::chrono::microseconds(100));
         }
         --producers;

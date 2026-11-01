@@ -54,6 +54,8 @@ void Arpeggiator::noteOn(uint8_t note, uint8_t velocity, uint8_t channel) {
         held_notes_.push_back({note, velocity, channel});
     } else if (it != held_notes_.end()) {
         it->velocity = velocity;
+    } else {
+        Diagnostics::instance().counters().note_identities_rejected.fetch_add(1, std::memory_order_relaxed);
     }
 
     if (latch_) {
@@ -90,6 +92,7 @@ void Arpeggiator::reset() {
 }
 
 void Arpeggiator::reset(EventBus& event_bus) {
+    if (event_bus_ == &event_bus) { reset(); return; }
     // Send NoteOff for any active sounding notes before resetting
     if (active_chord_count_ > 0) {
         for (size_t i = 0; i < active_chord_count_; ++i) {
@@ -297,7 +300,12 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus, MusicalT
                 on_ev.source = EventSource::Arpeggiator;
                 on_ev.channel = 0;
                 on_ev.id = hn.note;
-                on_ev.note_token = chord_tokens_[i] = ++next_note_token_;
+                on_ev.note_token = chord_tokens_[i] = allocateNoteToken(next_note_token_);
+                if (!on_ev.note_token) {
+                    active_chord_notes_[i] = -1;
+                    Diagnostics::instance().counters().note_identities_rejected.fetch_add(1, std::memory_order_relaxed);
+                    continue;
+                }
                 on_ev.value = hn.velocity;
                 on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());
                 on_ev.deadline_us = timing.deadline(std::max<uint32_t>(1, static_cast<uint32_t>(ticks_per_step * gate_percent_ / 100.0f)));
@@ -312,7 +320,11 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus, MusicalT
             on_ev.source = EventSource::Arpeggiator;
             on_ev.channel = 0;
             on_ev.id = current_hn.note;
-            on_ev.note_token = last_note_token_ = ++next_note_token_;
+            on_ev.note_token = last_note_token_ = allocateNoteToken(next_note_token_);
+            if (!on_ev.note_token) {
+                Diagnostics::instance().counters().note_identities_rejected.fetch_add(1, std::memory_order_relaxed);
+                return;
+            }
             on_ev.value = current_hn.velocity;
             on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());
             on_ev.deadline_us = timing.deadline(std::max<uint32_t>(1, static_cast<uint32_t>(ticks_per_step * gate_percent_ / 100.0f)));

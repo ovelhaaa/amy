@@ -57,7 +57,7 @@ private:
     size_t release_reserve_ = 0;
     size_t head_ = 0;
     size_t count_ = 0;
-    uint32_t source_generations_[6]{};
+    uint32_t source_generations_[static_cast<size_t>(EventSource::Count)]{};
     uint32_t generation_ = 0;
     uint32_t delivered_generation_ = 0;
     bool panic_pending_ = false;

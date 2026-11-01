@@ -45,7 +45,14 @@ enum class EventSource : uint8_t {
     Ui,
     Console,
     Internal,
+    Count,
 };
+
+// Tokens cross 32-bit rollover without aliasing. Exhaustion rejects future
+// generated onsets until reboot rather than falling back to physical token 0.
+inline uint64_t allocateNoteToken(uint64_t& counter) {
+    return counter == UINT64_MAX ? 0 : ++counter;
+}
 
 struct alignas(8) SynthEvent {
     SynthEvent() = default;

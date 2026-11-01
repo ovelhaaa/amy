@@ -32,6 +32,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Musical timing compilation failed' }
     & ./build/smk_safety/test_musical_timing.exe
     if ($LASTEXITCODE -ne 0) { throw 'Musical timing tests failed' }
+    & g++ -std=c++17 -O2 -pthread @includes -Ismk-s3/components/audio/include -Ismk-s3/components/sequencer/include tests/test_smk_note_routing.cpp smk-s3/components/sequencer/src/arpeggiator.cpp smk-s3/components/sequencer/src/step_sequencer.cpp smk-s3/components/midi/event_bus.cpp -o build/smk_safety/test_note_routing.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Note routing compilation failed' }
+    & ./build/smk_safety/test_note_routing.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Note routing tests failed' }
     & g++ -std=c++17 -O2 -Ismk-s3/components/audio/include tests/test_smk_amy_time_bridge.cpp -o build/smk_safety/test_amy_time_bridge.exe
     if ($LASTEXITCODE -ne 0) { throw 'AMY time bridge compilation failed' }
     & ./build/smk_safety/test_amy_time_bridge.exe

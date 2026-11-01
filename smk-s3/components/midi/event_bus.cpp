@@ -47,7 +47,7 @@ void EventBus::panicLocked(const SynthEvent& event) {
 }
 
 bool EventBus::enqueueLocked(const SynthEvent& event) {
-    if (static_cast<size_t>(event.source) >= 6) { countDropLocked(false); return false; }
+    if (static_cast<size_t>(event.source) >= static_cast<size_t>(EventSource::Count)) { countDropLocked(false); return false; }
     if (event.type == EventType::Panic) {
         panicLocked(event);
         return true;
@@ -142,7 +142,7 @@ void EventBus::invalidateMusical() {
 }
 
 void EventBus::cancelNotes(EventSource source) {
-    if (!ready() || static_cast<size_t>(source) >= 6) return;
+    if (!ready() || static_cast<size_t>(source) >= static_cast<size_t>(EventSource::Count)) return;
     SynthEvent stop{}; stop.type = EventType::SourceStop; stop.source = source;
     portENTER_CRITICAL(&mux_);
     ++source_generations_[static_cast<size_t>(source)];

@@ -324,6 +324,106 @@ static void run_render_average_reset(smk::AmyAdapter& adapter) {
     assert(smk::AmyAdapterTestAccess::average(adapter) > 1'000'000);
 }
 
+static smk::NoteRoute owned(smk::NoteSource source, uint64_t token = 0, uint8_t channel = 0, uint8_t note = 60) {
+    smk::NoteRoute r{}; r.identity={source,0,channel,note,token};
+    r.count=1; r.velocity=100; r.outputs[0]={1,note}; return r;
+}
+static void run_real_note_routing(smk::AmyAdapter& adapter) {
+    using namespace smk;
+    auto pump = [&] { render_signal(adapter,8); };
+    auto quiet = [&] { render_signal(adapter,1000); assert(!render_signal(adapter,16)); };
+    adapter.loadPreset(1,0,8); pump();
+    auto key=owned(NoteSource::Keyboard), arp=owned(NoteSource::Arpeggiator,1);
+    adapter.routeNoteOn(key); adapter.routeNoteOn(arp); pump();
+    assert(adapter.activeNoteReferences()==2);
+    adapter.routeNoteOff(arp.identity); adapter.routeNoteOff(arp.identity); pump();
+    assert(adapter.activeNoteReferences()==1 && render_signal(adapter,32));
+    adapter.routeNoteOn(arp); pump(); // Finalized token cannot resurrect.
+    assert(adapter.activeNoteReferences()==1);
+    adapter.routeNoteOff(key.identity); pump(); quiet();
+    // Same instrument/pitch reached through two different MIDI channels.
+    auto other=owned(NoteSource::Keyboard,0,1);
+    adapter.routeNoteOn(key); adapter.routeNoteOn(other); pump();
+    adapter.routeNoteOff(key.identity); pump(); assert(adapter.activeNoteReferences()==1);
+    assert(render_signal(adapter,32)); adapter.routeNoteOff(other.identity); pump(); quiet();
+    // Pedal before On, repeated physical key after Off, and independent source.
+    adapter.routeSustain(0,true); adapter.routeNoteOn(key); adapter.routeNoteOff(key.identity);
+    adapter.routeNoteOn(key); arp.identity.token=2; adapter.routeNoteOn(arp); pump();
+    assert(adapter.activeNoteReferences()==3);
+    adapter.routeNoteOff(key.identity); adapter.routeNoteOff(arp.identity); pump();
+    assert(adapter.activeNoteReferences()==3 && render_signal(adapter,32));
+    adapter.stopNoteSource(NoteSource::Arpeggiator); pump();
+    assert(adapter.activeNoteReferences()==2); // Stop bypasses pedal only for its source.
+    adapter.routeSustain(0,false); pump(); assert(adapter.activeNoteReferences()==0); quiet();
+    // Sustain channel isolation despite shared destination.
+    adapter.routeSustain(0,true); adapter.routeNoteOn(other); adapter.routeNoteOff(other.identity);
+    pump(); assert(adapter.activeNoteReferences()==0); quiet(); adapter.routeSustain(0,false); pump();
+    // One input's saved fan-out cannot release another source's shared pitch.
+    key.count=3; key.outputs[1]={1,64}; key.outputs[2]={1,67}; arp.identity.token=3;
+    adapter.routeNoteOn(key); adapter.routeNoteOn(arp); pump();
+    adapter.routeNoteOff(key.identity); pump(); assert(adapter.activeNoteReferences()==1);
+    assert(render_signal(adapter,32)); adapter.routeNoteOff(arp.identity); pump(); quiet();
+    key.count=1;
+    // Owner-mailbox fence cancels a pending On while leaving keyboard intact.
+    adapter.routeNoteOn(key); arp.identity.token=4; adapter.routeNoteOn(arp);
+    adapter.stopNoteSource(NoteSource::Arpeggiator); pump(); assert(adapter.activeNoteReferences()==1);
+    adapter.routeNoteOff(key.identity); pump(); quiet();
+    // Patch and Panic invalidate held + pedal-retained identities and future deltas.
+    adapter.routeSustain(0,true); adapter.routeNoteOn(key); adapter.routeNoteOff(key.identity); pump();
+    adapter.loadPreset(1,0,8); pump(); assert(adapter.activeNoteReferences()==0);
+    adapter.routeNoteOff(key.identity); adapter.routeSustain(0,false); pump(); quiet();
+    adapter.routeSustain(0,true); adapter.routeNoteOn(key); pump(); adapter.panic(); pump();
+    assert(adapter.activeNoteReferences()==0); quiet();
+    // Real mono: last-note priority, legato without resetting note_on_clock, restore previous key.
+    adapter.loadPreset(1,0,1); adapter.setPortamento(1,60); pump();
+    adapter.routeNoteOn(key); pump();
+    uint16_t voices[MAX_VOICES_PER_INSTRUMENT]; assert(instrument_get_num_voices(1,voices)==1);
+    const auto base=voice_to_base_osc[voices[0]];
+    const auto attack=synth[base]->note_on_clock;
+    other=owned(NoteSource::Keyboard,0,0,64); adapter.routeNoteOn(other); pump();
+    assert(synth[base]->midi_note==64 && synth[base]->note_on_clock==attack);
+    adapter.routeNoteOff(other.identity); pump(); assert(synth[base]->midi_note==60);
+    assert(synth[base]->note_on_clock==attack);
+    adapter.routeSustain(0,true); adapter.routeNoteOff(key.identity); pump();
+    assert(adapter.activeNoteReferences()==1 && render_signal(adapter,32));
+    adapter.routeSustain(0,false); pump(); quiet();
+    // Real stealing: more distinct onsets than allocated voices, then matching releases.
+    adapter.loadPreset(1,0,8); pump();
+    for(uint8_t i=0;i<12;++i) { auto r=owned(NoteSource::Internal,i+1,0,48+i); adapter.routeNoteOn(r); pump(); }
+    assert(adapter.activeNoteReferences()==12);
+    for(uint8_t i=0;i<12;++i) { auto r=owned(NoteSource::Internal,i+1,0,48+i); adapter.routeNoteOff(r.identity); pump(); }
+    assert(adapter.activeNoteReferences()==0); quiet();
+    // Missing Off cannot release a reused source slot; replay after Panic remains stale.
+    auto old=owned(NoteSource::Sequencer,UINT32_MAX); adapter.routeNoteOn(old); pump();
+    adapter.routeNoteOff(old.identity); pump(); ++old.identity.token; adapter.routeNoteOn(old); pump();
+    auto stale=old.identity; --stale.token; adapter.routeNoteOff(stale); pump();
+    assert(adapter.activeNoteReferences()==1);
+    adapter.panic(); pump(); adapter.routeNoteOn(old); pump(); assert(adapter.activeNoteReferences()==0); quiet();
+    // Worst-case fan-out reference count exceeds uint8_t; capacity reject cannot
+    // create an Off capable of consuming another accepted input.
+    const auto rejected=Diagnostics::instance().counters().note_identities_rejected.load();
+    for(uint8_t i=0;i<config::kNoteIdentityCapacity;++i) {
+        auto r=owned(NoteSource::Pad,0,0,i); r.count=config::kNoteFanOut;
+        for(auto& output:r.outputs) output={1,60};
+        adapter.routeNoteOn(r); pump();
+    }
+    assert(adapter.activeNoteReferences()==256);
+    auto excess=owned(NoteSource::Pad,0,0,100); adapter.routeNoteOn(excess); pump();
+    assert(Diagnostics::instance().counters().note_identities_rejected==rejected+1);
+    adapter.routeNoteOff(excess.identity); pump(); assert(adapter.activeNoteReferences()==256);
+    for(uint8_t i=0;i<config::kNoteIdentityCapacity;++i) {
+        adapter.routeNoteOff(owned(NoteSource::Pad,0,0,i).identity); pump();
+    }
+    assert(adapter.activeNoteReferences()==0); quiet();
+    key=owned(NoteSource::Keyboard); adapter.routeNoteOn(key); pump();
+    key.velocity=0; adapter.routeNoteOn(key); pump(); assert(adapter.activeNoteReferences()==0);
+    const auto recoveries=Diagnostics::instance().counters().musical_deadline_recoveries.load();
+    auto expired=owned(NoteSource::Internal,1000); adapter.routeNoteOn(expired,1,1); pump();
+    assert(adapter.activeNoteReferences()==0 && adapter.takeRecoveryRequest());
+    assert(Diagnostics::instance().counters().musical_deadline_recoveries==recoveries+1);
+    puts("PASS: real AMY routed sources/channels/fan-out, pedal, selective Stop, patch/Panic, mono/legato and stealing");
+}
+
 int main(int argc, char** argv) {
     if (argc == 2 && std::strcmp(argv[1], "--legacy") == 0) {
         amy_config_t config = amy_default_config();
@@ -477,5 +577,6 @@ int main(int argc, char** argv) {
     run_real_amy_fm_patch_switch(adapter);
     run_render_average_reset(adapter);
     run_headroom_telemetry(adapter);
+    run_real_note_routing(adapter);
     std::puts("PASS: boot, complete voice allocation, 256 patch changes, MIDI CC, note release, drums, Panic, FM, EWMA reset and headroom telemetry");
 }

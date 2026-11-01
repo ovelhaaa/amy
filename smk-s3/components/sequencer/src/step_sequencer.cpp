@@ -347,6 +347,7 @@ void StepSequencer::stop() {
 }
 
 void StepSequencer::stop(EventBus& event_bus) {
+    if (event_bus_ == &event_bus) { stop(); return; }
     for (size_t t = 0; t < kMaxTracks; ++t) {
         if (track_playback_[t].last_played_note >= 0) {
             SynthEvent off_ev;
@@ -503,7 +504,11 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
                 on_ev.channel = track_channels_[t];
                 pb.output_channel = on_ev.channel;
                 on_ev.source_instance = static_cast<uint8_t>(t);
-                on_ev.note_token = pb.note_token = ++next_note_token_;
+                on_ev.note_token = pb.note_token = allocateNoteToken(next_note_token_);
+                if (!on_ev.note_token) {
+                    Diagnostics::instance().counters().note_identities_rejected.fetch_add(1, std::memory_order_relaxed);
+                    continue;
+                }
                 on_ev.id = pb.note;
                 on_ev.value = pb.velocity;
                 on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());
@@ -561,7 +566,11 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
                     on_ev.channel = track_channels_[t];
                     pb.output_channel = on_ev.channel;
                     on_ev.source_instance = static_cast<uint8_t>(t);
-                    on_ev.note_token = pb.note_token = ++next_note_token_;
+                    on_ev.note_token = pb.note_token = allocateNoteToken(next_note_token_);
+                    if (!on_ev.note_token) {
+                        Diagnostics::instance().counters().note_identities_rejected.fetch_add(1, std::memory_order_relaxed);
+                        continue;
+                    }
                     on_ev.id = pb.note;
                     on_ev.value = pb.velocity;
                     on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());

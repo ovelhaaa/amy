@@ -272,7 +272,12 @@ void AmyAdapter::submit(uint8_t type, uint8_t channel, uint16_t id,
 }
 
 void AmyAdapter::routeNoteOn(const NoteRoute& route, uint64_t source_us, uint64_t deadline_us) {
-    if (!state_ || !NoteOwnership::valid(route.identity)) return;
+    if (!state_) return;
+    if (!NoteOwnership::valid(route.identity)) {
+        Diagnostics::instance().counters().note_identities_rejected.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    if (!route.velocity) { routeNoteOff(route.identity, source_us, deadline_us); return; }
     Command c{}; c.type = RoutedOn; c.data.route = route;
     c.source_timestamp_us = source_us; c.deadline_us = deadline_us;
     state_->enqueue(c);
