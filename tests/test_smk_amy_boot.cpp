@@ -14,6 +14,8 @@ namespace smk {
 Diagnostics& Diagnostics::instance() { static Diagnostics instance; return instance; }
 DiagnosticCounters& Diagnostics::counters() { return counters_; }
 struct AmyAdapterTestAccess {
+    static void captureFm(AmyAdapter& adapter, uint8_t synth_id) { adapter.captureFmBaseState(synth_id); }
+    static size_t fmStateBytes() { return sizeof(AmyAdapter::FmInstrumentState); }
     static bool service(AmyAdapter& adapter) { return adapter.serviceBlock(); }
     static uint64_t average(AmyAdapter& adapter) { return adapter.renderAverageUsForTest(); }
     static void setAverage(AmyAdapter& adapter, uint64_t average_us) {
@@ -457,6 +459,106 @@ static void run_real_note_routing(smk::AmyAdapter& adapter) {
     puts("PASS: real AMY routed sources/channels/fan-out, pedal, selective Stop, patch/Panic, mono/legato and stealing");
 }
 
+// Owner-context integration probe, not a production B enable path. Allocate
+// through the real engine, then exercise copied FM commands on both instruments.
+static uint16_t instrument_base(uint8_t id) {
+    uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
+    assert(instrument_get_num_voices(id, voices) > 0);
+    return voice_to_base_osc[voices[0]];
+}
+static void engine_preset(uint8_t id, uint16_t patch, uint8_t voices) {
+    amy_event e = amy_default_event();
+    e.synth = id; e.patch_number = patch; e.num_voices = voices; e.bus = 0;
+    amy_add_event(&e);
+    amy_execute_deltas();
+}
+static void run_dual_fm_isolation(smk::AmyAdapter& adapter) {
+    adapter.panic(); fm_service_render(adapter);
+    engine_preset(1, 128, 4);
+    engine_preset(2, 135, 4);
+    assert(allocated_oscs(1, true) == 32);
+    assert(allocated_oscs(2, true) == 32);
+    assert(allocated_oscs(10, true) == 32);
+    smk::AmyAdapterTestAccess::captureFm(adapter, 1);
+    smk::AmyAdapterTestAccess::captureFm(adapter, 2);
+    uint8_t algo_a, algo_b; float feedback_a, feedback_b;
+    assert(adapter.fmBaseline(algo_a, feedback_a));
+    assert(adapter.fmBaseline(2, algo_b, feedback_b));
+    assert(!adapter.fmBaseline(10, algo_b, feedback_b));
+    for (uint8_t target : {uint8_t{1}, uint8_t{2}}) {
+        const uint8_t other = target == 1 ? 2 : 1;
+        const uint16_t base = instrument_base(target), other_base = instrument_base(other);
+        const uint8_t algo = synth[base]->algorithm;
+        float levels[MAX_ALGO_OPS], ratios[MAX_ALGO_OPS], freqs[MAX_ALGO_OPS];
+        float other_levels[MAX_ALGO_OPS], other_ratios[MAX_ALGO_OPS], other_freqs[MAX_ALGO_OPS];
+        for (int op = 0; op < MAX_ALGO_OPS; ++op) {
+            const int o = synth[base]->algo_source[op], b = synth[other_base]->algo_source[op];
+            assert(AMY_IS_SET(o) && AMY_IS_SET(b));
+            levels[op] = synth[o]->amp_coefs[COEF_CONST];
+            ratios[op] = synth[o]->logratio; freqs[op] = synth[o]->logfreq_coefs[COEF_CONST];
+            other_levels[op] = synth[b]->amp_coefs[COEF_CONST];
+            other_ratios[op] = synth[b]->logratio; other_freqs[op] = synth[b]->logfreq_coefs[COEF_CONST];
+        }
+        adapter.setFmModIndex(target, 2.0f);
+        adapter.setFmRatio(target, 2.0f);
+        adapter.setOscDetune(target, 12.0f);
+        fm_service_render(adapter);
+        for (int op = 0; op < MAX_ALGO_OPS; ++op) {
+            const int o = synth[base]->algo_source[op], b = synth[other_base]->algo_source[op];
+            const bool mod = fm_mod_for_algo(algo, op);
+            assert(std::fabs(synth[o]->amp_coefs[COEF_CONST] - (mod ? levels[op] * 2 : levels[op])) < 1e-5f);
+            assert(std::fabs(synth[o]->logratio - (ratios[op] + (mod ? 1.0f : 0.0f))) < 1e-5f);
+            assert(std::fabs(synth[o]->logfreq_coefs[COEF_CONST] - (freqs[op] + (mod ? 0.01f : 0.0f))) < 1e-5f);
+            assert(synth[b]->amp_coefs[COEF_CONST] == other_levels[op]);
+            assert(synth[b]->logratio == other_ratios[op]);
+            assert(synth[b]->logfreq_coefs[COEF_CONST] == other_freqs[op]);
+        }
+        adapter.setFmModIndex(target, 1.0f); adapter.setFmRatio(target, 1.0f);
+        adapter.setOscDetune(target, 0.0f); fm_service_render(adapter);
+    }
+    // Real PCM and per-instrument gain. No application velocity scaling.
+    adapter.setChorus(0, 0, 0); adapter.setReverb(0, 0, 0); adapter.setDelay(10, 0, 0);
+    fm_service_render(adapter);
+    for (uint8_t id : {uint8_t{1}, uint8_t{2}}) {
+        amy_event e = amy_default_event(); e.synth = id;
+        e.synth_level = 0; e.midi_note = id == 1 ? 60 : 67; e.velocity = 0.8f;
+        amy_add_event(&e);
+    }
+    amy_execute_deltas();
+    const float velocity_a = synth[instrument_base(1)]->velocity;
+    const float velocity_b = synth[instrument_base(2)]->velocity;
+    assert(!render_signal(adapter, 16));
+    instrument_set_level(1, 0.5f);
+    assert(render_signal(adapter, 16)); // A alone.
+    instrument_set_level(1, 0); instrument_set_level(2, 0.5f);
+    assert(render_signal(adapter, 16)); // B alone.
+    instrument_set_level(1, 0.5f);
+    assert(render_signal(adapter, 16)); // Both, same AMY render/mix.
+    assert(synth[instrument_base(1)]->velocity == velocity_a);
+    assert(synth[instrument_base(2)]->velocity == velocity_b);
+    instrument_set_level(1, 0); instrument_set_level(2, 0);
+    assert(!render_signal(adapter, 16));
+    adapter.noteOn(9, 36, 100); // Dry drums remain audible with both melodic gains zero.
+    assert(render_signal(adapter, 16));
+    adapter.panic(); fm_service_render(adapter);
+    // Recapturing a non-FM B must not discard the still-valid A baseline.
+    engine_preset(2, 0, 4);
+    smk::AmyAdapterTestAccess::captureFm(adapter, 2);
+    adapter.invalidateFmBaseline(2);
+    assert(adapter.fmBaseline(algo_a, feedback_a));
+    assert(!adapter.fmBaseline(2, algo_b, feedback_b));
+    smk::AmyAdapterTestAccess::captureFm(adapter, 10);
+    assert(adapter.fmBaseline(algo_a, feedback_a));
+    // Remove the test-only instrument so all following legacy regressions
+    // still run with the default resource budget and B absent.
+    amy_event remove = amy_default_event(); remove.synth = 2; remove.num_voices = 0;
+    amy_add_event(&remove); amy_execute_deltas();
+    assert(!instrument_number_exists(2, nullptr));
+    adapter.loadPreset(1, 0, 8); fm_service_render(adapter);
+    std::printf("PASS: real AMY A4/B4/drums complete; independent FM index/ratio/detune and baseline invalidation; PCM/gain without velocity scaling; FM metadata=%zu bytes per instrument, adapter=%zu bytes\n",
+                smk::AmyAdapterTestAccess::fmStateBytes(), sizeof(smk::AmyAdapter));
+}
+
 int main(int argc, char** argv) {
     if (argc == 2 && std::strcmp(argv[1], "--legacy") == 0) {
         amy_config_t config = amy_default_config();
@@ -484,6 +586,31 @@ int main(int argc, char** argv) {
         assert(required == 117);
         assert(assigned == 111);
         amy_stop();
+        return 0;
+    }
+
+    if (argc == 2 && std::strcmp(argv[1], "--dual-allocation-failure") == 0) {
+        smk::AmyAdapter adapter; assert(adapter.begin(AMY_SAMPLE_RATE));
+        engine_preset(1, 128, 4);
+        engine_preset(2, 135, 8); // 32 + 64 + drums 32 > pool 120.
+        assert(instrument_get_num_voices(2, nullptr) == 8);
+        const int partial = allocated_oscs(2, false);
+        assert(partial < 64);
+        int free_oscs = 0, largest_free = 0, run = 0;
+        for (int osc = 0; osc < AMY_OSCS; ++osc) {
+            if (AMY_IS_UNSET(osc_to_voice[osc])) {
+                ++free_oscs; largest_free = std::max(largest_free, ++run);
+            } else run = 0;
+        }
+        assert(free_oscs >= 8 && largest_free < 8); // Fragmentation, not just sum.
+        assert(allocated_oscs(1, true) == 32 && allocated_oscs(10, true) == 32);
+        // Test-only explicit teardown/rebuild, not an atomic rollback API.
+        amy_event remove = amy_default_event(); remove.synth = 2; remove.num_voices = 0;
+        amy_add_event(&remove); amy_execute_deltas();
+        engine_preset(2, 135, 4);
+        assert(allocated_oscs(2, true) == 32 && allocated_oscs(1, true) == 32);
+        assert(allocated_oscs(10, true) == 32);
+        std::printf("PASS: negative allocation probe: B reports 8 voices but owns %d/64 oscs; free=%d largest=%d; explicit recovery to 4 complete voices\n", partial, free_oscs, largest_free);
         return 0;
     }
 
@@ -617,6 +744,7 @@ int main(int argc, char** argv) {
     run_real_amy_fm_relative(adapter);
     run_real_amy_fm_algorithm_change(adapter);
     run_real_amy_fm_patch_switch(adapter);
+    run_dual_fm_isolation(adapter);
     run_render_average_reset(adapter);
     run_headroom_telemetry(adapter);
     run_real_note_routing(adapter);

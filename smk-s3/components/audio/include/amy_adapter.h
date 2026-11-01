@@ -91,9 +91,11 @@ public:
     // that the currently loaded patch actually produces. Reading is lock-free;
     // only the synthesis owner updates it.
     bool fmBaseline(uint8_t& algorithm, float& feedback) const;
+    bool fmBaseline(uint8_t synth_id, uint8_t& algorithm, float& feedback) const;
     // Called when a new patch is requested so the previous patch's baseline is
     // never observed while the new preset is still being materialized.
     void invalidateFmBaseline();
+    void invalidateFmBaseline(uint8_t synth_id);
 
     // Monophonic Legato
     void setMonoMode(bool enable);
@@ -170,12 +172,22 @@ private:
     };
     static constexpr size_t kMaxVoicesSnapshot = 32;
     static constexpr size_t kMaxOpsSnapshot = 6;
-    FmOpSnapshot fm_base_ops_[kMaxVoicesSnapshot][kMaxOpsSnapshot]{};
-    FmOpSnapshot fm_base_mod_source_[kMaxVoicesSnapshot]{};
-    bool fm_snapshot_valid_{false};
-    std::atomic<uint8_t> fm_baseline_algorithm_{1};
-    std::atomic<float>   fm_baseline_feedback_{0.0f};
-    std::atomic<bool>    fm_baseline_valid_{false};
+    // Fixed owner-only state. No allocations when a preset is materialized.
+    // IDs 0/1 alias A; ID 2 is B. Drums never borrow a melodic baseline.
+    struct FmInstrumentState {
+        bool snapshot_valid = false;
+        std::atomic<uint8_t> algorithm{1};
+        std::atomic<float> feedback{0.0f};
+        std::atomic<bool> baseline_valid{false};
+    };
+    FmInstrumentState fm_states_[2]{};
+    // AMY oscillator ownership is exclusive. Index baselines by physical osc,
+    // not a voice ordinal reused by both instruments. One shared fixed pool
+    // supports A/B without reserving a second 32-voice snapshot table.
+    FmOpSnapshot fm_base_oscs_[config::kMaxOscillators]{};
+    static int fmStateIndex(uint8_t synth_id) {
+        return synth_id <= 1 ? 0 : (synth_id == 2 ? 1 : -1);
+    }
     void captureFmBaseState(uint8_t synth_id);
 };
 

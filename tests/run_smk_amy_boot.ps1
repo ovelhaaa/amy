@@ -32,6 +32,18 @@ try {
     if ($result -ne 0) { throw "Adapter test failed: $result" }
     if (!$Legacy -and $errors) { throw 'Unexpected AMY diagnostics during regression test' }
     if (!$Legacy) {
+        # Deliberately exhaust the real oscillator pool in a separate process.
+        # Only the allocator diagnostic is expected; never render partial voices.
+        $failureLog = Join-Path $build 'dual_allocation_failure.log'
+        & $exe --dual-allocation-failure 2> $failureLog
+        if ($LASTEXITCODE -ne 0) { throw 'Dual allocation negative probe failed' }
+        $expected = @(Get-Content $failureLog)
+        if (!$expected.Count) { throw 'Negative probe did not exercise allocation failure' }
+        foreach ($line in $expected) {
+            if ($line -notmatch '^cannot find 8 oscs for patch 135 for voice [0-9]+\. not setting this voice$') {
+                throw "Unexpected diagnostic in negative probe: $line"
+            }
+        }
         $ownerExe = Join-Path $build 'test_smk_amy_owner.exe'
         $wraps = @('-Wl,--wrap=amy_add_event', '-Wl,--wrap=amy_render', '-Wl,--wrap=amy_play_message',
                    '-Wl,--wrap=amy_execute_deltas', '-Wl,--wrap=amy_deltas_reset', '-Wl,--wrap=amy_stop')

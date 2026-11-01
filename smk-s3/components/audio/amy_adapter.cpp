@@ -532,21 +532,33 @@ void AmyAdapter::executePreset(uint8_t synth_id, uint16_t preset_id, uint8_t num
 }
 
 bool AmyAdapter::fmBaseline(uint8_t& algorithm, float& feedback) const {
-    if (!fm_baseline_valid_.load(std::memory_order_acquire)) return false;
-    algorithm = fm_baseline_algorithm_.load(std::memory_order_relaxed);
-    feedback = fm_baseline_feedback_.load(std::memory_order_relaxed);
+    return fmBaseline(1, algorithm, feedback);
+}
+
+bool AmyAdapter::fmBaseline(uint8_t synth_id, uint8_t& algorithm, float& feedback) const {
+    const int index = fmStateIndex(synth_id);
+    if (index < 0) return false;
+    const auto& state = fm_states_[index];
+    if (!state.baseline_valid.load(std::memory_order_acquire)) return false;
+    algorithm = state.algorithm.load(std::memory_order_relaxed);
+    feedback = state.feedback.load(std::memory_order_relaxed);
     return true;
 }
 
-void AmyAdapter::invalidateFmBaseline() {
-    fm_baseline_valid_.store(false, std::memory_order_release);
+void AmyAdapter::invalidateFmBaseline() { invalidateFmBaseline(1); }
+
+void AmyAdapter::invalidateFmBaseline(uint8_t synth_id) {
+    const int index = fmStateIndex(synth_id);
+    if (index >= 0) fm_states_[index].baseline_valid.store(false, std::memory_order_release);
 }
 
 void AmyAdapter::captureFmBaseState(uint8_t synth_id) {
+    const int index = fmStateIndex(synth_id);
+    if (index < 0) return;
+    auto& state = fm_states_[index];
     uint8_t target = (synth_id == 0) ? 1 : synth_id;
-    fm_snapshot_valid_ = false;
-    fm_baseline_valid_.store(false, std::memory_order_relaxed);
-    if (target != 1) return;
+    state.snapshot_valid = false;
+    state.baseline_valid.store(false, std::memory_order_relaxed);
     uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
     int num_v = instrument_get_num_voices(target, voices);
     if (num_v <= 0) return;
@@ -566,10 +578,9 @@ void AmyAdapter::captureFmBaseState(uint8_t synth_id) {
                 baseline_feedback = synth[base]->feedback;
             }
             for (uint8_t op = 0; op < MAX_ALGO_OPS && op < (int)kMaxOpsSnapshot; ++op) {
-                auto& snap = fm_base_ops_[v][op];
-                snap.valid = false;
                 int16_t op_osc = synth[base]->algo_source[op];
-                if (AMY_IS_SET(op_osc)) {
+                if (AMY_IS_SET(op_osc) && op_osc >= 0 && op_osc < config::kMaxOscillators) {
+                    auto& snap = fm_base_oscs_[op_osc];
                     snap.base_level = synth[op_osc]->amp_coefs[COEF_CONST];
                     snap.base_logratio = synth[op_osc]->logratio;
                     snap.base_logfreq = synth[op_osc]->logfreq_coefs[COEF_CONST];
@@ -579,7 +590,8 @@ void AmyAdapter::captureFmBaseState(uint8_t synth_id) {
             found_fm = true;
         } else if (AMY_IS_SET(synth[base]->mod_source)) {
             uint16_t mod_osc = synth[base]->mod_source;
-            auto& snap = fm_base_mod_source_[v];
+            if (mod_osc >= config::kMaxOscillators) continue;
+            auto& snap = fm_base_oscs_[mod_osc];
             snap.valid = true;
             snap.base_level = synth[mod_osc]->amp_coefs[COEF_CONST];
             snap.base_logratio = synth[mod_osc]->logratio;
@@ -588,11 +600,11 @@ void AmyAdapter::captureFmBaseState(uint8_t synth_id) {
         }
     }
 
-    fm_snapshot_valid_ = found_fm;
+    state.snapshot_valid = found_fm;
     if (found_fm) {
-        fm_baseline_algorithm_.store(baseline_algo, std::memory_order_relaxed);
-        fm_baseline_feedback_.store(baseline_feedback, std::memory_order_relaxed);
-        fm_baseline_valid_.store(true, std::memory_order_release);
+        state.algorithm.store(baseline_algo, std::memory_order_relaxed);
+        state.feedback.store(baseline_feedback, std::memory_order_relaxed);
+        state.baseline_valid.store(true, std::memory_order_release);
     }
 }
 
@@ -601,8 +613,11 @@ void AmyAdapter::executeMessage(const char* message) {
 }
 
 void AmyAdapter::executeFmModIndex(uint8_t synth_id, float factor) {
+    const int index = fmStateIndex(synth_id);
+    if (index < 0) return;
+    auto& state = fm_states_[index];
     uint8_t target = (synth_id == 0) ? 1 : synth_id;
-    if (!fm_snapshot_valid_) {
+    if (!state.snapshot_valid) {
         // No materialized FM baseline: never fall back to absolute operator
         // levels, which would destroy the patch's level relationships.
         Diagnostics::instance().counters().fm_controls_ignored.fetch_add(1, std::memory_order_relaxed);
@@ -617,16 +632,17 @@ void AmyAdapter::executeFmModIndex(uint8_t synth_id, float factor) {
         if (!AMY_IS_SET(base)) continue;
         if (synth[base]->wave == ALGO) {
             for (uint8_t op = 0; op < MAX_ALGO_OPS && op < (int)kMaxOpsSnapshot; ++op) {
-                const auto& snap = fm_base_ops_[v][op];
+                int16_t op_osc = synth[base]->algo_source[op];
+                if (!AMY_IS_SET(op_osc) || op_osc < 0 || op_osc >= config::kMaxOscillators) continue;
+                const auto& snap = fm_base_oscs_[op_osc];
                 if (snap.valid && fmOpIsModulator(base, op)) {
-                    int16_t op_osc = synth[base]->algo_source[op];
-                    if (AMY_IS_SET(op_osc)) {
-                        synth[op_osc]->amp_coefs[COEF_CONST] = std::clamp(snap.base_level * factor, 0.0f, 16.0f);
-                    }
+                    synth[op_osc]->amp_coefs[COEF_CONST] = std::clamp(snap.base_level * factor, 0.0f, 16.0f);
                 }
             }
         } else if (AMY_IS_SET(synth[base]->mod_source)) {
-            const auto& snap = fm_base_mod_source_[v];
+            const auto mod_osc = synth[base]->mod_source;
+            if (mod_osc >= config::kMaxOscillators) continue;
+            const auto& snap = fm_base_oscs_[mod_osc];
             if (snap.valid) {
                 synth[synth[base]->mod_source]->amp_coefs[COEF_CONST] = std::clamp(snap.base_level * factor, 0.0f, 16.0f);
             }
@@ -648,8 +664,11 @@ void AmyAdapter::executeFmFeedback(uint8_t synth_id, float feedback) {
 
 void AmyAdapter::executeFmRatio(uint8_t synth_id, float ratio_factor) {
     if (ratio_factor <= 0.001f) ratio_factor = 0.001f;
+    const int index = fmStateIndex(synth_id);
+    if (index < 0) return;
+    auto& state = fm_states_[index];
     uint8_t target = (synth_id == 0) ? 1 : synth_id;
-    if (!fm_snapshot_valid_) {
+    if (!state.snapshot_valid) {
         Diagnostics::instance().counters().fm_controls_ignored.fetch_add(1, std::memory_order_relaxed);
         return;
     }
@@ -662,16 +681,17 @@ void AmyAdapter::executeFmRatio(uint8_t synth_id, float ratio_factor) {
         if (!AMY_IS_SET(base)) continue;
         if (synth[base]->wave == ALGO) {
             for (uint8_t op = 0; op < MAX_ALGO_OPS && op < (int)kMaxOpsSnapshot; ++op) {
-                const auto& snap = fm_base_ops_[v][op];
+                int16_t op_osc = synth[base]->algo_source[op];
+                if (!AMY_IS_SET(op_osc) || op_osc < 0 || op_osc >= config::kMaxOscillators) continue;
+                const auto& snap = fm_base_oscs_[op_osc];
                 if (snap.valid && fmOpIsModulator(base, op)) {
-                    int16_t op_osc = synth[base]->algo_source[op];
-                    if (AMY_IS_SET(op_osc)) {
-                        synth[op_osc]->logratio = snap.base_logratio + log_mult;
-                    }
+                    synth[op_osc]->logratio = snap.base_logratio + log_mult;
                 }
             }
         } else if (AMY_IS_SET(synth[base]->mod_source)) {
-            const auto& snap = fm_base_mod_source_[v];
+            const auto mod_osc = synth[base]->mod_source;
+            if (mod_osc >= config::kMaxOscillators) continue;
+            const auto& snap = fm_base_oscs_[mod_osc];
             if (snap.valid) {
                 synth[synth[base]->mod_source]->logratio = snap.base_logratio + log_mult;
             }
@@ -777,6 +797,9 @@ void AmyAdapter::executeMasterTone(float tone) {
 }
 
 void AmyAdapter::executeOscDetune(uint8_t synth_id, float cents) {
+    const int index = fmStateIndex(synth_id);
+    if (index < 0) return;
+    auto& state = fm_states_[index];
     uint8_t target = (synth_id == 0) ? 1 : synth_id;
     uint16_t voices[MAX_VOICES_PER_INSTRUMENT];
     int num_v = instrument_get_num_voices(target, voices);
@@ -787,16 +810,16 @@ void AmyAdapter::executeOscDetune(uint8_t synth_id, float cents) {
         if (synth[base]->wave == ALGO) {
             // Detune is relative to each operator's captured baseline frequency
             // and only touches modulators under the current algorithm.
-            if (!fm_snapshot_valid_ || v >= (int)kMaxVoicesSnapshot) {
+            if (!state.snapshot_valid || v >= (int)kMaxVoicesSnapshot) {
                 Diagnostics::instance().counters().fm_controls_ignored.fetch_add(1, std::memory_order_relaxed);
                 continue;
             }
             for (uint8_t op = 0; op < MAX_ALGO_OPS && op < (int)kMaxOpsSnapshot; ++op) {
                 if (!fmOpIsModulator(base, op)) continue;
-                const auto& snap = fm_base_ops_[v][op];
-                if (!snap.valid) continue;
                 int16_t op_osc = synth[base]->algo_source[op];
-                if (AMY_IS_SET(op_osc)) {
+                if (!AMY_IS_SET(op_osc) || op_osc < 0 || op_osc >= config::kMaxOscillators) continue;
+                const auto& snap = fm_base_oscs_[op_osc];
+                if (snap.valid) {
                     synth[op_osc]->logfreq_coefs[COEF_CONST] = snap.base_logfreq + detune_offset;
                 }
             }
