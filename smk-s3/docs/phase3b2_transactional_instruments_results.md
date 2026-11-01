@@ -195,7 +195,20 @@ Não simula topologia/fragmentação física da SRAM do S3.
 
 ### Regressões e limitações da execução
 
-Resultados finais de boot/owner, recurso 128 e build serão registrados abaixo.
+**PASS**: seis suítes finais (safety, boot/owner, performance, patch integrity,
+expansion e UI), recursos reais em 128 e 256, e `git diff --check`.
+Logs `build/phase3b2_final_{safety,amy,performance,patch,expansion,ui}.log`
+e `build/phase3b2_resources_128.log`. Após acrescentar a comparação dos níveis
+por voz ao snapshot, ambos os harnesses de recursos foram relinkados com os
+mesmos flags/objetos dos respectivos runners e executados novamente: **PASS**.
+O teste compara tanto o nível do instrumento quanto o lookup usado no render.
+
+**PASS de compatibilidade**, `./tests/run_smk_amy_boot.ps1 -Legacy`: sem o define,
+o demo upstream continua com 117 oscs declarados e 111 atribuídos, incluindo
+Synth 1 com 30/36; o diagnóstico antigo permanece. Isso confirma a preservação
+da semântica, **não** aprova esse arranjo. Log
+`build/phase3b2_upstream_compatibility.log`. Plataformas físicas AMY diferentes
+de S3, CI remota, P4 e TSan: **NOT RUN**.
 Safety inclui clock/timing/ownership; expansion inclui persistência/StorageWorker;
 patch integrity cobre FM/patches reais, e UI mantém os perfis existentes.
 
@@ -244,6 +257,45 @@ Não ativar troca dual em performance com base nos resultados host.
 Nenhuma revisão DevKitC, VBUS, pinagem, controlador de display, strap PCM5102A
 ou estágio de saída foi inferido. Hardware, USB, áudio analógico e soak: **MANUAL**.
 
+### Builds locais finais
+
+| Status | ESP32-S3 / frames | RAM estática | Flash | Duração |
+| --- | --- | ---: | ---: | ---: |
+| PASS | esp32-s3-devkitc-1 /256 | 30.116 /327.680 | 1.141.255 /16.777.216 | 60,377 s |
+| PASS | esp32-s3-devkitc-1-128 /128 | 30.116 /327.680 | 1.141.275 /16.777.216 | 48,407 s |
+
+PlatformIO, IDF 5.5.2, plataforma pioarduino 55.03.36-1, Xtensa GCC 14.2.0,
+48 kHz; log `build/phase3b2_firmware_final.log`, processo exit 0. Comparação
+com valores **registrados** na 3B.1 (não um rebuild limpo do HEAD inicial):
+RAM estática igual e Flash +540 bytes por ambiente. Não confundir tamanho de
+imagem com heap livre. Sem flash/upload, sem CI remota, sem benchmark de CPU.
+
+### Procedimento físico pendente — MANUAL
+
+1. Confirmar o wiring já documentado, revisão da placa, alimentação/VBUS seguro
+   e straps do PCM5102A. Usar USB-UART no console e USB nativa em Host. Gravar
+   separadamente cada build com o procedimento existente do projeto.
+2. Executar `audio_reset`, `status`, `audio_status` e `memory`; guardar heap
+   interno/PSRAM, maior bloco, máximos de render, deadlines, gaps PCM e erros I²S.
+3. Em Single, executar `patch_select 0`, `note_on 60 100 0` e `note_off 60 0`.
+   Esperar áudio e release sem nota presa. Repetir acordes, velocity zero pelo
+   teclado e pedal antes/depois dos onsets, com pads de bateria concorrentes.
+4. Alternar `patch_select 128`, `patch_select 135` e `patch_select 0`, repetindo
+   notas/pedal. A política continua corte global na troca; não esperar A/drums
+   sustentados por uma troca seletiva. Registrar crescimento de heap/deadlines
+   e qualquer estado solicitado que não tenha se aplicado; a UI ainda não tem ACK.
+5. Com teclado mantido e arp/seq já existentes ativos, testar Stop seletivo das
+   fontes e depois `panic`. Stop deve preservar teclado; Panic deve silenciar
+   tudo. Desconectar USB sob pedal, reconectar 100 vezes e verificar retomada
+   sem reboot onde suportado, sem stuck notes.
+6. Soak de duas horas por bloco com knobs, display e saves via StorageWorker.
+   Registrar resets/crashes, mínimos de memória, erros de áudio e carga. Capturar
+   MIDI e saída analógica externamente para latency/clipping/clicks. Falhas de
+   prazo devem ser registradas, não reinterpretadas como aprovação.
+7. Não tentar habilitar B no firmware. Injeção de falhas de SRAM, requests e
+   switching seletivo físicos dependem de backend de preparação completo;
+   não existem comandos de bancada novos para essas operações nesta entrega.
+
 ## Critérios restantes e próximo menor passo
 
 | Entrega | Estado |
@@ -252,7 +304,7 @@ ou estágio de saída foi inferido. Hardware, USB, áudio analógico e soak: **M
 | B — prepare/commit/rollback de patch completo | BLOCKED; implementada apenas admissão/container |
 | C — geração/cancelamento por instrumento | BLOCKED; preservadas barreiras globais |
 | D — estado musical e switching seletivo | BLOCKED; B continua inacessível no produto |
-| E — regressões disponíveis | Resultados finais abaixo; qualificação dual completa BLOCKED |
+| E — regressões disponíveis | PASS nas seis suítes, recurso 128/256 e builds; qualificação dual completa BLOCKED |
 
 Entrada na 3B.3 exige concluir a 3B.2: preparar programa de patch com erro
 propagado em cada allocation/delta/buffer, reservar recursos reais, testar rollback
@@ -265,4 +317,7 @@ O próximo menor passo é a materialização falível e verificável, sem UI/fea
 ## Commits
 
 - `0662ce8e`: auditoria anterior à implementação.
-- Admissão e validação final: referências registradas ao concluir os checks.
+- `05156ed3`: admissão/container, guardas de compatibilidade e testes reais.
+- `docs(smk): record phase3b2 partial validation and remaining gates`: este
+  fechamento de evidências. Sem push ou upload. Não há commits C/D fictícios:
+  esses mecanismos não foram implementados.
