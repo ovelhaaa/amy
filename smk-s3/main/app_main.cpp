@@ -278,7 +278,7 @@ static void app_init_task(void* arg) {
         event_bus->send(barrier);
     };
     while (true) {
-        if (const auto* result = storage_worker->completion()) {
+        if (const auto* result = storage_worker->completion(); result && (result->kind != smk::StorageWorker::Kind::LoadProfile || event_bus->pendingCount() == 0)) {
             if (result->kind == smk::StorageWorker::Kind::LoadProfile) {
                 if (result->success && result->token == profile_epoch && midi_host->isDeviceConnected()) {
                     request_musical_reset(); // Profile replacement is a note-generation barrier.
@@ -334,7 +334,8 @@ static void app_init_task(void* arg) {
             const uint32_t latest_tick = clock_tick.tick, skipped_ticks = clock_tick.skipped;
             const uint64_t tick_timestamp_us = clock_tick.timestamp_us;
             if (tick_timestamp_us) {
-                const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - tick_timestamp_us;
+                const uint64_t now_us = static_cast<uint64_t>(esp_timer_get_time());
+                const uint64_t elapsed = now_us >= tick_timestamp_us ? now_us - tick_timestamp_us : 0;
                 auto& max_lateness = smk::Diagnostics::instance().counters().clock_max_control_delay_us;
                 uint32_t observed = max_lateness.load(std::memory_order_relaxed);
                 const uint32_t elapsed_us = elapsed > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(elapsed);
@@ -357,12 +358,14 @@ static void app_init_task(void* arg) {
         if (event_bus->receive(event, 1)) {
             if (smk::expiredTrigger(event, static_cast<uint64_t>(esp_timer_get_time()))) {
                 smk::Diagnostics::instance().counters().musical_deadline_recoveries.fetch_add(1);
+                smk::Diagnostics::instance().counters().musical_triggers_late.fetch_add(1);
                 event.type = smk::EventType::Panic;
                 event_bus->send(event);
                 continue;
             }
             if (event.source == smk::EventSource::UsbMidi && event.timestamp_us != 0) {
-                const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - event.timestamp_us;
+                const uint64_t now_us = static_cast<uint64_t>(esp_timer_get_time());
+                const uint64_t elapsed = now_us >= event.timestamp_us ? now_us - event.timestamp_us : 0;
                 auto& max_latency = smk::Diagnostics::instance().counters().midi_max_receive_to_control_us;
                 const uint32_t elapsed_us = elapsed > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(elapsed);
                 uint32_t observed = max_latency.load(std::memory_order_relaxed);
@@ -644,7 +647,7 @@ static void app_init_task(void* arg) {
                     if (event.source == smk::EventSource::UsbMidi && arpeggiator->isEnabled()) {
                         arpeggiator->noteOff((uint8_t)event.id);
                     } else {
-                        amy_adapter->noteOffAt(event.channel, static_cast<uint8_t>(event.id), event.timestamp_us);
+                        amy_adapter->noteOffAt(event.channel, static_cast<uint8_t>(event.id), event.timestamp_us, event.deadline_us);
                     }
                     break;
                 case smk::EventType::PitchBend:
@@ -731,7 +734,7 @@ static void app_init_task(void* arg) {
                     break;
                 case smk::EventType::TransportPlay:
                     if (step_sequencer && clock_manager) {
-                        clock_manager->onExternalStart();
+                        clock_manager->onExternalStart(event.timestamp_us);
                         step_sequencer->play();
                     }
                     break;

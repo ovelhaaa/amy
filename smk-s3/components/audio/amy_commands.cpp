@@ -105,7 +105,12 @@ struct AmyAdapter::State {
             if (is_continuous(c.type) && count > 0) {
                 for (size_t i = 0; i < count; ++i) {
                     size_t idx = (head + count - 1 - i) % config::kSynthCommandCapacity;
-                    if (commands[idx].type == c.type &&
+                    // Never move a controller update across a patch or note
+                    // boundary, or attach it to an invalidated generation.
+                    if (commands[idx].type == Preset || commands[idx].type == NoteOn ||
+                        commands[idx].type == NoteOff || commands[idx].type == AllOff) break;
+                    if (commands[idx].generation == requested_generation.load(std::memory_order_relaxed) &&
+                        commands[idx].type == c.type &&
                         commands[idx].channel == c.channel &&
                         commands[idx].id == c.id) {
                         commands[idx].data = c.data;
@@ -128,6 +133,12 @@ struct AmyAdapter::State {
                     recovery_requested.store(true, std::memory_order_release);
                 }
             } else {
+                if (c.type == Preset) {
+                    // Patch replacement cancels delayed note deltas from the
+                    // previous instrument before any replacement is applied.
+                    panic_timestamp_us = c.timestamp_us;
+                    requested_generation.fetch_add(1, std::memory_order_release);
+                }
                 c.generation = requested_generation.load(std::memory_order_relaxed);
                 commands[(head + count) % config::kSynthCommandCapacity] = c;
                 ++count;
@@ -254,7 +265,7 @@ void AmyAdapter::noteOn(uint8_t ch, uint8_t note, uint8_t vel) { submit(NoteOn, 
 void AmyAdapter::noteOff(uint8_t ch, uint8_t note) { submit(NoteOff, ch, note); }
 void AmyAdapter::noteOnAt(uint8_t ch, uint8_t note, uint8_t vel, uint64_t source_us) { submit(NoteOn, ch, note, vel, 0, 0, 0, 0, 0, 0, source_us); }
 void AmyAdapter::noteOnBefore(uint8_t ch, uint8_t note, uint8_t vel, uint64_t source_us, uint64_t deadline_us) { submit(NoteOn, ch, note, vel, 0, 0, 0, 0, 0, 0, source_us, deadline_us); }
-void AmyAdapter::noteOffAt(uint8_t ch, uint8_t note, uint64_t source_us) { submit(NoteOff, ch, note, 0, 0, 0, 0, 0, 0, 0, source_us); }
+void AmyAdapter::noteOffAt(uint8_t ch, uint8_t note, uint64_t source_us, uint64_t deadline_us) { submit(NoteOff, ch, note, 0, 0, 0, 0, 0, 0, 0, source_us, deadline_us); }
 void AmyAdapter::pitchBend(uint8_t ch, int16_t bend) { submit(Bend, ch, 0, bend); }
 void AmyAdapter::pitchBendAt(uint8_t ch, int16_t bend, uint64_t source_us) { submit(Bend, ch, 0, bend, 0, 0, 0, 0, 0, 0, source_us); }
 void AmyAdapter::controlChange(uint8_t ch, uint8_t cc, uint8_t value) { submit(CC, ch, cc, value); }
@@ -332,11 +343,14 @@ bool AmyAdapter::serviceBlock() {
         }
         if (c.type == NoteOn && c.data.values[0] > 0 && c.deadline_us && now_us >= c.deadline_us) {
             diag.musical_deadline_recoveries.fetch_add(1, std::memory_order_relaxed);
+            diag.musical_triggers_late.fetch_add(1, std::memory_order_relaxed);
             Command reset{}; reset.type = Panic;
             s.enqueue(reset);
             s.recovery_requested.store(true, std::memory_order_release);
             continue;
         }
+        if (c.type == NoteOff && c.deadline_us && now_us > c.deadline_us)
+            diag.synth_release_deadlines_missed.fetch_add(1, std::memory_order_relaxed);
         const float* v = c.data.values;
         switch (c.type) {
             case NoteOn: executeNoteOn(c.channel, static_cast<uint8_t>(c.id), static_cast<uint8_t>(v[0])); break;

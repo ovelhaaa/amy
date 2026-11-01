@@ -67,6 +67,7 @@ void ClockManager::setClockSource(ClockSource source) {
         pending_ticks_.reset(tick_count_.load(std::memory_order_relaxed));
         previous_tick_us_.store(0, std::memory_order_relaxed);
         previous_external_tick_us_ = external_period_average_us_ = 0;
+        external_epoch_us_ = static_cast<uint64_t>(esp_timer_get_time());
         next_tick_us_ = static_cast<uint64_t>(esp_timer_get_time()) +
             static_cast<uint64_t>(60000000.0 / bpm() / kPpqn);
     }
@@ -86,6 +87,7 @@ void ClockManager::onExternalTick(uint64_t timestamp_us) {
     if (clock_source_.load(std::memory_order_relaxed) != ClockSource::UsbMidi ||
         !running_.load(std::memory_order_relaxed)) return;
     TemporalGuard guard(timing_lock_);
+    if (timestamp_us && timestamp_us < external_epoch_us_) return;
     const uint32_t tick = tick_count_.fetch_add(1, std::memory_order_relaxed) + 1;
     if (timestamp_us > previous_external_tick_us_ && previous_external_tick_us_) {
         const uint64_t interval_us = timestamp_us - previous_external_tick_us_;
@@ -103,17 +105,19 @@ void ClockManager::onExternalTick(uint64_t timestamp_us) {
     pending_ticks_.publish(tick, timestamp_us, external_period_average_us_ ? external_period_average_us_ : static_cast<uint64_t>(60000000.0 / bpm() / kPpqn), true);
 }
 
-void ClockManager::onExternalStart() {
+void ClockManager::onExternalStart(uint64_t timestamp_us) {
     std::lock_guard<std::recursive_mutex> api_guard(api_mutex_);
     if (clock_source_.load(std::memory_order_relaxed) != ClockSource::UsbMidi) return;
     {
-    TemporalGuard guard(timing_lock_);
-    tick_count_.store(0, std::memory_order_relaxed);
-    pending_ticks_.reset();
-    previous_tick_us_.store(0, std::memory_order_relaxed);
-    previous_external_tick_us_ = 0;
-    external_period_average_us_ = 0;
-    running_ = true;
+        TemporalGuard guard(timing_lock_);
+        if (timestamp_us && timestamp_us < external_epoch_us_) return;
+        external_epoch_us_ = timestamp_us ? timestamp_us : static_cast<uint64_t>(esp_timer_get_time());
+        tick_count_.store(0, std::memory_order_relaxed);
+        pending_ticks_.reset();
+        previous_tick_us_.store(0, std::memory_order_relaxed);
+        previous_external_tick_us_ = 0;
+        external_period_average_us_ = 0;
+        running_ = true;
     }
     ESP_LOGI(TAG, "External USB MIDI Clock Started");
 }
@@ -122,11 +126,11 @@ void ClockManager::onExternalStop() {
     std::lock_guard<std::recursive_mutex> api_guard(api_mutex_);
     if (clock_source_.load(std::memory_order_relaxed) != ClockSource::UsbMidi) return;
     {
-    TemporalGuard guard(timing_lock_);
-    running_ = false;
-    pending_ticks_.reset(tick_count_.load(std::memory_order_relaxed));
-    previous_external_tick_us_ = 0;
-    external_period_average_us_ = 0;
+        TemporalGuard guard(timing_lock_);
+        running_ = false;
+        pending_ticks_.reset(tick_count_.load(std::memory_order_relaxed));
+        previous_external_tick_us_ = 0;
+        external_period_average_us_ = 0;
     }
     ESP_LOGI(TAG, "External USB MIDI Clock Stopped");
 }
@@ -135,13 +139,15 @@ void ClockManager::start() {
     std::lock_guard<std::recursive_mutex> api_guard(api_mutex_);
     if (running_.load(std::memory_order_relaxed)) return;
     {
-    TemporalGuard guard(timing_lock_);
-    tick_count_.store(0, std::memory_order_relaxed);
-    pending_ticks_.reset();
-    previous_tick_us_.store(0, std::memory_order_relaxed);
-    next_tick_us_ = static_cast<uint64_t>(esp_timer_get_time()) +
-        static_cast<uint64_t>(60000000.0 / bpm() / kPpqn);
-    running_.store(true, std::memory_order_relaxed);
+        TemporalGuard guard(timing_lock_);
+        tick_count_.store(0, std::memory_order_relaxed);
+        pending_ticks_.reset();
+        previous_tick_us_.store(0, std::memory_order_relaxed);
+        external_epoch_us_ = static_cast<uint64_t>(esp_timer_get_time());
+        previous_external_tick_us_ = external_period_average_us_ = 0;
+        next_tick_us_ = external_epoch_us_ +
+            static_cast<uint64_t>(60000000.0 / bpm() / kPpqn);
+        running_.store(true, std::memory_order_relaxed);
     }
     if (clock_source_.load(std::memory_order_relaxed) == ClockSource::Internal) {
         updateTimerPeriod();

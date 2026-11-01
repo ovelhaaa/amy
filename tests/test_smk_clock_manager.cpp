@@ -43,10 +43,18 @@ int main() {
     c.setClockSource(ClockSource::UsbMidi);
     ClockManagerTestAccess::fire(c);
     assert(!c.takePendingTick(tick, skipped, time));
-    c.onExternalStart(); c.onExternalTick(12345678);
+    c.onExternalStart(); c.onExternalTick(1); // Queued before this source epoch.
+    assert(!c.takePendingTick(tick, skipped, time));
+    c.onExternalTick(12345678);
     assert(c.takePendingTick(tick, skipped, time) && tick == 1 && time == 12345678);
     c.onExternalStop(); c.onExternalTick(12345679);
     assert(!c.takePendingTick(tick, skipped, time));
+    const uint64_t before_restart = static_cast<uint64_t>(smk_test_time_us.load());
+    c.stop(); smk_test_time_us += 1000; c.start(); // Generic Play while externally clocked.
+    c.onExternalTick(before_restart);
+    assert(!c.takePendingTick(tick, skipped, time));
+    c.onExternalTick(static_cast<uint64_t>(smk_test_time_us.load()));
+    assert(c.takePendingTick(tick, skipped, time) && tick == 1);
     std::thread callbacks([&] { for (int i=0; i<10000; ++i) ClockManagerTestAccess::fire(c); });
     for (int i=0; i<1000; ++i) {
         c.stop(); c.setClockSource(ClockSource::Internal); c.start();
@@ -55,4 +63,3 @@ int main() {
     c.stop(); callbacks.join();
     assert(!c.takePendingTick(tick, skipped, time));
 }
-

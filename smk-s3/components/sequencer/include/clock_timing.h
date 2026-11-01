@@ -27,6 +27,10 @@ struct MusicalTiming {
             (now_us >= timestamp_us && now_us - timestamp_us <
              period_us * lateness_numerator / (lateness_denominator ? lateness_denominator : 1));
     }
+    uint64_t releaseDeadline(uint32_t tick, uint32_t deadline_tick) const {
+        const uint64_t elapsed = static_cast<uint32_t>(tick - deadline_tick) * period_us;
+        return period_us && timestamp_us >= elapsed ? timestamp_us - elapsed : 0;
+    }
     uint64_t deadline(uint32_t gate_ticks) const {
         return timestamp_us && period_us ? timestamp_us + period_us * gate_ticks : 0;
     }

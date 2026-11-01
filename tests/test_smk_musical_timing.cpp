@@ -26,7 +26,7 @@ int main() {
         MusicalTiming late{2000000,2000000+period,period};
         arp.processTick(6,bus,late); seq.processTick(6,bus,late);
         events=drain(bus); assert(events.size()==5);
-        for (auto e:events) assert(e.type==EventType::NoteOff);
+        for (auto e:events) { assert(e.type==EventType::NoteOff); assert(e.deadline_us==2000000-3*period); }
         assert(seq.currentStep()==2);
         seq.processTick(30,bus,timely); // Skip 12/18/24, no replay.
         assert(seq.currentStep()==6); assert(drain(bus).empty());

@@ -241,3 +241,10 @@ Add an analysis tap with ×4 downsampling, asynchronous YIN/MPM, voiced/unvoiced
 classification, refined pitch marks, and TD-PSOLA. WSOLA, harmony voices, MIDI,
 formants, correction, and vocoder remain intentionally unimplemented.
 >>>>>>> theirs
+
+## SMK-S3 embedded application
+
+The separate ESP32-S3 application lives in `smk-s3/`. Its reproducible 128/256-frame
+PlatformIO environments, ESP-IDF CI matrix, timing policies, host tests and hardware
+qualification limits are documented in [the phase 2.5 results](smk-s3/docs/phase25_realtime_results.md).
+The AMY engine and other platform builds are unchanged by this application layer.

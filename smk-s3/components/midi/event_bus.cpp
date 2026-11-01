@@ -69,6 +69,9 @@ bool EventBus::enqueueLocked(const SynthEvent& event) {
     }
     entries_[(head_ + count_) % capacity_] = {event, generation_};
     ++count_;
+    auto& high_water = Diagnostics::instance().counters().event_queue_high_water;
+    if (count_ > high_water.load(std::memory_order_relaxed))
+        high_water.store(static_cast<uint32_t>(count_), std::memory_order_relaxed);
     return true;
 }
 

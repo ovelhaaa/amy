@@ -23,7 +23,7 @@ public:
     void noteOff(uint8_t channel, uint8_t note) override;
     void noteOnAt(uint8_t channel, uint8_t note, uint8_t velocity, uint64_t source_timestamp_us);
     void noteOnBefore(uint8_t channel, uint8_t note, uint8_t velocity, uint64_t source_us, uint64_t deadline_us);
-    void noteOffAt(uint8_t channel, uint8_t note, uint64_t source_timestamp_us);
+    void noteOffAt(uint8_t channel, uint8_t note, uint64_t source_timestamp_us, uint64_t deadline_us = 0);
     void pitchBendAt(uint8_t channel, int16_t value, uint64_t source_timestamp_us);
     void controlChangeAt(uint8_t channel, uint8_t controller, uint8_t value, uint64_t source_timestamp_us);
     void pitchBend(uint8_t channel, int16_t value) override;

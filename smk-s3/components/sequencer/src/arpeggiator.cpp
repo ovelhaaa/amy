@@ -177,7 +177,7 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus, MusicalT
     // Check if we need to emit NoteOff for the previous arpeggiated note(s)
     if (tickReached(tick_count, note_off_tick_)) {
         if ((active_chord_count_ || last_played_note_ >= 0) &&
-            (tick_count != note_off_tick_ || !timing.triggerAllowed()))
+            (tick_count != note_off_tick_ || (timing.timestamp_us && timing.now_us > timing.timestamp_us)))
             Diagnostics::instance().counters().musical_releases_late.fetch_add(1, std::memory_order_relaxed);
         if (active_chord_count_ > 0) {
             for (size_t i = 0; i < active_chord_count_; ++i) {
@@ -189,7 +189,8 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus, MusicalT
                     off_ev.id = (uint16_t)active_chord_notes_[i];
                     off_ev.value = 0;
                     off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
-                    event_bus.send(off_ev);
+                    off_ev.deadline_us = timing.releaseDeadline(tick_count, note_off_tick_);
+            event_bus.send(off_ev);
                 }
             }
             active_chord_count_ = 0;
@@ -203,6 +204,7 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus, MusicalT
             off_ev.id = (uint16_t)last_played_note_;
             off_ev.value = 0;
             off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
+            off_ev.deadline_us = timing.releaseDeadline(tick_count, note_off_tick_);
             event_bus.send(off_ev);
 
             last_played_note_ = -1;
@@ -224,7 +226,9 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus, MusicalT
     if (tick_seen_ && tick_count == previous_tick_) return;
     previous_tick_ = tick_count; tick_seen_ = true;
     if (is_step_tick && !timing.triggerAllowed()) {
-        Diagnostics::instance().counters().musical_triggers_late.fetch_add(1, std::memory_order_relaxed);
+        generateArpPattern();
+        const size_t dropped = mode_ == ArpMode::Chord ? std::min(pattern_len_, kMaxChordNotes) : (pattern_len_ ? 1 : 0);
+        Diagnostics::instance().counters().musical_triggers_late.fetch_add(static_cast<uint32_t>(dropped), std::memory_order_relaxed);
     }
     if (is_step_tick && timing.triggerAllowed()) {
         generateArpPattern();

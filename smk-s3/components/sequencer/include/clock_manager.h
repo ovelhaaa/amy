@@ -50,7 +50,7 @@ public:
         return pending_ticks_.consume(tick);
     }
     void onExternalTick(uint64_t timestamp_us = 0);
-    void onExternalStart();
+    void onExternalStart(uint64_t timestamp_us = 0);
     void onExternalStop();
 
 private:
@@ -70,6 +70,7 @@ private:
     std::atomic<uint32_t>   tick_count_{0};
     LatestTickMailbox       pending_ticks_;
     std::atomic<uint64_t>   previous_tick_us_{0};
+    uint64_t                external_epoch_us_ = 0; // Temporal lock.
     uint64_t                previous_external_tick_us_ = 0; // Control-task owner.
     uint64_t                external_period_average_us_ = 0;
     esp_timer_handle_t      timer_handle_ = nullptr;

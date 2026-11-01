@@ -408,7 +408,6 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
         for (auto& pb : track_playback_) pb.active = pb.passed_probability = false;
     }
     const bool allow_trigger = timing.triggerAllowed();
-    if (!allow_trigger) Diagnostics::instance().counters().musical_triggers_late.fetch_add(1, std::memory_order_relaxed);
     uint32_t step_tick_offset = tick_count % ticks_per_step;
 
     for (size_t t = 0; t < kMaxTracks; ++t) {
@@ -416,7 +415,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
 
         // Process scheduled NoteOff
         if (pb.last_played_note >= 0 && tickReached(tick_count, pb.note_off_tick)) {
-            if (tick_count != pb.note_off_tick || !timing.triggerAllowed())
+            if (tick_count != pb.note_off_tick || (timing.timestamp_us && timing.now_us > timing.timestamp_us))
                 Diagnostics::instance().counters().musical_releases_late.fetch_add(1, std::memory_order_relaxed);
             SynthEvent off_ev;
             off_ev.type = EventType::NoteOff;
@@ -425,6 +424,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
             off_ev.id = (uint16_t)pb.last_played_note;
             off_ev.value = 0;
             off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
+            off_ev.deadline_us = timing.releaseDeadline(tick_count, pb.note_off_tick);
             event_bus.send(off_ev);
 
             pb.last_played_note = -1;
@@ -443,7 +443,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
             pb.gate_percent = s.gate_percent;
             pb.active = s.active;
 
-            if (pb.active && allow_trigger) {
+            if (pb.active) {
                 // Evaluate probability exactly once at step onset
                 if (s.probability < 100) {
                     uint32_t roll = (randomU32() % 100) + 1;
@@ -455,6 +455,10 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
                 pb.passed_probability = false;
             }
 
+            if (pb.passed_probability && !allow_trigger) {
+                Diagnostics::instance().counters().musical_triggers_late.fetch_add(1, std::memory_order_relaxed);
+                pb.passed_probability = false; // No ratchets after an expired onset.
+            }
             // Dispatch Parameter Lock Automation Event if present on step onset
             if (allow_trigger && pb.active && pb.passed_probability && s.has_plock && s.locked_param < 8) {
                 SynthEvent plock_ev;
@@ -503,7 +507,7 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
             }
         } else {
             // Intermediate ratchet ticks: read EXCLUSIVELY from latched track_playback_
-            if (allow_trigger && pb.active && pb.passed_probability && pb.ratchet > 1) {
+            if (pb.active && pb.passed_probability && pb.ratchet > 1) {
                 bool is_ratchet_tick = false;
                 uint32_t ratchet_gate = 1;
                 if (pb.ratchet == 2 && step_tick_offset == 3) {
@@ -518,6 +522,10 @@ void StepSequencer::processTick(uint32_t tick_count, EventBus& event_bus, Musica
                 }
 
                 if (is_ratchet_tick) {
+                    if (!allow_trigger) {
+                        Diagnostics::instance().counters().musical_triggers_late.fetch_add(1, std::memory_order_relaxed);
+                        continue;
+                    }
                     if (pb.last_played_note >= 0) {
                         SynthEvent off_ev;
                         off_ev.type = EventType::NoteOff;
