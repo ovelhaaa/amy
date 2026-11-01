@@ -47,6 +47,7 @@ jobs:
           ./tests/run_smk_amy_boot.ps1
           ./tests/run_smk_safety.ps1
           ./tests/run_smk_ui.ps1
+          ./tests/run_smk_performance.ps1
 
   build:
     name: IDF ${{ matrix.idf }} Block Size ${{ matrix.block_size }}

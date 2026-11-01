@@ -1,6 +1,7 @@
 // Run with tests/run_smk_amy_boot.ps1. Uses the real adapter and AMY engine.
 #include "amy_adapter.h"
 #include "synth_config.h"
+#include "performance.h"
 #include "diagnostics.h"
 #include <cassert>
 #include <algorithm>
@@ -57,6 +58,38 @@ static bool render_signal(smk::AmyAdapter& adapter, int blocks) {
         }
     }
     return signal;
+}
+
+static void run_portable_performance_single(smk::AmyAdapter& adapter) {
+    adapter.loadPreset(1, 0, 8);
+    render_signal(adapter, 2);
+    smk::PerformanceConfig config;
+    config.layers[0].transpose = 12;
+    const smk::NoteIdentity identity{smk::NoteSource::Keyboard, 0, 0, 60, 0};
+    const auto onset = smk::routePerformance(config, identity, 100, true, false);
+    assert(onset.notes.count == 1 && onset.notes.outputs[0].note == 72);
+    adapter.routeNoteOn(onset.notes);
+    assert(render_signal(adapter, 32) && adapter.activeNoteReferences() == 1);
+    config.mode = smk::PerformanceMode::Split;
+    config.layers[0].zone.high_note = 40;
+    config.layers[0].transpose = -12;
+    config.layers[0].mute = true;
+    config.layers[0].enabled = false;
+    assert(smk::routePerformance(config, identity, 100, true, false).notes.count == 0);
+    adapter.routeNoteOff(identity);
+    render_signal(adapter, 1000);
+    assert(adapter.activeNoteReferences() == 0 && !render_signal(adapter, 16));
+    // Even an erroneous consumer passing a B plan must fail closed, never
+    // partially start A or alias synth 2 to synth 1.
+    config = smk::PerformanceConfig{};
+    config.mode = smk::PerformanceMode::Layer;
+    config.layers[1].enabled = true;
+    const auto rejected = smk::Diagnostics::instance().counters().note_identities_rejected.load();
+    adapter.routeNoteOn(smk::routePerformance(config, identity, 100, true, true).notes);
+    render_signal(adapter, 16);
+    assert(adapter.activeNoteReferences() == 0);
+    assert(smk::Diagnostics::instance().counters().note_identities_rejected.load() == rejected + 1);
+    std::puts("PASS: portable Single plan through real AMY, captured transpose release and atomic dual-plan rejection");
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -538,12 +571,21 @@ int main(int argc, char** argv) {
     }
 
     // Loading and releasing the main synth must leave the drum mappings intact.
+    int max_oscs_per_voice = 0;
     for (int patch = 0; patch < 256; ++patch) {
         adapter.loadPreset(1, patch, patch < 128 ? 10 : 8);
         render_signal(adapter, 2); // Async command applied by the owner.
         allocated_oscs(1, true);
         assert(allocated_oscs(10, true) == 32);
+        const int cost = instrument_get_oscs_per_voice(1);
+        max_oscs_per_voice = std::max(max_oscs_per_voice, cost);
+        if (patch == 0) assert(cost == 6);
+        if (patch == 128) assert(cost == 8);
     }
+    assert(instrument_get_oscs_per_voice(10) == smk::config::kDrumOscillatorBudget);
+    assert(!smk::fitsPerformanceOscillators(8, 6, 8, 8));
+    std::printf("PASS: real AMY resource audit, 256 patches, max oscs/voice=%d, drums=%u, pool=%u; A8 Juno+B8 DX7 requires 144\n",
+                max_oscs_per_voice, smk::config::kDrumOscillatorBudget, smk::config::kMaxOscillators);
     adapter.panic();
     render_signal(adapter, 1000);
     assert(!render_signal(adapter, 16));
@@ -578,5 +620,6 @@ int main(int argc, char** argv) {
     run_render_average_reset(adapter);
     run_headroom_telemetry(adapter);
     run_real_note_routing(adapter);
+    run_portable_performance_single(adapter);
     std::puts("PASS: boot, complete voice allocation, 256 patch changes, MIDI CC, note release, drums, Panic, FM, EWMA reset and headroom telemetry");
 }
