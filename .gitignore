@@ -1,4 +1,3 @@
-<<<<<<< ours
 uv.lock
 amy-example
 amy-message
@@ -73,10 +72,10 @@ Mkfile.old
 dkms.conf
 godot/.sconsign.dblite
 godot/src/*.os
-=======
+
+# ESP-IDF / PlatformIO build artifacts
 /build-host/
 /build-tsan/
 /sdkconfig
 /sdkconfig.old
 /build/
->>>>>>> theirs
