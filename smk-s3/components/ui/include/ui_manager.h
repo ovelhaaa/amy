@@ -80,6 +80,7 @@ private:
     bool overlay_active_{false};
     TaskHandle_t task_handle_{nullptr};
     std::atomic<bool> running_{false};
+    std::atomic<bool> display_transition_pending_{false};
 };
 
 } // namespace smk

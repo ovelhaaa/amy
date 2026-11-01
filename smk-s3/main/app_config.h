@@ -104,6 +104,10 @@ constexpr uint32_t kMidiClientTaskStackSize = 4 * 1024;
 constexpr uint8_t  kControlTaskCore     = 0;
 constexpr uint8_t  kControlTaskPriority = configMAX_PRIORITIES - 4;
 
+constexpr uint8_t kStorageTaskCore = 0;
+constexpr uint8_t kStorageTaskPriority = 2;
+constexpr uint32_t kStorageTaskStackSize = 8 * 1024;
+
 constexpr uint8_t  kConsoleTaskCore     = 0;
 constexpr uint8_t  kConsoleTaskPriority = 5;
 constexpr uint32_t kConsoleTaskStackSize = 4 * 1024;

@@ -5,6 +5,7 @@
 #include "step_sequencer.h"
 #include "pad_bank.h"
 #include "storage_manager.h"
+#include "storage_worker.h"
 #include "ui_manager.h"
 #include "esp_log.h"
 #include <algorithm>
@@ -177,12 +178,21 @@ void SceneManager::captureCurrentAsScene(uint8_t index, const char* custom_name)
     }
 
     sc.crc32 = calculateSceneCrc32(sc);
-    saveSceneToFlash(index);
+    bool queued = false;
+    if (storage_worker_) {
+        if (auto* job = storage_worker_->reserve()) {
+            job->kind = StorageWorker::Kind::SaveScene;
+            snprintf(job->name, sizeof(job->name), "slot_%u", index + 1);
+            job->scenes[0] = sc;
+            storage_worker_->submit();
+            queued = true;
+        }
+    }
 
     ESP_LOGI(TAG, "Captured live state into Scene #%u [%s]", index + 1, sc.name);
 
     if (ui_manager_) {
-        ui_manager_->triggerParameterOverlay("SCENE SAVED", "FLASH", 
+        ui_manager_->triggerParameterOverlay(queued ? "SCENE QUEUED" : "SAVE FAILED", "FLASH",
                                              static_cast<float>(index + 1), 
                                              0.0f, 
                                              sc.name, 

@@ -16,6 +16,7 @@
 #include "arpeggiator.h"
 #include "step_sequencer.h"
 #include "storage_manager.h"
+#include "storage_worker.h"
 #include "nvs_storage.h"
 #include "midi_learn.h"
 #include "controller_profile.h"
@@ -254,11 +255,50 @@ static void app_init_task(void* arg) {
     TickType_t last_status_time = xTaskGetTickCount();
     const TickType_t status_interval = pdMS_TO_TICKS(5000);
 
+    auto* storage_worker = new smk::StorageWorker(*storage_manager);
+    const bool storage_worker_ready = storage_worker->start(smk::config::kStorageTaskCore, smk::config::kStorageTaskPriority,
+                               smk::config::kStorageTaskStackSize);
+    if (!storage_worker_ready) {
+        ESP_LOGE(TAG, "Storage worker unavailable; runtime save/load requests will fail");
+    }
+    scene_manager->setStorageWorker(storage_worker);
+    uint32_t profile_epoch = 0;
+    bool profile_load_pending = false;
+    char profile_filename[32]{};
     int64_t bank_b_save_press_us = 0;
     bool learning_was_active = false;
     bool audio_fault_reported = false;
 
+    auto request_musical_reset = [&] {
+        if (clock_manager) clock_manager->stop();
+        if (scene_manager) scene_manager->cancelPendingTransition();
+        amy_adapter->panic();
+        smk::SynthEvent barrier{};
+        barrier.type = smk::EventType::Panic;
+        event_bus->send(barrier);
+    };
     while (true) {
+        if (const auto* result = storage_worker->completion(); result && (result->kind != smk::StorageWorker::Kind::LoadProfile || event_bus->pendingCount() == 0)) {
+            if (result->kind == smk::StorageWorker::Kind::LoadProfile) {
+                if (result->success && result->token == profile_epoch && midi_host->isDeviceConnected()) {
+                    request_musical_reset(); // Profile replacement is a note-generation barrier.
+                    active_profile = result->profile;
+                    if (ui_manager) ui_manager->triggerParameterOverlay("PROFILE LOADED", active_profile.name, 0, 0, "", smk::TakeoverStatus::Captured);
+                }
+            } else if (ui_manager) {
+                ui_manager->triggerParameterOverlay(result->success ? "SAVED" : "SAVE FAILED", "FLASH", result->slot, 0, result->name, smk::TakeoverStatus::Captured);
+            }
+            storage_worker->releaseCompletion();
+        }
+        if (profile_load_pending) {
+            if (auto* job = storage_worker->reserve()) {
+                job->kind = smk::StorageWorker::Kind::LoadProfile;
+                job->token = profile_epoch;
+                snprintf(job->name, sizeof(job->name), "%s", profile_filename);
+                storage_worker->submit();
+                profile_load_pending = false;
+            }
+        }
         if (amy_adapter->takeRecoveryRequest()) {
             // A lost release in the AMY mailbox also resets application-owned
             // held notes, arpeggiator and sequencer through the common path.
@@ -289,12 +329,13 @@ static void app_init_task(void* arg) {
         // the MIDI/UI FIFO. If control was busy, process the newest musical
         // position once: generators service expired Note Offs but do not replay
         // old triggers as an audible burst.
-        uint32_t latest_tick = 0;
-        uint32_t skipped_ticks = 0;
-        uint64_t tick_timestamp_us = 0;
-        if (clock_manager && clock_manager->takePendingTick(latest_tick, skipped_ticks, tick_timestamp_us)) {
+        smk::TickSnapshot clock_tick;
+        if (clock_manager && clock_manager->takePendingTick(clock_tick)) {
+            const uint32_t latest_tick = clock_tick.tick, skipped_ticks = clock_tick.skipped;
+            const uint64_t tick_timestamp_us = clock_tick.timestamp_us;
             if (tick_timestamp_us) {
-                const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - tick_timestamp_us;
+                const uint64_t now_us = static_cast<uint64_t>(esp_timer_get_time());
+                const uint64_t elapsed = now_us >= tick_timestamp_us ? now_us - tick_timestamp_us : 0;
                 auto& max_lateness = smk::Diagnostics::instance().counters().clock_max_control_delay_us;
                 uint32_t observed = max_lateness.load(std::memory_order_relaxed);
                 const uint32_t elapsed_us = elapsed > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(elapsed);
@@ -307,14 +348,24 @@ static void app_init_task(void* arg) {
                 while (skipped_ticks > previous &&
                        !counters.clock_max_ticks_coalesced.compare_exchange_weak(previous, skipped_ticks, std::memory_order_relaxed)) {}
             }
-            arpeggiator->processTick(latest_tick, *event_bus);
-            step_sequencer->processTick(latest_tick, *event_bus);
-            if (latest_tick % 24 == 0 && scene_manager) scene_manager->processPendingTransition();
+            smk::MusicalTiming timing{tick_timestamp_us, static_cast<uint64_t>(esp_timer_get_time()),
+                clock_tick.period_us};
+            arpeggiator->processTick(latest_tick, *event_bus, timing);
+            step_sequencer->processTick(latest_tick, *event_bus, timing);
+            if (timing.triggerAllowed() && latest_tick % 24 == 0 && scene_manager) scene_manager->processPendingTransition();
         }
         smk::SynthEvent event;
-        if (event_bus->receive(event, 10)) {
+        if (event_bus->receive(event, 1)) {
+            if (smk::expiredTrigger(event, static_cast<uint64_t>(esp_timer_get_time()))) {
+                smk::Diagnostics::instance().counters().musical_deadline_recoveries.fetch_add(1);
+                smk::Diagnostics::instance().counters().musical_triggers_late.fetch_add(1);
+                event.type = smk::EventType::Panic;
+                event_bus->send(event);
+                continue;
+            }
             if (event.source == smk::EventSource::UsbMidi && event.timestamp_us != 0) {
-                const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - event.timestamp_us;
+                const uint64_t now_us = static_cast<uint64_t>(esp_timer_get_time());
+                const uint64_t elapsed = now_us >= event.timestamp_us ? now_us - event.timestamp_us : 0;
                 auto& max_latency = smk::Diagnostics::instance().counters().midi_max_receive_to_control_us;
                 const uint32_t elapsed_us = elapsed > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(elapsed);
                 uint32_t observed = max_latency.load(std::memory_order_relaxed);
@@ -345,11 +396,18 @@ static void app_init_task(void* arg) {
                             ui_manager->midiLearnScreen().triggerFeedback(cap_buf, smk::DisplayDriver::kColorGreen);
                         }
                         if (midi_learn->isComplete()) {
-                            const bool saved = storage_manager && storage_manager->saveProfile("smk25_custom", active_profile);
+                            ++profile_epoch; profile_load_pending = false;
+                            bool saved = false;
+                            if (auto* job = storage_worker->reserve()) {
+                                job->kind = smk::StorageWorker::Kind::SaveProfile;
+                                snprintf(job->name, sizeof(job->name), "smk25_custom");
+                                job->profile = active_profile;
+                                storage_worker->submit(); saved = true;
+                            }
                             if (ui_manager) {
-                                ui_manager->midiLearnScreen().triggerFeedback(saved ? "SALVO NA FLASH!" : "FALHA AO SALVAR", saved ? smk::DisplayDriver::kColorGreen : smk::DisplayDriver::kColorRed);
+                                ui_manager->midiLearnScreen().triggerFeedback(saved ? "SAVE QUEUED" : "FALHA AO SALVAR", saved ? smk::DisplayDriver::kColorGreen : smk::DisplayDriver::kColorRed);
                                 ui_manager->switchScreen(smk::ScreenId::Home);
-                                ui_manager->triggerParameterOverlay("MIDI LEARN", saved ? "PERFIL SALVO" : "SAVE FAILED", 0.0f, 0.0f, "", smk::TakeoverStatus::Captured);
+                                ui_manager->triggerParameterOverlay("MIDI LEARN", saved ? "SAVE QUEUED" : "SAVE FAILED", 0.0f, 0.0f, "", smk::TakeoverStatus::Captured);
                             }
                         }
                     }
@@ -505,14 +563,17 @@ static void app_init_task(void* arg) {
                                 // patch identity: a factory DX7 patch such as 135
                                 // or 255 has an id >= 128 that is not a slot.
                                 const uint8_t save_slot = patch_manager->activeStorageSlot();
-                                if (patch_manager->saveActivePatch(*storage_manager, save_slot)) {
-                                    storage_manager->saveProfile("smk25_custom", active_profile);
-                                    if (scene_manager) scene_manager->saveAllToFlash();
-                                    ESP_LOGI(TAG, "Saved patch to slot %u, profile and scenes after long hold", (unsigned)save_slot);
-                                    if (ui_manager) ui_manager->triggerParameterOverlay("SAVED", "PATCH SLOT", (float)save_slot, 0.0f, patch_manager->activePatch().name, smk::TakeoverStatus::Captured);
-                                } else {
-                                    ESP_LOGE(TAG, "Long-hold save failed for slot %u", (unsigned)save_slot);
-                                    if (ui_manager) ui_manager->triggerParameterOverlay("SAVE FAILED", "PATCH SLOT", (float)save_slot, 0.0f, "", smk::TakeoverStatus::Captured);
+                                if (auto* job = storage_worker->reserve()) {
+                                    job->kind = smk::StorageWorker::Kind::SaveBundle;
+                                    job->slot = save_slot;
+                                    job->patch = patch_manager->buildPersistablePatch();
+                                    job->profile = active_profile;
+                                    for (uint8_t i = 0; i < 8; ++i) job->scenes[i] = scene_manager->scene(i);
+                                    snprintf(job->name, sizeof(job->name), "%s", job->patch.name);
+                                    storage_worker->submit();
+                                    if (ui_manager) ui_manager->triggerParameterOverlay("SAVE QUEUED", "PATCH SLOT", save_slot, 0, "", smk::TakeoverStatus::Captured);
+                                } else if (ui_manager) {
+                                    ui_manager->triggerParameterOverlay("SAVE BUSY", "PATCH SLOT", save_slot, 0, "", smk::TakeoverStatus::Captured);
                                 }
                             } else if (ui_manager) {
                                 ui_manager->triggerParameterOverlay("SAVE CANCELLED", "HOLD PAD 16", 0.0f, 0.0f, "", smk::TakeoverStatus::Captured);
@@ -551,7 +612,7 @@ static void app_init_task(void* arg) {
                                 midi_learn->skipStep();
                                 if (ui_manager) ui_manager->midiLearnScreen().triggerFeedback("PASSO PULADO", smk::DisplayDriver::kColorAmber);
                             } else {
-                                step_sequencer->stop(); arpeggiator->reset(); amy_adapter->allNotesOff();
+                                step_sequencer->stop(); arpeggiator->reset(); request_musical_reset();
                             }
                         }
                         continue;
@@ -578,15 +639,15 @@ static void app_init_task(void* arg) {
                         }
                         arpeggiator->noteOn((uint8_t)event.id, (uint8_t)event.value);
                     } else {
-                        amy_adapter->noteOnAt(event.channel, static_cast<uint8_t>(event.id),
-                                              static_cast<uint8_t>(event.value), event.timestamp_us);
+                        amy_adapter->noteOnBefore(event.channel, static_cast<uint8_t>(event.id),
+                                              static_cast<uint8_t>(event.value), event.timestamp_us, event.deadline_us);
                     }
                     break;
                 case smk::EventType::NoteOff:
                     if (event.source == smk::EventSource::UsbMidi && arpeggiator->isEnabled()) {
                         arpeggiator->noteOff((uint8_t)event.id);
                     } else {
-                        amy_adapter->noteOffAt(event.channel, static_cast<uint8_t>(event.id), event.timestamp_us);
+                        amy_adapter->noteOffAt(event.channel, static_cast<uint8_t>(event.id), event.timestamp_us, event.deadline_us);
                     }
                     break;
                 case smk::EventType::PitchBend:
@@ -632,7 +693,7 @@ static void app_init_task(void* arg) {
                         case smk::ButtonId::Stop:
                             step_sequencer->stop();
                             arpeggiator->reset();
-                            amy_adapter->allNotesOff();
+                            request_musical_reset();
                             break;
                         case smk::ButtonId::Record:
                             step_sequencer->record();
@@ -673,7 +734,7 @@ static void app_init_task(void* arg) {
                     break;
                 case smk::EventType::TransportPlay:
                     if (step_sequencer && clock_manager) {
-                        clock_manager->onExternalStart();
+                        clock_manager->onExternalStart(event.timestamp_us);
                         step_sequencer->play();
                     }
                     break;
@@ -682,16 +743,18 @@ static void app_init_task(void* arg) {
                         clock_manager->onExternalStop();
                         step_sequencer->stop();
                         if (arpeggiator) arpeggiator->reset();
-                        if (amy_adapter) amy_adapter->allNotesOff();
+                        if (amy_adapter) request_musical_reset();
                     }
                     break;
                 case smk::EventType::AllNotesOff:
                     arpeggiator->reset();
                     step_sequencer->stop();
-                    amy_adapter->allNotesOff();
+                    request_musical_reset();
                     break;
                 case smk::EventType::Panic:
                     ESP_LOGW(TAG, "PANIC received! Silencing engine.");
+                    clock_manager->stop();
+                    scene_manager->cancelPendingTransition();
                     arpeggiator->reset();
                     step_sequencer->stop();
                     amy_adapter->panic();
@@ -706,20 +769,10 @@ static void app_init_task(void* arg) {
                     uint16_t pid = (uint16_t)event.value;
                     ESP_LOGI(TAG, "USB MIDI Device Connected! VID: 0x%04X, PID: 0x%04X", vid, pid);
 
-                    char prof_filename[32];
-                    snprintf(prof_filename, sizeof(prof_filename), "prof_%04X_%04X", vid, pid);
-
-                    smk::ControllerProfile loaded_prof = {};
-                    if (storage_manager && storage_manager->loadProfile(prof_filename, loaded_prof)) {
-                        active_profile = loaded_prof;
-                        ESP_LOGI(TAG, "Auto-loaded controller profile [%s] from Flash", prof_filename);
-                    } else if (storage_manager && storage_manager->loadProfile("smk25_custom", loaded_prof)) {
-                        active_profile = loaded_prof;
-                        ESP_LOGI(TAG, "Auto-loaded default profile [smk25_custom] from Flash");
-                    } else {
-                        active_profile = smk::ProfileManager::createDefaultSmk25Profile();
-                        ESP_LOGI(TAG, "Applied default SMK25 profile for VID: 0x%04X PID: 0x%04X", vid, pid);
-                    }
+                    ++profile_epoch;
+                    snprintf(profile_filename, sizeof(profile_filename), "prof_%04X_%04X", vid, pid);
+                    profile_load_pending = storage_worker_ready;
+                    active_profile = smk::ProfileManager::createDefaultSmk25Profile();
 
                     if (ui_manager) {
                         ui_manager->homeScreen().setUsbConnected(true);
@@ -728,6 +781,7 @@ static void app_init_task(void* arg) {
                     break;
                 }
                 case smk::EventType::UsbDisconnect: {
+                    ++profile_epoch; profile_load_pending = false;
                     uint16_t vid = event.id;
                     uint16_t pid = (uint16_t)event.value;
                     ESP_LOGW(TAG, "USB MIDI Device Disconnected! (VID: 0x%04X, PID: 0x%04X)", vid, pid);

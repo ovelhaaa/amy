@@ -7,6 +7,7 @@
 
 // Include UI headers
 #include "display_driver.h"
+#include "ui_manager.h"
 #include "display_layout.h"
 #include "navigation_model.h"
 #include "dummy_display_driver.h"
@@ -528,11 +529,26 @@ void testHomePatchNumberPrefix() {
     }
 }
 
+static void testDeferredDisplayTransition() {
+    struct Display : DummyDisplayDriver {
+        int brightness_calls = 0;
+        void setBrightness(uint8_t value) override {
+            ++brightness_calls; DummyDisplayDriver::setBrightness(value);
+        }
+    } display;
+    assert(display.begin());
+    UIManager ui(display); assert(ui.begin());
+    ui.switchScreen(ScreenId::Home);
+    ui.switchScreen(ScreenId::MidiMonitor);
+    assert(display.brightness_calls == 0); // Caller never touches hardware.
+}
+
 int main() {
     printf("====================================================\n");
     printf("=== Running SMK-S3 UI Subsystem Unit Tests ===\n");
     printf("====================================================\n");
 
+    testDeferredDisplayTransition();
     testGeometryAndContract();
     testDirtyRectTracking();
     testFontRenderer();

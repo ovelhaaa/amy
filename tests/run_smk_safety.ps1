@@ -24,4 +24,16 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Clock timing test compilation failed' }
     & ./build/smk_safety/test_clock_timing.exe
     if ($LASTEXITCODE -ne 0) { throw 'Clock timing tests failed' }
+    & g++ -std=c++17 -O2 -pthread -DSMK_TEST_CLOCK @includes -Ismk-s3/components/sequencer/include tests/test_smk_clock_manager.cpp smk-s3/components/sequencer/src/clock_manager.cpp -o build/smk_safety/test_clock_manager.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Clock manager compilation failed' }
+    & ./build/smk_safety/test_clock_manager.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Clock manager tests failed' }
+    & g++ -std=c++17 -O2 -pthread @includes -Ismk-s3/components/sequencer/include tests/test_smk_musical_timing.cpp smk-s3/components/sequencer/src/arpeggiator.cpp smk-s3/components/sequencer/src/step_sequencer.cpp smk-s3/components/midi/event_bus.cpp -o build/smk_safety/test_musical_timing.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Musical timing compilation failed' }
+    & ./build/smk_safety/test_musical_timing.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Musical timing tests failed' }
+    & g++ -std=c++17 -O2 -Ismk-s3/components/audio/include tests/test_smk_amy_time_bridge.cpp -o build/smk_safety/test_amy_time_bridge.exe
+    if ($LASTEXITCODE -ne 0) { throw 'AMY time bridge compilation failed' }
+    & ./build/smk_safety/test_amy_time_bridge.exe
+    if ($LASTEXITCODE -ne 0) { throw 'AMY time bridge tests failed' }
 } finally { Pop-Location }

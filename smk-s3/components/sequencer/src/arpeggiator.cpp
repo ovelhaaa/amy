@@ -1,5 +1,6 @@
 #include "arpeggiator.h"
 #include "clock_timing.h"
+#include "diagnostics.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 #include <algorithm>
@@ -73,6 +74,8 @@ void Arpeggiator::noteOff(uint8_t note) {
 }
 
 void Arpeggiator::reset() {
+    tick_seen_ = false;
+    previous_tick_ = 0; extended_tick_ = 0;
     portENTER_CRITICAL(&mux_);
     held_notes_.clear();
     latched_notes_.clear();
@@ -160,7 +163,7 @@ void Arpeggiator::generateArpPattern() {
     }
 }
 
-void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
+void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus, MusicalTiming timing) {
     if (!enabled_) {
         // If disabled while notes were sounding, turn them off cleanly
         if (active_chord_count_ > 0 || last_played_note_ >= 0) {
@@ -173,6 +176,9 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
 
     // Check if we need to emit NoteOff for the previous arpeggiated note(s)
     if (tickReached(tick_count, note_off_tick_)) {
+        if ((active_chord_count_ || last_played_note_ >= 0) &&
+            (tick_count != note_off_tick_ || (timing.timestamp_us && timing.now_us > timing.timestamp_us)))
+            Diagnostics::instance().counters().musical_releases_late.fetch_add(1, std::memory_order_relaxed);
         if (active_chord_count_ > 0) {
             for (size_t i = 0; i < active_chord_count_; ++i) {
                 if (active_chord_notes_[i] >= 0) {
@@ -183,7 +189,8 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
                     off_ev.id = (uint16_t)active_chord_notes_[i];
                     off_ev.value = 0;
                     off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
-                    event_bus.send(off_ev);
+                    off_ev.deadline_us = timing.releaseDeadline(tick_count, note_off_tick_);
+            event_bus.send(off_ev);
                 }
             }
             active_chord_count_ = 0;
@@ -197,6 +204,7 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
             off_ev.id = (uint16_t)last_played_note_;
             off_ev.value = 0;
             off_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
+            off_ev.deadline_us = timing.releaseDeadline(tick_count, note_off_tick_);
             event_bus.send(off_ev);
 
             last_played_note_ = -1;
@@ -215,7 +223,14 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
         is_step_tick = ((tick_count % ticks_per_step) == 0);
     }
 
-    if (is_step_tick) {
+    if (tick_seen_ && tick_count == previous_tick_) return;
+    previous_tick_ = tick_count; tick_seen_ = true;
+    if (is_step_tick && !timing.triggerAllowed()) {
+        generateArpPattern();
+        const size_t dropped = mode_ == ArpMode::Chord ? std::min(pattern_len_, kMaxChordNotes) : (pattern_len_ ? 1 : 0);
+        Diagnostics::instance().counters().musical_triggers_late.fetch_add(static_cast<uint32_t>(dropped), std::memory_order_relaxed);
+    }
+    if (is_step_tick && timing.triggerAllowed()) {
         generateArpPattern();
 
         if (pattern_len_ == 0) {
@@ -277,7 +292,8 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
                 on_ev.channel = 0;
                 on_ev.id = hn.note;
                 on_ev.value = hn.velocity;
-                on_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
+                on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());
+                on_ev.deadline_us = timing.deadline(std::max<uint32_t>(1, static_cast<uint32_t>(ticks_per_step * gate_percent_ / 100.0f)));
                 event_bus.send(on_ev);
             }
             last_played_note_ = -1;
@@ -290,8 +306,9 @@ void Arpeggiator::processTick(uint32_t tick_count, EventBus& event_bus) {
             on_ev.channel = 0;
             on_ev.id = current_hn.note;
             on_ev.value = current_hn.velocity;
-            on_ev.timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
-            event_bus.send(on_ev);
+            on_ev.timestamp_us = timing.timestamp_us ? timing.timestamp_us : static_cast<uint64_t>(esp_timer_get_time());
+            on_ev.deadline_us = timing.deadline(std::max<uint32_t>(1, static_cast<uint32_t>(ticks_per_step * gate_percent_ / 100.0f)));
+                event_bus.send(on_ev);
             last_played_note_ = current_hn.note;
         }
 

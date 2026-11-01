@@ -99,6 +99,27 @@ static void testBoundaries(AmyAdapter& adapter) {
     adapter.sendAmyMessage(oversized.data());
     assert(diag.synth_commands_dropped == drops + 1);
 
+    // Native time is milliseconds and evaluation happens at block boundaries:
+    // an event 1 ms into this 256-frame block waits for the next block.
+    {
+        OwnerScope scope;
+        amy_event e = amy_default_event();
+        e.time = amy_sysclock() + 1; e.volume[0] = 0.125f;
+        amy_add_event(&e);
+    }
+    assert(service(adapter)); consume(adapter);
+    assert(std::fabs(amy_global.volume[0] - 0.25f) < 0.001f);
+    assert(service(adapter)); consume(adapter);
+    assert(std::fabs(amy_global.volume[0] - 0.125f) < 0.001f);
+    {
+        OwnerScope scope;
+        amy_event e = amy_default_event();
+        e.time = amy_sysclock() - 1; e.volume[0] = 0.25f;
+        amy_add_event(&e);
+    }
+    assert(service(adapter)); consume(adapter);
+    assert(std::fabs(amy_global.volume[0] - 0.25f) < 0.001f);
+
     // Panic also cancels future events already expanded into AMY deltas.
     {
         OwnerScope scope;
@@ -115,6 +136,20 @@ static void testBoundaries(AmyAdapter& adapter) {
     adapter.panic();
     // Ignore prior release/filter tails; inspect after the scheduled onset.
     for (int i = 0; i < 160; ++i) { assert(service(adapter)); consume(adapter, i >= 100); }
+
+    // Patch replacement is also a barrier for delayed native deltas.
+    {
+        OwnerScope scope;
+        amy_event future = amy_default_event();
+        future.time = amy_sysclock() + 100;
+        future.osc = 119; future.wave = SINE;
+        future.freq_coefs[COEF_CONST] = 440;
+        future.amp_coefs[COEF_CONST] = 0.2f; future.velocity = 1;
+        amy_add_event(&future);
+    }
+    adapter.loadPreset(1, 0, 8);
+    for (int i=0; i<40; ++i) { assert(service(adapter)); consume(adapter, i>=30); }
+    assert(adapter.activeNoteReferences() == 0);
 
     // Prepared sound and queued notes from before Panic must not escape.
     adapter.noteOn(0, 60, 100);
@@ -140,8 +175,21 @@ static void testBoundaries(AmyAdapter& adapter) {
     adapter.noteOnAt(0, 72, 100, 1);
     pump(adapter, 2);
     assert(diag.synth_max_source_to_owner_us > 0);
-    adapter.noteOffAt(0, 72, 2);
+    const uint32_t late_releases = diag.synth_release_deadlines_missed;
+    adapter.noteOffAt(0, 72, 2, 1);
     pump(adapter, 2);
+
+    assert(diag.synth_release_deadlines_missed == late_releases + 1);
+
+    // Expiry at the owner is a generation recovery, never a late onset with
+    // a logically elapsed release. Also clears other pending musical commands.
+    const uint32_t late_recoveries = diag.musical_deadline_recoveries;
+    adapter.noteOnBefore(0, 75, 100, 1, 1);
+    adapter.noteOn(0, 76, 100);
+    pump(adapter, 3);
+    assert(diag.musical_deadline_recoveries == late_recoveries + 1);
+    assert(adapter.takeRecoveryRequest());
+    assert(adapter.activeNoteReferences() == 0);
 
     // Ordinary commands fill only their budget; releases retain reserve.
     const uint32_t prior_drops = diag.synth_commands_dropped;

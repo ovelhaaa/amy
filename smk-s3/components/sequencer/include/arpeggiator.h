@@ -4,6 +4,7 @@
 #include <array>
 #include <algorithm>
 #include "event_bus.h"
+#include "clock_timing.h"
 #include <freertos/FreeRTOS.h>
 
 namespace smk {
@@ -38,7 +39,7 @@ public:
     void noteOn(uint8_t note, uint8_t velocity);
     void noteOff(uint8_t note);
 
-    void processTick(uint32_t tick_count, EventBus& event_bus);
+    void processTick(uint32_t tick_count, EventBus& event_bus, MusicalTiming timing = {});
 
     void setEnabled(bool enable, EventBus* event_bus = nullptr);
     bool isEnabled() const { return enabled_; }
@@ -65,6 +66,9 @@ public:
     void reset(EventBus& event_bus);
 
 private:
+    uint32_t previous_tick_ = 0;
+    uint64_t extended_tick_ = 0;
+    bool tick_seen_ = false;
     uint32_t getTicksPerStep() const;
     void generateArpPattern();
 

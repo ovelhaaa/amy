@@ -49,6 +49,11 @@ struct DiagnosticCounters {
     std::atomic<uint32_t> clock_ticks_coalesced{0};
     std::atomic<uint32_t> clock_max_ticks_coalesced{0};
     std::atomic<uint32_t> midi_max_receive_to_control_us{0};
+    std::atomic<uint32_t> synth_release_deadlines_missed{0};
+    std::atomic<uint32_t> musical_releases_late{0};
+    std::atomic<uint32_t> musical_triggers_late{0};
+    std::atomic<uint32_t> musical_deadline_recoveries{0};
+    std::atomic<uint32_t> storage_requests_rejected{0}, storage_jobs_failed{0}, storage_max_job_us{0};
     // FM operator controls with no valid patch baseline were ignored rather
     // than overwriting the preset's operator topology with absolute values.
     std::atomic<uint32_t> fm_controls_ignored{0};
@@ -68,6 +73,7 @@ struct DiagnosticCounters {
     std::atomic<uint32_t> events_received{0};
     std::atomic<uint32_t> events_dropped{0};
     std::atomic<uint32_t> event_queue_overflows{0};
+    std::atomic<uint32_t> event_queue_high_water{0};
     
     // USB (updated by host owner, independent of EventBus delivery)
     std::atomic<uint32_t> usb_submit_failures{0};
@@ -157,6 +163,10 @@ public:
         c.clock_ticks_coalesced.store(0, std::memory_order_relaxed);
         c.clock_max_ticks_coalesced.store(0, std::memory_order_relaxed);
         c.midi_max_receive_to_control_us.store(0, std::memory_order_relaxed);
+        c.event_queue_high_water = 0;
+        c.synth_release_deadlines_missed = 0;
+        c.musical_triggers_late = 0; c.musical_releases_late = 0; c.musical_deadline_recoveries = 0;
+        c.storage_requests_rejected = 0; c.storage_jobs_failed = 0; c.storage_max_job_us = 0;
     }
     
 private:

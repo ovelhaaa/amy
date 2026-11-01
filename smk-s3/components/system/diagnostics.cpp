@@ -94,6 +94,12 @@ void Diagnostics::logSnapshot() const {
              counters_.clock_ticks_coalesced.load(), counters_.clock_max_ticks_coalesced.load());
     ESP_LOGI(TAG, "Timing: MIDI source->AMY owner max=%luus; command enqueue->owner max=%luus",
              counters_.synth_max_source_to_owner_us.load(), counters_.synth_max_command_wait_us.load());
+    ESP_LOGI(TAG, "Musical timing: late triggers=%lu, late release batches=%lu, deadline recoveries=%lu",
+             counters_.musical_triggers_late.load(), counters_.musical_releases_late.load(), counters_.musical_deadline_recoveries.load());
+    ESP_LOGI(TAG, "EventBus: high-water=%lu", counters_.event_queue_high_water.load());
+    ESP_LOGI(TAG, "AMY owner: releases after deadline=%lu", counters_.synth_release_deadlines_missed.load());
+    ESP_LOGI(TAG, "Storage: rejected/busy attempts=%lu, failed jobs=%lu, max job=%luus",
+             counters_.storage_requests_rejected.load(), counters_.storage_jobs_failed.load(), counters_.storage_max_job_us.load());
     ESP_LOGI(TAG, "System: Panics=%lu, Version=%s", s.panic_count, s.firmware_version);
 }
 

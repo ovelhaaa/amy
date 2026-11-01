@@ -47,10 +47,7 @@ void UIManager::switchScreen(ScreenId screen_id) {
     }
 
     if (current_screen_) {
-        if (screen_id != ScreenId::Splash) {
-            display_.setBrightness(255);
-        }
-        display_.invalidate();
+        display_transition_pending_.store(true, std::memory_order_release);
         current_screen_->onEnter();
         ESP_LOGI(TAG, "Switched to screen: %s", current_screen_->name());
     }
@@ -183,6 +180,10 @@ void UIManager::uiTaskRoutine(void* arg) {
             self->current_screen_->update();
         }
 
+        if (self->display_transition_pending_.exchange(false, std::memory_order_acq_rel)) {
+            if (self->current_screen_id_ != ScreenId::Splash) self->display_.setBrightness(255);
+            self->display_.invalidate();
+        }
         // Render phase
         if (self->overlay_active_) {
             self->parameter_screen_.render(self->display_);

@@ -53,7 +53,13 @@ struct alignas(8) SynthEvent {
     uint16_t id;            // note number, CC number, program number
     int16_t value;          // velocity, bend (-8192..8191), CC, or bit-preserving USB PID
     uint64_t timestamp_us;  // microsecond timestamp from esp_timer_get_time()
+    uint64_t deadline_us = 0; // Generated trigger/release deadline; zero means immediate.
 };
+
+constexpr bool expiredTrigger(const SynthEvent& event, uint64_t now_us) {
+    return event.type == EventType::NoteOn && event.value > 0 &&
+           event.deadline_us && now_us >= event.deadline_us;
+}
 
 // These events must reach the application even while MIDI Learn consumes input.
 constexpr bool isReleaseEvent(const SynthEvent& event) {

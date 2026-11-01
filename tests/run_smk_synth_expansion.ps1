@@ -28,6 +28,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Expansion test compilation failed' }
     & ./$exe
     if ($LASTEXITCODE -ne 0) { throw 'Expansion tests failed' }
+    & g++ -std=c++17 -O2 -pthread @includes tests/test_smk_storage_worker.cpp smk-s3/components/synth/src/factory_patches.cpp smk-s3/components/midi/controller_profile.cpp smk-s3/components/storage/src/storage_worker.cpp smk-s3/components/storage/src/storage_manager.cpp smk-s3/components/midi/event_bus.cpp -o build/smk_expansion/test_storage_worker.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Storage worker compilation failed' }
+    & ./build/smk_expansion/test_storage_worker.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Storage worker tests failed' }
 } finally {
     Pop-Location
 }
