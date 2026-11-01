@@ -127,7 +127,7 @@ bool AmyAdapter::beginEngine(uint32_t sample_rate_hz) {
     config.overload_ms = 500;
     config.max_oscs = smk::config::kMaxOscillators;
     
-    active_voices_.store(0);
+    active_note_references_.store(0);
     std::memset(active_notes_, 0, sizeof(active_notes_));
 
     amy_start(config);
@@ -177,11 +177,11 @@ void AmyAdapter::executeNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) 
     if (velocity > 0) {
         if (active_notes_[channel][note] < 255) {
             active_notes_[channel][note]++;
+            active_note_references_++;
         }
 
         // Synth 10 is GM Drums (channel 9)
         if (channel == 9) {
-            active_voices_++;
             amy_event e = amy_default_event();
             e.synth = 10;
             e.midi_note = (float)note;
@@ -207,8 +207,6 @@ void AmyAdapter::executeNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) 
                 mono_stack_[mono_stack_size_++] = note;
             }
 
-            active_voices_.store(1, std::memory_order_relaxed);
-
             amy_event e = amy_default_event();
             e.synth = 1;
             e.midi_note = (float)note;
@@ -221,7 +219,6 @@ void AmyAdapter::executeNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) 
             amy_add_event(&e);
         } else {
             // Polyphonic Mode
-            active_voices_++;
             amy_event e = amy_default_event();
             e.synth = 1;
             e.midi_note = (float)note;
@@ -239,12 +236,12 @@ void AmyAdapter::executeNoteOff(uint8_t channel, uint8_t note) {
     const uint8_t note_references = active_notes_[channel][note];
     if (note_references > 0) {
         active_notes_[channel][note] = static_cast<uint8_t>(note_references - 1);
+        if (active_note_references_ > 0) active_note_references_--;
     } else {
         return; // Note was already released or cleared by Panic / AllNotesOff
     }
 
     if (channel == 9) {
-        if (active_voices_ > 0) active_voices_--;
         amy_event e = amy_default_event();
         e.synth = 10;
         e.midi_note = (float)note;
@@ -256,7 +253,6 @@ void AmyAdapter::executeNoteOff(uint8_t channel, uint8_t note) {
     // AMY receives note commands by channel/pitch, without an application
     // voice token. Keep a repeated pitch alive until its final matching release
     // so an overlapping keyboard/arp/sequence reference cannot cut it early.
-    if (!mono_mode_ && active_voices_ > 0) active_voices_--;
     if (note_references > 1) return;
 
     // Main Synth (Synth 1)
@@ -276,7 +272,6 @@ void AmyAdapter::executeNoteOff(uint8_t channel, uint8_t note) {
 
         if (mono_stack_size_ == 0) {
             // All keys released: trigger voice release
-            active_voices_.store(0, std::memory_order_relaxed);
             amy_event e = amy_default_event();
             e.synth = 1;
             e.midi_note = (float)note;
@@ -328,7 +323,7 @@ void AmyAdapter::executeControlChange(uint8_t channel, uint8_t controller, uint8
 
 void AmyAdapter::executeAllNotesOff() {
     std::memset(active_notes_, 0, sizeof(active_notes_));
-    active_voices_.store(0);
+    active_note_references_.store(0);
     mono_stack_size_ = 0;
 
     // Release sustain pedal for Synth 1 and Synth 10
@@ -467,8 +462,8 @@ float AmyAdapter::renderLoad() const {
     return render_load_snapshot_.load(std::memory_order_relaxed);
 }
 
-uint32_t AmyAdapter::activeVoices() const {
-    return active_voices_.load();
+uint32_t AmyAdapter::activeNoteReferences() const {
+    return active_note_references_.load();
 }
 
 void AmyAdapter::executeFilter(uint8_t synth_id, float cutoff_hz, float resonance,

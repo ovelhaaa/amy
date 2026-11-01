@@ -32,7 +32,7 @@ public:
     int16_t* render() override;
     uint16_t blockSize() const override;
     float renderLoad() const override;
-    uint32_t activeVoices() const override;
+    uint32_t activeNoteReferences() const override;
 
     // Copied commands; only the synthesis worker accesses AMY after boot.
     virtual void setFilter(uint8_t osc_id, float cutoff_hz, float resonance,
@@ -141,7 +141,7 @@ private:
     int16_t* renderEngine();
     std::atomic<bool> mono_snapshot_{false};
     std::atomic<float> render_load_snapshot_{0};
-    std::atomic<uint32_t> active_voices_{0};
+    std::atomic<uint32_t> active_note_references_{0};
     std::atomic<bool> soft_limiter_enabled_{true};
     std::atomic<float> master_gain_{1.0f};
     std::atomic<float> drive_level_{0.0f};

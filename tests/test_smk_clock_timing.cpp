@@ -1,4 +1,5 @@
 #include "clock_timing.h"
+#include "synth_event.h"
 
 #include <cassert>
 #include <cstdint>
@@ -6,6 +7,7 @@
 int main() {
     using smk::LatestTickMailbox;
     using smk::tickReached;
+    static_assert(sizeof(smk::SynthEvent) == 16, "timestamps must retain the bounded event size");
 
     assert(tickReached(10, 10));
     assert(!tickReached(9, 10));
@@ -40,6 +42,12 @@ int main() {
     mailbox.publish(0, 20);
     assert(mailbox.consume(tick, skipped, timestamp));
     assert(tick == 0 && skipped == 0 && timestamp == 20);
+
+    constexpr uint64_t after_32_bit_wrap = (uint64_t{1} << 32) + 1234;
+    mailbox.reset();
+    mailbox.publish(1, after_32_bit_wrap);
+    assert(mailbox.consume(tick, skipped, timestamp));
+    assert(timestamp == after_32_bit_wrap);
 
     return 0;
 }

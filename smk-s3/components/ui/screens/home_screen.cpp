@@ -115,9 +115,8 @@ void HomeScreen::setObservedPadBank(uint8_t bank) {
     observed_pad_bank_ = bank <= 2 ? bank : 0;
 }
 
-void HomeScreen::setActiveVoices(uint8_t active_count, uint8_t max_voices) {
-    active_voices_ = active_count;
-    max_voices_ = max_voices;
+void HomeScreen::setActiveNoteReferences(uint32_t active_count) {
+    active_note_references_ = static_cast<uint8_t>(active_count > UINT8_MAX ? UINT8_MAX : active_count);
 }
 
 void HomeScreen::setCpuLoad(float load_percent) {
@@ -232,18 +231,16 @@ void HomeScreen::render(DisplayDriver& display) {
                                  DisplayDriver::kColorDarkGray, FontType::Font3x5);
 
         char voice_buf[16];
-        snprintf(voice_buf, sizeof(voice_buf), "V%u/%u", active_voices_,
-                 max_voices_ > 0 ? max_voices_ : 12);
+        snprintf(voice_buf, sizeof(voice_buf), "R%u", active_note_references_);
         const int16_t voice_text_x = 8 + FontRenderer::stringWidth(mode_buf, FontType::Font3x5);
         FontRenderer::drawString(display, voice_text_x, 21, voice_buf,
                                  DisplayDriver::kColorLightGray, DisplayDriver::kColorDarkGray,
                                  FontType::Font3x5);
         const int16_t voice_bar_x = voice_text_x +
             FontRenderer::stringWidth(voice_buf, FontType::Font3x5) + 4;
-        for (uint8_t voice = 0; voice < max_voices_ && voice < 8; ++voice) {
+        for (uint8_t voice = 0; voice < active_note_references_ && voice < 8; ++voice) {
             display.fillRect(voice_bar_x + voice * 6, 22, 4, 4,
-                             voice < active_voices_ ? DisplayDriver::kColorCyan
-                                                    : DisplayDriver::kColorMidGray);
+                             DisplayDriver::kColorCyan);
         }
 
         char bank_buf[16];
@@ -286,7 +283,7 @@ void HomeScreen::render(DisplayDriver& display) {
 
         OscilloscopeWidget scope(4, 162, dw - 8, 45);
         scope.setSamples(scope_samples_, scope_sample_count_);
-        scope.setActive(active_voices_ > 0 || midi_active_);
+        scope.setActive(active_note_references_ > 0 || midi_active_);
         scope.draw(display);
 
         display.drawHLine(0, 212, dw, DisplayDriver::kColorDarkGray);
@@ -345,16 +342,12 @@ void HomeScreen::render(DisplayDriver& display) {
         OscilloscopeWidget scope(compact_layout::kScopeX, compact_layout::kScopeY,
                                  compact_layout::kScopeW, compact_layout::kScopeH);
         scope.setSamples(scope_samples_, scope_sample_count_);
-        scope.setActive(active_voices_ > 0 || midi_active_);
+        scope.setActive(active_note_references_ > 0 || midi_active_);
         scope.draw(display);
 
-        // 3. 8 Polyphony Voice Indicator Dots (y=45)
-        for (uint8_t v = 0; v < max_voices_ && v < 8; ++v) {
-            uint16_t voice_col = (v < active_voices_) ? DisplayDriver::kColorCyan : DisplayDriver::kColorDarkGray;
-            display.fillRect(4 + v * 7, compact_layout::kVoiceY, 5, 3, voice_col);
-        }
+        // Note references are an activity count, not AMY allocated voices.
         char v_str[16];
-        snprintf(v_str, sizeof(v_str), "VOICES: %02u/%02u", active_voices_, max_voices_ > 0 ? max_voices_ : 12);
+        snprintf(v_str, sizeof(v_str), "NOTE REFS: %02u", active_note_references_);
         FontRenderer::drawString(display, 64, 44, v_str, DisplayDriver::kColorLightGray, DisplayDriver::kColorBlack, FontType::Font3x5);
 
         // 4. 2x4 Knob Matrix (y=50..115)
@@ -446,10 +439,9 @@ void HomeScreen::render(DisplayDriver& display) {
     FontRenderer::drawString(display, unit_x, 6, "BPM", DisplayDriver::kColorAmber,
                              DisplayDriver::kColorBlack, FontType::Font3x5);
 
-    // Voice activity: eight 3px bars with 1px spacing, before the badges.
-    for (uint8_t v = 0; v < max_voices_ && v < 8; ++v) {
-        uint16_t voice_col = (v < active_voices_) ? DisplayDriver::kColorCyan : DisplayDriver::kColorDarkGray;
-        display.fillRect(voice_x + v * 4, wide_layout::kVoiceY, 3, 7, voice_col);
+    // Active note reference bars (not AMY allocated-voice telemetry).
+    for (uint8_t v = 0; v < active_note_references_ && v < 8; ++v) {
+        display.fillRect(voice_x + v * 4, wide_layout::kVoiceY, 3, 7, DisplayDriver::kColorCyan);
     }
 
     // MIDI and USB badges anchored to the right edge.

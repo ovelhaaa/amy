@@ -964,7 +964,7 @@ bool PatchManager::applyLoadedPatch(const SynthPatch& patch) {
         ui_manager_->homeScreen().setPatchInfo(active_patch_.id, active_patch_.name, "SYNTH");
         ui_manager_->homeScreen().setMacroLabels(m_labels);
         ui_manager_->homeScreen().setMacroValues(m_vals);
-        ui_manager_->homeScreen().setActiveVoices(amy_adapter_ ? amy_adapter_->activeVoices() : 0, active_patch_.voice_count);
+        ui_manager_->homeScreen().setActiveNoteReferences(amy_adapter_ ? amy_adapter_->activeNoteReferences() : 0);
         ui_manager_->triggerParameterOverlay("PATCH LOAD", "BANK A", (float)active_patch_.id, 0.0f, active_patch_.name, TakeoverStatus::Captured);
     }
 

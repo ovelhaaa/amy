@@ -378,6 +378,7 @@ int main(int argc, char** argv) {
     // Panic must cancel a Note On still waiting for the synth's 4 ms delay.
     adapter.noteOn(0, 60, 100);
     adapter.panic();
+    adapter.noteOff(0, 60); // A delayed release after Panic must remain harmless.
     assert(!render_signal(adapter, 32));
     adapter.noteOn(0, 60, 100);
     assert(render_signal(adapter, 32));
@@ -390,13 +391,42 @@ int main(int argc, char** argv) {
     adapter.noteOn(0, 60, 100);
     adapter.noteOn(0, 60, 110);
     assert(render_signal(adapter, 32));
-    assert(adapter.activeVoices() == 2);
+    assert(adapter.activeNoteReferences() == 2);
     adapter.noteOff(0, 60);
     render_signal(adapter, 32);
-    assert(adapter.activeVoices() == 1);
+    assert(adapter.activeNoteReferences() == 1);
     adapter.noteOff(0, 60);
     render_signal(adapter, 1000);
-    assert(adapter.activeVoices() == 0);
+    assert(adapter.activeNoteReferences() == 0);
+    assert(!render_signal(adapter, 16));
+
+    // Sustain keeps engine audio alive after the held-reference metric reaches
+    // zero, then releases it when the pedal is lifted.
+    adapter.controlChange(0, 64, 127);
+    adapter.noteOn(0, 62, 100);
+    assert(render_signal(adapter, 32));
+    adapter.noteOff(0, 62);
+    render_signal(adapter, 32);
+    assert(adapter.activeNoteReferences() == 0);
+    assert(render_signal(adapter, 1000));
+    adapter.controlChange(0, 64, 0);
+    render_signal(adapter, 1000);
+    assert(!render_signal(adapter, 16));
+
+    // Monophonic legato stores unique pitches while the channel/pitch
+    // reference count prevents an early release for a repeated key.
+    adapter.loadPreset(1, 0, 1);
+    render_signal(adapter, 2);
+    adapter.noteOn(0, 60, 100);
+    adapter.noteOn(0, 60, 110);
+    assert(render_signal(adapter, 32));
+    assert(adapter.activeNoteReferences() == 2);
+    adapter.noteOff(0, 60);
+    render_signal(adapter, 32);
+    assert(adapter.activeNoteReferences() == 1);
+    adapter.noteOff(0, 60);
+    render_signal(adapter, 1000);
+    assert(adapter.activeNoteReferences() == 0);
     assert(!render_signal(adapter, 16));
     // Exercise every boot voice, including the voice the legacy boot left empty.
     for (int voice = 0; voice < smk::config::kDefaultVoiceCount; ++voice) {

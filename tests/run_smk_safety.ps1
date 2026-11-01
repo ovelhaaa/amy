@@ -20,7 +20,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Console args test compilation failed' }
     & ./build/smk_safety/test_console_args.exe
     if ($LASTEXITCODE -ne 0) { throw 'Console args tests failed' }
-    & g++ -std=c++17 -O2 -pthread -Ismk-s3/components/sequencer/include tests/test_smk_clock_timing.cpp -o build/smk_safety/test_clock_timing.exe
+    & g++ -std=c++17 -O2 -pthread -Ismk-s3/components/sequencer/include -Ismk-s3/components/midi/include tests/test_smk_clock_timing.cpp -o build/smk_safety/test_clock_timing.exe
     if ($LASTEXITCODE -ne 0) { throw 'Clock timing test compilation failed' }
     & ./build/smk_safety/test_clock_timing.exe
     if ($LASTEXITCODE -ne 0) { throw 'Clock timing tests failed' }

@@ -173,7 +173,7 @@ int Console::cmdAudioStatus(int argc, char** argv) {
              (unsigned long)s.avg_render_us, (unsigned long)s.max_render_us,
              (unsigned long)s.frames_rendered);
     ESP_LOGI(TAG, "avg_load=%.1f max_load=%.1f", s.render_load, s.max_render_load);
-    ESP_LOGI(TAG, "voices=%lu", (unsigned long)s.active_voices);
+    ESP_LOGI(TAG, "note_refs=%lu", (unsigned long)s.active_note_references);
     ESP_LOGI(TAG, "peak=%lu peak_dbfs=%.1f near_clip=%lu hard_clip=%lu",
              (unsigned long)s.peak_abs_sample, peak_dbfs,
              (unsigned long)s.near_clip_samples, (unsigned long)s.hard_clip_samples);

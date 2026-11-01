@@ -79,7 +79,7 @@ struct DiagnosticCounters {
     
     // System
     std::atomic<uint32_t> panic_count{0};
-    std::atomic<uint32_t> active_voices{0};
+    std::atomic<uint32_t> active_note_references{0};
 };
 
 class Diagnostics {
@@ -116,7 +116,7 @@ public:
         uint32_t peak_abs_sample;
         uint32_t near_clip_samples;
         uint32_t hard_clip_samples;
-        uint32_t active_voices;
+        uint32_t active_note_references;
         uint32_t midi_parse_errors;
         uint32_t events_received;
         uint32_t event_queue_overflows;

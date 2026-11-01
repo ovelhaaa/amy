@@ -46,9 +46,33 @@ Diagnostics& Diagnostics::instance() {
     return diagnostics;
 }
 Diagnostics::Snapshot Diagnostics::takeSnapshot() const {
-    return Snapshot{0, 1200, 800, 48000, 128 * 1024, 4 * 1024 * 1024,
-                    96 * 1024, 3 * 1024 * 1024, 240, 16 * 1024 * 1024,
-                    8 * 1024 * 1024, 12.5f, 4, 0, 128, 0, 1, 2, 1, true, "test"};
+    Snapshot snapshot{};
+    snapshot.audio_underruns = 0;
+    snapshot.max_render_us = 1200;
+    snapshot.avg_render_us = 800;
+    snapshot.frames_rendered = 48000;
+    snapshot.free_internal_ram = 128 * 1024;
+    snapshot.free_psram = 4 * 1024 * 1024;
+    snapshot.largest_free_internal_block = 96 * 1024;
+    snapshot.largest_free_psram_block = 3 * 1024 * 1024;
+    snapshot.cpu_freq_mhz = 240;
+    snapshot.flash_size = 16 * 1024 * 1024;
+    snapshot.psram_size = 8 * 1024 * 1024;
+    snapshot.block_size = 256;
+    snapshot.sample_rate_hz = 48000;
+    snapshot.block_budget_us = 256.0f * 1000000.0f / 48000.0f;
+    snapshot.render_load = 12.5f;
+    snapshot.max_render_load = 18.75f;
+    snapshot.active_note_references = 4;
+    snapshot.midi_parse_errors = 0;
+    snapshot.events_received = 128;
+    snapshot.event_queue_overflows = 0;
+    snapshot.usb_disconnects = 1;
+    snapshot.usb_reconnects = 2;
+    snapshot.panic_count = 1;
+    snapshot.usb_connected = true;
+    snapshot.firmware_version = "test";
+    return snapshot;
 }
 }
 
@@ -391,7 +415,7 @@ void testHomeHeaderSeparation() {
     HomeScreen home;
     home.setUsbConnected(true);
     home.setMidiActivity(true);
-    home.setActiveVoices(8, 8);
+    home.setActiveNoteReferences(8);
     home.setBpm(300);
     home.setObservedKnobBank(2);
     home.setObservedPadBank(1);
@@ -440,13 +464,13 @@ void testHomeHeaderSeparation() {
 }
 
 void testSquareHomeTempoAndVoicesPlacement() {
-    printf("[TEST] Square Home emphasizes tempo in footer and voices in header...\n");
+    printf("[TEST] Square Home emphasizes tempo and shows held note references...\n");
     BoundsCheckingDisplayDriver display(240, 240);
     assert(display.begin());
     HomeScreen home;
     home.setPatchInfo(7, "SQUARE TEST", "POLY");
     home.setBpm(128.0f);
-    home.setActiveVoices(3, 8);
+    home.setActiveNoteReferences(3);
     home.setObservedKnobBank(1);
     home.setObservedPadBank(2);
     home.render(display);

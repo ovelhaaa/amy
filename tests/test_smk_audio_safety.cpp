@@ -42,7 +42,7 @@ struct Engine : SynthEngine {
     }
     uint16_t blockSize() const override { return frames; }
     float renderLoad() const override { return 0; }
-    uint32_t activeVoices() const override { return 0; }
+    uint32_t activeNoteReferences() const override { return 0; }
     bool bufferedOutput() const override { return buffered; }
     void onAudioStopped() override { ++stop_notifications; }
 };

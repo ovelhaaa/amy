@@ -59,7 +59,7 @@ void SystemScreen::render(DisplayDriver& display) {
         draw_card(4, 92, "MEMORY", line1, line2, DisplayDriver::kColorCyan);
 
         snprintf(line1, sizeof(line1), "CPU %luMHz", snap.cpu_freq_mhz);
-        snprintf(line2, sizeof(line2), "DSP %.1f%%  V %lu", snap.render_load, snap.active_voices);
+        snprintf(line2, sizeof(line2), "DSP %.1f%%  R %lu", snap.render_load, snap.active_note_references);
         draw_card(123, 92, "ENGINE", line1, line2, DisplayDriver::kColorAmber);
 
         snprintf(line1, sizeof(line1), "ERROR %lu", snap.midi_parse_errors);
@@ -84,7 +84,7 @@ void SystemScreen::render(DisplayDriver& display) {
         display.drawHLine(0, 11, dw, DisplayDriver::kColorMidGray);
 
         char buf[64];
-        snprintf(buf, sizeof(buf), "CPU:%luMHz V:%02lu/12", snap.cpu_freq_mhz, snap.active_voices);
+        snprintf(buf, sizeof(buf), "CPU:%luMHz REFS:%02lu", snap.cpu_freq_mhz, snap.active_note_references);
         FontRenderer::drawString(display, 2, 14, buf, DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
 
         snprintf(buf, sizeof(buf), "DSP:%.1f%% UNDR:%lu", snap.render_load, snap.audio_underruns);
@@ -120,10 +120,10 @@ void SystemScreen::render(DisplayDriver& display) {
     FontRenderer::drawString(display, 170, 2, ver_str, DisplayDriver::kColorWhite, DisplayDriver::kColorBlack, FontType::Font5x7);
     display.drawHLine(0, 11, dw, DisplayDriver::kColorMidGray);
 
-    // Row 1: CPU, DSP Load, Voices, Underruns
+    // Row 1: CPU, DSP Load, note references, underruns
     char r1[64];
-    snprintf(r1, sizeof(r1), "CPU: %luMHz | DSP LOAD: %.1f%% | VOICES: %02lu/12 | UNDERRUNS: %06lu",
-             snap.cpu_freq_mhz, snap.render_load, snap.active_voices, snap.audio_underruns);
+    snprintf(r1, sizeof(r1), "CPU: %luMHz | DSP LOAD: %.1f%% | NOTE REFS: %02lu | UNDERRUNS: %06lu",
+             snap.cpu_freq_mhz, snap.render_load, snap.active_note_references, snap.audio_underruns);
     FontRenderer::drawString(display, 2, 16, r1, DisplayDriver::kColorYellow, DisplayDriver::kColorBlack, FontType::Font5x7);
 
     // Row 2: Int RAM, PSRAM, USB State

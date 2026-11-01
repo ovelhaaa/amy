@@ -54,7 +54,7 @@ Diagnostics::Snapshot Diagnostics::takeSnapshot() const {
     s.peak_abs_sample = counters_.peak_abs_sample.load();
     s.near_clip_samples = counters_.near_clip_samples.load();
     s.hard_clip_samples = counters_.hard_clip_samples.load();
-    s.active_voices = counters_.active_voices.load();
+    s.active_note_references = counters_.active_note_references.load();
     
     s.midi_parse_errors = counters_.midi_parse_errors.load();
     s.events_received = counters_.events_received.load();
@@ -74,8 +74,8 @@ void Diagnostics::logSnapshot() const {
     ESP_LOGI(TAG, "Audio: Block=%lu, Rate=%luHz, Budget=%.1fus, AvgRender=%luus (%.1f%%), MaxRender=%luus (%.1f%%)",
              s.block_size, s.sample_rate_hz, s.block_budget_us,
              s.avg_render_us, s.render_load, s.max_render_us, s.max_render_load);
-    ESP_LOGI(TAG, "Audio: Underruns=%lu, PCMStarvations=%lu, FramesRendered=%lu, Voices=%lu",
-             s.audio_underruns, counters_.synth_pcm_starvations.load(), s.frames_rendered, s.active_voices);
+    ESP_LOGI(TAG, "Audio: Underruns=%lu, PCMStarvations=%lu, FramesRendered=%lu, NoteRefs=%lu",
+             s.audio_underruns, counters_.synth_pcm_starvations.load(), s.frames_rendered, s.active_note_references);
     ESP_LOGI(TAG, "I2S: WriteErrors=%lu, Timeouts=%lu, RenderDeadlineMisses=%lu; DMA underrun not measured",
              counters_.i2s_write_errors.load(), counters_.i2s_write_timeouts.load(), counters_.render_deadline_misses.load());
     ESP_LOGI(TAG, "USB: SubmitFailures=%lu, TransferErrors=%lu, MidiDrops=%lu",

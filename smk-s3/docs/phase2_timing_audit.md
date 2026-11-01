@@ -36,7 +36,7 @@ MIDI Clock percorre USB → parser → EventBus → controle → `ClockManager::
 
 ## Propriedade do estado de notas
 
-`app_init_task` roteia Note On/Off diretos. Arpeggiator guarda notas held/latched e último trigger; StepSequencer guarda a última nota por track e tick de release; `AmyAdapter` guarda bitmap canal/nota e stack mono; AMY realiza allocation/voice stealing. Não há ownership por origem para teclado, arpejador e sequenciador. `activeVoices()` é snapshot da contagem de engine, não número de teclas fisicamente pressionadas. Sobreposição de mesma nota/canal por fontes diferentes precisa de teste antes de justificar uma tabela de ownership.
+`app_init_task` roteia Note On/Off diretos. Arpeggiator guarda notas held/latched e último trigger; StepSequencer guarda a última nota por track e tick de release; `AmyAdapter` guarda bitmap canal/nota e stack mono; AMY realiza allocation/voice stealing. Não há ownership por origem para teclado, arpejador e sequenciador. `activeNoteReferences()` agrega referências Note On pendentes por canal/nota; não é contagem de vozes AMY nem de teclas físicas. Com sustain ativo, pode chegar a zero enquanto o áudio continua soando. Sobreposição da mesma nota/canal é agregada para o primeiro Note Off não cortar referências ainda ativas.
 
 ## Mapa de atraso por etapa
 

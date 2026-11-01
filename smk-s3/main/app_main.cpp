@@ -213,7 +213,7 @@ static void app_init_task(void* arg) {
         ui_manager->homeScreen().setMacroValues(m_vals);
         ui_manager->homeScreen().setUsbConnected(midi_host ? midi_host->isDeviceConnected() : false);
         ui_manager->homeScreen().setBpm(clock_manager ? clock_manager->bpm() : 120.0f);
-        ui_manager->homeScreen().setActiveVoices(0, patch_manager->activePatch().voice_count);
+        ui_manager->homeScreen().setActiveNoteReferences(0);
         ui_manager->systemScreen().setConfigInfo(
             smk::MidiParser::velocityCurveName(static_cast<smk::VelocityCurve>(sys_cfg.velocity_curve)),
             sys_cfg.swing_percent,
@@ -526,9 +526,9 @@ static void app_init_task(void* arg) {
                         }
                     }
                     if (amy_adapter && ui_manager && patch_manager) {
-                        uint32_t active_v = amy_adapter->activeVoices();
-                        ui_manager->homeScreen().setActiveVoices(active_v, patch_manager->activePatch().voice_count);
-                        smk::Diagnostics::instance().counters().active_voices.store(active_v);
+                        uint32_t active_note_refs = amy_adapter->activeNoteReferences();
+                        ui_manager->homeScreen().setActiveNoteReferences(active_note_refs);
+                        smk::Diagnostics::instance().counters().active_note_references.store(active_note_refs);
                     }
                     continue;
                 }
@@ -741,17 +741,18 @@ static void app_init_task(void* arg) {
                     break;
             }
 
-            // Sync active voice count to HomeScreen and Diagnostics on voice-changing events
+            // Sync aggregate note-reference count; exact AMY voice allocation
+            // and release tails are not observable without engine hooks.
             if (amy_adapter && (event.type == smk::EventType::NoteOn || 
                                 event.type == smk::EventType::NoteOff || 
                                 event.type == smk::EventType::AllNotesOff || 
                                 event.type == smk::EventType::Panic ||
                                 event.type == smk::EventType::UsbDisconnect)) {
-                uint32_t active_v = amy_adapter->activeVoices();
+                uint32_t active_note_refs = amy_adapter->activeNoteReferences();
                 if (ui_manager && patch_manager) {
-                    ui_manager->homeScreen().setActiveVoices(active_v, patch_manager->activePatch().voice_count);
+                    ui_manager->homeScreen().setActiveNoteReferences(active_note_refs);
                 }
-                smk::Diagnostics::instance().counters().active_voices.store(active_v);
+                smk::Diagnostics::instance().counters().active_note_references.store(active_note_refs);
             }
         }
 
@@ -767,13 +768,13 @@ static void app_init_task(void* arg) {
                 continue;
             }
             auto snapshot = smk::Diagnostics::instance().takeSnapshot();
-            ESP_LOGI(TAG, "Status: Patch=[%s], BPM=%.1f, Arp=%s, Seq=%s, StorageUsed=%zuKB, Voices=%lu",
+            ESP_LOGI(TAG, "Status: Patch=[%s], BPM=%.1f, Arp=%s, Seq=%s, StorageUsed=%zuKB, NoteRefs=%lu",
                      patch_manager ? patch_manager->activePatch().name : "NONE",
                      clock_manager ? clock_manager->bpm() : 0.0f,
                      (arpeggiator && arpeggiator->isEnabled()) ? "ON" : "OFF",
                      (step_sequencer && step_sequencer->isPlaying()) ? "PLAY" : "STOP",
                      storage_manager ? storage_manager->usedBytes() / 1024 : 0,
-                     snapshot.active_voices);
+                     snapshot.active_note_references);
         }
     }
     vTaskDelete(NULL);

@@ -77,9 +77,9 @@ static void testBoundaries(AmyAdapter& adapter) {
 
     adapter.noteOn(0, 60, 100);
     adapter.noteOff(0, 60);
-    assert(adapter.activeVoices() == 0); // Enqueue never touches the engine.
+    assert(adapter.activeNoteReferences() == 0); // Enqueue never touches the engine.
     pump(adapter);
-    assert(adapter.activeVoices() == 0);
+    assert(adapter.activeNoteReferences() == 0);
 
     for (int i = 0; i < config::kSynthCommandsPerBlock + 1; ++i) adapter.setMonoMode((i % 2) != 0);
     assert(service(adapter)); consume(adapter);
@@ -124,16 +124,16 @@ static void testBoundaries(AmyAdapter& adapter) {
     const uint32_t panics = diag.synth_panics;
     consume(adapter, true); // Discards both old-generation PCM blocks.
     pump(adapter);
-    assert(diag.synth_panics == panics + 1 && adapter.activeVoices() == 0);
+    assert(diag.synth_panics == panics + 1 && adapter.activeNoteReferences() == 0);
 
     // Commands submitted after Panic still run after the reset.
     adapter.panic();
     adapter.noteOn(0, 67, 100);
     pump(adapter, 2);
-    assert(adapter.activeVoices() == 1);
+    assert(adapter.activeNoteReferences() == 1);
     adapter.noteOff(0, 67);
     pump(adapter);
-    assert(adapter.activeVoices() == 0);
+    assert(adapter.activeNoteReferences() == 0);
 
     // Preserve the MIDI receive timestamp through the application command
     // queue so firmware can report source-to-AMY-owner delay separately.
@@ -157,7 +157,7 @@ static void testBoundaries(AmyAdapter& adapter) {
     assert(!adapter.takeRecoveryRequest());
     const uint32_t prior_panics = diag.synth_panics;
     pump(adapter, 8);
-    assert(diag.synth_panics == prior_panics + 1 && adapter.activeVoices() == 0);
+    assert(diag.synth_panics == prior_panics + 1 && adapter.activeNoteReferences() == 0);
     assert(diag.synth_queue_high_water == config::kSynthCommandCapacity);
 
     // A stalled owner must not block PCM delivery. Panic arriving in the
@@ -179,7 +179,7 @@ static void testBoundaries(AmyAdapter& adapter) {
     consume(adapter, true);
     assert(diag.synth_pcm_starvations == gaps + 1);
     pump(adapter);
-    assert(adapter.activeVoices() == 0);
+    assert(adapter.activeNoteReferences() == 0);
 }
 
 static void testConcurrent(AmyAdapter& adapter) {
@@ -225,7 +225,7 @@ static void testConcurrent(AmyAdapter& adapter) {
     adapter.onAudioStopped();
     assert(!adapter.startWorker(1, 23, 16384)); // A stopped owner cannot be restarted on existing engine state.
     worker.join();
-    assert(adapter.activeVoices() == 0);
+    assert(adapter.activeNoteReferences() == 0);
 }
 
 int main() {

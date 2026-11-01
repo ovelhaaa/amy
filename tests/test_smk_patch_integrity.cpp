@@ -30,7 +30,7 @@ void HomeScreen::setMacroLabels(const char[8][8]) {}
 void HomeScreen::setEngineValues(const uint8_t[8]) {}
 void HomeScreen::setHomeKnobBankView(HomeKnobBankView) {}
 void HomeScreen::setKnobBankLabel(const char*) {}
-void HomeScreen::setActiveVoices(uint8_t, uint8_t) {}
+void HomeScreen::setActiveNoteReferences(uint32_t) {}
 void UIManager::triggerParameterOverlay(const char*, const char*, float, float, const char*, TakeoverStatus) {}
 }
 

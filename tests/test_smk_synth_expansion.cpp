@@ -28,7 +28,7 @@ void HomeScreen::setMacroLabels(const char[8][8]) {}
 void HomeScreen::setEngineValues(const uint8_t[8]) {}
 void HomeScreen::setHomeKnobBankView(HomeKnobBankView) {}
 void HomeScreen::setKnobBankLabel(const char*) {}
-void HomeScreen::setActiveVoices(uint8_t, uint8_t) {}
+void HomeScreen::setActiveNoteReferences(uint32_t) {}
 void UIManager::triggerParameterOverlay(const char*, const char*, float, float, const char*, TakeoverStatus) {}
 
 AmyAdapter::AmyAdapter() {}
@@ -44,7 +44,7 @@ void AmyAdapter::panic() {}
 int16_t* AmyAdapter::render() { return nullptr; }
 uint16_t AmyAdapter::blockSize() const { return 256; }
 float AmyAdapter::renderLoad() const { return 0.0f; }
-uint32_t AmyAdapter::activeVoices() const { return 0; }
+uint32_t AmyAdapter::activeNoteReferences() const { return 0; }
 void AmyAdapter::getScopeSamples(int16_t*, size_t, size_t*) const {}
 void AmyAdapter::setFilter(uint8_t, float, float, float, float, float, uint8_t) {}
 void AmyAdapter::setOscillatorWaveform(uint8_t, uint8_t) {}

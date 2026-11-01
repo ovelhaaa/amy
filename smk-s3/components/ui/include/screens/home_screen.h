@@ -36,7 +36,7 @@ public:
     void setKnobBankLabel(const char* bank_name);
     void setObservedKnobBank(uint8_t bank);
     void setObservedPadBank(uint8_t bank);
-    void setActiveVoices(uint8_t active_count, uint8_t max_voices = 8);
+    void setActiveNoteReferences(uint32_t active_count);
     void setCpuLoad(float load_percent);
     void setWaveformSamples(const int16_t* samples, size_t count);
 
@@ -54,8 +54,7 @@ private:
     uint8_t macro_values_[8]{62, 78, 31, 45, 8, 67, 34, 22};
     char macro_labels_[8][8]{"CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV"};
     uint8_t engine_values_[8]{64, 40, 50, 45, 20, 30, 40, 15};
-    uint8_t active_voices_{0};
-    uint8_t max_voices_{8};
+    uint8_t active_note_references_{0};
     float cpu_load_{12.5f};
     uint32_t scope_phase_{0};
     uint32_t midi_activity_timer_{0};

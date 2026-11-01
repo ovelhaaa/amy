@@ -20,7 +20,7 @@ public:
     virtual int16_t* render() = 0;
     virtual uint16_t blockSize() const = 0;
     virtual float renderLoad() const = 0;
-    virtual uint32_t activeVoices() const = 0;
+    virtual uint32_t activeNoteReferences() const = 0;
     // Buffered engines publish synthesis metrics themselves; render() only
     // consumes prepared PCM. Stop notification must not wait for the producer.
     virtual bool bufferedOutput() const { return false; }
