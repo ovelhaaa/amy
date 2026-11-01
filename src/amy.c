@@ -2402,6 +2402,63 @@ struct delta *delta_get(struct delta *from) {
     return d;
 }
 
+// Checked clients never abort at the pool ceiling and never hide allocation
+// failure behind a diagnostic. Legacy delta_get keeps its original semantics.
+amy_resource_result delta_get_checked(const struct delta *from, struct delta **out) {
+    if (out == NULL) return AMY_RESOURCE_INVALID;
+    *out = NULL;
+    if (free_deltas_pool == NULL) {
+        if (next_delta_block >= MAX_DELTA_BLOCKS) return AMY_RESOURCE_CAPACITY;
+        struct delta *block = deltas_pool_alloc(DELTA_BLOCK_SIZE, NULL);
+        if (block == NULL) return AMY_RESOURCE_NO_MEMORY;
+        free_deltas_pool = delta_blocks[next_delta_block++] = block;
+    }
+    struct delta *d = free_deltas_pool;
+    free_deltas_pool = d->next;
+    if (from != NULL) {
+        d->data = from->data;
+        d->param = from->param;
+        d->time = from->time;
+        d->osc = from->osc;
+    }
+    d->next = NULL;
+    *out = d;
+    return AMY_RESOURCE_OK;
+}
+
+amy_resource_result add_delta_batch_to_queue_checked(const struct delta *values,
+                                                    uint16_t count, struct delta **queue) {
+    if (queue == NULL || (count && values == NULL)) return AMY_RESOURCE_INVALID;
+    if (count > MAX_DELTA_BLOCKS * DELTA_BLOCK_SIZE) return AMY_RESOURCE_CAPACITY;
+    amy_grab_lock();
+    struct delta *staged = NULL;
+    struct delta **tail = &staged;
+    for (uint16_t i = 0; i < count; ++i) {
+        struct delta *d;
+        amy_resource_result result = delta_get_checked(&values[i], &d);
+        if (result != AMY_RESOURCE_OK) {
+            delta_release_list(staged);
+            amy_release_lock();
+            return result;
+        }
+        *tail = d;
+        tail = &d->next;
+    }
+    // No fallible operations beyond this point. Same insertion order and
+    // comparator as add_delta_to_queue, including equal timestamps and wrap.
+    while (staged != NULL) {
+        struct delta *d = staged;
+        staged = d->next;
+        struct delta **pptr = queue;
+        while (*pptr && AMY_TIME_GEQ(d->time, (*pptr)->time)) pptr = &(*pptr)->next;
+        d->next = *pptr;
+        *pptr = d;
+    }
+    if (queue == &amy_global.delta_queue) amy_global.delta_qsize += count;
+    amy_release_lock();
+    return AMY_RESOURCE_OK;
+}
+
 struct delta *delta_release(struct delta *d) {
     // return a delta to the pool.  Returns the next value, for ease closing up
     struct delta *next_delta = d->next;

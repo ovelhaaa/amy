@@ -973,6 +973,21 @@ void amy_grab_lock();
 void amy_release_lock();
 void amy_deltas_reset();
 void add_delta_to_queue(struct delta *d, struct delta **queue);
+// Owner-only preparation primitives. OK certifies this operation only, never
+// patch Materialized/Ready. Not for ISR, render, or Note On/Off paths.
+typedef enum {
+    AMY_RESOURCE_OK,
+    AMY_RESOURCE_INVALID,
+    AMY_RESOURCE_NO_MEMORY,
+    AMY_RESOURCE_CAPACITY,
+    AMY_RESOURCE_STALE
+} amy_resource_result;
+// Atomic destination insertion, stable wrap-relative order. All nodes acquired
+// before publication; pool growth is retained as engine-owned reusable capacity.
+// Caller supplies count contiguous delta values (next is ignored).
+amy_resource_result add_delta_batch_to_queue_checked(const struct delta *values,
+                                                    uint16_t count, struct delta **queue);
+amy_resource_result delta_get_checked(const struct delta *from, struct delta **out);
 void amy_add_event_internal(amy_event *e, uint16_t base_osc);
 void amy_event_to_deltas_queue(amy_event *e, uint16_t base_osc, struct delta **queue);
 int web_audio_buffer(float *samples, int length);
