@@ -940,7 +940,8 @@ typedef struct global_state {
     uint32_t overload_threshold_us;
     uint16_t overload_blocks;
 
-    // Runtime allocation failures since amy_start (see amy_oom).
+    // Runtime allocation/resource exhaustion failures since amy_start.
+    // Checked preparation increments without logging (see amy_oom for legacy).
     uint32_t oom_count;
 } global_state_t;
 
@@ -984,7 +985,8 @@ typedef enum {
 } amy_resource_result;
 // Atomic destination insertion, stable wrap-relative order. All nodes acquired
 // before publication; pool growth is retained as engine-owned reusable capacity.
-// Caller supplies count contiguous delta values (next is ignored).
+// Caller supplies count contiguous delta values (next is ignored). Exhaustion
+// increments amy_get_oom_count() without logging or blocking on a retry.
 amy_resource_result add_delta_batch_to_queue_checked(const struct delta *values,
                                                     uint16_t count, struct delta **queue);
 amy_resource_result delta_get_checked(const struct delta *from, struct delta **out);
@@ -1034,7 +1036,8 @@ struct amy_osc_capacity_request {
 struct amy_osc_preparation;
 // Reserves detached synthinfo + mod_synthinfo + envelope vectors for the whole
 // bounded bank. Does not apply patch parameters or reserve maps/containers/FX.
-// Same engine owner throughout; discard before engine reset/stop. No thread or
+// Initialize *out to NULL; a nonempty output is rejected. Same engine owner
+// throughout; discard before engine reset/stop. No thread or
 // request-ID protocol. Do not retain across engine lifetime changes.
 amy_resource_result amy_osc_bank_prepare(const struct amy_osc_capacity_request *requests,
                                         uint16_t count, struct amy_osc_preparation **out);

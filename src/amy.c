@@ -1056,7 +1056,7 @@ amy_resource_result amy_osc_bank_prepare(const struct amy_osc_capacity_request *
     }
     struct amy_osc_preparation *p = malloc_caps(sizeof(*p) + count * sizeof(p->entries[0]),
                                                 amy_global.config.ram_caps_events);
-    if (p == NULL) return AMY_RESOURCE_NO_MEMORY;
+    if (p == NULL) { ++amy_global.oom_count; return AMY_RESOURCE_NO_MEMORY; }
     p->count = 0;
     for (uint16_t i = 0; i < count; ++i) {
         struct osc_preparation_entry *entry = &p->entries[i];
@@ -1073,6 +1073,7 @@ amy_resource_result amy_osc_bank_prepare(const struct amy_osc_capacity_request *
         ++p->count;
         if (entry->replacement == NULL) {
             amy_osc_bank_discard(&p);
+            ++amy_global.oom_count;
             return AMY_RESOURCE_NO_MEMORY;
         }
     }
@@ -2513,9 +2514,9 @@ amy_resource_result delta_get_checked(const struct delta *from, struct delta **o
     if (out == NULL) return AMY_RESOURCE_INVALID;
     *out = NULL;
     if (free_deltas_pool == NULL) {
-        if (next_delta_block >= MAX_DELTA_BLOCKS) return AMY_RESOURCE_CAPACITY;
+        if (next_delta_block >= MAX_DELTA_BLOCKS) { ++amy_global.oom_count; return AMY_RESOURCE_CAPACITY; }
         struct delta *block = deltas_pool_alloc(DELTA_BLOCK_SIZE, NULL);
-        if (block == NULL) return AMY_RESOURCE_NO_MEMORY;
+        if (block == NULL) { ++amy_global.oom_count; return AMY_RESOURCE_NO_MEMORY; }
         free_deltas_pool = delta_blocks[next_delta_block++] = block;
     }
     struct delta *d = free_deltas_pool;
@@ -2534,7 +2535,7 @@ amy_resource_result delta_get_checked(const struct delta *from, struct delta **o
 amy_resource_result add_delta_batch_to_queue_checked(const struct delta *values,
                                                     uint16_t count, struct delta **queue) {
     if (queue == NULL || (count && values == NULL)) return AMY_RESOURCE_INVALID;
-    if (count > MAX_DELTA_BLOCKS * DELTA_BLOCK_SIZE) return AMY_RESOURCE_CAPACITY;
+    if (count > MAX_DELTA_BLOCKS * DELTA_BLOCK_SIZE) { ++amy_global.oom_count; return AMY_RESOURCE_CAPACITY; }
     amy_grab_lock();
     struct delta *staged = NULL;
     struct delta **tail = &staged;

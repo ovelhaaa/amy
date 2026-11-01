@@ -1,5 +1,6 @@
-param([switch]$Legacy, [switch]$ResourcesOnly, [ValidateSet(128, 256)][int]$BlockSize = 256)
+param([switch]$Legacy, [switch]$ResourcesOnly, [switch]$Mutations, [ValidateSet(128, 256)][int]$BlockSize = 256)
 $ErrorActionPreference = 'Stop'
+if ($Legacy -and $Mutations) { throw 'Materialization mutations require checked resource tests' }
 $repo = Split-Path $PSScriptRoot -Parent
 $build = Join-Path $repo 'build/smk_amy_boot'
 if ($Legacy) { $build = Join-Path $repo 'build/smk_amy_legacy' }
@@ -37,6 +38,38 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Instrument resources test link failed' }
         & $resourcesExe
         if ($LASTEXITCODE -ne 0) { throw 'Instrument resources test failed' }
+        if ($Mutations) {
+            # Mutate ONLY isolated ignored copies. A nonzero exit alone is not
+            # enough: require the intended invariant's assertion in stderr.
+            $mutationDir = Join-Path $build 'mutations'
+            New-Item -ItemType Directory -Force -Path $mutationDir | Out-Null
+            $original = Get-Content src/amy.c -Raw
+            $cases = @(
+                @('false_success', 'if (p == NULL) { ++amy_global.oom_count; return AMY_RESOURCE_NO_MEMORY; }',
+                  'if (p == NULL) { ++amy_global.oom_count; return AMY_RESOURCE_OK; }', 'Assertion.*amy_osc_bank_prepare'),
+                @('omit_envelope', 'memcpy(replacement->breakpoint_values[set], old->breakpoint_values[set], n * sizeof(float));',
+                  '(void)n; /* isolated mutation: omit envelope values */', 'Assertion.*breakpoint_values')
+            )
+            foreach ($case in $cases) {
+                if (!$original.Contains($case[1])) { throw "Mutation anchor absent: $($case[0])" }
+                $copy = Join-Path $mutationDir ($case[0] + '.c')
+                $obj = Join-Path $mutationDir ($case[0] + '.o')
+                $mutant = Join-Path $mutationDir ($case[0] + '.exe')
+                $log = Join-Path $mutationDir ($case[0] + '.log')
+                [IO.File]::WriteAllText($copy, $original.Replace($case[1], $case[2]))
+                & gcc -std=gnu11 @flags -DMALLOC_CAPS_DEFINED -c $copy -o $obj
+                if ($LASTEXITCODE -ne 0) { throw 'Mutant compilation failed' }
+                $mutantObjects = @($objects | Where-Object { (Split-Path $_ -Leaf) -ne 'amy.c.o' }) + @($obj)
+                & g++ -std=c++17 @flags tests/test_smk_instrument_resources.cpp @mutantObjects '-Wl,--wrap=free' -lm -o $mutant
+                if ($LASTEXITCODE -ne 0) { throw 'Mutant link failed' }
+                & $mutant 2> $log
+                $mutantResult = $LASTEXITCODE
+                if ($mutantResult -eq 0 -or (Get-Content $log -Raw) -notmatch $case[3]) {
+                    throw "Mutation was not detected by intended invariant: $($case[0]) exit=$mutantResult"
+                }
+                Write-Host "PASS: mutation $($case[0]) rejected by intended assertion (exit=$mutantResult)"
+            }
+        }
         if ($ResourcesOnly) { return }
     }
     $exe = Join-Path $build 'test_smk_amy_boot.exe'
