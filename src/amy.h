@@ -1027,6 +1027,22 @@ int8_t oscs_init();
 void alloc_osc(int osc, uint8_t *max_num_breakpoints_per_bpset_or_null);
 void free_osc(int osc);
 bool ensure_osc_allocd(int osc, uint8_t *max_num_breakpoints_per_bpset_or_null);
+struct amy_osc_capacity_request {
+    uint16_t osc;
+    uint8_t breakpoints[MAX_BREAKPOINT_SETS];
+};
+struct amy_osc_preparation;
+// Reserves detached synthinfo + mod_synthinfo + envelope vectors for the whole
+// bounded bank. Does not apply patch parameters or reserve maps/containers/FX.
+// Same engine owner throughout; discard before engine reset/stop. No thread or
+// request-ID protocol. Do not retain across engine lifetime changes.
+amy_resource_result amy_osc_bank_prepare(const struct amy_osc_capacity_request *requests,
+                                        uint16_t count, struct amy_osc_preparation **out);
+// Preflights every target before swapping any block. Preserves current DSP
+// values/state; publishes capacity only. Success consumes and NULLs the token.
+// Failure leaves token owned by caller for discard. No allocation at commit.
+amy_resource_result amy_osc_bank_commit(struct amy_osc_preparation **prepared);
+void amy_osc_bank_discard(struct amy_osc_preparation **prepared);
 void patches_init(int max_memory_patches);
 void patches_deinit();
 void parse_algo_source(char* message, int16_t *vals);

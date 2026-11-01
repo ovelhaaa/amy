@@ -982,7 +982,10 @@ void amy_deltas_reset() {
     amy_global.delta_qsize = 0;
 }
 
-void alloc_osc(int osc, uint8_t *max_num_breakpoints) {
+// Allocate/reset by pointer: preparation must never install temporary pointers
+// in synth/msynth, even for an unowned osc.
+static struct synthinfo *alloc_osc_block(int osc, const uint8_t *max_num_breakpoints,
+                                       struct mod_synthinfo **mod) {
     peek_stack("alloc_osc");
     uint8_t default_num_breakpoints[MAX_BREAKPOINT_SETS] = {DEFAULT_NUM_BREAKPOINTS, DEFAULT_NUM_BREAKPOINTS};
     if (max_num_breakpoints == NULL) {
@@ -995,24 +998,126 @@ void alloc_osc(int osc, uint8_t *max_num_breakpoints) {
                                amy_global.config.ram_caps_events);
     // On OOM leave the osc NULL; the voice goes silent instead of crashing.
     if (ptr == NULL) {
-        amy_oom("alloc_osc: out of memory allocating osc %d\n", osc);
-        synth[osc] = NULL;
-        msynth[osc] = NULL;
-        return;
+        *mod = NULL;
+        return NULL;
     }
-    synth[osc] = (struct synthinfo *)ptr;
-    msynth[osc] = (struct mod_synthinfo *)(ptr + sizeof(struct synthinfo));
+    struct synthinfo *state = (struct synthinfo *)ptr;
+    *mod = (struct mod_synthinfo *)(ptr + sizeof(struct synthinfo));
     // Point to the breakpoint sets.
     uint8_t *breakpoint_area = ptr + sizeof(struct synthinfo) + sizeof(struct mod_synthinfo);
     for (int i=0; i < MAX_BREAKPOINT_SETS; ++i) {
-        synth[osc]->max_num_breakpoints[i] = max_num_breakpoints[i];
-        synth[osc]->breakpoint_times[i] = (uint32_t *)breakpoint_area;
+        state->max_num_breakpoints[i] = max_num_breakpoints[i];
+        state->breakpoint_times[i] = (uint32_t *)breakpoint_area;
         breakpoint_area +=  max_num_breakpoints[i] * sizeof(uint32_t);  // must be a multiple of 4 bytes
-        synth[osc]->breakpoint_values[i] = (float *)breakpoint_area;
+        state->breakpoint_values[i] = (float *)breakpoint_area;
         breakpoint_area += sizeof(float) * max_num_breakpoints[i];
     }
-    reset_osc(osc);
-    //fprintf(stderr, "alloc_osc %d (0x%lx) num_breakpoints %d,%d\n", osc, (long)synth[osc], synth[osc]->max_num_breakpoints[0], synth[osc]->max_num_breakpoints[1]);
+    reset_osc_by_pointer(state, *mod);
+    state->osc = osc;
+    return state;
+}
+
+void alloc_osc(int osc, uint8_t *max_num_breakpoints) {
+    synth[osc] = alloc_osc_block(osc, max_num_breakpoints, &msynth[osc]);
+    if (synth[osc] == NULL) amy_oom("alloc_osc: out of memory allocating osc %d\n", osc);
+}
+
+struct osc_preparation_entry {
+    uint16_t osc, voice;
+    struct synthinfo *expected, *replacement;
+    struct mod_synthinfo *expected_mod, *replacement_mod;
+    uint8_t capacity[MAX_BREAKPOINT_SETS];
+};
+
+struct amy_osc_preparation {
+    uint16_t count;
+    struct osc_preparation_entry entries[];
+};
+
+void amy_osc_bank_discard(struct amy_osc_preparation **prepared) {
+    if (prepared == NULL || *prepared == NULL) return;
+    for (uint16_t i = 0; i < (*prepared)->count; ++i)
+        free((*prepared)->entries[i].replacement);
+    free(*prepared);
+    *prepared = NULL;
+}
+
+amy_resource_result amy_osc_bank_prepare(const struct amy_osc_capacity_request *requests,
+                                        uint16_t count, struct amy_osc_preparation **out) {
+    // A nonempty output is caller-owned. Never overwrite/leak a live token.
+    if (out == NULL || *out != NULL || requests == NULL || count == 0 || count > AMY_OSCS ||
+        synth == NULL || msynth == NULL || osc_to_voice == NULL) return AMY_RESOURCE_INVALID;
+    for (uint16_t i = 0; i < count; ++i) {
+        if (requests[i].osc >= AMY_OSCS) return AMY_RESOURCE_INVALID;
+        for (int set = 0; set < MAX_BREAKPOINT_SETS; ++set)
+            if (requests[i].breakpoints[set] > MAX_BREAKPOINTS) return AMY_RESOURCE_INVALID;
+        for (uint16_t j = 0; j < i; ++j)
+            if (requests[j].osc == requests[i].osc) return AMY_RESOURCE_INVALID;
+    }
+    struct amy_osc_preparation *p = malloc_caps(sizeof(*p) + count * sizeof(p->entries[0]),
+                                                amy_global.config.ram_caps_events);
+    if (p == NULL) return AMY_RESOURCE_NO_MEMORY;
+    p->count = 0;
+    for (uint16_t i = 0; i < count; ++i) {
+        struct osc_preparation_entry *entry = &p->entries[i];
+        entry->osc = requests[i].osc;
+        entry->voice = osc_to_voice[entry->osc];
+        entry->expected = synth[entry->osc];
+        entry->expected_mod = msynth[entry->osc];
+        for (int set = 0; set < MAX_BREAKPOINT_SETS; ++set) {
+            entry->capacity[set] = MAX(DEFAULT_NUM_BREAKPOINTS, requests[i].breakpoints[set]);
+            if (entry->expected != NULL)
+                entry->capacity[set] = MAX(entry->capacity[set], entry->expected->max_num_breakpoints[set]);
+        }
+        entry->replacement = alloc_osc_block(entry->osc, entry->capacity, &entry->replacement_mod);
+        ++p->count;
+        if (entry->replacement == NULL) {
+            amy_osc_bank_discard(&p);
+            return AMY_RESOURCE_NO_MEMORY;
+        }
+    }
+    *out = p;
+    return AMY_RESOURCE_OK;
+}
+
+amy_resource_result amy_osc_bank_commit(struct amy_osc_preparation **prepared) {
+    if (prepared == NULL || *prepared == NULL) return AMY_RESOURCE_INVALID;
+    struct amy_osc_preparation *p = *prepared;
+    // Complete preflight before the first irreversible pointer swap.
+    for (uint16_t i = 0; i < p->count; ++i) {
+        struct osc_preparation_entry *entry = &p->entries[i];
+        if (synth[entry->osc] != entry->expected || msynth[entry->osc] != entry->expected_mod ||
+            osc_to_voice[entry->osc] != entry->voice) return AMY_RESOURCE_STALE;
+        if (entry->replacement == NULL || entry->replacement_mod == NULL) return AMY_RESOURCE_INVALID;
+        for (int set = 0; set < MAX_BREAKPOINT_SETS; ++set)
+            if (entry->replacement->max_num_breakpoints[set] < entry->capacity[set])
+                return AMY_RESOURCE_INVALID;
+    }
+    for (uint16_t i = 0; i < p->count; ++i) {
+        struct osc_preparation_entry *entry = &p->entries[i];
+        struct synthinfo *old = entry->expected, *replacement = entry->replacement;
+        if (old != NULL) {
+            // Preserve the *current* state, not a stale snapshot from prepare.
+            // Only envelope vector addresses/capacities belong to the new block.
+            struct synthinfo fresh = *replacement;
+            *replacement = *old;
+            *entry->replacement_mod = *entry->expected_mod;
+            for (int set = 0; set < MAX_BREAKPOINT_SETS; ++set) {
+                replacement->breakpoint_times[set] = fresh.breakpoint_times[set];
+                replacement->breakpoint_values[set] = fresh.breakpoint_values[set];
+                replacement->max_num_breakpoints[set] = fresh.max_num_breakpoints[set];
+                const int n = old->max_num_breakpoints[set];
+                memcpy(replacement->breakpoint_times[set], old->breakpoint_times[set], n * sizeof(uint32_t));
+                memcpy(replacement->breakpoint_values[set], old->breakpoint_values[set], n * sizeof(float));
+            }
+        }
+        synth[entry->osc] = replacement;
+        msynth[entry->osc] = entry->replacement_mod;
+        entry->replacement = NULL; // ownership transferred; discard cannot free active blocks
+        free(old);
+    }
+    amy_osc_bank_discard(prepared);
+    return AMY_RESOURCE_OK;
 }
 
 void free_osc(int osc) {
