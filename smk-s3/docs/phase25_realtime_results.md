@@ -226,3 +226,21 @@ A última revisão acrescentou o caso de Play genérico em fonte externa: Start 
 NOT RUN: CI IDF 5.3/5.5.2 remota, rollover prolongado do engine AMY físico e toda a carga integrada USB/knobs/arp/seq/save/display em placa. O build local e as suítes host não encerram a qualificação física.
 
 **Estado final:** cinco entregas de código/documentação implementadas, testes host e matriz local 128/256 aprovados; ativação de scheduler experimental e aprovação para performance física permanecem pendentes. Os riscos de Flash/cache, logs síncronos, ownership UI/console, notas agregadas por canal/nota e persistência sem transação de energia foram explicitados. O próximo passo mínimo é executar a bancada documentada, sem adicionar funcionalidades musicais.
+
+## Verificação adicional do ESP-IDF instalado — 2026-11-01
+
+A pedido do responsável, foram inspecionados `C:/esp` e `C:/Espressif` após a entrega inicial.
+
+- PASS: fontes ESP-IDF em `C:/esp/esp-idf`, identificadas como **6.0.0** por `tools/cmake/version.cmake`, `components/esp_common/include/esp_idf_version.h` e execução de `idf.py --version`.
+- PASS: ambiente Python `C:/Espressif/python_env/idf6.0_py3.11_env/Scripts/python.exe`, versão **3.11.2**.
+- A árvore ESP-IDF não contém metadados `.git`; `idf.py --version` avisa que não obtém a versão por Git e retorna `ESP-IDF v6.0.0` a partir dos fontes.
+- Os registros `C:/Espressif/esp_idf.json` e `idf-env.json` indicam versão 6.0 e caminhos antigos de extensão VS Code de outro perfil. Esses registros não foram modificados.
+- NOT RUN: build deste firmware com IDF 6.0.0. A instalação encontrada está fora da faixa declarada `>=5.3,<5.6`; esta verificação não amplia a compatibilidade nem substitui os builds PASS com IDF 5.5.2 pelo PlatformIO. IDF 5.3 continua sem instalação identificada nesses locais.
+
+Comando de verificação executado:
+
+```powershell
+& C:/Espressif/python_env/idf6.0_py3.11_env/Scripts/python.exe C:/esp/esp-idf/tools/idf.py --version
+```
+
+Esta atualização altera apenas documentação; os resultados de build/testes acima continuam referentes ao código entregue, sem novas alterações de firmware.
