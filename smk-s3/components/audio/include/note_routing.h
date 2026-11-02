@@ -5,7 +5,7 @@
 
 namespace smk {
 
-enum class NoteSource : uint8_t { Keyboard, Pad, Arpeggiator, Sequencer, Internal, ExternalMidi, Count };
+enum class NoteSource : uint8_t { Keyboard, Pad, Arpeggiator, Sequencer, Internal, ExternalMidi, Touch, Count };
 struct NoteIdentity {
     NoteSource source = NoteSource::Internal;
     uint8_t instance = 0;
@@ -60,7 +60,8 @@ public:
         if (!valid(key)) return;
         for (auto& entry : entries_) if (entry.held && same(entry.route.identity, key)) {
             entry.held = false;
-            if (!sustain_[key.channel]) release(entry, emit);
+            // Touch releases are independent of the physical keyboard's pedal.
+            if (key.source == NoteSource::Touch || !sustain_[key.channel]) release(entry, emit);
             return;
         }
     }

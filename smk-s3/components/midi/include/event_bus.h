@@ -62,6 +62,7 @@ private:
     uint32_t delivered_generation_ = 0;
     bool panic_pending_ = false;
     bool panic_delivered_ = false;
+    bool remote_stop_pending_ = false;
     SynthEvent panic_event_{};
     mutable portMUX_TYPE mux_ = portMUX_INITIALIZER_UNLOCKED;
     std::atomic<uint32_t> overflow_count_{0};

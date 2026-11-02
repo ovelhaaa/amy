@@ -1,5 +1,14 @@
 menu "SMK-S3 board configuration"
 
+    config SMKS3_P4_HEADLESS
+        bool "Use P4 UI without the S3 local display task"
+        default n
+        help
+            Skip the local LCD/SPI/DMA initialization and render task when the
+            P4 provides the user interface. Keep the UI state model for existing
+            controller mappings. Frees internal RAM for USB Host hot-plug.
+            The standalone S3 profile keeps its existing local display.
+
     choice SMKS3_DISPLAY_PROFILE
         prompt "Display profile"
         default SMKS3_DISPLAY_PROFILE_WIDE_284X76

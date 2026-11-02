@@ -1,6 +1,8 @@
 #include "app_config.h"
 #include "diagnostics.h"
 #include "console.h"
+#include "remote_link.h"
+#include "esp_random.h"
 
 #include "event_bus.h"
 #include "pcm5102_output.h"
@@ -41,6 +43,7 @@ static smk::NoteIdentity noteIdentity(const smk::SynthEvent& event) {
         case smk::EventSource::Sequencer: source = smk::NoteSource::Sequencer; break;
         case smk::EventSource::Arpeggiator: source = smk::NoteSource::Arpeggiator; break;
         case smk::EventSource::Console: source = smk::NoteSource::ExternalMidi; break;
+        case smk::EventSource::RemoteUi: source = smk::NoteSource::Touch; break;
         default: break;
     }
     const uint8_t instance = event.source == smk::EventSource::Ui ? 15 : event.source_instance;
@@ -130,7 +133,13 @@ static void app_init_task(void* arg) {
         return;
     }
 
-    // 9. Initialize the configured ST7789 display profile.
+    // 9. The P4 controller profile reserves local LCD DMA/task memory for USB.
+#if defined(CONFIG_SMKS3_P4_HEADLESS)
+    smk::DisplayDriver* display_driver = new smk::DummyDisplayDriver(
+        smk::config::kDisplayWidth, smk::config::kDisplayHeight);
+    if (!display_driver->begin()) ESP_LOGE(TAG, "Headless UI backing surface allocation failed");
+#else
+    // Initialize the configured ST7789 display profile.
     ESP_LOGI(TAG, "Display profile: %s (%dx%d)", smk::config::kDisplayProfileName,
              smk::config::kDisplayWidth, smk::config::kDisplayHeight);
     smk::ST7789Config st7789_cfg = {
@@ -160,13 +169,19 @@ static void app_init_task(void* arg) {
         display_driver = new smk::DummyDisplayDriver(smk::config::kDisplayWidth, smk::config::kDisplayHeight);
         display_driver->begin();
     }
+#endif
 
     smk::UIManager* ui_manager = new smk::UIManager(*display_driver);
     ui_manager->setSynthEngine(amy_adapter);
     if (!ui_manager->begin()) {
         ESP_LOGE(TAG, "Failed to initialize UIManager");
     } else {
+#if defined(CONFIG_SMKS3_P4_HEADLESS)
+        ui_manager->switchScreen(smk::ScreenId::Home);
+        ESP_LOGI(TAG, "P4 controller profile: local LCD/DMA/render task disabled; UI state retained");
+#else
         ui_manager->startTask(0, 4); // Core 0, priority 4 (~30 FPS)
+#endif
     }
 
     // 10. Initialize PatchManager & 8-Macro Engine
@@ -291,6 +306,10 @@ static void app_init_task(void* arg) {
     int64_t bank_b_save_press_us = 0;
     bool learning_was_active = false;
     bool audio_fault_reported = false;
+#if defined(CONFIG_SMK_LINK_ENABLED)
+    static smk::RemoteLink remote_link(*event_bus,*patch_manager,*amy_adapter,*clock_manager,esp_random());
+    remote_link.begin(); // Initialization error is reported; audio/MIDI keep running.
+#endif
 
     auto request_musical_reset = [&] {
         if (clock_manager) clock_manager->stop();
@@ -301,6 +320,9 @@ static void app_init_task(void* arg) {
         event_bus->send(barrier);
     };
     while (true) {
+#if defined(CONFIG_SMK_LINK_ENABLED)
+        remote_link.service(static_cast<uint32_t>(esp_timer_get_time()/1000));
+#endif
         if (const auto* result = storage_worker->completion(); result && (result->kind != smk::StorageWorker::Kind::LoadProfile || event_bus->pendingCount() == 0)) {
             if (result->kind == smk::StorageWorker::Kind::LoadProfile) {
                 if (result->success && result->token == profile_epoch && midi_host->isDeviceConnected()) {
@@ -393,6 +415,8 @@ static void app_init_task(void* arg) {
                 continue;
             }
             if (event.source == smk::EventSource::UsbMidi && event.timestamp_us != 0) {
+                // Delivered USB activity, independent of UART traffic/snapshots.
+                smk::Diagnostics::instance().counters().events_received.fetch_add(1, std::memory_order_relaxed);
                 const uint64_t now_us = static_cast<uint64_t>(esp_timer_get_time());
                 const uint64_t elapsed = now_us >= event.timestamp_us ? now_us - event.timestamp_us : 0;
                 auto& max_latency = smk::Diagnostics::instance().counters().midi_max_receive_to_control_us;
@@ -400,7 +424,7 @@ static void app_init_task(void* arg) {
                 uint32_t observed = max_latency.load(std::memory_order_relaxed);
                 while (elapsed_us > observed && !max_latency.compare_exchange_weak(observed, elapsed_us, std::memory_order_relaxed)) {}
             }
-            if (audio_fault_reported && !smk::bypassMidiLearn(event)) continue;
+            if (audio_fault_reported && !smk::canProcessWhileAudioStopped(event)) continue;
             // Forward event to UI Manager (for MidiMonitor, Pad hit animations, etc.)
             if (ui_manager) {
                 ui_manager->processEvent(event);
@@ -664,6 +688,16 @@ static void app_init_task(void* arg) {
             }
 
             switch (event.type) {
+                case smk::EventType::PatchChange:
+                    if (event.source == smk::EventSource::RemoteUi && event.id < 256)
+                        patch_manager->selectPatch(static_cast<uint8_t>(event.id));
+                    break;
+                case smk::EventType::ParameterChange:
+                    if (event.source == smk::EventSource::RemoteUi && event.value >= 0 && event.value <= 127) {
+                        if (event.id < 8) patch_manager->setMacro(static_cast<uint8_t>(event.id), event.value, false);
+                        else if (event.id == 8) amy_adapter->setMasterGain(static_cast<float>(event.value) / 127.0f);
+                    }
+                    break;
                 case smk::EventType::NoteOn:
                     if (event.source == smk::EventSource::UsbMidi && arpeggiator->isEnabled()) {
                         if (clock_manager && !clock_manager->isRunning()) {
@@ -684,6 +718,7 @@ static void app_init_task(void* arg) {
                     break;
                 }
                 case smk::EventType::SourceStop:
+                    if (event.source == smk::EventSource::RemoteUi) amy_adapter->stopNoteSource(smk::NoteSource::Touch);
                     if (event.source == smk::EventSource::Arpeggiator) amy_adapter->stopNoteSource(smk::NoteSource::Arpeggiator);
                     if (event.source == smk::EventSource::Sequencer) amy_adapter->stopNoteSource(smk::NoteSource::Sequencer);
                     break;

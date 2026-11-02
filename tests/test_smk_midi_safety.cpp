@@ -20,6 +20,24 @@ static std::vector<SynthEvent> parsed;
 static void capture(const SynthEvent& value, void*) { parsed.push_back(value); }
 
 static void testParser() {
+    auto remote_on=event(EventType::NoteOn); remote_on.source=EventSource::RemoteUi;
+    assert(bypassMidiLearn(remote_on) && !canProcessWhileAudioStopped(remote_on));
+    remote_on.type=EventType::NoteOff; assert(canProcessWhileAudioStopped(remote_on));
+    {
+        EventBus bus(4);
+        auto remote=event(EventType::NoteOn); remote.source=EventSource::RemoteUi;
+        assert(bus.send(remote));
+        assert(bus.send(event(EventType::NoteOn,61)));
+        assert(bus.send(event(EventType::NoteOn,62)));
+        assert(bus.send(event(EventType::NoteOff,61,0))); // Fill the release reserve too.
+        const auto panics=Diagnostics::instance().counters().panic_count.load();
+        bus.cancelNotes(EventSource::RemoteUi);
+        SynthEvent received{};
+        assert(bus.tryReceive(received) && received.type==EventType::SourceStop && received.source==EventSource::RemoteUi);
+        unsigned physical=0;
+        while(bus.tryReceive(received)) { assert(received.source==EventSource::UsbMidi && received.type!=EventType::Panic); ++physical; }
+        assert(physical==3 && Diagnostics::instance().counters().panic_count.load()==panics);
+    }
     MidiParser parser;
     parser.setCallback(capture, nullptr);
     const uint8_t maximum[] = {0x0e, 0xe0, 127, 127};

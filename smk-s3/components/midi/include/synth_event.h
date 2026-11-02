@@ -45,6 +45,7 @@ enum class EventSource : uint8_t {
     Ui,
     Console,
     Internal,
+    RemoteUi,
     Count,
 };
 
@@ -94,6 +95,11 @@ constexpr bool isUsbLifecycleEvent(const SynthEvent& event) {
 }
 
 constexpr bool bypassMidiLearn(const SynthEvent& event) {
+    return event.source == EventSource::RemoteUi || event.type == EventType::Panic ||
+           isReleaseEvent(event) || isUsbLifecycleEvent(event);
+}
+
+constexpr bool canProcessWhileAudioStopped(const SynthEvent& event) {
     return event.type == EventType::Panic || isReleaseEvent(event) || isUsbLifecycleEvent(event);
 }
 

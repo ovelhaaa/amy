@@ -1,0 +1,5 @@
+# Same P4SDM unit: JP1 GPIO52/51 identified and confirmed free by the operator.
+CONFIG_SMK_LINK_ENABLED=y
+CONFIG_SMK_LINK_UART=1
+CONFIG_SMK_LINK_TX_GPIO=52
+CONFIG_SMK_LINK_RX_GPIO=51

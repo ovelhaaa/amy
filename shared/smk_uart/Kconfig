@@ -1,0 +1,19 @@
+menu "SMK inter-board control link"
+    config SMK_LINK_ENABLED
+        bool "Enable P4/S3 UART control link (requires confirmed wiring)"
+        default n
+    if SMK_LINK_ENABLED
+        config SMK_LINK_UART
+            int "UART peripheral (must not be the console UART)"
+            range 0 2
+            default 1
+        config SMK_LINK_TX_GPIO
+            int "Confirmed TX GPIO (-1 disables initialization)"
+            range -1 54
+            default -1
+        config SMK_LINK_RX_GPIO
+            int "Confirmed RX GPIO (-1 disables initialization)"
+            range -1 54
+            default -1
+    endif
+endmenu

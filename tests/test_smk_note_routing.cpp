@@ -16,6 +16,22 @@ static NoteRoute route(NoteSource source, uint8_t instance = 0, uint8_t channel 
     r.count = 1; r.outputs[0] = {1, 60}; r.velocity = 100; return r;
 }
 static void identities() {
+    {
+        NoteOwnership isolated;
+        unsigned physical=0,touch=0;
+        const auto key=route(NoteSource::Keyboard);
+        auto virtual_key=route(NoteSource::Touch,0,0,0,61);
+        virtual_key.outputs[0].note=61;
+        auto start=[&](NoteOutput out,uint8_t) { if(out.note==60) ++physical; else ++touch; };
+        auto stop=[&](NoteOutput out) { if(out.note==60) --physical; else --touch; };
+        isolated.pedal(0,true,stop);
+        isolated.on(key,start); isolated.on(virtual_key,start);
+        isolated.off(virtual_key.identity,stop);
+        assert(physical==1 && touch==0);
+        isolated.on(virtual_key,start); isolated.cancel(NoteSource::Touch,stop);
+        isolated.off(key.identity,stop); assert(physical==1 && touch==0);
+        isolated.pedal(0,false,stop); assert(physical==0);
+    }
     uint64_t token = UINT32_MAX;
     assert(allocateNoteToken(token) == uint64_t(UINT32_MAX) + 1);
     token = UINT64_MAX;

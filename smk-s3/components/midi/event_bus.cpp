@@ -107,6 +107,12 @@ bool EventBus::tryReceive(SynthEvent& event) {
             portEXIT_CRITICAL(&mux_);
             return true;
         }
+        if (remote_stop_pending_ && !panic_pending_) {
+            remote_stop_pending_ = false;
+            event = {}; event.type = EventType::SourceStop; event.source = EventSource::RemoteUi;
+            portEXIT_CRITICAL(&mux_);
+            return true;
+        }
         if (count_ == 0) {
             portEXIT_CRITICAL(&mux_);
             return false;
@@ -146,7 +152,8 @@ void EventBus::cancelNotes(EventSource source) {
     SynthEvent stop{}; stop.type = EventType::SourceStop; stop.source = source;
     portENTER_CRITICAL(&mux_);
     ++source_generations_[static_cast<size_t>(source)];
-    enqueueLocked(stop);
+    if (source == EventSource::RemoteUi) remote_stop_pending_ = true;
+    else enqueueLocked(stop);
     portEXIT_CRITICAL(&mux_);
     xSemaphoreGive(wake_);
 }
@@ -166,7 +173,7 @@ uint32_t EventBus::overflowCount() const {
 
 size_t EventBus::pendingCount() const {
     portENTER_CRITICAL(&mux_);
-    const size_t result = count_ + (panic_pending_ && !panic_delivered_ ? 1 : 0);
+    const size_t result = count_ + (panic_pending_ && !panic_delivered_ ? 1 : 0) + (remote_stop_pending_ ? 1 : 0);
     portEXIT_CRITICAL(&mux_);
     return result;
 }

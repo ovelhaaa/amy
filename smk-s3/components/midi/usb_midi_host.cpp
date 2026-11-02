@@ -3,6 +3,9 @@
 #include "diagnostics.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#ifdef ESP_PLATFORM
+#include "esp_heap_caps.h"
+#endif
 
 static const char* TAG = "UsbMidiHost";
 namespace smk {
@@ -140,8 +143,20 @@ void UsbMidiHost::handleDeviceConnection(uint8_t address) {
     device_vid_ = descriptor->idVendor;
     device_pid_ = descriptor->idProduct;
     state_ = State::Configuring;
-    if (!findMidiInterface(device_handle_) ||
-        usb_host_interface_claim(client_handle_, device_handle_, midi_interface_num_, 0) != ESP_OK) {
+    if (!findMidiInterface(device_handle_)) {
+        failReception(); return;
+    }
+#ifdef ESP_PLATFORM
+    ESP_LOGI(TAG, "Claim VID=%04x PID=%04x interface=%u IN=%02x; DMA free=%zu largest=%zu internal free=%zu",
+             static_cast<unsigned>(device_vid_.load()), static_cast<unsigned>(device_pid_.load()),
+             static_cast<unsigned>(midi_interface_num_), static_cast<unsigned>(midi_in_endpoint_),
+             heap_caps_get_free_size(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL),
+             heap_caps_get_largest_free_block(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL),
+             heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+#endif
+    const esp_err_t claim_result = usb_host_interface_claim(client_handle_, device_handle_, midi_interface_num_, 0);
+    if (claim_result != ESP_OK) {
+        ESP_LOGE(TAG, "MIDI interface claim failed: %s", esp_err_to_name(claim_result));
         failReception(); return;
     }
     claimed_ = true;

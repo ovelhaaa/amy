@@ -1,0 +1,6 @@
+# Bench wiring checked against schematics and confirmed free by the operator.
+CONFIG_SMK_LINK_ENABLED=y
+CONFIG_SMK_LINK_UART=1
+CONFIG_SMK_LINK_TX_GPIO=4
+CONFIG_SMK_LINK_RX_GPIO=5
+CONFIG_SMKS3_P4_HEADLESS=y

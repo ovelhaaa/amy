@@ -242,6 +242,36 @@ static void testBoundaries(AmyAdapter& adapter) {
     assert(adapter.activeNoteReferences() == 0);
 }
 
+static void testTouchDisconnect(AmyAdapter& adapter) {
+    adapter.panic(); pump(adapter);
+    NoteRoute physical{}; physical.identity.source=NoteSource::Keyboard;
+    physical.identity.input_note=60; physical.outputs[0]={1,60}; physical.count=1; physical.velocity=100;
+    NoteRoute touch=physical; touch.identity.source=NoteSource::Touch;
+    touch.identity.input_note=64; touch.outputs[0].note=64;
+    adapter.routeSustain(0,true); adapter.routeNoteOn(physical); adapter.routeNoteOn(touch); pump(adapter);
+    assert(adapter.activeNoteReferences()==2);
+    adapter.routeNoteOff(touch.identity); pump(adapter); assert(adapter.activeNoteReferences()==1);
+    adapter.routeNoteOn(touch); pump(adapter); assert(adapter.activeNoteReferences()==2);
+    // Saturate even release slots. The new selective latch bypasses the FIFO
+    // without a global Panic and invalidates every queued pre-disconnect Touch On.
+    for(unsigned i=0;i<config::kSynthCommandCapacity-config::kSynthReleaseReserve;++i) adapter.routeNoteOn(touch);
+    for(unsigned i=0;i<config::kSynthReleaseReserve;++i) adapter.routeNoteOff(touch.identity);
+    const auto panics=Diagnostics::instance().counters().synth_panics.load();
+    adapter.stopNoteSource(NoteSource::Touch); pump(adapter);
+    assert(adapter.activeNoteReferences()==1);
+    assert(Diagnostics::instance().counters().synth_panics.load()==panics);
+    adapter.routeNoteOff(physical.identity); pump(adapter); assert(adapter.activeNoteReferences()==1);
+    adapter.routeSustain(0,false); pump(adapter); assert(adapter.activeNoteReferences()==0);
+    adapter.routeNoteOn(touch); pump(adapter); assert(adapter.activeNoteReferences()==1);
+    adapter.stopNoteSource(NoteSource::Touch); pump(adapter); assert(adapter.activeNoteReferences()==0);
+    touch.identity.input_note=60; touch.outputs[0].note=60;
+    adapter.routeNoteOn(physical); adapter.routeNoteOn(touch); pump(adapter);
+    assert(adapter.activeNoteReferences()==2);
+    adapter.stopNoteSource(NoteSource::Touch); pump(adapter); assert(adapter.activeNoteReferences()==1);
+    adapter.routeNoteOff(physical.identity); pump(adapter); assert(adapter.activeNoteReferences()==0);
+    std::puts("PASS: Touch release bypasses sustain and saturated FIFOs; physical keys/pedal survive disconnect without global Panic");
+}
+
 static void testConcurrent(AmyAdapter& adapter) {
     assert(adapter.startWorker(1, 23, 16384));
     std::thread worker([] { OwnerScope scope; mock_task::run(); });
@@ -294,6 +324,7 @@ int main() {
     auto* adapter = new AmyAdapter;
     { OwnerScope scope; assert(!adapter->begin(44100)); assert(adapter->begin(AMY_SAMPLE_RATE)); }
     testBoundaries(*adapter);
+    testTouchDisconnect(*adapter);
     testConcurrent(*adapter);
     { OwnerScope scope; delete adapter; }
     // Task allocation failure leaves the engine available for orderly teardown.

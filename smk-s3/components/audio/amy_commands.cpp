@@ -78,6 +78,8 @@ struct AmyAdapter::State {
     std::atomic<uint32_t> requested_generation{0};
     uint32_t source_generations[static_cast<size_t>(NoteSource::Count)]{};
     uint32_t applied_generation = 0; // Synthesis owner only.
+    bool touch_stop_pending = false; // Under mux; release cannot fill a FIFO.
+    uint64_t touch_stop_timestamp_us = 0;
     uint64_t panic_timestamp_us = 0; // Protected by mux.
     SemaphoreHandle_t wake = xSemaphoreCreateBinary();
     TaskHandle_t worker = nullptr;
@@ -164,6 +166,12 @@ struct AmyAdapter::State {
             c.type = Panic;
             c.generation = generation;
             c.timestamp_us = panic_timestamp_us;
+        } else if (touch_stop_pending) {
+            touch_stop_pending = false;
+            c = {}; c.type = SourceStop; c.generation = applied_generation;
+            c.timestamp_us = touch_stop_timestamp_us;
+            c.data.route.identity.source = NoteSource::Touch;
+            c.source_generation = source_generations[static_cast<size_t>(NoteSource::Touch)];
         } else if (count) {
             c = commands[head];
             head = (head + 1) % config::kSynthCommandCapacity;
@@ -293,6 +301,18 @@ void AmyAdapter::routeSustain(uint8_t channel, bool down, uint64_t source_us) {
 }
 void AmyAdapter::stopNoteSource(NoteSource source) {
     if (!state_ || source >= NoteSource::Count) return;
+    if (source == NoteSource::Touch) {
+        // Out-of-band selective release. A P4 timeout must not turn into a
+        // global Panic merely because normal AMY command slots are occupied.
+        const uint64_t timestamp_us = static_cast<uint64_t>(esp_timer_get_time());
+        portENTER_CRITICAL(&state_->mux);
+        ++state_->source_generations[static_cast<size_t>(source)];
+        state_->touch_stop_timestamp_us = timestamp_us;
+        state_->touch_stop_pending = true;
+        portEXIT_CRITICAL(&state_->mux);
+        xSemaphoreGive(state_->wake);
+        return;
+    }
     Command c{}; c.type = SourceStop; c.data.route.identity.source = source;
     state_->enqueue(c);
 }
