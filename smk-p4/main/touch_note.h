@@ -1,6 +1,7 @@
 #pragma once
 #include "app_config.h"
 #include "smk_client.h"
+#include "performance_backend.h"
 
 namespace smk::p4 {
 // Single-finger gesture state. Unsent presses are cancelled on release;
@@ -30,6 +31,15 @@ public:
         }
     }
     uint8_t desired() const { return desired_; }
+    void service(PerformanceBackend& backend,uint32_t now_ms,bool playable) {
+        if(!backend.connected()) { disconnect(); return; }
+        if(!playable || (desired_!=link::kNoNote && uint32_t(now_ms-started_ms_)>=config::kTouchMaxHoldMs)) releaseAll();
+        if(off_!=link::kNoNote) { backend.noteOff(off_); off_=link::kNoNote; }
+        if(playable && desired_!=link::kNoNote && sent_!=desired_ &&
+           backend.noteOn(desired_,config::kTouchVelocity,now_ms)) {
+            sent_=desired_; backend.heldNote(sent_);
+        }
+    }
 private:
     uint32_t started_ms_=0;
     uint8_t desired_=link::kNoNote,sent_=link::kNoNote,off_=link::kNoNote;

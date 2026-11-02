@@ -4,6 +4,7 @@
 namespace smk::p4::amy {
 constexpr unsigned kVoices = 4, kOscillators = 64, kCommandCapacity = 32;
 constexpr unsigned kOwnerStackBytes = 12288, kOwnerPriority = 5;
+constexpr size_t kBootLargestInternalBytes = 196608;
 constexpr uint32_t kSampleRateHz = 48000, kBlockFrames = 256;
 constexpr uint32_t kLeaseMs = 10000;
 struct Patch { uint16_t id; const char* name; };

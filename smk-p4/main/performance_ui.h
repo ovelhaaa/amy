@@ -1,12 +1,12 @@
 #pragma once
-#include "p4_link.h"
+#include "performance_backend.h"
 #include "touch_note.h"
 #include "lvgl.h"
 
 namespace smk::p4 {
 class PerformanceUi {
 public:
-    explicit PerformanceUi(P4Link& link) : link_(link) {}
+    explicit PerformanceUi(PerformanceBackend& backend) : backend_(backend) {}
     bool begin();
     void service(uint32_t now_ms);
 private:
@@ -27,7 +27,7 @@ private:
     static void enable(lv_obj_t* object,bool enabled);
     static void text(lv_obj_t* object,char* buffer,size_t capacity,const char* value);
 
-    P4Link& link_;
+    PerformanceBackend& backend_;
     TouchNote touch_;
     lv_obj_t *performance_=nullptr,*browser_=nullptr,*patch_=nullptr,*info_=nullptr,*tempo_=nullptr;
     lv_obj_t *midi_=nullptr,*audio_=nullptr,*connection_=nullptr,*master_=nullptr,*master_value_=nullptr,*octave_=nullptr;

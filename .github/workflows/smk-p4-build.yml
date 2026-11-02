@@ -3,10 +3,10 @@ name: SMK-P4 Firmware Build
 on:
   push:
     branches: [main]
-    paths: ['smk-p4/**', 'smk-s3/**', 'shared/**', 'tests/*smk_link*', 'tests/*smk_touch_note*', '.github/workflows/smk-p4-build.yml']
+    paths: ['smk-p4/**', 'smk-s3/**', 'src/**', 'shared/**', 'tests/*smk_link*', 'tests/*smk_touch_note*', '.github/workflows/smk-p4-build.yml']
   pull_request:
     branches: [main]
-    paths: ['smk-p4/**', 'smk-s3/**', 'shared/**', 'tests/*smk_link*', 'tests/*smk_touch_note*', '.github/workflows/smk-p4-build.yml']
+    paths: ['smk-p4/**', 'smk-s3/**', 'src/**', 'shared/**', 'tests/*smk_link*', 'tests/*smk_touch_note*', '.github/workflows/smk-p4-build.yml']
   workflow_dispatch:
 
 permissions:
@@ -22,6 +22,7 @@ jobs:
         run: |
           ./tests/run_smk_link.ps1
           ./smk-p4/tests/run_host.ps1
+          ./smk-p4/tests/run_amy.ps1
   build:
     runs-on: ubuntu-latest
     strategy:

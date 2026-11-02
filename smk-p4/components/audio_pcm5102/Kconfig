@@ -23,6 +23,20 @@ config SMKP4_PCM_DATA
 config SMKP4_PCM_TEST_SEQUENCE
     bool "Audible test: silence / left / right / stereo / silence (2s each)"
     default n
+config SMKP4_PCM_DIAGNOSTIC
+    bool "Use diagnostic tone/silence instead of local AMY"
+    depends on SMKP4_STANDALONE
+    default n
+    help
+        When enabled, PCM_TEST_SEQUENCE selects silence or the channel sequence.
+        Musical controls remain disabled. AMY is the normal standalone source.
+config SMKP4_AMY_RAM_SELF_TEST
+    bool "Run explicit AMY ROM/chord/release/Panic diagnostic in RAM at boot"
+    depends on SMKP4_STANDALONE && !SMKP4_PCM_WIRING_CONFIRMED && !SMKP4_PCM_DIAGNOSTIC
+    default n
+    help
+        Never initializes I2S. Logs PCM metrics for comparison with the same
+        host diagnostic. Boot may take several seconds; not normal performance.
 config SMKP4_PCM_TEST_HZ
     int "Test tone frequency Hz"
     range 20 20000

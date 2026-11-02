@@ -73,11 +73,11 @@ bool PerformanceUi::begin() {
     midi_=label(performance_,"MIDI OFF",320,14,88,&lv_font_montserrat_14);
     audio_=label(performance_,"AUDIO --",416,14,100,&lv_font_montserrat_14);
     connection_=label(performance_,"LINK OFF",530,14,124,&lv_font_montserrat_14);
-    patch_=label(performance_,"WAITING FOR S3",18,57,464,&lv_font_montserrat_28);
+    patch_=label(performance_,backend_.local()?"INITIALIZING AMY":"WAITING FOR S3",18,57,464,&lv_font_montserrat_28);
     previous_=button(performance_,"<",496,50,66,44,Action::Previous);
     next_=button(performance_,">",570,50,66,44,Action::Next);
     browse_button_=button(performance_,"BROWSE",644,50,140,44,Action::Browse);
-    info_=label(performance_,"S3 OFFLINE",18,104,650,&lv_font_montserrat_14);
+    info_=label(performance_,backend_.status(),18,104,650,&lv_font_montserrat_14);
     tempo_=label(performance_,"-- BPM",690,104,94,&lv_font_montserrat_14);
     for(uint8_t i=0;i<8;++i) {
         const int x=18+(i%4)*192,y=126+(i/4)*92;
@@ -150,7 +150,7 @@ void PerformanceUi::browse(bool visible) {
     touch_.releaseAll(); browser_visible_=visible;
     if(visible) {
         lv_obj_add_flag(performance_,LV_OBJ_FLAG_HIDDEN); lv_obj_remove_flag(browser_,LV_OBJ_FLAG_HIDDEN);
-        char value[48]; std::snprintf(value,sizeof(value),"FACTORY %03u - %03u    PAGE %u / 32",page_*8,page_*8+7,page_+1);
+        char value[48]; std::snprintf(value,sizeof(value),"ROM PATCHES    PAGE %u / %u",page_+1,(backend_.patchCount()+7)/8);
         text(page_label_,page_text_,sizeof(page_text_),value);
         for(unsigned i=0;i<8;++i) { rows_loaded_[i]=false; enable(rows_[i],false); text(row_labels_[i],row_text_[i],sizeof(row_text_[i]),"LOADING..."); }
     } else { lv_obj_add_flag(browser_,LV_OBJ_FLAG_HIDDEN); lv_obj_remove_flag(performance_,LV_OBJ_FLAG_HIDDEN); }
@@ -201,26 +201,34 @@ void PerformanceUi::handle(Action action,uint8_t index,lv_event_code_t code,lv_o
     if(code!=LV_EVENT_CLICKED) return;
     switch(action) {
         case Action::Panic:
-            if(link_.client().connected()) { touch_.releaseAll(); macro_dirty_=0; patch_dirty_=master_dirty_=false; link_.client().panic(); info("PANIC REQUESTED",now_ms); }
+            if(backend_.connected()) { touch_.releaseAll(); macro_dirty_=0; patch_dirty_=master_dirty_=false; backend_.panic(); info("PANIC REQUESTED",now_ms); }
             break;
-        case Action::Previous: select(uint16_t(((patch_dirty_?pending_patch_:link_.state().patch_id)+255)%256),now_ms); break;
-        case Action::Next: select(uint16_t(((patch_dirty_?pending_patch_:link_.state().patch_id)+1)%256),now_ms); break;
-        case Action::Browse: page_=uint8_t(link_.state().patch_id/8); browse(true); break;
+        case Action::Previous:
+        case Action::Next: {
+            const uint16_t current=patch_dirty_?pending_patch_:backend_.state().patch_id;
+            uint16_t index=0;
+            for(uint16_t i=0;i<backend_.patchCount();++i) if(backend_.patchAt(i)==current) index=i;
+            const uint16_t count=backend_.patchCount();
+            if(count) select(backend_.patchAt((index+count+(action==Action::Next?1:-1))%count),now_ms);
+            break;
+        }
+        case Action::Browse: page_=0; for(uint16_t i=0;i<backend_.patchCount();++i) if(backend_.patchAt(i)==backend_.state().patch_id) page_=i/8; browse(true); break;
         case Action::Back: browse(false); break;
         case Action::PagePrevious: if(page_) { --page_; browse(true); } break;
-        case Action::PageNext: if(page_<31) { ++page_; browse(true); } break;
-        case Action::Row: if(rows_loaded_[index]) { select(uint16_t(page_*8+index),now_ms); browse(false); } break;
+        case Action::PageNext: if((page_+1)*8<backend_.patchCount()) { ++page_; browse(true); } break;
+        case Action::Row: if(rows_loaded_[index]) { select(backend_.patchAt(page_*8+index),now_ms); browse(false); } break;
         case Action::OctaveDown: touch_.releaseAll(); if(base_note_>config::kTouchMinBaseNote) base_note_-=12; updateOctave(); break;
         case Action::OctaveUp: touch_.releaseAll(); if(base_note_<config::kTouchMaxBaseNote) base_note_+=12; updateOctave(); break;
         default: break;
     }
 }
 void PerformanceUi::updateState(uint32_t now_ms) {
-    const auto& s=link_.state();
+    const auto& s=backend_.state();
     if(shown_patch_!=s.patch_id) { shown_patch_=s.patch_id; macro_dirty_=0; touch_.releaseAll(); }
     char value[96]; std::snprintf(value,sizeof(value),"%03u  %s",s.patch_id,s.patch_name);
     text(patch_,patch_text_,sizeof(patch_text_),value);
-    std::snprintf(value,sizeof(value),"%.1f BPM",static_cast<double>(s.bpm_centi)/100.0);
+    if(backend_.local()) std::snprintf(value,sizeof(value),"4 VOICES");
+    else std::snprintf(value,sizeof(value),"%.1f BPM",static_cast<double>(s.bpm_centi)/100.0);
     text(tempo_,tempo_text_,sizeof(tempo_text_),value);
     if(midi_count_!=s.midi_events) { midi_count_=s.midi_events; midi_changed_ms_=now_ms; }
     if(misses_!=s.deadline_misses || gaps_!=s.pcm_starvations) { misses_=s.deadline_misses; gaps_=s.pcm_starvations; warning_ms_=now_ms; }
@@ -240,74 +248,69 @@ void PerformanceUi::updateState(uint32_t now_ms) {
     suppress_=false;
 }
 void PerformanceUi::sendPending(uint32_t now_ms) {
-    auto& client=link_.client();
-    if(!client.connected() || !link_.hasState() || client.busy()) return;
+    if(!backend_.connected() || backend_.busy()) return;
     if(patch_dirty_) {
         if(now_ms-patch_time_ms_<config::kPatchDebounceMs) return;
-        uint8_t payload[2]; link::put16(payload,pending_patch_);
-        if(client.request(link::Type::SetPatch,payload,2,now_ms)) { patch_dirty_=false; last_send_ms_=now_ms; }
+        if(backend_.setPatch(pending_patch_,now_ms)) { patch_dirty_=false; last_send_ms_=now_ms; }
         return;
     }
     if(now_ms-last_send_ms_>=config::kControlSendIntervalMs) {
         for(uint8_t i=0;i<8;++i) if(macro_dirty_&(1u<<i)) {
-            const uint8_t payload[]={i,pending_macros_[i]};
-            if(client.request(link::Type::SetMacro,payload,2,now_ms)) { macro_dirty_&=uint8_t(~(1u<<i)); last_send_ms_=now_ms; }
+            if(backend_.setMacro(i,pending_macros_[i],now_ms)) { macro_dirty_&=uint8_t(~(1u<<i)); last_send_ms_=now_ms; }
             return;
         }
-        if(master_dirty_ && client.request(link::Type::SetMasterVolume,&pending_master_,1,now_ms)) { master_dirty_=false; last_send_ms_=now_ms; return; }
+        if(master_dirty_ && backend_.setMaster(pending_master_,now_ms)) { master_dirty_=false; last_send_ms_=now_ms; return; }
     }
     if(browser_visible_) for(uint8_t i=0;i<8;++i) if(!rows_loaded_[i]) {
-        uint8_t payload[2]; link::put16(payload,uint16_t(page_*8+i));
-        client.request(link::Type::GetPatch,payload,2,now_ms); return;
+        const uint16_t index=page_*8+i;
+        if(index>=backend_.patchCount()) {
+            text(row_labels_[i],row_text_[i],sizeof(row_text_[i]),"UNAVAILABLE"); continue;
+        }
+        PatchInfo patch;
+        if(backend_.patchInfo(index,patch,now_ms)) {
+            char value[56]; std::snprintf(value,sizeof(value),"%03u    %s%s",patch.id,patch.name,patch.available?"":" (UNAVAILABLE)");
+            text(row_labels_[i],row_text_[i],sizeof(row_text_[i]),value); rows_loaded_[i]=patch.available;
+        }
+        return;
     }
 }
+
 void PerformanceUi::service(uint32_t now_ms) {
-    const bool online=link_.client().connected() && link_.hasState();
-    const auto& s=link_.state();
-    const bool playable=online && (s.flags&link::kAudioLive);
+    backend_.service(now_ms);
+    if(const char* notice=backend_.takeNotice()) info(notice,now_ms);
+    const bool online=backend_.connected();
+    const auto& s=backend_.state();
+    const bool playable=online && ((s.flags&link::kAudioLive) || backend_.local());
     if(!online) {
         if(was_online_) {
             macro_dirty_=0; patch_dirty_=master_dirty_=false; editing_=0; master_editing_=false; touch_.disconnect();
             for(auto& loaded:rows_loaded_) loaded=false; // Fetch the new backend's catalog after reconnect.
         }
-        info(link_.client().incompatible()?"PROTOCOL VERSION MISMATCH":link_.ready()?"WAITING FOR S3 STATE":"UART CONFIGURATION REQUIRED",now_ms);
+        info(backend_.status(),now_ms);
     }
     was_online_=online;
-    if(online && shown_revision_!=link_.stateRevision()) { shown_revision_=link_.stateRevision(); updateState(now_ms); }
-    link::Frame reply{};
-    if(online && link_.takeReply(reply)) {
-        if(reply.type==link::Type::CommandAck) info("S3: RECEIVED (CONTROL STATE)",now_ms);
-        else if(reply.type==link::Type::CommandError) info(reply.payload[0]==uint8_t(link::Error::Busy)?"S3 BUSY - CONTROL REJECTED":"S3: CONTROL UNAVAILABLE",now_ms);
-        else if(reply.type==link::Type::PatchState && browser_visible_) {
-            const uint16_t id=link::get16(reply.payload);
-            if(id>=page_*8 && id<page_*8+8 && id<256) {
-                const unsigned row=id-page_*8; char value[56];
-                std::snprintf(value,sizeof(value),"%03u    %.*s",id,24,reinterpret_cast<const char*>(reply.payload+4));
-                text(row_labels_[row],row_text_[row],sizeof(row_text_[row]),value); rows_loaded_[row]=true;
-            }
-        }
-    }
+    if(online && shown_revision_!=backend_.stateRevision()) { shown_revision_=backend_.stateRevision(); updateState(now_ms); }
     enable(previous_,online); enable(next_,online); enable(browse_button_,online); enable(master_,online);
-    for(unsigned i=0;i<2;++i) enable(panic_[i],link_.client().connected());
+    for(unsigned i=0;i<2;++i) enable(panic_[i],backend_.connected());
     for(unsigned i=0;i<8;++i) { enable(macro_[i],online && s.macros[i].supported); enable(rows_[i],online && rows_loaded_[i]); }
     for(auto* key:keys_) enable(key,playable);
-    enable(page_previous_,online && page_>0); enable(page_next_,online && page_<31);
+    enable(page_previous_,online && page_>0); enable(page_next_,online && (page_+1)*8<backend_.patchCount());
     const bool activity=online && (s.flags&link::kUsbConnected) && uint32_t(now_ms-midi_changed_ms_)<150;
     const char* midi=online && (s.flags&link::kUsbConnected)?(activity?"MIDI *":"MIDI ON"):"MIDI OFF";
     const bool warning=online && (misses_ || gaps_) && uint32_t(now_ms-warning_ms_)<2000;
-    const char* audio=!online?"AUDIO --":!playable?"AUDIO STOP":warning?"AUDIO WARN":"AUDIO RUN";
+    const char* audio=!online?"AUDIO --":backend_.local() && !(s.flags&link::kAudioLive)?"AUDIO RAM":!playable?"AUDIO STOP":warning?"AUDIO WARN":"AUDIO RUN";
     // Only change labels/styles when the visual state actually changes.
     if(midi_ && std::strcmp(lv_label_get_text(midi_),midi)!=0) {
         lv_label_set_text_static(midi_,midi);
         lv_obj_set_style_text_color(midi_,lv_color_hex(activity?0x6fd49b:kMuted),0);
     }
     if(audio_ && std::strcmp(lv_label_get_text(audio_),audio)!=0) lv_label_set_text_static(audio_,audio);
-    const char* connection=online?"LINK ON":"LINK OFF";
+    const char* connection=backend_.local()?(online?"AMY LOCAL":"AMY ERROR"):(online?"LINK ON":"LINK OFF");
     if(connection_ && std::strcmp(lv_label_get_text(connection_),connection)!=0) lv_label_set_text_static(connection_,connection);
-    touch_.service(link_.client(),now_ms,playable);
+    touch_.service(backend_,now_ms,playable);
     sendPending(now_ms);
     if(online && uint32_t(now_ms-info_ms_)>=1800) {
-        char value[96]; std::snprintf(value,sizeof(value),"S3 CONTROL  |  NOTES %lu  |  RENDER %lu us  |  PCM GAPS %lu",
+        char value[96]; std::snprintf(value,sizeof(value),"%s  |  NOTES %lu  |  RENDER %lu us  |  PCM GAPS %lu",backend_.local()?backend_.status():"S3 CONTROL",
             static_cast<unsigned long>(s.active_notes),static_cast<unsigned long>(s.max_render_us),static_cast<unsigned long>(s.pcm_starvations));
         text(info_,info_text_,sizeof(info_text_),value);
     }

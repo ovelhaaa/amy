@@ -16,7 +16,7 @@ bool reportHardware() {
     esp_chip_info_t chip{};
     esp_chip_info(&chip);
 #if defined(CONFIG_SMKP4_STANDALONE)
-    ESP_LOGI(TAG, "Standalone PCM5102A bring-up; synthesis integration pending");
+    ESP_LOGI(TAG, "Standalone local AMY/PCM5102A; I2S requires confirmed wiring");
 #elif defined(CONFIG_SMK_LINK_ENABLED)
     ESP_LOGI(TAG, "Rehearsal Performance controller; synthesis/audio remain on S3");
 #else

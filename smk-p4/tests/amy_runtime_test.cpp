@@ -50,5 +50,16 @@ int main() {
     for(size_t p=0;p<kPatchCount;++p) std::printf("RAM_SELF_TEST patch=%u peak=%u rms=%.4f clipped=%u release=%d panic=%d\n",
         kPatches[p].id,metrics[p].peak,metrics[p].rms,metrics[p].clipped,metrics[p].release,metrics[p].panic);
     r.end(); assert(probe_live()==baseline);
+    const auto velocity_energy=[&](uint8_t velocity) {
+        assert(r.begin());
+        const uint32_t token=r.commands().nextToken();
+        assert(r.commands().push({CommandType::NoteOn,60,velocity,0,token,0}));
+        probe_realtime(true); r.apply(0);
+        const double sum=energy(r,40);
+        assert(r.snapshot().clipped==0);
+        probe_realtime(false); r.end(); return sum;
+    };
+    const double soft=velocity_energy(30),loud=velocity_energy(100);
+    assert(soft>0 && loud>soft && probe_live()==baseline);
     std::puts("PASS: real AMY initialization, ROM128/135, four notes, release, clipping, Panic and restart");
 }

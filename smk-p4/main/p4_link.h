@@ -10,6 +10,7 @@ public:
     bool begin();
     void service(uint32_t now_ms);
     link::Client& client() { return client_; }
+    const link::Client& client() const { return client_; }
     const link::State& state() const { return state_; }
     bool hasState() const { return has_state_; }
     bool ready() const { return ready_; }

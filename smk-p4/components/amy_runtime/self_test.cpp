@@ -1,7 +1,7 @@
 #include "self_test.h"
 #include <cmath>
 namespace smk::p4::amy {
-bool selfTest(Runtime& runtime,PcmMetrics (&metrics)[kPatchCount],void (*yield)()) {
+bool selfTest(Runtime& runtime,PcmMetrics (&metrics)[kPatchCount],void (*yield)(),uint32_t (*clock_us)()) {
     if(!runtime.snapshot().ready) return false;
     auto& commands=runtime.commands();
     bool passed=true;
@@ -17,9 +17,14 @@ bool selfTest(Runtime& runtime,PcmMetrics (&metrics)[kPatchCount],void (*yield)(
         }
         runtime.apply(now_ms);
         double sum=0;
+        uint64_t dsp_total_us=0;
         const uint32_t clipped_before=runtime.snapshot().clipped;
         for(unsigned b=0;b<40;++b) {
+            const uint32_t start=clock_us?clock_us():0;
             const auto* pcm=runtime.render(); if(!pcm) return false;
+            const uint32_t duration=clock_us?clock_us()-start:0;
+            dsp_total_us+=duration;
+            if(duration>m.dsp_max_us) m.dsp_max_us=duration;
             for(unsigned i=0;i<kBlockFrames*2;++i) {
                 const int32_t x=pcm[i]; const uint32_t magnitude=x<0?-x:x;
                 if(magnitude>m.peak) m.peak=magnitude;
@@ -27,6 +32,7 @@ bool selfTest(Runtime& runtime,PcmMetrics (&metrics)[kPatchCount],void (*yield)(
             }
             if(yield && b%16==0) yield();
         }
+        m.dsp_avg_us=static_cast<uint32_t>(dsp_total_us/40);
         m.rms=std::sqrt(sum/(40*kBlockFrames*2)); m.clipped=runtime.snapshot().clipped-clipped_before;
         for(unsigned n=0;n<kVoices;++n) commands.release(60+n*4,tokens[n]);
         runtime.apply(++now_ms);

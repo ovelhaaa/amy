@@ -4,6 +4,11 @@
 #include "display_test.h"
 #include "pcm5102_output.h"
 #include "pcm_test.h"
+#include "amy_runtime.h"
+#include "self_test.h"
+#include "local_performance_backend.h"
+#include "performance_ui.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -17,9 +22,13 @@
 
 namespace {
 using namespace smk::p4::audio;
-constexpr const char* kTag = "P4_PCM_TEST";
+constexpr const char* kTag = "P4_AMY";
+smk::p4::amy::Runtime runtime;
 struct Snapshot {
-    uint64_t frames = 0, render_total_us = 0;
+    smk::p4::amy::Snapshot engine;
+    uint64_t frames = 0, render_total_us = 0, command_total_us = 0, dma_total_us = 0;
+    uint32_t command_max_us = 0, dma_max_us = 0, patch_max_us = 0, service_deadlines = 0;
+    bool physical = false;
     uint32_t blocks = 0, render_max_us = 0, render_deadlines = 0;
     uint32_t service_max_us = 0, refill_risks = 0, write_errors = 0, timeouts = 0;
     unsigned stack_free_bytes = 0;
@@ -35,10 +44,49 @@ void runAudio() {
     TestTone tone;
     Snapshot state;
     int16_t pcm[kBlockSamples]{};
-    state.error = tone.configure(CONFIG_SMKP4_PCM_TEST_HZ, kTestAmplitude) ?
-        output.begin(CONFIG_SMKP4_PCM_BCLK, CONFIG_SMKP4_PCM_WS, CONFIG_SMKP4_PCM_DATA) : ESP_ERR_INVALID_ARG;
-    if (state.error == ESP_OK) state.error = output.start();
-    state.running = state.error == ESP_OK;
+#if !defined(CONFIG_SMKP4_PCM_DIAGNOSTIC)
+#if defined(CONFIG_SMKP4_AMY_RAM_SELF_TEST)
+    const size_t internal_before=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+#endif
+    // Boot admission before LVGL starts allocating. Upstream amy_start is void
+    // and still contains unchecked boot allocations; fail before entering it
+    // when the conservative internal reserve is absent.
+    if(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)<smk::p4::amy::kBootLargestInternalBytes ||
+       !runtime.begin()) state.error=ESP_ERR_NO_MEM;
+#if defined(CONFIG_SMKP4_AMY_RAM_SELF_TEST)
+    smk::p4::amy::PcmMetrics metrics[smk::p4::amy::kPatchCount];
+    bool passed=state.error==ESP_OK && smk::p4::amy::selfTest(runtime,metrics,[] { vTaskDelay(1); },
+        []() -> uint32_t { return static_cast<uint32_t>(esp_timer_get_time()); });
+    runtime.end();
+    const size_t internal_after=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+    const bool integrity=heap_caps_check_integrity_all(true);
+    // Measure before any float-formatted owner log (newlib can allocate
+    // task-local printf state). A second lifecycle distinguishes one-time
+    // platform initialization from a repeated engine leak.
+    const bool second_begin=passed && integrity && runtime.begin();
+    if(second_begin) runtime.render();
+    runtime.end();
+    const size_t internal_second=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+    ESP_LOGI(kTag,"RAM_SELF_TEST heap_before=%u heap_after_end=%u heap_after_second=%u integrity=%d",
+             unsigned(internal_before),unsigned(internal_after),unsigned(internal_second),integrity);
+    for(size_t p=0;p<smk::p4::amy::kPatchCount;++p)
+        ESP_LOGI(kTag,"RAM_SELF_TEST patch=%u peak=%lu rms=%.4f clipped=%lu release=%d panic=%d dsp_avg_us=%lu dsp_max_us=%lu",
+            smk::p4::amy::kPatches[p].id,(unsigned long)metrics[p].peak,metrics[p].rms,
+            (unsigned long)metrics[p].clipped,metrics[p].release,metrics[p].panic,
+            (unsigned long)metrics[p].dsp_avg_us,(unsigned long)metrics[p].dsp_max_us);
+    passed=passed && integrity && second_begin && runtime.begin();
+    ESP_LOGI(kTag,"RAM_SELF_TEST result=%s I2S=DISABLED restarted=%d",passed?"PASS":"FAIL",runtime.snapshot().ready);
+    if(!passed) state.error=ESP_FAIL;
+#endif
+#endif
+#if defined(CONFIG_SMKP4_PCM_WIRING_CONFIRMED)
+    state.physical=true;
+    if(state.error==ESP_OK) state.error=output.begin(CONFIG_SMKP4_PCM_BCLK, CONFIG_SMKP4_PCM_WS, CONFIG_SMKP4_PCM_DATA);
+    if(state.error==ESP_OK) state.error=output.start();
+#endif
+    if(!tone.configure(CONFIG_SMKP4_PCM_TEST_HZ,kTestAmplitude)) state.error=ESP_ERR_INVALID_ARG;
+    state.running=state.error==ESP_OK;
+    state.engine=runtime.snapshot();
     xQueueOverwrite(snapshots, &state);
     int64_t previous_start = 0;
     while (state.running) {
@@ -52,17 +100,33 @@ void runAudio() {
 #else
         constexpr bool sequence = false;
 #endif
-        if (!tone.render(pcm, kBlockFrames, sequence)) {
-            state.error = ESP_FAIL;
-            break;
-        }
-        const uint32_t render_us = static_cast<uint32_t>(esp_timer_get_time() - start);
+        const int16_t* samples=pcm;
+        const uint16_t previous_patch=runtime.snapshot().patch_id;
+        const int64_t command_start=esp_timer_get_time();
+        runtime.apply(static_cast<uint32_t>(command_start/1000));
+        const uint32_t command_us=static_cast<uint32_t>(esp_timer_get_time()-command_start);
+        state.command_total_us+=command_us;
+        if(command_us>state.command_max_us) state.command_max_us=command_us;
+        if(previous_patch!=runtime.snapshot().patch_id && command_us>state.patch_max_us) state.patch_max_us=command_us;
+        const int64_t dsp_start=esp_timer_get_time();
+#if defined(CONFIG_SMKP4_PCM_DIAGNOSTIC)
+        if(!tone.render(pcm,kBlockFrames,sequence)) { state.error=ESP_FAIL; break; }
+#else
+        (void)sequence;
+        samples=runtime.render();
+        if(!samples || runtime.snapshot().oom_count) { state.error=ESP_FAIL; break; }
+#endif
+        const uint32_t render_us = static_cast<uint32_t>(esp_timer_get_time() - dsp_start);
         state.render_total_us += render_us;
         ++state.blocks; // Includes generated blocks whose subsequent I2S write fails.
         if (render_us > state.render_max_us) state.render_max_us = render_us;
         if (render_us * static_cast<uint64_t>(kSampleRateHz) > kBlockFrames * 1000000ULL)
             ++state.render_deadlines;
-        state.error = output.write(pcm, kBlockFrames);
+        const int64_t dma_start=esp_timer_get_time();
+        if(state.physical) state.error = output.write(samples, kBlockFrames);
+        const uint32_t dma_us=state.physical?static_cast<uint32_t>(esp_timer_get_time()-dma_start):0;
+        state.dma_total_us+=dma_us;
+        if(dma_us>state.dma_max_us) state.dma_max_us=dma_us;
         const uint32_t service_us = static_cast<uint32_t>(esp_timer_get_time() - start);
         if (service_us > state.service_max_us) state.service_max_us = service_us;
         if (state.error != ESP_OK) {
@@ -70,12 +134,23 @@ void runAudio() {
             if (state.error == ESP_ERR_TIMEOUT) ++state.timeouts;
             break; // Stop clocks; never loop rapidly on a failed DMA channel.
         }
-        state.frames += kBlockFrames;
+        if(state.physical) state.frames += kBlockFrames;
+        state.engine=runtime.snapshot();
         state.stack_free_bytes = uxTaskGetStackHighWaterMark(nullptr);
         xQueueOverwrite(snapshots, &state); // Fixed single-element mailbox, no waiting.
+        const uint32_t total_service_us=static_cast<uint32_t>(esp_timer_get_time()-start);
+        if(total_service_us>state.service_max_us) state.service_max_us=total_service_us;
+        // Include housekeeping/mailbox in the compute budget, excluding only
+        // the measured I2S write. Published maxima can lag by one block.
+        if((total_service_us-dma_us)*static_cast<uint64_t>(kSampleRateHz)>kBlockFrames*1000000ULL)
+            ++state.service_deadlines;
+        // Software-only sink is explicitly not a sample-rate/latency qualification.
+        // Hardware production is paced solely by the I2S DMA write.
+        if(!state.physical) vTaskDelay(pdMS_TO_TICKS(6)+1);
     }
     const esp_err_t stop_error = output.stop();
     if (state.error == ESP_OK) state.error = stop_error;
+    runtime.end(); state.engine=runtime.snapshot();
     state.running = false;
     xQueueOverwrite(snapshots, &state);
 }
@@ -87,12 +162,11 @@ void audioTask(void*) {
 
 extern "C" void app_main() {
     if (!smk::p4::reportHardware()) return;
-    ESP_LOGI(kTag, "Standalone Gate A only; no AMY, UART, USB Host, ES8311 or NS4150");
+    ESP_LOGI(kTag, "Standalone local AMY; no UART, USB Host, ES8311 or NS4150");
     ESP_LOGI(kTag, "PCM=%" PRIu32 "Hz signed16 stereo Philips; block=%u DMA=%ux%u MCLK=unused",
              kSampleRateHz, unsigned(kBlockFrames), kDmaDescriptors, unsigned(kBlockFrames));
     snapshots = xQueueCreateStatic(1, sizeof(Snapshot), snapshot_storage, &snapshot_control);
-#if defined(CONFIG_SMKP4_PCM_WIRING_CONFIRMED)
-    ESP_LOGI(kTag, "I2S BCLK=%d WS=%d DATA=%d test_sequence=%d frequency=%dHz peak=%.2f",
+    ESP_LOGI(kTag, "Candidate I2S (driven only when wiring confirmed) BCLK=%d WS=%d DATA=%d test_sequence=%d frequency=%dHz peak=%.2f",
              CONFIG_SMKP4_PCM_BCLK, CONFIG_SMKP4_PCM_WS, CONFIG_SMKP4_PCM_DATA,
 #if defined(CONFIG_SMKP4_PCM_TEST_SEQUENCE)
              1,
@@ -100,20 +174,37 @@ extern "C" void app_main() {
              0,
 #endif
              CONFIG_SMKP4_PCM_TEST_HZ, double(kTestAmplitude));
-    if (!snapshots || xTaskCreate(audioTask, "pcm_test", kTaskStackBytes, nullptr,
-                                  kTaskPriority, nullptr) != pdPASS) {
+    if (!snapshots) { ESP_LOGE(kTag,"Snapshot mailbox creation failed"); return; }
+    if (xTaskCreate(audioTask, "amy_owner", smk::p4::amy::kOwnerStackBytes, nullptr,
+                                  smk::p4::amy::kOwnerPriority, nullptr) != pdPASS) {
         ESP_LOGE(kTag, "AUDIO FAIL: task/mailbox creation failed");
     }
+    // Let the boot owner finish before display allocations. A failed display
+    // never stops the independent audio owner. No serial upload in this task.
+    Snapshot initial;
+#if defined(CONFIG_SMKP4_AMY_RAM_SELF_TEST)
+    constexpr unsigned boot_polls=12000; // Explicit diagnostic can render long ROM releases.
 #else
-    // Keep the driver task type-checked even when electrical approval is absent.
-    (void)audioTask;
-    ESP_LOGW(kTag, "AUDIO BLOCKED: confirm wiring in menuconfig; GPIOs not driven");
+    constexpr unsigned boot_polls=200;
 #endif
-    const bool display_ready = smk::p4::beginDisplayTest();
-    if (!display_ready) ESP_LOGE(kTag, "Display failed; independent audio test continues");
+    for(unsigned i=0;i<boot_polls && xQueuePeek(snapshots,&initial,0)!=pdTRUE;++i) vTaskDelay(pdMS_TO_TICKS(10));
+#if defined(CONFIG_SMKP4_PCM_DIAGNOSTIC)
+    constexpr bool diagnostic=true;
+#else
+    constexpr bool diagnostic=false;
+#endif
+    const bool display_ready = smk::p4::beginDisplayTest(diagnostic);
+    static smk::p4::LocalAmyPerformanceBackend backend(runtime.commands());
+    static smk::p4::PerformanceUi ui(backend);
+    const bool ui_ready=display_ready && !diagnostic && ui.begin();
+    if(!display_ready || (!diagnostic && !ui_ready)) ESP_LOGE(kTag,"Display/UI failed; audio owner continues");
     TickType_t last_report = xTaskGetTickCount();
     for (;;) {
+        Snapshot current;
+        if(xQueuePeek(snapshots,&current,0)==pdTRUE)
+            backend.publish(current.engine,current.running && current.physical,current.render_max_us,current.render_deadlines);
         if (display_ready) smk::p4::serviceDisplayTest();
+        if(ui_ready) ui.service(static_cast<uint32_t>(esp_timer_get_time()/1000));
         if (xTaskGetTickCount() - last_report >= pdMS_TO_TICKS(smk::p4::config::kDiagnosticsIntervalMs)) {
             last_report = xTaskGetTickCount();
             Snapshot state;
@@ -123,10 +214,19 @@ extern "C" void app_main() {
                          " render_deadlines=%" PRIu32 " service_max_us=%" PRIu32
                          " refill_risks=%" PRIu32 " write_errors=%" PRIu32 " timeouts=%" PRIu32
                          " stack_free_bytes=%u error=%s DMA_underruns=UNMEASURED",
-                         state.running ? "PRODUCING_TEST_PCM" : "FAIL", state.frames, state.blocks,
+                         state.running ? (state.physical?"I2S_PRODUCING":"RAM_ONLY") : "FAIL", state.frames, state.blocks,
                          state.blocks ? state.render_total_us / state.blocks : 0, state.render_max_us,
                          state.render_deadlines, state.service_max_us, state.refill_risks,
                          state.write_errors, state.timeouts, state.stack_free_bytes, esp_err_to_name(state.error));
+                ESP_LOGI(kTag,"ENGINE ready=%d patch=%u notes=%lu peak=%lu clipped=%lu oom=%lu queue=%lu high=%lu overflow=%lu expired=%lu latency_max_ms=%lu cmd_avg/max=%llu/%lu dsp_avg/max=%llu/%lu compute_deadlines=%lu patch_max_us=%lu dma_avg/max=%llu/%lu",
+                    state.engine.ready,state.engine.patch_id,(unsigned long)state.engine.active_notes,
+                    (unsigned long)state.engine.peak,(unsigned long)state.engine.clipped,(unsigned long)state.engine.oom_count,
+                    (unsigned long)runtime.commands().depth(),(unsigned long)state.engine.queue_high_water,(unsigned long)runtime.commands().overflows(),
+                    (unsigned long)state.engine.expired_notes,(unsigned long)state.engine.command_latency_max_ms,
+                    (unsigned long long)(state.blocks?state.command_total_us/state.blocks:0),(unsigned long)state.command_max_us,
+                    (unsigned long long)(state.blocks?state.render_total_us/state.blocks:0),(unsigned long)state.render_max_us,
+                    (unsigned long)state.service_deadlines,(unsigned long)state.patch_max_us,
+                    (unsigned long long)(state.blocks?state.dma_total_us/state.blocks:0),(unsigned long)state.dma_max_us);
             }
             smk::p4::reportMemory();
         }
