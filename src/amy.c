@@ -539,6 +539,15 @@ int8_t global_init(amy_config_t c) {
 void global_deinit(void) {
     for (int bus = 0; bus < AMY_NUM_BUSES; ++bus)  filters_deinit(bus);
     free(amy_global.bus[0]);
+    // Match amy_init_lock on restart; no render worker may be active here.
+#if defined(_WIN32)
+    DeleteCriticalSection(&amy_queue_lock);
+#elif defined(_POSIX_THREADS) && !defined(__EMSCRIPTEN__)
+    pthread_mutex_destroy(&amy_queue_lock);
+#elif defined(ESP_PLATFORM) && !defined(__EMSCRIPTEN__)
+    vSemaphoreDelete(amy_queue_lock);
+    amy_queue_lock = NULL;
+#endif
 }
 
 // Convert to and from the log-frequency scale.

@@ -779,16 +779,20 @@ void filters_deinit(uint8_t bus) {
 void filters_init(uint8_t bus) {
     SAMPLE ***p_eq_coeffs = &amy_global.bus[bus]->eq.eq_coeffs;
     SAMPLE ****p_eq_delay = &amy_global.bus[bus]->eq.eq_delay;
-    *p_eq_coeffs = malloc_caps(sizeof(SAMPLE*)*3, amy_global.config.ram_caps_fbl);
-    *p_eq_delay = malloc_caps(sizeof(SAMPLE**)*AMY_NCHANS, amy_global.config.ram_caps_fbl);
-    for(uint16_t i=0;i<3;i++) {
-        (*p_eq_coeffs)[i] = malloc_caps(sizeof(SAMPLE) * 5, amy_global.config.ram_caps_fbl);
-    }
-    for(uint16_t i=0;i<AMY_NCHANS;i++) {
-        (*p_eq_delay)[i] = malloc_caps(sizeof(SAMPLE*) * 3, amy_global.config.ram_caps_fbl);
-        for(uint16_t j=0;j<3;j++) {
-            (*p_eq_delay)[i][j] = malloc_caps(sizeof(SAMPLE) * FILT_NUM_DELAYS, amy_global.config.ram_caps_fbl);
+    // bus_reset runs in both global_init and amy_reset_oscs. Reuse the
+    // existing EQ storage and reset its contents instead of leaking it.
+    if (*p_eq_coeffs == NULL) {
+        *p_eq_coeffs = malloc_caps(sizeof(SAMPLE*)*3, amy_global.config.ram_caps_fbl);
+        *p_eq_delay = malloc_caps(sizeof(SAMPLE**)*AMY_NCHANS, amy_global.config.ram_caps_fbl);
+        for(uint16_t i=0;i<3;i++) {
+            (*p_eq_coeffs)[i] = malloc_caps(sizeof(SAMPLE) * 5, amy_global.config.ram_caps_fbl);
+        }
+        for(uint16_t i=0;i<AMY_NCHANS;i++) {
+            (*p_eq_delay)[i] = malloc_caps(sizeof(SAMPLE*) * 3, amy_global.config.ram_caps_fbl);
+            for(uint16_t j=0;j<3;j++) {
+                (*p_eq_delay)[i][j] = malloc_caps(sizeof(SAMPLE) * FILT_NUM_DELAYS, amy_global.config.ram_caps_fbl);
 
+            }
         }
     }
 

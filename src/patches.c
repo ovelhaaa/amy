@@ -17,6 +17,9 @@ uint16_t * osc_to_voice = NULL;
 uint16_t *voice_to_base_osc = NULL;
 
 void patches_deinit() {
+    // patches_init owns one allocation containing all four tables. The delta
+    // pool has already been freed by oscs_deinit; only release the table here.
+    free(memory_patch_deltas);
     memory_patch_deltas = NULL;
     memory_patch_oscs = NULL;
     osc_to_voice = NULL;
