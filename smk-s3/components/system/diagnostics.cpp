@@ -7,6 +7,7 @@
 #include "esp_flash.h"
 #include "esp_psram.h"
 #include "esp_timer.h"
+#include "esp_random.h"
 #include "esp_private/esp_clk.h"
 
 static const char* TAG = "Diagnostics";
@@ -20,6 +21,11 @@ Diagnostics& Diagnostics::instance() {
 
 DiagnosticCounters& Diagnostics::counters() {
     return counters_;
+}
+
+uint32_t Diagnostics::bootId() const {
+    static const uint32_t id = [] { const uint32_t value = esp_random(); return value ? value : 1u; }();
+    return id;
 }
 
 Diagnostics::Snapshot Diagnostics::takeSnapshot() const {

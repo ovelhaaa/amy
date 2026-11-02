@@ -99,7 +99,7 @@ try {
         $ownerExe = Join-Path $build 'test_smk_amy_owner.exe'
         $wraps = @('-Wl,--wrap=amy_add_event', '-Wl,--wrap=amy_render', '-Wl,--wrap=amy_play_message',
                    '-Wl,--wrap=amy_execute_deltas', '-Wl,--wrap=amy_deltas_reset', '-Wl,--wrap=amy_stop')
-        & g++ -std=c++17 -pthread @flags tests/test_smk_amy_owner.cpp smk-s3/components/audio/amy_adapter.cpp smk-s3/components/audio/amy_commands.cpp @objects @wraps -lm -o $ownerExe
+        & g++ -std=c++17 -pthread -DSMK_TEST_CLOCK @flags tests/test_smk_amy_owner.cpp smk-s3/components/audio/amy_adapter.cpp smk-s3/components/audio/amy_commands.cpp @objects @wraps -lm -o $ownerExe
         if ($LASTEXITCODE -ne 0) { throw 'Owner test link failed' }
         & $ownerExe 2> $stderr
         $result = $LASTEXITCODE

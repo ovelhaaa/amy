@@ -17,6 +17,9 @@
 #include "event_bus.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "esp_timer.h"
+#include "esp_app_desc.h"
+#include "audio_config.h"
 #include "esp_console.h"
 #include "esp_vfs_dev.h"
 #include "driver/uart.h"
@@ -159,14 +162,34 @@ int Console::cmdStatus(int argc, char** argv) {
 }
 
 int Console::cmdAudioStatus(int argc, char** argv) {
-    // One coherent copy so the printed window is self-consistent. The compact
-    // key=value form is intended to be copied straight out of the serial log.
+    auto& counters = Diagnostics::instance().counters();
+    if (argc > 2 || (argc == 2 && std::strcmp(argv[1], "probe_on") && std::strcmp(argv[1], "probe_off"))) {
+        ESP_LOGE(TAG, "Usage: audio_status [probe_on|probe_off]");
+        return 1;
+    }
+    if (argc == 2) counters.audio_probe_enabled.store(!std::strcmp(argv[1], "probe_on"), std::memory_order_relaxed);
+    // Independent atomic observations, not a transactional snapshot. The compact
+    // key=value form supports short same-boot measurement windows.
     const Diagnostics::Snapshot s = Diagnostics::instance().takeSnapshot();
     const float peak_dbfs = (s.peak_abs_sample > 0)
         ? 20.0f * log10f(static_cast<float>(s.peak_abs_sample) / 32768.0f)
         : -120.0f;
 
     ESP_LOGI(TAG, "=== AUDIO QUAL ===");
+    char elf_sha256[65]{};
+    const auto* app = esp_app_get_description();
+    constexpr char hex[] = "0123456789abcdef";
+    for (size_t i = 0; i < sizeof(app->app_elf_sha256); ++i) {
+        elf_sha256[2*i] = hex[app->app_elf_sha256[i] >> 4];
+        elf_sha256[2*i+1] = hex[app->app_elf_sha256[i] & 15];
+    }
+    ESP_LOGI(TAG, "boot_id=%lu uptime_us=%llu elf_sha256=%s",
+             (unsigned long)Diagnostics::instance().bootId(),
+             (unsigned long long)esp_timer_get_time(), elf_sha256);
+    ESP_LOGI(TAG, "dma_buffers=%u dma_frames=%u pcm_blocks=%u patch=%u midi_events=%lu usb_connected=%u",
+             config::kDmaBufferCount, config::kDmaBufferFrames, config::kSynthPcmBlocks,
+             s_patch_manager ? s_patch_manager->activePatch().id : 0,
+             (unsigned long)counters.events_received.load(), unsigned(counters.usb_connected.load()));
     ESP_LOGI(TAG, "block=%lu rate=%lu budget_us=%.1f",
              (unsigned long)s.block_size, (unsigned long)s.sample_rate_hz, s.block_budget_us);
     ESP_LOGI(TAG, "avg_us=%lu max_us=%lu frames=%lu",
@@ -191,6 +214,16 @@ int Console::cmdAudioStatus(int argc, char** argv) {
     ESP_LOGI(TAG, "int_free=%lu int_largest=%lu psram_free=%lu psram_largest=%lu",
              (unsigned long)s.free_internal_ram, (unsigned long)s.largest_free_internal_block,
              (unsigned long)s.free_psram, (unsigned long)s.largest_free_psram_block);
+    ESP_LOGI(TAG, "probe=%u probe_blocks=%lu probe_service_us=%lu commands_max_us=%lu engine_max_us=%lu copy_max_us=%lu",
+             unsigned(counters.audio_probe_enabled.load()), (unsigned long)counters.probe_blocks.load(),
+             (unsigned long)counters.probe_service_us.load(), (unsigned long)counters.probe_commands_max_us.load(),
+             (unsigned long)counters.probe_engine_max_us.load(), (unsigned long)counters.probe_copy_max_us.load());
+    ESP_LOGI(TAG, "patch_count=%lu patch_max_us=%lu panic_max_us=%lu pcm_discarded=%lu gap_startup=%lu gap_barrier=%lu gap_empty=%lu",
+             (unsigned long)counters.probe_patch_count.load(), (unsigned long)counters.probe_patch_max_us.load(),
+             (unsigned long)counters.probe_panic_max_us.load(), (unsigned long)counters.probe_pcm_discarded.load(),
+             (unsigned long)counters.probe_gap_startup.load(), (unsigned long)counters.probe_gap_barrier.load(),
+             (unsigned long)counters.probe_gap_empty.load());
+    ESP_LOGI(TAG, "=== AUDIO QUAL END ===");
     return 0;
 }
 

@@ -2,7 +2,6 @@
 #include "diagnostics.h"
 #include "console.h"
 #include "remote_link.h"
-#include "esp_random.h"
 
 #include "event_bus.h"
 #include "pcm5102_output.h"
@@ -307,7 +306,7 @@ static void app_init_task(void* arg) {
     bool learning_was_active = false;
     bool audio_fault_reported = false;
 #if defined(CONFIG_SMK_LINK_ENABLED)
-    static smk::RemoteLink remote_link(*event_bus,*patch_manager,*amy_adapter,*clock_manager,esp_random());
+    static smk::RemoteLink remote_link(*event_bus,*patch_manager,*amy_adapter,*clock_manager,smk::Diagnostics::instance().bootId());
     remote_link.begin(); // Initialization error is reported; audio/MIDI keep running.
 #endif
 
@@ -642,7 +641,6 @@ static void app_init_task(void* arg) {
                     if (amy_adapter && ui_manager && patch_manager) {
                         uint32_t active_note_refs = amy_adapter->activeNoteReferences();
                         ui_manager->homeScreen().setActiveNoteReferences(active_note_refs);
-                        smk::Diagnostics::instance().counters().active_note_references.store(active_note_refs);
                     }
                     continue;
                 }
@@ -869,8 +867,8 @@ static void app_init_task(void* arg) {
                     break;
             }
 
-            // Sync aggregate note-reference count; exact AMY voice allocation
-            // and release tails are not observable without engine hooks.
+            // UI admission hint; authoritative diagnostics are published by
+            // the owner after command execution, not sampled before it.
             if (amy_adapter && (event.type == smk::EventType::NoteOn || 
                                 event.type == smk::EventType::NoteOff || 
                                 event.type == smk::EventType::AllNotesOff || 
@@ -880,7 +878,6 @@ static void app_init_task(void* arg) {
                 if (ui_manager && patch_manager) {
                     ui_manager->homeScreen().setActiveNoteReferences(active_note_refs);
                 }
-                smk::Diagnostics::instance().counters().active_note_references.store(active_note_refs);
             }
         }
 

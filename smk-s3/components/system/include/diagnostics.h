@@ -2,6 +2,9 @@
 
 #include <atomic>
 #include <cstdint>
+#if __has_include("sdkconfig.h")
+#include "sdkconfig.h"
+#endif
 
 namespace smk {
 
@@ -37,6 +40,20 @@ struct DiagnosticCounters {
     std::atomic<uint32_t> avg_render_us{0};
     std::atomic<uint32_t> frames_rendered{0};
     std::atomic<uint32_t> synth_pcm_starvations{0};
+    // Opt-in phase probe; cumulative until an explicit legacy audio reset.
+    // Every duration is wall time, including preemption/cache stalls, NOT CPU DSP time.
+    std::atomic<bool> audio_probe_enabled{
+#if defined(CONFIG_SMKS3_AUDIO_PHASE_PROBE_AT_BOOT)
+        true
+#else
+        false
+#endif
+    };
+    std::atomic<uint32_t> probe_blocks{0}, probe_service_us{0};
+    std::atomic<uint32_t> probe_commands_max_us{0}, probe_engine_max_us{0}, probe_copy_max_us{0};
+    std::atomic<uint32_t> probe_patch_count{0}, probe_patch_max_us{0}, probe_panic_max_us{0};
+    std::atomic<uint32_t> probe_pcm_discarded{0};
+    std::atomic<uint32_t> probe_gap_startup{0}, probe_gap_barrier{0}, probe_gap_empty{0};
     std::atomic<uint32_t> synth_commands_dropped{0};
     std::atomic<uint32_t> note_identities_rejected{0};
     std::atomic<uint32_t> synth_queue_high_water{0};
@@ -136,6 +153,7 @@ public:
     
     Snapshot takeSnapshot() const;
     void logSnapshot() const;
+    uint32_t bootId() const;
 
     // Clears only the runtime audio qualification metrics so each hardware test
     // run produces a clean window. USB connection state, MIDI counters and
@@ -151,6 +169,11 @@ public:
         c.avg_render_us.store(0, std::memory_order_relaxed);
         c.frames_rendered.store(0, std::memory_order_relaxed);
         c.synth_pcm_starvations.store(0, std::memory_order_relaxed);
+        c.probe_blocks = 0; c.probe_service_us = 0;
+        c.probe_commands_max_us = 0; c.probe_engine_max_us = 0; c.probe_copy_max_us = 0;
+        c.probe_patch_count = 0; c.probe_patch_max_us = 0; c.probe_panic_max_us = 0;
+        c.probe_pcm_discarded = 0;
+        c.probe_gap_startup = 0; c.probe_gap_barrier = 0; c.probe_gap_empty = 0;
         c.synth_commands_dropped.store(0, std::memory_order_relaxed);
         c.note_identities_rejected.store(0, std::memory_order_relaxed);
         c.synth_queue_high_water.store(0, std::memory_order_relaxed);

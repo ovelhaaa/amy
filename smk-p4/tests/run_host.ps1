@@ -10,4 +10,6 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Test failed: $test" }
         Write-Host "PASS: $test"
     }
+    & python -m unittest discover -s smk-p4/tests -p test_rehearsal_windows.py
+    if ($LASTEXITCODE -ne 0) { throw 'Rehearsal window tests failed' }
 } finally { Pop-Location }

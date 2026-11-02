@@ -66,6 +66,10 @@ bool is_continuous(uint8_t type) {
     }
 }
 constexpr size_t kSamples = config::kBlockSize * 2;
+// Each maximum has a single writer (owner or PCM consumer).
+void recordMaximum(std::atomic<uint32_t>& maximum, uint32_t value) {
+    if (value > maximum.load(std::memory_order_relaxed)) maximum.store(value, std::memory_order_relaxed);
+}
 static_assert(config::kSynthReleaseReserve < config::kSynthCommandCapacity);
 static_assert(config::kSynthPcmBlocks > 0);
 }
@@ -90,6 +94,8 @@ struct AmyAdapter::State {
     // Single producer/consumer. A slot is reused only after consumer's release.
     std::atomic<uint32_t> written{0}, read{0};
     int16_t output[kSamples]{}; // Output task owns this copy, including fade-in.
+    bool output_started = false; // PCM consumer only; independent of probe toggling.
+    uint32_t output_generation = 0;
     uint64_t average_us = 0;
     // Set by the control/console task, consumed by the synthesis owner at the
     // start of the next rendered block. Keeps average_us single-writer while
@@ -260,6 +266,7 @@ void AmyAdapter::workerRoutine(void* arg) {
         if (!self.serviceBlock()) xSemaphoreTake(s.wake, portMAX_DELAY);
     }
     self.executePanic();
+    Diagnostics::instance().counters().active_note_references.store(0, std::memory_order_relaxed);
     s.active.store(false, std::memory_order_release);
     vTaskDelete(nullptr);
 }
@@ -379,6 +386,7 @@ bool AmyAdapter::serviceBlock() {
     }
     const int64_t start_us = esp_timer_get_time();
     auto& diag = Diagnostics::instance().counters();
+    const bool probe = diag.audio_probe_enabled.load(std::memory_order_relaxed);
     // Command phase belongs to the synthesis owner, outside the output task.
     // AMY may allocate/load patches here; I2S never waits for that work.
     for (uint16_t i = 0; i < config::kSynthCommandsPerBlock; ++i) {
@@ -408,6 +416,7 @@ bool AmyAdapter::serviceBlock() {
         if ((c.type == NoteOff || c.type == RoutedOff) && c.deadline_us && now_us > c.deadline_us)
             diag.synth_release_deadlines_missed.fetch_add(1, std::memory_order_relaxed);
         const float* v = c.data.values;
+        const int64_t command_start_us = probe && (c.type == Preset || c.type == Panic) ? esp_timer_get_time() : 0;
         auto off = [this](NoteOutput output) { executeNoteOff(output.instrument == 10 ? 9 : 0, output.note); };
         switch (c.type) {
             case RoutedOn: {
@@ -451,9 +460,21 @@ bool AmyAdapter::serviceBlock() {
             case OscMix: executeOscMix(c.channel, v[0]); break;
             case Mono: executeAllNotesOff(); mono_mode_ = v[0] != 0; mono_stack_size_ = 0; break;
         }
+        if (probe && (c.type == Preset || c.type == Panic)) {
+            const uint32_t duration = static_cast<uint32_t>(esp_timer_get_time() - command_start_us);
+            if (c.type == Preset) {
+                diag.probe_patch_count.fetch_add(1, std::memory_order_relaxed);
+                recordMaximum(diag.probe_patch_max_us, duration);
+            } else recordMaximum(diag.probe_panic_max_us, duration);
+        }
     }
     mono_snapshot_.store(mono_mode_, std::memory_order_relaxed);
+    // The owner publishes after applying commands. Control-task admission can
+    // precede execution, so sampling there leaves diagnostics one event behind.
+    diag.active_note_references.store(activeNoteReferences(), std::memory_order_relaxed);
+    const int64_t engine_start_us = probe ? esp_timer_get_time() : 0;
     int16_t* samples = renderEngine();
+    const int64_t copy_start_us = probe ? esp_timer_get_time() : 0;
     if (!samples) {
         s.failed.store(true, std::memory_order_release);
         s.running.store(false, std::memory_order_release);
@@ -462,7 +483,15 @@ bool AmyAdapter::serviceBlock() {
     auto& block = s.pcm[written % config::kSynthPcmBlocks];
     std::memcpy(block.samples, samples, sizeof(block.samples));
     block.generation = s.applied_generation;
-    const uint32_t elapsed_us = static_cast<uint32_t>(esp_timer_get_time() - start_us);
+    const int64_t end_us = esp_timer_get_time();
+    const uint32_t elapsed_us = static_cast<uint32_t>(end_us - start_us);
+    if (probe) {
+        recordMaximum(diag.probe_commands_max_us, static_cast<uint32_t>(engine_start_us - start_us));
+        recordMaximum(diag.probe_engine_max_us, static_cast<uint32_t>(copy_start_us - engine_start_us));
+        recordMaximum(diag.probe_copy_max_us, static_cast<uint32_t>(end_us - copy_start_us));
+        diag.probe_service_us.fetch_add(elapsed_us, std::memory_order_relaxed);
+        diag.probe_blocks.fetch_add(1, std::memory_order_relaxed);
+    }
     if (elapsed_us > audioBlockBudgetUs(config::kBlockSize, config::kSampleRateHz))
         diag.render_deadline_misses.fetch_add(1, std::memory_order_relaxed);
     if (elapsed_us > diag.max_render_us.load(std::memory_order_relaxed))
@@ -477,6 +506,8 @@ bool AmyAdapter::serviceBlock() {
 int16_t* AmyAdapter::render() {
     if (!state_ || state_->failed.load(std::memory_order_acquire)) return nullptr;
     auto& s = *state_;
+    auto& diag = Diagnostics::instance().counters();
+    const bool probe = diag.audio_probe_enabled.load(std::memory_order_relaxed);
     bool copied = false;
     // At most two blocks inspected; never wait, parse commands or call AMY.
     for (uint8_t i = 0; i < config::kSynthPcmBlocks; ++i) {
@@ -486,13 +517,25 @@ int16_t* AmyAdapter::render() {
         if (block.generation == s.requested_generation.load(std::memory_order_acquire)) {
             std::memcpy(s.output, block.samples, sizeof(s.output));
             copied = true;
+            s.output_started = true;
+            s.output_generation = block.generation;
+        } else if (probe) {
+            diag.probe_pcm_discarded.fetch_add(1, std::memory_order_relaxed);
         }
         s.read.store(read + 1, std::memory_order_release);
         if (copied) break;
     }
     if (!copied) {
         std::memset(s.output, 0, sizeof(s.output));
-        Diagnostics::instance().counters().synth_pcm_starvations.fetch_add(1, std::memory_order_relaxed);
+        diag.synth_pcm_starvations.fetch_add(1, std::memory_order_relaxed);
+        if (probe) {
+            // Barrier gaps remain real zero-filled output. This is context,
+            // not an assertion that the silence is intentional or inaudible.
+            auto& reason = !s.output_started ? diag.probe_gap_startup :
+                s.output_generation != s.requested_generation.load(std::memory_order_acquire) ?
+                diag.probe_gap_barrier : diag.probe_gap_empty;
+            reason.fetch_add(1, std::memory_order_relaxed);
+        }
     }
     xSemaphoreGive(s.wake);
     return s.output;

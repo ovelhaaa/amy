@@ -1,5 +1,13 @@
 menu "SMK-S3 board configuration"
 
+    config SMKS3_AUDIO_PHASE_PROBE_AT_BOOT
+        bool "Enable bounded audio phase probe from the first block"
+        default n
+        help
+            Wall-time phase maxima and PCM gap context, without per-block logs
+            or allocations. Does not measure DSP CPU time. The link bench profile
+            opts in to investigate startup; audio_status probe_off disables it.
+
     config SMKS3_P4_HEADLESS
         bool "Use P4 UI without the S3 local display task"
         default n

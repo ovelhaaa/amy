@@ -3,6 +3,7 @@
 #include "synth_config.h"
 #include "diagnostics.h"
 #include "freertos/task.h"
+#include "esp_timer.h"
 #include <array>
 #include <atomic>
 #include <cassert>
@@ -21,6 +22,7 @@ struct AmyAdapterTestAccess {
 }
 thread_local bool owner = false;
 std::atomic<bool> pause_render{false}, render_entered{false}, resume_render{false};
+uint32_t injected_engine_us = 0, injected_patch_us = 0;
 struct OwnerScope {
     OwnerScope() { assert(!owner); owner = true; }
     ~OwnerScope() { owner = false; }
@@ -37,7 +39,11 @@ void __real_amy_play_message(char*);
 void __real_amy_execute_deltas();
 void __real_amy_deltas_reset();
 void __real_amy_stop();
-void __wrap_amy_add_event(amy_event* e) { assert(owner); __real_amy_add_event(e); }
+void __wrap_amy_add_event(amy_event* e) {
+    assert(owner);
+    if (AMY_IS_SET(e->patch_number)) smk_test_time_us.fetch_add(injected_patch_us);
+    __real_amy_add_event(e);
+}
 void __wrap_amy_render(uint16_t a, uint16_t b, uint8_t c) {
     assert(owner);
     if (pause_render.load()) {
@@ -45,6 +51,7 @@ void __wrap_amy_render(uint16_t a, uint16_t b, uint8_t c) {
         while (!resume_render.load()) std::this_thread::yield();
     }
     __real_amy_render(a, b, c);
+    smk_test_time_us.fetch_add(injected_engine_us);
 }
 void __wrap_amy_play_message(char* s) { assert(owner); __real_amy_play_message(s); }
 void __wrap_amy_execute_deltas() { assert(owner); __real_amy_execute_deltas(); }
@@ -69,8 +76,9 @@ static void pump(AmyAdapter& adapter, int count = 8) {
 static void testBoundaries(AmyAdapter& adapter) {
     auto& diag = Diagnostics::instance().counters();
     const auto before = amy_global.total_blocks;
+    const auto starvations = diag.synth_pcm_starvations.load();
     consume(adapter, true); // Empty queue is silence, not an AMY call.
-    assert(amy_global.total_blocks == before && diag.synth_pcm_starvations == 1);
+    assert(amy_global.total_blocks == before && diag.synth_pcm_starvations == starvations+1);
     assert(service(adapter) && service(adapter));
     assert(!service(adapter)); // Producer cannot overwrite a consumer-owned slot.
     consume(adapter); consume(adapter);
@@ -269,7 +277,59 @@ static void testTouchDisconnect(AmyAdapter& adapter) {
     assert(adapter.activeNoteReferences()==2);
     adapter.stopNoteSource(NoteSource::Touch); pump(adapter); assert(adapter.activeNoteReferences()==1);
     adapter.routeNoteOff(physical.identity); pump(adapter); assert(adapter.activeNoteReferences()==0);
+    // Same C4 in both sources: Touch Off is independent of physical pedal.
+    adapter.routeSustain(0,true); adapter.routeNoteOn(physical); adapter.routeNoteOn(touch); pump(adapter);
+    adapter.routeNoteOff(touch.identity); pump(adapter); assert(adapter.activeNoteReferences()==1);
+    adapter.routeNoteOff(physical.identity); pump(adapter); assert(adapter.activeNoteReferences()==1);
+    adapter.routeSustain(0,false); pump(adapter); assert(adapter.activeNoteReferences()==0);
+    // Explicit Panic clears sustained ownership and accepts a new physical key.
+    adapter.routeSustain(0,true); adapter.routeNoteOn(physical); adapter.routeNoteOff(physical.identity); pump(adapter);
+    adapter.panic(); pump(adapter); assert(adapter.activeNoteReferences()==0);
+    adapter.routeNoteOn(physical); adapter.routeNoteOff(physical.identity); pump(adapter);
+    assert(adapter.activeNoteReferences()==0);
     std::puts("PASS: Touch release bypasses sustain and saturated FIFOs; physical keys/pedal survive disconnect without global Panic");
+}
+
+static void testPhaseProbe(AmyAdapter& adapter) {
+    auto& d = Diagnostics::instance().counters();
+    assert(!d.audio_probe_enabled && d.probe_blocks==0);
+    d.audio_probe_enabled=true;
+    const auto gaps=d.probe_gap_empty.load();
+    consume(adapter,true);
+    assert(d.probe_gap_empty==gaps+1);
+    injected_engine_us=1200; injected_patch_us=6000;
+    const auto misses=d.render_deadline_misses.load();
+    adapter.loadPreset(1,0,8);
+    assert(service(adapter)); consume(adapter);
+    assert(d.probe_blocks==1 && d.probe_service_us==7200);
+    assert(d.probe_commands_max_us==6000 && d.probe_patch_max_us==6000 && d.probe_patch_count==1);
+    assert(d.probe_engine_max_us==1200 && d.probe_copy_max_us==0);
+    assert(d.render_deadline_misses==misses+1); // Legacy counter still includes patch work.
+    assert(service(adapter) && service(adapter));
+    const auto discarded=d.probe_pcm_discarded.load(), barriers=d.probe_gap_barrier.load();
+    adapter.panic(); consume(adapter,true);
+    assert(d.probe_pcm_discarded==discarded+2 && d.probe_gap_barrier==barriers+1);
+    pump(adapter);
+    const auto blocks=d.probe_blocks.load();
+    d.audio_probe_enabled=false; pump(adapter);
+    assert(d.probe_blocks==blocks); // Disabling probe never resets history.
+    injected_engine_us=injected_patch_us=0;
+    std::puts("PASS: deterministic wall phase probe, patch-inclusive deadline, generation discards, gap context and opt-in history");
+}
+
+static void testDiagnosticReferences(AmyAdapter& adapter) {
+    auto& d=Diagnostics::instance().counters();
+    adapter.noteOn(0,60,100);
+    assert(service(adapter)); consume(adapter);
+    assert(adapter.activeNoteReferences()==1 && d.active_note_references==1);
+    adapter.noteOff(0,60);
+    assert(d.active_note_references==1); // Admission is not execution.
+    assert(service(adapter)); consume(adapter);
+    assert(adapter.activeNoteReferences()==0 && d.active_note_references==0);
+    adapter.noteOn(0,64,100); pump(adapter);
+    adapter.panic(); pump(adapter);
+    assert(adapter.activeNoteReferences()==0 && d.active_note_references==0);
+    std::puts("PASS: note-reference diagnostics published by owner after application, including release and Panic");
 }
 
 static void testConcurrent(AmyAdapter& adapter) {
@@ -323,8 +383,14 @@ static void testConcurrent(AmyAdapter& adapter) {
 int main() {
     auto* adapter = new AmyAdapter;
     { OwnerScope scope; assert(!adapter->begin(44100)); assert(adapter->begin(AMY_SAMPLE_RATE)); }
+    auto& diagnostics=Diagnostics::instance().counters();
+    diagnostics.audio_probe_enabled=true; consume(*adapter,true);
+    assert(diagnostics.probe_gap_startup==1);
+    diagnostics.audio_probe_enabled=false;
     testBoundaries(*adapter);
     testTouchDisconnect(*adapter);
+    testPhaseProbe(*adapter);
+    testDiagnosticReferences(*adapter);
     testConcurrent(*adapter);
     { OwnerScope scope; delete adapter; }
     // Task allocation failure leaves the engine available for orderly teardown.

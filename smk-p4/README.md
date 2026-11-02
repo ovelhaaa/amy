@@ -148,6 +148,31 @@ the existing S3 regression runners):
 ./smk-p4/tests/run_host.ps1
 ```
 
+The host runner also uses Python's standard-library unittest for same-boot
+measurement-window validation. Stabilization findings, firmware identities,
+recovery and pending physical acceptance are in
+[the 0.2 stabilization report](docs/rehearsal_stabilization_02_results.md).
+The link profile opts in to `CONFIG_SMKS3_AUDIO_PHASE_PROBE_AT_BOOT` to measure
+the S3 startup spike; generic/standalone defaults leave it off. It uses fixed
+atomic counters, no per-block logs or allocations. On S3, `audio_status probe_on`
+and `audio_status probe_off` toggle timing without resetting history.
+
+Collect short diagnostic windows without reset or flash (close other monitors):
+
+```powershell
+C:/.platformio/penv/Scripts/python.exe smk-p4/tests/rehearsal_windows.py --port COM8 --output build/window_A.log --scenario A-idle --seconds 32 --interval 10
+C:/.platformio/penv/Scripts/python.exe smk-p4/tests/rehearsal_windows.py --input build/window_A.log --output build/window_A_compare.json --scenario A-idle
+```
+
+`--probe` explicitly enables phase timing during collection and disables it
+afterward; neither action resets counters. The JSON retains raw observations,
+same-boot deltas and operator notes. It refuses changed boots/builds/configuration,
+suspected counter resets, non-increasing uptime, incomplete snapshots and gaps
+over60s. Legacy firmware lacks the new record delimiter and boot identity, so
+its logs require the documented manual comparison. Maxima remain cumulative;
+the tool never labels a difference of maxima as a window maximum. Auditory
+confirmation remains MANUAL even when counter deltas are zero.
+
 These cover all 384,000 pixel coordinate round trips, corners, clipping, dirty
 repair across two/three buffers, page changes and refresh-counter wrap. They
 do not certify physical display or touch. Hardware source and licensing:
