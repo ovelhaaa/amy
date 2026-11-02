@@ -310,7 +310,10 @@ void PerformanceUi::service(uint32_t now_ms) {
     touch_.service(backend_,now_ms,playable);
     sendPending(now_ms);
     if(online && uint32_t(now_ms-info_ms_)>=1800) {
-        char value[96]; std::snprintf(value,sizeof(value),"%s  |  NOTES %lu  |  RENDER %lu us  |  PCM GAPS %lu",backend_.local()?backend_.status():"S3 CONTROL",
+        char value[96];
+        if(backend_.local()) std::snprintf(value,sizeof(value),"%s | NOTES %lu | DSP %lu us | DMA UNMEASURED",
+            backend_.status(),static_cast<unsigned long>(s.active_notes),static_cast<unsigned long>(s.max_render_us));
+        else std::snprintf(value,sizeof(value),"S3 CONTROL | NOTES %lu | RENDER %lu us | PCM GAPS %lu",
             static_cast<unsigned long>(s.active_notes),static_cast<unsigned long>(s.max_render_us),static_cast<unsigned long>(s.pcm_starvations));
         text(info_,info_text_,sizeof(info_text_),value);
     }

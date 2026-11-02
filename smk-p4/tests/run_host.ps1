@@ -20,6 +20,6 @@ try {
     & ./build/smk_p4_display/pcm_driver_test.exe
     if ($LASTEXITCODE -ne 0) { throw 'PCM driver tests failed' }
     Write-Host 'PASS: I2S lifecycle, silent preload, PCM contract and injected failures (mock driver)'
-    & python -m unittest discover -s smk-p4/tests -p test_rehearsal_windows.py
-    if ($LASTEXITCODE -ne 0) { throw 'Rehearsal window tests failed' }
+    & python -m unittest discover -s smk-p4/tests -p 'test_*.py'
+    if ($LASTEXITCODE -ne 0) { throw 'P4 measurement parser tests failed' }
 } finally { Pop-Location }

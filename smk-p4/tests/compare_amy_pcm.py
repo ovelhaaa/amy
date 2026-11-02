@@ -6,10 +6,17 @@ import re
 PATTERN = re.compile(r"RAM_SELF_TEST patch=(\d+) peak=(\d+) rms=([0-9.]+) clipped=(\d+) release=(\d) panic=(\d)")
 
 
-def metrics(path):
+def metrics(path, require_result=False):
+    text = path.read_text(errors="replace")
+    if require_result and "RAM_SELF_TEST result=PASS I2S=DISABLED restarted=1" not in text:
+        raise ValueError(f"Missing completed, restarted RAM diagnostic: {path}")
+    if "RAM_SELF_TEST result=FAIL" in text:
+        raise ValueError(f"Failed diagnostic: {path}")
     result = {}
-    for match in PATTERN.finditer(path.read_text(errors="replace")):
+    for match in PATTERN.finditer(text):
         patch, peak, rms, clipped, release, panic = match.groups()
+        if int(patch) in result:
+            raise ValueError(f"Multiple diagnostic runs; select one boot: {path}")
         result[int(patch)] = (int(peak), float(rms), int(clipped), int(release), int(panic))
     if set(result) != {128, 135}:
         raise ValueError(f"Incomplete ROM diagnostic: {path}")
@@ -24,7 +31,7 @@ def main():
     args = parser.parse_args()
     if not 0 <= args.tolerance <= 0.25:
         parser.error("tolerance must be in [0, 0.25]")
-    host, p4 = metrics(args.host), metrics(args.p4)
+    host, p4 = metrics(args.host), metrics(args.p4, require_result=True)
     for patch in host:
         for label, values in (("host", host[patch]), ("P4", p4[patch])):
             if values[0] <= 0 or values[1] <= 0 or values[2:] != (0, 1, 1):
