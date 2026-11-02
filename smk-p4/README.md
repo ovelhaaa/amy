@@ -1,5 +1,11 @@
 # SMK-P4 rehearsal MVP 0.1 — incremental bring-up
 
+Standalone P4/PCM5102A em desenvolvimento: novo ambiente `guition-standalone`,
+sem alterar os ambientes abaixo. Veja [ligação/teste](docs/pcm5102_wiring.md)
+e [escopo e resultados](docs/standalone_pcm5102_results.md). O incremento inicial
+é diagnóstico I²S, com saída desabilitada até conferência da montagem;
+ainda não contém AMY/Performance locais nem USB MIDI Host.
+
 Architecture: P4 touchscreen controller → UART control → existing SMK-S3 Single
 engine → PCM5102A. No AMY migration to P4. No Layer B or materialization refactor.
 
