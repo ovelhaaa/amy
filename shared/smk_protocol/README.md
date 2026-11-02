@@ -84,6 +84,25 @@ Off; duplicates cannot renew the note lease. This MVP supports one touch note,
 not multitouch. The P4 gesture model releases on lost touch and enforces a
 defensive 10-second maximum hold even while heartbeats continue.
 
+Stabilization 0.2 reserves the next free transaction for GET_STATE after200ms,
+including under continuous macro/master/catalog traffic. Note On/Off and Panic
+retain musical priority. An already in-flight command is immutable. If release
+or Panic arrives while it awaits an ACK, the client cancels the old session and
+sends the existing HELLO fence immediately; that selectively releases Touch.
+An explicit global Panic remains latched for delivery after HELLO_ACK. No stale
+command is replayed. P4 drops unsent transport frames before HELLO (counted as
+TX drops); bytes already in the hardware FIFO precede the fence on the wire.
+This resynchronizes a partially transmitted frame with HELLO's leading SLIP END.
+The UI goes offline and obtains a fresh snapshot during this recovery. Re-press
+a key if a gesture was interrupted by the session change.
+
+No lease extension is made: lost/delayed communication may expire a held note,
+and GET_STATE cannot resurrect it. Responses at/after the1500ms session timeout
+are rejected before they can make the UI appear connected. Sustaining Touch
+through unbounded delays is deliberately unsupported. Tests cover control
+flooding,100ms response delay, one lost heartbeat ACK/retry, urgent release/Panic,
+expired replies and saturated/partially transmitted UART queues.
+
 Loss/reset of the P4 releases **only Touch**, preserving USB keys and physical
 sustain. Both EventBus and AMY adapter have bounded selective-release latches
 that bypass full FIFOs and invalidate queued pre-disconnect touch notes.

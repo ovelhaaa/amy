@@ -32,7 +32,13 @@ void P4Link::service(uint32_t now_ms) {
             reply_=frame; reply_ready_=true;
         }
     }
-    if(client_.next(now_ms,frame)) uart_.send(frame,frame.type==link::Type::Panic || frame.type==link::Type::AuditionNoteOff);
+    if(client_.next(now_ms,frame)) {
+        // Bytes already in the hardware FIFO precede HELLO on the wire. Purge
+        // unsent old-session frames; HELLO's leading delimiter resynchronizes
+        // a partially transmitted frame without blocking/flushing hardware.
+        if(frame.type==link::Type::Hello) uart_.discardPendingTx();
+        uart_.send(frame,frame.type==link::Type::Panic || frame.type==link::Type::AuditionNoteOff);
+    }
     if(!client_.connected()) { has_state_=false; reply_ready_=false; }
     setLinkStatus(client_.incompatible()?"LINK VERSION ERROR":client_.connected()?"LINK OK / CONTROL":"LINK WAITING S3");
     if(now_ms-last_log_ms_>=5000) {

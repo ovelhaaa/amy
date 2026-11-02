@@ -11,6 +11,7 @@ constexpr size_t kWireBytes = 2 * kPacketBytes + 2;
 constexpr uint32_t kFrameTimeoutMs = 100;
 constexpr uint32_t kLinkTimeoutMs = 1500;
 constexpr uint32_t kNoteLeaseMs = 600;
+constexpr uint32_t kStatePollMs = 200;
 constexpr size_t kSnapshotBytes = 154;
 constexpr size_t kDiagnosticsBytes = 38;
 constexpr uint8_t kNoNote = 255;

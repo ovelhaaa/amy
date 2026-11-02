@@ -11,4 +11,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Touch gesture compilation failed' }
     & ./build/smk_link/test_touch.exe
     if ($LASTEXITCODE -ne 0) { throw 'Touch gesture tests failed' }
+    & g++ -std=c++17 -O2 -Itests/mock_uart -Itests/mock -Ishared/smk_protocol -Ishared/smk_uart tests/test_smk_uart.cpp shared/smk_uart/smk_uart.cpp shared/smk_protocol/smk_protocol.cpp -o build/smk_link/test_uart.exe
+    if ($LASTEXITCODE -ne 0) { throw 'UART transport compilation failed' }
+    & ./build/smk_link/test_uart.exe
+    if ($LASTEXITCODE -ne 0) { throw 'UART transport tests failed' }
 } finally { Pop-Location }

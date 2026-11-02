@@ -14,6 +14,7 @@ public:
     esp_err_t begin(int port,int tx_gpio,int rx_gpio);
     bool send(const Frame& frame,bool release=false);
     bool poll(uint32_t now_ms,Frame& frame);
+    void discardPendingTx() { tx_drops_+=count_; head_=count_=0; }
     uint32_t receiveErrors() const { return rx_errors_; }
     uint32_t transmitDrops() const { return tx_drops_; }
     uint32_t frameErrors() const { return decoder_.errors(); }

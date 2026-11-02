@@ -5,11 +5,16 @@ namespace smk::link {
 bool Client::request(Type type,const uint8_t* payload,uint16_t size,uint32_t now_ms) {
     if(!connected_ || pending_ || !sequence_ || size>kPayloadBytes || (size && !payload)) return false;
     if((panic_pending_ || release_pending_!=kNoNote) && type!=Type::Panic && type!=Type::AuditionNoteOff) return false;
+    // Reserve the next transaction for the snapshot/lease heartbeat even when
+    // the UI always has another coalesced control or catalog request ready.
+    if(type!=Type::GetState && type!=Type::Panic && type!=Type::AuditionNoteOff &&
+       type!=Type::AuditionNoteOn && uint32_t(now_ms-last_state_ms_)>=kStatePollMs) return false;
     Frame next{}; next.type=type; next.size=size;
     if(size) std::memcpy(next.payload,payload,size);
     if(type==Type::Hello || !validCommand(next)) return false;
     next.sequence=sequence_; next.session=session_;
     command_=next; pending_=true; sent_=false; retries_=0; last_send_ms_=now_ms;
+    if(type==Type::GetState) last_state_ms_=now_ms;
     return true;
 }
 void Client::releaseNote(uint8_t note) {
@@ -24,6 +29,13 @@ void Client::disconnect() {
 }
 bool Client::next(uint32_t now_ms,Frame& transmit) {
     if(connected_ && uint32_t(now_ms-last_receive_ms_)>=kLinkTimeoutMs) { ++errors_; disconnect(); }
+    // A lost ACK must not hold a finger release behind retries. The existing
+    // HELLO/new-session fence releases only Touch and cancels the old command;
+    // it cannot replay that command after reconnect. No out-of-order sequence.
+    if(connected_ && pending_ && (release_pending_!=kNoNote || panic_pending_)) {
+        const bool keep_panic=panic_pending_ || command_.type==Type::Panic;
+        disconnect(); panic_pending_=keep_panic;
+    }
     if(pending_) {
         if(!sent_) { transmit=command_; sent_=true; last_send_ms_=now_ms; return true; }
         if(uint32_t(now_ms-last_send_ms_)<250) return false;
@@ -45,13 +57,14 @@ bool Client::next(uint32_t now_ms,Frame& transmit) {
         const uint8_t note=release_pending_; release_pending_=kNoNote;
         if(request(Type::AuditionNoteOff,&note,1,now_ms)) return next(now_ms,transmit);
     }
-    if(uint32_t(now_ms-last_state_ms_)>=200) {
-        last_state_ms_=now_ms;
+    if(uint32_t(now_ms-last_state_ms_)>=kStatePollMs) {
         if(request(Type::GetState,&held_,1,now_ms)) return next(now_ms,transmit);
     }
     return false;
 }
 void Client::receive(const Frame& r,uint32_t now_ms) {
+    // Do not let a delayed reply revive a session before next() checks expiry.
+    if(connected_ && uint32_t(now_ms-last_receive_ms_)>=kLinkTimeoutMs) { ++errors_; disconnect(); return; }
     if(connected_ && r.type==Type::AudioDiagnostics && r.session==session_) {
         if(r.version!=kVersion || r.size!=kDiagnosticsBytes || r.sequence!=0) { ++errors_; return; }
         response_=r; response_ready_=true;

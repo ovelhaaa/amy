@@ -140,11 +140,10 @@ static void client() {
     // Drop ACK, release finger while the Note On is in flight.
     client.releaseNote(64);
     assert(!client.request(Type::SetMasterVolume,note,1,30));
-    assert(!client.next(100,tx)); assert(client.next(260,tx));
-    rx=server.handle(tx,261); client.receive(rx,262); assert(engine.received==1);
-    assert(!client.request(Type::SetMasterVolume,note,1,262)); // Pending release wins even after ACK.
-    assert(client.next(263,tx) && tx.type==Type::AuditionNoteOff);
-    rx=server.handle(tx,264); client.receive(rx,265); assert(server.auditionNote()==kNoNote);
+    assert(client.next(100,tx) && tx.type==Type::Hello); // Release fences the unacknowledged session.
+    client.receive(rx,101); assert(!client.connected()); // Stale Note On ACK cannot revive it.
+    rx=server.handle(tx,102); client.receive(rx,103);
+    assert(client.connected() && engine.received==1 && server.auditionNote()==kNoNote);
     client.panic(); assert(client.next(266,tx) && tx.type==Type::Panic);
     rx=server.handle(tx,267); client.receive(rx,268); assert(engine.panics==1);
     assert(client.next(500,tx) && tx.type==Type::GetState);
