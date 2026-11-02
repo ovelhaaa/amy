@@ -32,6 +32,8 @@ jobs:
             environment: guition-display
           - project: smk-p4
             environment: guition-link
+          - project: smk-p4
+            environment: guition-standalone
           - project: smk-s3
             environment: esp32-s3-link
     steps:
@@ -46,3 +48,6 @@ jobs:
       - name: Verify S3 P4 profile actually disables local rendering
         if: matrix.project == 'smk-s3'
         run: python -c "from pathlib import Path; assert '#define CONFIG_SMKS3_P4_HEADLESS 1' in Path('smk-s3/.pio/build/esp32-s3-link/config/sdkconfig.h').read_text()"
+      - name: Verify standalone target and safe hardware defaults
+        if: matrix.environment == 'guition-standalone'
+        run: python smk-p4/tests/check_standalone_build.py

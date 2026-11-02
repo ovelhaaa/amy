@@ -15,7 +15,9 @@ static const char* TAG = "SMK_P4_GATE0";
 bool reportHardware() {
     esp_chip_info_t chip{};
     esp_chip_info(&chip);
-#if defined(CONFIG_SMK_LINK_ENABLED)
+#if defined(CONFIG_SMKP4_STANDALONE)
+    ESP_LOGI(TAG, "Standalone PCM5102A bring-up; synthesis integration pending");
+#elif defined(CONFIG_SMK_LINK_ENABLED)
     ESP_LOGI(TAG, "Rehearsal Performance controller; synthesis/audio remain on S3");
 #else
     ESP_LOGI(TAG, "Gate 0/1 display diagnostic; UART disabled");

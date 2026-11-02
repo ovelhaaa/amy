@@ -10,6 +10,16 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Test failed: $test" }
         Write-Host "PASS: $test"
     }
+    & g++ -std=c++17 -O2 -Wall -Wextra -Werror smk-p4/tests/pcm_test.cpp smk-p4/components/audio_pcm5102/pcm_test.cpp -o build/smk_p4_display/pcm_test.exe
+    if ($LASTEXITCODE -ne 0) { throw 'PCM compilation failed' }
+    & ./build/smk_p4_display/pcm_test.exe
+    if ($LASTEXITCODE -ne 0) { throw 'PCM tests failed' }
+    Write-Host 'PASS: PCM routing, conversion, bounds, fades, frequency, silence and restart'
+    & g++ -std=c++17 -O2 -Wall -Wextra -Werror -Ismk-p4/tests/mocks smk-p4/tests/pcm_driver_test.cpp smk-p4/components/audio_pcm5102/pcm5102_output.cpp -o build/smk_p4_display/pcm_driver_test.exe
+    if ($LASTEXITCODE -ne 0) { throw 'PCM driver compilation failed' }
+    & ./build/smk_p4_display/pcm_driver_test.exe
+    if ($LASTEXITCODE -ne 0) { throw 'PCM driver tests failed' }
+    Write-Host 'PASS: I2S lifecycle, silent preload, PCM contract and injected failures (mock driver)'
     & python -m unittest discover -s smk-p4/tests -p test_rehearsal_windows.py
     if ($LASTEXITCODE -ne 0) { throw 'Rehearsal window tests failed' }
 } finally { Pop-Location }

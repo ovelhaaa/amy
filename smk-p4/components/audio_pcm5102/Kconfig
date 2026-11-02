@@ -1,0 +1,30 @@
+menu "SMK-P4 standalone PCM5102A bring-up"
+config SMKP4_STANDALONE
+    bool "Standalone bring-up application"
+    default n
+config SMKP4_PCM_WIRING_CONFIRMED
+    bool "Operator confirmed JP1, DAC supply/straps and disconnected S3 UART"
+    depends on SMKP4_STANDALONE && !SMK_LINK_ENABLED
+    default n
+    help
+        Enables physical I2S output. Leave off until the wiring guide is checked.
+config SMKP4_PCM_BCLK
+    int "BCLK GPIO (candidate JP1-11)"
+    range 50 52
+    default 50
+config SMKP4_PCM_WS
+    int "WS GPIO (candidate JP1-9)"
+    range 50 52
+    default 51
+config SMKP4_PCM_DATA
+    int "DOUT GPIO (candidate JP1-7)"
+    range 50 52
+    default 52
+config SMKP4_PCM_TEST_SEQUENCE
+    bool "Audible test: silence / left / right / stereo / silence (2s each)"
+    default n
+config SMKP4_PCM_TEST_HZ
+    int "Test tone frequency Hz"
+    range 20 20000
+    default 440
+endmenu
