@@ -1,6 +1,6 @@
 # PCM5102A no P4 — Gate 1 / bancada
 
-Estado em 2026-11-02: **MANUAL**, ligação ainda não realizada. O operador
+Estado em 2026-11-02: **MANUAL**, montagem ainda não conferida. O operador
 localizou os pinos e informou que transferirá o mesmo módulo PCM5102A que
 já funciona no S3. Isso não confirma a tensão nominal de módulos comerciais
 em geral, nem constitui teste elétrico/analógico no P4.
@@ -44,9 +44,10 @@ GPIO51/52 eram RX/TX da ponte: **desconectar completamente o enlace P4/S3**.
 
 ## Configuração e gravação
 
-`guition-standalone` mantém o display diagnóstico e compila o caminho I²S.
-**Ainda não é a interface Performance standalone nem contém AMY local.**
-O padrão não inicializa I²S e informa `AUDIO BLOCKED`.
+Desde a entrega 0.2, `guition-standalone` usa Performance e AMY locais.
+O padrão não inicializa I²S: renderiza em RAM e mostra `AUDIO RAM`.
+Ver [resultados 0.2](standalone_amy_performance_02_results.md).
+O modo diagnóstico anterior continua disponível como fonte separada.
 
 ```powershell
 $env:PYTHONIOENCODING='utf-8'
@@ -56,14 +57,17 @@ C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-standalone -t menuc
 ```
 
 Em `Component config / SMK-P4 standalone PCM5102A bring-up`, somente após
-conferir a ligação, habilitar `SMKP4_PCM_WIRING_CONFIRMED`. Primeiro deixar
+conferir a ligação, habilitar `SMKP4_PCM_WIRING_CONFIRMED`. Para o primeiro teste elétrico,
+habilitar também `SMKP4_PCM_DIAGNOSTIC` e deixar
 `SMKP4_PCM_TEST_SEQUENCE` desligado: transmite zeros. Os pinos estão centralizados
 em Kconfig, restritos aos candidatos 50–52 e precisam ser distintos. Outro grupo
 de pinos exige novo perfil de placa e verificação, não edição do driver genérico.
 
-Depois habilitar a sequência audível e recompilar. A frequência é configurável
+Depois habilitar a sequência audível e recompilar, mantendo o modo diagnóstico. A frequência é configurável
 por `SMKP4_PCM_TEST_HZ`, padrão 440 Hz. O pico é 0,05 FS (~−26 dBFS), sem volume
-automático da UI. O sdkconfig gerado fica em `.pio/build/guition-standalone/`:
+automático da UI. Ao finalizar os testes L/R, desligar `SMKP4_PCM_DIAGNOSTIC`
+e `SMKP4_PCM_TEST_SEQUENCE` para tocar AMY pela Performance; manter o self-test
+RAM desligado. O modo diagnóstico não habilita controles musicais. O sdkconfig gerado fica em `.pio/build/guition-standalone/`:
 defaults não sobrescrevem automaticamente um sdkconfig existente. Conferir
 `config/sdkconfig.h` antes da gravação.
 
@@ -101,3 +105,21 @@ C:/.platformio/penv/Scripts/python.exe smk-p4/tests/capture_serial.py --port COM
 
 Nenhum ES8311, NS4150, USB Host ou enlace S3 é inicializado pelo novo caminho.
 As versões híbridas continuam disponíveis para recuperar a montagem anterior.
+
+
+## Performance AMY local (0.2, MANUAL no caminho analógico)
+
+Depois de aprovar silêncio/L/R, usar o modo musical e começar com master baixo.
+Tocar/soltar C4, arrastar para fora, perder contato, segurar até o limite de10s,
+mudar oitava/browser/patch com nota ativa e acionar Panic. Esperado: nenhuma
+nota antiga reaparece, releases terminam, nova nota funciona após Panic.
+Validar ambos ROM128/135; trocar patch pode cortar notas intencionalmente.
+Somente master está habilitado nesta rodada; macros estão indisponíveis.
+
+Registrar janelas do mesmo boot: repouso; nota; acordes do diagnóstico; master
+rápido; navegação/troca de patch; Panic. Registrar `cmd_avg/max`, `dsp_avg/max`,
+`compute_deadlines`, `dma_avg/max`, `patch_max_us`, latência máxima de comando,
+peak/clipped, queue high/overflow, memória e stack. Esperado: sem crescimento de
+erros/timeouts/deadlines em regime, heap/stack estáveis, touch responsivo e som
+sem falhas percebidas/medidas. Espera DMA não é tempo DSP. Não promover RAM ou
+mock LVGL a aprovação física. Confirmar 30min inicial e depois ensaio prolongado.

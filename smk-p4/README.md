@@ -1,13 +1,17 @@
-# SMK-P4 rehearsal MVP 0.1 — incremental bring-up
+# SMK-P4 — standalone AMY 0.2 e controlador híbrido
 
-Standalone P4/PCM5102A em desenvolvimento: novo ambiente `guition-standalone`,
-sem alterar os ambientes abaixo. Veja [ligação/teste](docs/pcm5102_wiring.md)
-e [escopo e resultados](docs/standalone_pcm5102_results.md). O incremento inicial
-é diagnóstico I²S, com saída desabilitada até conferência da montagem;
-ainda não contém AMY/Performance locais nem USB MIDI Host.
+Standalone 0.2: `guition-standalone` now builds native AMY from the shared
+`src/`, a local Performance backend and the existing PCM5102A driver. Four
+voices; ROM 128 (DX7 BRASS 1) and 135 (DX7 PIANO 1); mono touch keyboard,
+release/Panic, ROM browser and smoothed master. Unsupported macros stay disabled.
+I²S remains **disabled by default** until wiring/supply/straps are confirmed.
+Without I²S the engine renders to RAM and the screen says `AUDIO RAM`.
+See [0.2 results and acceptance](docs/standalone_amy_performance_02_results.md)
+and [wiring](docs/pcm5102_wiring.md). No UART/S3/HELLO or USB Host in standalone.
 
-Architecture: P4 touchscreen controller → UART control → existing SMK-S3 Single
-engine → PCM5102A. No AMY migration to P4. No Layer B or materialization refactor.
+The preserved hybrid architecture is P4 touchscreen -> UART -> SMK-S3 Single
+engine -> PCM5102A (`guition-link`); `guition-display` remains the diagnostic.
+Neither uses the standalone runtime. No Layer B or new sequencer in this change.
 
 The project includes an independent Gate 0/1 display test and a Performance
 controller with the UART link enabled. See [results](docs/rehearsal_mvp_results.md).
@@ -193,3 +197,27 @@ C:/.platformio/penv/Scripts/python.exe smk-p4/tests/capture_serial.py --port COM
 The tool sends no commands or firmware. `--reset` explicitly restarts the P4;
 omit it to observe the running firmware. Serial initialization evidence and
 the operator's visual/touch observations must be recorded separately.
+
+## Native AMY software validation
+
+```powershell
+./smk-p4/tests/run_amy.ps1
+```
+
+This uses the actual shared C engine, verifies ROM/chords/release/Panic/restart,
+checks heap calls during service and balanced tracked allocations on shutdown,
+and tests the local backend plus real widget callbacks against mock LVGL.
+It does not certify physical display/touch or analog audio. The optional
+`CONFIG_SMKP4_AMY_RAM_SELF_TEST` runs the identical PCM diagnostic on P4,
+requires I²S to be disabled and logs peak/RMS/clipping/release/Panic. Normal
+Performance boot sends no notes. Compare captured real results using:
+
+```powershell
+python smk-p4/tests/compare_amy_pcm.py --host build/p4_amy02_runtime_final.log --p4 build/p4_amy02_ram_selftest_final.log
+```
+
+Select `CONFIG_SMKP4_PCM_DIAGNOSTIC` explicitly for the old tone/silence source;
+`CONFIG_SMKP4_PCM_TEST_SEQUENCE` controls audible routing only in that mode.
+Leave diagnostic/self-test off for musical use. GPIO approval and the physical
+steps in the wiring guide remain required before enabling I²S or uploading an
+image that drives the DAC pins. Firmware compilation is not musical acceptance.
