@@ -1,0 +1,53 @@
+{
+  "kind": "offline public Runtime USB retrigger diagnostic",
+  "sample_rate_hz": 48000,
+  "channels": 2,
+  "master": 64,
+  "velocity": 100,
+  "dsp_modified": false,
+  "comparison": {
+    "128": {
+      "byte_identical": true,
+      "files": {
+        "baseline": {
+          "path": "build\\p404\\retrigger_probe\\baseline_patch_128.wav",
+          "bytes": 2130988,
+          "frames": 532736,
+          "sha256": "3cc567a7832ecbb4f2e5e46ab6e24bfcd2f630ab9a6ab2a75a6c329754f2cd38"
+        },
+        "integration": {
+          "path": "build\\p404\\retrigger_probe\\integration_patch_128.wav",
+          "bytes": 2130988,
+          "frames": 532736,
+          "sha256": "3cc567a7832ecbb4f2e5e46ab6e24bfcd2f630ab9a6ab2a75a6c329754f2cd38"
+        }
+      }
+    },
+    "135": {
+      "byte_identical": true,
+      "files": {
+        "baseline": {
+          "path": "build\\p404\\retrigger_probe\\baseline_patch_135.wav",
+          "bytes": 2130988,
+          "frames": 532736,
+          "sha256": "c1e034831f92b55d2c49848f65c6fe2fe14a679baefb3360d2ce6e5ec22a3b3b"
+        },
+        "integration": {
+          "path": "build\\p404\\retrigger_probe\\integration_patch_135.wav",
+          "bytes": 2130988,
+          "frames": 532736,
+          "sha256": "c1e034831f92b55d2c49848f65c6fe2fe14a679baefb3360d2ce6e5ec22a3b3b"
+        }
+      }
+    }
+  },
+  "metrics": {
+    "baseline": "patch=128 master=64 frames=532736 onset_boundary_jump=274 off_boundary_jump=110 max_sample_delta=457 clipped=0 polyphony_rejected=0\npatch=135 master=64 frames=532736 onset_boundary_jump=1087 off_boundary_jump=224 max_sample_delta=1087 clipped=0 polyphony_rejected=0\n",
+    "integration": "patch=128 master=64 frames=532736 onset_boundary_jump=274 off_boundary_jump=110 max_sample_delta=457 clipped=0 polyphony_rejected=0\npatch=135 master=64 frames=532736 onset_boundary_jump=1087 off_boundary_jump=224 max_sample_delta=1087 clipped=0 polyphony_rejected=0\n"
+  },
+  "limits": [
+    "Boundary jumps are not a causal oscillator-phase diagnosis.",
+    "Host PCM equality does not exclude physical I2S scheduling artifacts.",
+    "Hardware A/B remains required; no DSP/core/patch changes made."
+  ]
+}
