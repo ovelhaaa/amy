@@ -60,7 +60,10 @@ void Host::event(const usb_host_client_event_msg_t* e,void* ctx) {
         h.deviceGone();
     }
 }
-void Host::fail(bool retry) {
+void Host::fail(bool retry,const char* stage,int detail) {
+    // Bounded diagnostics in the USB owner task, never in the audio path.
+    if(errors_.load()<8) ESP_LOGW("P4_USB","failure stage=%s detail=%d address=%u inflight=%d closing=%d",
+        stage,detail,address_,inflight_,closing_);
     ++errors_; input_.disconnect(); state_=State::Error; closing_=true;
     retry_address_=retry?address_:0; retry_at_ms_=nowMs()+kRetryMs;
 }
@@ -73,7 +76,8 @@ void Host::deviceGone() {
 }
 void Host::open(uint8_t address) {
     address_=address; device_gone_=false; input_.disconnect();
-    if(usb_host_device_open(client_,address,&device_)!=ESP_OK) { device_=nullptr; fail(false); return; }
+    const auto opened=usb_host_device_open(client_,address,&device_);
+    if(opened!=ESP_OK) { device_=nullptr; fail(false,"open",opened); return; }
     const usb_device_desc_t* dd=nullptr; const usb_config_desc_t* cfg=nullptr;
     if(usb_host_get_device_descriptor(device_,&dd)!=ESP_OK || !dd ||
        usb_host_get_active_config_descriptor(device_,&cfg)!=ESP_OK || !cfg) { fail(false); return; }
@@ -106,9 +110,10 @@ void Host::received(usb_transfer_t* t) {
     if(t->status!=USB_TRANSFER_STATUS_COMPLETED || t->actual_num_bytes<0 ||
        t->actual_num_bytes>t->num_bytes || t->actual_num_bytes>t->data_buffer_size ||
        !h.input_.transfer(t->data_buffer,static_cast<size_t>(t->actual_num_bytes),nowMs())) {
-        h.fail(true); return;
+        h.fail(true,"receive",static_cast<int>(t->status)); return;
     }
-    if(usb_host_transfer_submit(t)!=ESP_OK) { h.fail(true); return; }
+    const auto submitted=usb_host_transfer_submit(t);
+    if(submitted!=ESP_OK) { h.fail(true,"resubmit",submitted); return; }
     h.inflight_=true;
 }
 bool Host::cleanup() {
@@ -124,10 +129,10 @@ bool Host::cleanup() {
 void Host::service(uint32_t wait_ticks) {
     uint32_t flags=0;
     const auto lib=usb_host_lib_handle_events(0,&flags);
-    if(lib!=ESP_OK && lib!=ESP_ERR_TIMEOUT) { if(!closing_) fail(true); }
+    if(lib!=ESP_OK && lib!=ESP_ERR_TIMEOUT) { if(!closing_) fail(true,"library",lib); }
     if(client_) {
         const auto result=usb_host_client_handle_events(client_,wait_ticks);
-        if(result!=ESP_OK && result!=ESP_ERR_TIMEOUT && !closing_) fail(true);
+        if(result!=ESP_OK && result!=ESP_ERR_TIMEOUT && !closing_) fail(true,"client",result);
     }
     if(closing_) { cleanup(); return; }
     if(device_) return;

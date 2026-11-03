@@ -646,3 +646,27 @@ reset; solicitada verificação do conector/dispositivo e C4 Touch com cabo HS
 retirado antes de qualquer nova mudança. Próximo menor passo: resolver essa
 divergência e observar enumeração/input/ciclos reais nesta imagem, depois obter
 30 min integrados. Gate3 hot-plug e Gate5 permanecem pendentes.
+
+### SMK25 ligado e novos ciclos reais
+
+O operador esclareceu que o SMK25 estava desligado na janela sem input; portanto
+os contadores zerados não demonstram falha de enumeração. Após ligá-lo, a captura
+`build/p403a/powered_smk25_soak_runtime.log` observou MIDI real (313 eventos e 313
+pacotes auxiliares) sem parsing/drop/overflow. Nos ciclos seguintes, a primeira
+remoção contou corretamente (disconnects=1, errors=0), porém as seguintes ainda
+resultaram em connects=5, disconnects=1, errors=6. O operador confirmou a execução
+dos ciclos. Último snapshot: notes=0, latência da fila máxima6ms, DSP máximo1932us,
+render/compute deadlines=0, clipping/OOM/write errors/timeouts=0. Isso mantém
+hot-plug FAIL no critério dos contadores; não se aprova soak integrado.
+
+Captura interrompida intencionalmente para diagnóstico, arquivo preservado.
+Próxima imagem adiciona somente o motivo/retorno das primeiras oito falhas do
+Host, na tarefa USB, sem mudar a recuperação nem o render de áudio. É necessário
+observar o status real das remoções restantes antes de ampliar a correção.
+PASS `./smk-p4/tests/run_usb.ps1` após essa instrumentação; build em andamento.
+
+PASS build instrumentado146,09s e diff check. Bundle
+`build/p403a/hotplug_trace_image`, firmware SHA256
+`588441ba57b65942df5dd3286a92a54afcb8125de02a10677ec677d3b7349aa9`.
+Configuração PCM/HS preservada. Esta imagem é diagnóstica; não constitui nova
+aprovação de estabilidade. Nenhum erro histórico foi removido dos relatórios.

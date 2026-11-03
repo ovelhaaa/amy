@@ -30,7 +30,7 @@ private:
     static void event(const usb_host_client_event_msg_t*,void*);
     static void received(usb_transfer_t*);
     void open(uint8_t);
-    void fail(bool retry);
+    void fail(bool retry,const char* stage="lifecycle",int detail=0);
     void deviceGone();
     bool cleanup();
     amy::UsbInput& input_;
