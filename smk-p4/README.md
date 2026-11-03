@@ -21,6 +21,15 @@ PCM and USB remain disabled by default. The report distinguishes the safe build
 from operator-qualified bench images and records the actual flashed profile;
 software tests alone do not certify physical audio, MIDI or rehearsal readiness.
 
+Firmware 0.3B prepares the existing musical baseline for a later UI integration.
+It freezes the qualified configuration/hash reference and adds backend contract
+regressions without changing the musical runtime or integrating UI Blueprint.
+See the [backend contract](docs/performance_backend_contract.md),
+[integration readiness and rollback](docs/firmware_integration_readiness_03b.md),
+and [regression matrix](docs/ui_integration_regression_matrix.md).
+Binary references are local artifacts; the verifier requires an explicit bundle
+path and checks generated C configuration separately from the requested sdkconfig.
+
 The preserved hybrid architecture is P4 touchscreen -> UART -> SMK-S3 Single
 engine -> PCM5102A (`guition-link`); `guition-display` remains the diagnostic.
 Neither uses the standalone runtime. No Layer B or new sequencer in this change.
