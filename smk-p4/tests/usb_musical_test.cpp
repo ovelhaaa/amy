@@ -39,6 +39,21 @@ static void queueOrder() {
     a.join(); b.join();
 }
 int main() {
+    {
+        UsbInput diagnostic;
+        diagnostic.enableTrace();
+        const uint8_t rejected[]={9,0x90,60,100,8,0x90,60,0};
+        assert(!diagnostic.transfer(rejected,sizeof(rejected),123));
+        assert(!diagnostic.commands.depth() && diagnostic.events==0 && diagnostic.parse_errors==1);
+        UsbInput::Trace trace;
+        assert(diagnostic.popTrace(trace) && trace.timestamp_ms==123 && trace.packet[0]==9 && trace.valid_bytes==4);
+        assert(diagnostic.popTrace(trace) && trace.packet[0]==8 && trace.packet[1]==0x90);
+        assert(!diagnostic.popTrace(trace));
+        assert(!diagnostic.transfer(rejected,3,124));
+        assert(diagnostic.popTrace(trace) && trace.timestamp_ms==124 && trace.valid_bytes==3);
+        assert(trace.packet[0]==9 && trace.packet[3]==0);
+        assert(!diagnostic.popTrace(trace) && !diagnostic.commands.depth());
+    }
     queueOrder();
     Runtime r; const auto baseline=probe_live(); assert(r.begin());
     probe_realtime(true);

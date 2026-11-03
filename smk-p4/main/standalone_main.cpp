@@ -263,8 +263,8 @@ extern "C" void app_main() {
 #if defined(CONFIG_SMKP4_USB_MIDI_TRACE)
             smk::p4::amy::UsbInput::Trace trace;
             for(unsigned i=0;i<4 && runtime.usbInput().popTrace(trace);++i)
-                ESP_LOGI(kTag,"MIDI_TRACE t_ms=%lu cable=%u channel=%u packet=%02x %02x %02x %02x trace_dropped=%lu",
-                    (unsigned long)trace.timestamp_ms,unsigned(trace.packet[0]>>4),unsigned((trace.packet[1]&15)+1),
+                ESP_LOGI(kTag,"MIDI_TRACE t_ms=%lu bytes=%u cable=%u channel=%u packet=%02x %02x %02x %02x trace_dropped=%lu",
+                    (unsigned long)trace.timestamp_ms,unsigned(trace.valid_bytes),unsigned(trace.packet[0]>>4),unsigned((trace.packet[1]&15)+1),
                     trace.packet[0],trace.packet[1],trace.packet[2],trace.packet[3],(unsigned long)runtime.usbInput().trace_dropped.load());
 #endif
             ESP_LOGI(kTag,"USB state=%u connects=%lu disconnects=%lu errors=%lu events=%lu parse_errors=%lu dropped=%lu queue=%lu overflow=%lu stack_free=%lu polyphony_rejected=%lu",
