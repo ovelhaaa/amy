@@ -24,7 +24,7 @@ try {
     & "$build/usb_musical.exe"
     if($LASTEXITCODE -ne 0) { throw 'USB musical test failed' }
     $includes=@('-Ismk-p4/main','-Ishared/smk_protocol')
-    foreach($test in @('local_backend_test','performance_ui_test')) {
+    foreach($test in @('local_backend_test','performance_backend_contract_test','performance_ui_test')) {
         $extra=@()
         if($test -eq 'performance_ui_test') { $extra=@('-Ismk-p4/tests/mocks','smk-p4/main/performance_ui.cpp') }
         & g++ -std=c++17 -pthread @flags @includes @extra "smk-p4/tests/$test.cpp" smk-p4/components/amy_runtime/amy_runtime.cpp @objects -lm -o "$build/$test.exe"

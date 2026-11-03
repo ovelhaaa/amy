@@ -1,2 +1,2 @@
-standalone_03a.sdkconfig -text
-standalone_03a.dependencies.lock -text
+standalone_03a.sdkconfig -text whitespace=cr-at-eol
+standalone_03a.dependencies.lock -text whitespace=cr-at-eol
