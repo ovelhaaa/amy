@@ -509,6 +509,22 @@ parse_errors0 em repouso, sem novo input observado. Esses zeros após atualizaç
 não apagam as16 falhas registradas no boot anterior nem provam correção do parser.
 Próximo teste precisa de uma tecla real para capturar o pacote causador.
 
+### Checkpoint publicado e mudança posterior na placa
+
+Commit/push solicitado pelo operador: checkpoint documental `fe0071a9` publicado
+em `origin/feature/smk-p4-standalone-hardware-validation`, junto aos dois commits
+de código. Árvore limpa após publicação.
+
+Na captura seguinte `build/p403a/real_key_rejected.log`, a COM13 passou a emitir
+somente DISPLAY_TEST/heap, sem AUDIO/ENGINE/USB: heap interno447115bytes,
+LVGL livre87056 e uptime reiniciado. Esse fluxo não corresponde ao candidato
+standalone observado em `rejected_trace_runtime.log` (Host Connected e heap
+~250KB). A imagem da placa mudou entre as janelas; não se atribuiu isso ao
+parser MIDI nem se usou essa captura para aprovar/reprovar uma tecla SMK25.
+Nenhuma nova gravação foi iniciada após constatar a diferença. Solicitado ao
+operador decidir entre manter a imagem atual ou retomar o standalone, para
+não sobrescrever outra tarefa. O diagnóstico de pacote depende dessa definição.
+
 ## Gates e próximo passo
 
 Gate1: PASS testes de política e boot positivo real do candidato musical,
