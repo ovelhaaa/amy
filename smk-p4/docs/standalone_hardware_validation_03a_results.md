@@ -670,3 +670,37 @@ PASS build instrumentado146,09s e diff check. Bundle
 `588441ba57b65942df5dd3286a92a54afcb8125de02a10677ec677d3b7349aa9`.
 Configuração PCM/HS preservada. Esta imagem é diagnóstica; não constitui nova
 aprovação de estabilidade. Nenhum erro histórico foi removido dos relatórios.
+
+### Causa restante capturada e correção da retenção do handle
+
+Em `build/p403a/hotplug_failure_trace_runtime.log`, remoções reais produziram
+`failure stage=receive detail=1` (USB_TRANSFER_STATUS_ERROR), seguidas de
+`failure stage=open detail=261` (ESP_ERR_NOT_FOUND) no endereço retirado. Último
+snapshot: connects6/disconnects1/errors8, events139, sem parse/drop/overflow ou
+falha de áudio. Não eram pacotes MIDI inválidos. O SDK5.5.2, usb_host.c,
+`USBH_EVENT_DEV_GONE`, envia DEV_GONE somente a clientes que ainda abriram o
+dispositivo. Fechar imediatamente no primeiro ERROR perdia essa inscrição.
+
+A correção mantém o handle aberto por no máximo `kRemovalGraceMs=1000` após
+ERROR, cancela as notas imediatamente e continua bombeando eventos. Se DEV_GONE
+chegar nesse intervalo, conta uma desconexão e libera os recursos; se não chegar,
+conta falha genuína e mantém o retry limitado existente. ERROR sozinho jamais
+aprova remoção. NO_DEVICE continua no caminho direto. Nenhum sleep, alocação ou
+trabalho foi acrescentado ao áudio. A espera apenas posterga recuperação de erro
+USB sem remoção em até1s; o cancelamento de notas não é postergado. Diagnóstico
+limitado às primeiras oito esperas e primeiras oito falhas.
+
+PASS `./smk-p4/tests/run_usb.ps1`: três remoções ERROR→DEV_GONE atrasadas, uma
+mudança de geração por ciclo, sem close antecipado/retry do endereço retirado,
+contagem de três desconexões e novas conexões; também ERROR sem DEV_GONE até o
+limite, que conta erro e recupera após retry. Cenários anteriores NO_DEVICE nas
+duas ordens, cancelamento, falhas e cleanup continuam passando. Mock usa valores
+do enum real (ERROR1, CANCELED3, NO_DEVICE7). Build nativo e teste físico da nova
+correção pendentes neste checkpoint; soak integrado permanece não aprovado.
+
+PASS build nativo250,41s; bundle `build/p403a/removal_grace_image`, SHA256
+`89fc42a19b0d588970bf6bd18ded139af1bc3843ae398d0cc2404fa1cfa2e9a7`.
+PASS adicional run_usb para shutdown durante a espera e reinício do mesmo Host.
+Configuração de PCM/HS preservada e sem alteração no AMY core. Falha USB genuína
+sem remoção pode levar até1s adicional antes da recuperação; notas são canceladas
+imediatamente. Validação física e soak da nova imagem continuam MANUAL/NOT RUN.

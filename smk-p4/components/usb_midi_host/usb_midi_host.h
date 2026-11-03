@@ -42,6 +42,9 @@ private:
     unsigned transfer_bytes_=0;
     bool installed_=false, claimed_=false, inflight_=false, closing_=false;
     bool device_gone_=false;
+    bool waiting_removal_=false;
+    uint32_t removal_deadline_ms_=0;
+    uint8_t removal_trace_count_=0;
     uint32_t retry_at_ms_=0;
     std::atomic<State> state_{State::Disabled};
     std::atomic<uint32_t> connects_{0},disconnects_{0},errors_{0},stack_free_{0};

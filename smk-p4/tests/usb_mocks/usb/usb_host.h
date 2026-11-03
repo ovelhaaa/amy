@@ -12,8 +12,8 @@ constexpr int ESP_OK = 0, ESP_FAIL = -1, ESP_INTR_FLAG_LEVEL1 = 1;
 constexpr int ESP_ERR_TIMEOUT = 3;
 constexpr int USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS = 1, USB_HOST_LIB_EVENT_FLAGS_ALL_FREE = 2;
 constexpr int USB_HOST_CLIENT_EVENT_NEW_DEV = 1, USB_HOST_CLIENT_EVENT_DEV_GONE = 2;
-constexpr int USB_TRANSFER_STATUS_COMPLETED = 0, USB_TRANSFER_STATUS_CANCELED = 1;
-constexpr int USB_TRANSFER_STATUS_NO_DEVICE = 2;
+constexpr int USB_TRANSFER_STATUS_COMPLETED = 0, USB_TRANSFER_STATUS_ERROR = 1;
+constexpr int USB_TRANSFER_STATUS_CANCELED = 3, USB_TRANSFER_STATUS_NO_DEVICE = 7;
 using usb_device_handle_t = void*;
 using usb_host_client_handle_t = void*;
 struct usb_config_desc_t { uint8_t bLength, bDescriptorType; uint16_t wTotalLength; };
@@ -86,6 +86,7 @@ inline int usb_host_client_handle_events(usb_host_client_handle_t, uint32_t) {
         transfer->actual_num_bytes = event.event == 3 ? 3 : event.event == 5 ? 513 : event.event == 6 ? -1 : event.event == 8 ? 8 : 4;
         if (event.event == 7) transfer->status = USB_TRANSFER_STATUS_CANCELED;
         if (event.event == 10) transfer->status = USB_TRANSFER_STATUS_NO_DEVICE;
+        if (event.event == 11) transfer->status = USB_TRANSFER_STATUS_ERROR;
         if (event.event == 8) {
             transfer->data_buffer[4] = 8; transfer->data_buffer[5] = 0x80;
             transfer->data_buffer[6] = 60; transfer->data_buffer[7] = 0;

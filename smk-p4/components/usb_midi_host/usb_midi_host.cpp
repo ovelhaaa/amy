@@ -64,18 +64,19 @@ void Host::fail(bool retry,const char* stage,int detail) {
     // Bounded diagnostics in the USB owner task, never in the audio path.
     if(errors_.load()<8) ESP_LOGW("P4_USB","failure stage=%s detail=%d address=%u inflight=%d closing=%d",
         stage,detail,address_,inflight_,closing_);
-    ++errors_; input_.disconnect(); state_=State::Error; closing_=true;
+    ++errors_; if(!closing_) input_.disconnect(); state_=State::Error; closing_=true;
     retry_address_=retry?address_:0; retry_at_ms_=nowMs()+kRetryMs;
 }
 void Host::deviceGone() {
     // IDF may deliver NO_DEVICE before DEV_GONE. Count/cancel once and
     // await a fresh NEW_DEV instead of retrying the removed address.
     if(device_gone_) return;
-    device_gone_=true; ++disconnects_; retry_address_=0;
-    input_.disconnect(); closing_=true; state_=State::Disconnected;
+    device_gone_=true; ++disconnects_; retry_address_=0; waiting_removal_=false;
+    if(!closing_) input_.disconnect();
+    closing_=true; state_=State::Disconnected;
 }
 void Host::open(uint8_t address) {
-    address_=address; device_gone_=false; input_.disconnect();
+    address_=address; device_gone_=false; waiting_removal_=false; input_.disconnect();
     const auto opened=usb_host_device_open(client_,address,&device_);
     if(opened!=ESP_OK) { device_=nullptr; fail(false,"open",opened); return; }
     const usb_device_desc_t* dd=nullptr; const usb_config_desc_t* cfg=nullptr;
@@ -107,6 +108,19 @@ void Host::received(usb_transfer_t* t) {
     auto& h=*static_cast<Host*>(t->context); h.inflight_=false;
     if(t->status==USB_TRANSFER_STATUS_NO_DEVICE) { h.deviceGone(); return; }
     if(h.closing_ || h.stopping_) return;
+    if(t->status==USB_TRANSFER_STATUS_ERROR) {
+        // HS removal can report a bus error before DEV_GONE. Closing the
+        // device here unsubscribes this client from the later notification.
+        // Cancel notes now, retain ownership while pumping events, then fail
+        // normally if removal is not confirmed within the bounded grace.
+        if(h.removal_trace_count_<8) {
+            ++h.removal_trace_count_;
+            ESP_LOGW("P4_USB","transfer error; awaiting removal address=%u",h.address_);
+        }
+        h.input_.disconnect(); h.closing_=true; h.waiting_removal_=true;
+        h.removal_deadline_ms_=nowMs()+kRemovalGraceMs; h.state_=State::Error;
+        return;
+    }
     if(t->status!=USB_TRANSFER_STATUS_COMPLETED || t->actual_num_bytes<0 ||
        t->actual_num_bytes>t->num_bytes || t->actual_num_bytes>t->data_buffer_size ||
        !h.input_.transfer(t->data_buffer,static_cast<size_t>(t->actual_num_bytes),nowMs())) {
@@ -124,7 +138,7 @@ bool Host::cleanup() {
     if(transfer_) { if(usb_host_transfer_free(transfer_)!=ESP_OK) return false; transfer_=nullptr; }
     if(claimed_) { if(usb_host_interface_release(client_,device_,interface_)!=ESP_OK) return false; claimed_=false; }
     if(device_) { if(usb_host_device_close(client_,device_)!=ESP_OK) return false; device_=nullptr; }
-    closing_=false; return true;
+    closing_=false; waiting_removal_=false; return true;
 }
 void Host::service(uint32_t wait_ticks) {
     uint32_t flags=0;
@@ -133,6 +147,10 @@ void Host::service(uint32_t wait_ticks) {
     if(client_) {
         const auto result=usb_host_client_handle_events(client_,wait_ticks);
         if(result!=ESP_OK && result!=ESP_ERR_TIMEOUT && !closing_) fail(true,"client",result);
+    }
+    if(waiting_removal_) {
+        if(!amy::atOrAfter(nowMs(),removal_deadline_ms_)) return;
+        waiting_removal_=false; fail(true,"unconfirmed removal",USB_TRANSFER_STATUS_ERROR);
     }
     if(closing_) { cleanup(); return; }
     if(device_) return;

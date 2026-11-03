@@ -69,7 +69,53 @@ int main() {
         assert(detached.connects()==2 && detached.state()==usb::Host::State::Connected);
         close(detached); assert(mock_usb::allocations==mock_usb::frees);
     }
+    // Actual HS trace: ERROR arrives before DEV_GONE. Keep the open handle
+    // subscribed while canceling notes immediately, across repeated cycles.
+    mock_usb::reset();
+    {
+        usb::Host removed(input); assert(removed.initialize(0)); connect(removed);
+        for(unsigned cycle=0;cycle<3;++cycle) {
+            const auto generation=input.commands.generation();
+            mock_usb::event(11); removed.service();
+            assert(input.commands.generation()==generation+1 && mock_usb::opened);
+            assert(removed.errors()==0 && !mock_usb::flight);
+            mock_time::us+=10000; removed.service();
+            assert(mock_usb::opened); // no early close before delayed DEV_GONE
+            mock_usb::event(USB_HOST_CLIENT_EVENT_DEV_GONE); removed.service();
+            assert(input.commands.generation()==generation+1);
+            mock_time::us+=2000000; removed.service();
+            assert(removed.disconnects()==cycle+1 && removed.errors()==0);
+            assert(removed.connects()==cycle+1 && !mock_usb::opened);
+            connect(removed); assert(removed.connects()==cycle+2);
+        }
+        close(removed); assert(mock_usb::allocations==mock_usb::frees);
+    }
+    // A bus error without DEV_GONE remains a real fault, with bounded recovery.
+    mock_usb::reset();
+    {
+        usb::Host faulted(input); assert(faulted.initialize(0)); connect(faulted);
+        const auto generation=input.commands.generation();
+        mock_usb::event(11); faulted.service();
+        mock_time::us+=(usb::kRemovalGraceMs-1)*1000; faulted.service();
+        assert(faulted.errors()==0 && mock_usb::opened);
+        mock_time::us+=1000; faulted.service();
+        assert(faulted.errors()==1 && !mock_usb::opened);
+        assert(input.commands.generation()==generation+1);
+        mock_time::us+=usb::kRetryMs*1000; faulted.service();
+        assert(faulted.connects()==2);
+        close(faulted); assert(mock_usb::allocations==mock_usb::frees);
+    }
     // Every failure retains resources until callbacks and dependent APIs finish.
+    mock_usb::reset();
+    {
+        usb::Host stopping(input); assert(stopping.initialize(0)); connect(stopping);
+        mock_usb::event(11); stopping.service();
+        close(stopping); // shutdown must not wait for the removal grace
+        assert(mock_usb::allocations==mock_usb::frees);
+        assert(stopping.initialize(0)); connect(stopping);
+        assert(stopping.state()==usb::Host::State::Connected);
+        close(stopping);
+    }
     for(unsigned fault=0;fault<10;++fault) {
         mock_usb::reset(); usb::Host h(input);
         if(fault==0) mock_usb::fail_install=true;
