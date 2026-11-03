@@ -1,29 +1,31 @@
-# SMK-P4 UI Blueprint 1.0 — Visual & Software Architecture
+# SMK-P4 UI Blueprint 1.1 — Visual & Software Architecture
 
 ## 1. Purpose and Scope
 
 `smk-p4/components/ui_blueprint` defines the complete `800 × 480` horizontal LVGL 9.3.0 user interface architecture for the **Guition JC-ESP32P4-M3** (`ST7701S` MIPI-DSI panel + `GT911` capacitive touch).
 
-It is designed around the **Central Separation Principle** mandated by the SMK-P4 UI Blueprint 1.0 specification:
+In **UI Blueprint 1.1** (`feature/smk-p4-ui-integration-ready`), the visual library is fully decoupled from `UiDemoBackend` through the generic [`IUiBackend`](file:///C:/Users/devx/Documents/PlatformIO/Projects/amy/build/worktrees/smk-p4-ui-integration-ready/smk-p4/components/ui_blueprint/include/ui_backend.h) contract:
 
-1. **Visual Interface (`screens/`, `widgets/`, `ui_theme.*`)**: Pure LVGL 9.3.0 presentation and touch interaction on a fixed `800 × 480` landscape canvas.
-2. **Parameter Model (`ui_parameters.*`, `ui_model.*`)**: Canonical metadata registry (`132` parameters across `18` namespaces) with explicit range, unit, scale, synth-family capability masks, and `FeatureStatus` (`AVAILABLE`, `PLANNED`, `UNAVAILABLE`, `DEMO`).
-3. **Navigation (`ui_navigation.*`)**: Two-tier stage/edit navigation (`PERFORMANCE`, `SOUND`, `LAYERS`, `FX`, `SEQ`, `HARMONY` + `PATCHES`, `MIDI`, `SETTINGS`, `DIAGNOSTICS` + contextual access to `MIXER`, `MODULATION`, `ARPEGGIATOR`, `DRUMS`) with single-active-screen memory discipline, sub-tab state persistence, and 1-tap return to `PERFORMANCE`.
-4. **Demonstrative State (`ui_demo_backend.*`)**: Self-contained, RAM-only interactive backend (`UiDemoBackend`) that drives the entire 14-screen prototype, simulates clearly labeled `DEMO` signal meters, computes real-time scale/chord harmonic previews, and measures genuine LVGL 9.3.0 heap telemetry without touching hardware or fabricating fake DSP/DMA metrics.
-5. **Real Musical Backend (External / Untouched)**: `smk-p4/components/amy_runtime`, `audio_pcm5102`, `usb_midi_host`, and `smk-p4/main/performance_backend.h` remain untouched and isolated on the real-time firmware path.
+1. **Visual Interface (`screens/`, `widgets/`, `ui_theme.*`)**: Pure LVGL 9.3.0 presentation and touch interaction on a fixed `800 × 480` landscape canvas, with two presentation density levels (`PresentationLevel::StageMinimal` on `PERFORMANCE` and `PresentationLevel::BlueprintVerbose` on editor/system screens).
+2. **Backend Contract (`ui_backend.h`)**: Defines `IUiBackend`, `UiCommandState` (`Confirmed`, `Requested`, `DemoApplied`, `Unsupported`, `Rejected`), and `UiCommandResult`, separating the visual snapshot (`model()`) from musical command requests (`requestParameter*`, `requestSelectPatch`, `requestNoteOn`, `requestNoteOff`, `requestPanic`).
+3. **Parameter Model (`ui_parameters.*`, `ui_model.*`)**: Canonical metadata registry (`132` parameters across `18` namespaces) with explicit range, unit, scale, synth-family capability masks, and `FeatureStatus` (`AVAILABLE`, `PLANNED`, `UNAVAILABLE`, `DEMO`).
+4. **Navigation (`ui_navigation.*`)**: Banked stage/edit navigation (`PERF`, `SOUND`, `LAYERS`, `FX`, `SEQ`, `HARMONY`, `PATCHES`, `MIXER`, `MOD`, `ARP`, `DRUMS`, `MIDI`, `SETTINGS`, `DIAG`) with single-active-screen memory discipline, safe deferred navigation (`requestNavigateTo`), automatic UI note release on screen teardown, and 1-tap return to `PERFORMANCE`.
+5. **Demonstrative State (`ui_demo_backend.*`)**: Self-contained, RAM-only implementation of `IUiBackend` (`UiDemoBackend`) that drives the 14-screen prototype, records deterministic Note On/Off telemetry for host verification, simulates clearly labeled `SIM DEMO` signal meters, computes real-time scale/chord harmonic previews, and measures genuine LVGL 9.3.0 heap telemetry.
+6. **Real Musical Backend (External / Untouched)**: `smk-p4/components/amy_runtime`, `audio_pcm5102`, `usb_midi_host`, and `smk-p4/main/performance_backend.h` remain untouched and isolated on the real-time firmware path.
 
 ```mermaid
 flowchart TD
     subgraph UI_Task["LVGL UI Task (Non-Real-Time)"]
-        Screens["14 Navigable Screens\n(Single Active Screen Tree)"]
-        Widgets["11 Reusable Stage Widgets\n(attachLvContext RAII cleanup)"]
-        Nav["UiNavigationManager\n(Primary 6 + Secondary 4 + Sub-tabs)"]
-        DemoBackend["UiDemoBackend\n(RAM-only state + DEMO meter sim)"]
-        Model["UiModel + ParameterRegistry\n(86 Canonical Parameters + FeatureStatus)"]
+        Screens["14 Navigable Screens\n(StageMinimal + BlueprintVerbose)"]
+        Widgets["11 Reusable Stage Widgets\n(Safe Touch Lifecycle + RAII Cleanup)"]
+        Nav["UiNavigationManager\n(Direct + Deferred Navigation)"]
+        Contract["IUiBackend Contract\n(Visual Model vs Musical Commands)"]
+        DemoBackend["UiDemoBackend\n(RAM-Only Simulation + Telemetry Log)"]
+        Model["UiModel + ParameterRegistry\n(132 Canonical Parameters + FeatureStatus)"]
     end
 
-    subgraph Future_Bridge["Future Adapter Boundary (Documented Proposal)"]
-        Adapter["PerformanceBackend / SynthCommandQueue\n(Lock-free SPSC Event & Snapshot Bridge)"]
+    subgraph Future_Bridge["Future Firmware Adapter (Documented in ui_backend_port_contract.md)"]
+        Adapter["UiBlueprintPerformanceAdapter\n(Implements IUiBackend over PerformanceBackend)"]
     end
 
     subgraph RT_Tasks["Protected Firmware Tasks (Untouched)"]
@@ -34,10 +36,11 @@ flowchart TD
 
     Screens --> Widgets
     Screens --> Nav
-    Widgets --> DemoBackend
-    Nav --> DemoBackend
+    Widgets --> Contract
+    Nav --> Contract
+    Contract --> DemoBackend
     DemoBackend --> Model
-    DemoBackend -. "Incremental binding\n(AVAILABLE params only)" .-> Adapter
+    Contract -. "Future Integration Branch" .-> Adapter
     Adapter -.-> AMY
     USB -.-> AMY
     AMY -.-> I2S
@@ -51,35 +54,36 @@ flowchart TD
 smk-p4/components/ui_blueprint/
 ├── CMakeLists.txt
 ├── include/
-│   ├── ui_blueprint.h        # Top-level facade (begin, service, navigation, backend)
-│   ├── ui_demo_backend.h     # Demonstrative RAM-only backend & LVGL heap monitor
+│   ├── ui_backend.h          # IUiBackend, UiCommandState, UiCommandResult, PresentationLevel
+│   ├── ui_blueprint.h        # Top-level coordinator operating over IUiBackend&
+│   ├── ui_demo_backend.h     # Demonstrative RAM-only IUiBackend implementation + event log
 │   ├── ui_model.h            # Complete synth/layer/mod/seq/drum/harmony/midi state
-│   ├── ui_navigation.h       # ScreenId, sub-tab state, history stack, 1-tap Performance
-│   ├── ui_parameters.h       # ParameterId, ParameterSpec, FeatureStatus, ParameterRegistry
+│   ├── ui_navigation.h       # ScreenId, sub-tab state, history stack, deferred navigation
+│   ├── ui_parameters.h       # ParameterDescriptor, FeatureStatus, ParameterRegistry (132 params)
 │   ├── ui_screens.h          # Factory declarations for all 14 ScreenView implementations
 │   ├── ui_theme.h            # 800x480 geometry constants, industrial palette, styles
 │   └── ui_widgets.h          # Reusable stage widgets + LV_EVENT_DELETE context cleanup
 ├── src/
 │   ├── ui_blueprint.cpp
-│   ├── ui_demo_backend.cpp
+│   ├──<u> ui_demo_backend.cpp</u>
 │   ├── ui_model.cpp
 │   ├── ui_navigation.cpp
 │   ├── ui_parameters.cpp
 │   └── ui_theme.cpp
 ├── widgets/
-│   ├── status_strip.cpp      # 800x40 top telemetry bar + persistent UI DEMO badge
+│   ├── status_strip.cpp      # 800x42 top telemetry bar + persistent UI DEMO badge
 │   ├── tab_bar.cpp           # 800x46 bottom navigation bar + sub-tab strip
-│   ├── parameter_knob.cpp    # Touch arc rotary control + status badge + reset
-│   ├── parameter_slider.cpp  # Horizontal touch slider + status badge
-│   ├── parameter_card.cpp    # Compact stage macro card + touch bar + +/- buttons
-│   ├── patch_selector.cpp    # Hero patch banner with prev/next/browser/reset actions
-│   ├── virtual_keyboard.cpp  # Interactive 2-octave keyboard with split & harmony overlay
-│   ├── step_grid.cpp         # 16-step sequencer grid + 4x16 drum matrix
-│   ├── envelope_editor.cpp   # Interactive ADSR curve visualizer (lv_line)
+│   ├── parameter_knob.cpp    # Touch arc rotary control (StageMinimal / BlueprintVerbose)
+│   ├── parameter_slider.cpp  # Horizontal touch slider (reverts on Unsupported/Rejected)
+│   ├── parameter_card.cpp    # Stepper / toggle / slider card with optional label_override
+│   ├── patch_selector.cpp    # Stage patch banner with selectable-patch filtering
+│   ├── virtual_keyboard.cpp  # Safe PRESSED/RELEASED/PRESS_LOST touch keyboard + token pairing
+│   ├── step_grid.cpp         # 16-step sequencer & drum pattern grid
+│   ├── envelope_editor.cpp   # ADSR stage contour preview
 │   ├── modulation_matrix.cpp # Touch-friendly 4-row paged modulation slot editor
-│   └── signal_meter.cpp      # Stereo meter bar with mandatory DEMO SIMULATED label
+│   └── signal_meter.cpp      # Stereo meter bar with mandatory [SIM DEMO] label
 ├── screens/
-│   ├── performance_screen.cpp
+│   ├── performance_screen.cpp    # Performance Stage v2 (MACRO FOCUS + KEYS FOCUS)
 │   ├── patch_browser_screen.cpp
 │   ├── sound_editor_screen.cpp
 │   ├── layers_screen.cpp
@@ -89,76 +93,35 @@ smk-p4/components/ui_blueprint/
 │   ├── arpeggiator_screen.cpp
 │   ├── sequencer_screen.cpp
 │   ├── drums_screen.cpp
-│   ├── harmony_screen.cpp
+│   ├── harmony_screen.cpp        # In-place harmony preview refresh (zero rebuild on key press)
 │   ├── midi_screen.cpp
 │   ├── settings_screen.cpp
 │   └── diagnostics_screen.cpp
 └── tests/
-    └── blueprint_test_suite.cpp
+    └── blueprint_test_suite.cpp  # 7 test groups including keyboard event order & mock adapter
 ```
 
 ---
 
 ## 3. Fixed 800 × 480 Viewport & Industrial Visual Language
 
-All layouts are strictly authored for the `800 × 480` horizontal frame (`layout::kScreenWidth = 800`, `layout::kScreenHeight = 480`):
+All layouts are strictly authored for the `800 × 480` horizontal frame (`kScreenWidth = 800`, `kScreenHeight = 480`):
 
 | Region | Coordinates (`x, y, w, h`) | Purpose |
 |---|---|---|
-| **Top `StatusStrip`** | `(0, 0, 800, 40)` | Active patch summary, MIDI/Audio/Voice/BPM/Scale pills, persistent `UI DEMO` badge, `1-Tap PERF` return button, and `PANIC` button. |
-| **Screen Content Area** | `(0, 40, 800, 394)` | Active screen viewport (`394 px` height). `PERFORMANCE` uses zero vertical scrolling; all non-scroll containers are verified by automated bounding-box tests. |
-| **Bottom `TabBar`** | `(0, 434, 800, 46)` | 6 Primary stage destinations (`PERF`, `SOUND`, `LAYERS`, `FX`, `SEQ`, `HARMONY`) + 4 Secondary destinations (`PATCHES`, `MIDI`, `SETUP`, `DIAG`). |
-
-### Color Palette (`ui_theme.h`)
-
-| Role | Hex | Constant |
-|---|---|---|
-| Main Background | `#101820` | `palette::kBgMain` |
-| Panel Surface | `#192630` | `palette::kPanel` |
-| Highlighted Panel | `#253742` | `palette::kPanelHighlight` |
-| Primary Text | `#E6EDF2` | `palette::kTextPrimary` |
-| Secondary Text | `#80919F` | `palette::kTextSecondary` |
-| Primary Accent | `#EAB65B` | `palette::kAccentPrimary` |
-| Active / Available | `#67C4A5` | `palette::kActive` |
-| Warning / Planned | `#E4A44D` | `palette::kWarning` |
-| Error / Panic | `#C94A4A` | `palette::kErrorPanic` |
-| Borders | `#354751` | `palette::kBorder` |
+| **Top `StatusStrip`** | `(0, 0, 800, 42)` | Persistent mode badge (`UI DEMO` / `P4 LIVE`), screen title, active patch (`128 DX7 BRASS 1` / `135 DX7 PIANO 1`), MIDI/Audio/Voice indicators, `PERF` (`58 × 36 px`) and `PANIC` (`66 × 36 px`) buttons. |
+| **Screen Content Area** | `(0, 42, 800, 392)` | Active screen viewport (`392 px` height). Verified across all 14 screens and 20 sub-tabs by automated bounding-box tests. |
+| **Bottom `BottomNavBar`** | `(0, 434, 800, 46)` | 6 destination buttons (`106 × 38 px`) + bank selector (`BANK: MAIN >`, `BANK: TOOLS >`, `BANK: SYS >`, `128 × 38 px`). |
 
 ---
 
-## 4. Memory Discipline & Zero-Leak Screen Lifecycle
+## 4. Virtual Keyboard Safety & Zero-Leak Screen Lifecycle
 
-Embedded LVGL interfaces that instantiate all screens simultaneously suffer from high RAM usage, widget fragmentation, and sluggish redraws. `UiBlueprint` enforces a **Single Active Screen Tree** policy:
-
-1. **Persistent Chrome, Ephemeral Screen Content**:
-   - `StatusStrip` (`y: 0..40`) and `TabBar` (`y: 434..480`) are created once on `UiBlueprint::begin()`.
-   - `content_root_` (`y: 40..434`) holds **only** the currently active `ScreenView`.
-2. **Deterministic Teardown on Navigation**:
-   - When navigating from Screen $A$ to Screen $B$, `UiNavigationManager::mountActiveScreen()` calls `active_view_->onUnmount()`, destroys the `ScreenView` wrapper, and calls `lv_obj_clean(content_root_)` before constructing Screen $B$.
-3. **Automatic Event Context Cleanup (`attachLvContext<T>`)**:
-   - Every interactive widget callback state allocated via `lv_malloc` is bound to its owning `lv_obj_t*` via `LV_EVENT_DELETE` (`lv_free`).
-   - Verified by `blueprint_test_suite.exe`: cycling across all 14 screens 50 times (`700` full screen builds and teardowns) leaks **0 bytes** of LVGL heap.
-
----
-
-## 5. Feature Honesty & Capability Gating
-
-Every parameter in `ParameterRegistry` carries a static `FeatureStatus` and capability mask, evaluated dynamically by `UiModel::effectiveStatus(id)`:
-
-- **`AVAILABLE` (`#67C4A5`)**: End-to-end support exists in the current `smk-p4` standalone runtime (`PerformanceState` / `AmyRuntime`: program 128/135, master volume, expression, pitch bend, sustain, panic, octave shift).
-- **`PLANNED` (`#E4A44D`)**: Present in `smk-s3` or upstream AMY DSP (`src/`), or specified in `specs.md`, awaiting P4 bridge exposure (e.g., Filter Cutoff/Resonance,Chorus/Reverb/Echo, ADSR, LFO, FM Operators, Split/Layers, Sequencer, Scale/Chord assist). Interactive in the UI model so workflow and layout can be tested today, with a clear `PLANNED` badge and status notice.
-- **`UNAVAILABLE` (`#80919F`)**: Inapplicable to the active synthesis family (e.g., FM operator controls when a Subtractive patch is loaded, or Pulse Width when waveform is not Pulse) or blocked by hardware dependencies. Controls are visually dimmed and touch-disabled.
-- **`DEMO` (`#EAB65B`)**: Driven by `UiDemoBackend` (e.g., simulated signal meters explicitly tagged `DEMO SIM`).
-
----
-
-## 6. Incremental Integration Proposal (Without Touching Protected Files)
-
-To integrate `ui_blueprint` into `smk-p4/main/` in future firmware milestones without violating real-time constraints:
-
-1. **Add `ui_blueprint` to `smk-p4/main/CMakeLists.txt` `PRIV_REQUIRES`** when ready to switch from the minimal `PerformanceUi` to `UiBlueprint`.
-2. **Implement a `PerformanceBackendBridge` adapter**:
-   - On `UiDemoBackend` changes to `FeatureStatus::Available` parameters (`PerfPatchProgram`, `PerfMasterVolume`, `PerfOctaveShift`, `Panic`), forward the event to the existing `PerformanceBackend` interface (`selectProgram()`, `resetControllers()`, etc.).
-   - On periodic `UiBlueprint::service(now_ms)` ticks (in the low-priority UI task), read the lock-free `PerformanceState` snapshot (`usb_midi_online`, `audio_ready`, `active_notes`, `underruns`, `render_max_us`) and populate `UiModel::diagnostics()`.
-3. **Promote `PLANNED` Parameters Incrementally**:
-   - As `AmyRuntime` exposes bounded command queues for filter cutoff, chorus/reverb/echo, and ADSR, flip each corresponding `ParameterSpec::status` from `FeatureStatus::Planned` to `FeatureStatus::Available` in `ui_parameters.cpp`—zero screen layout changes required.
+1. **Deterministic Touch Note Lifecycle (`widgets/virtual_keyboard.cpp`)**:
+   - `LV_EVENT_PRESSED` triggers `requestNoteOn(note, 100)` **at most once** per press and records `slot.active_note` and `slot.active_token`.
+   - `LV_EVENT_RELEASED` and `LV_EVENT_PRESS_LOST` trigger `requestNoteOff(slot.active_note, slot.active_token)` using the exact MIDI pitch and token captured at press time (immune to octave shifts while a key is held).
+   - `LV_EVENT_CLICKED` is ignored so a tap never generates a duplicate `Note On`.
+   - In-place visual updates (`refreshVirtualKeyboard` + `nav.refreshActive()`) replace destructive `navigateTo()` calls inside key callbacks.
+   - Both `KeyboardState`'s `LV_EVENT_DELETE` handler and `UiNavigationManager::unmountCurrent()` release any held notes before destroying a screen.
+2. **Zero-Leak Memory Discipline**:
+   - Verified by `blueprint_test_suite.exe`: cycling across all 14 screens 50 times (`700` full screen mounts/unmounts) leaks **`0 bytes`** of LVGL heap (`frag = 1%`).

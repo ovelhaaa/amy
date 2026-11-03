@@ -1,92 +1,63 @@
-# SMK-P4 UI Blueprint 1.0 — Navigation Map & Interaction Topology
+# SMK-P4 UI Blueprint 1.1 — Navigation Map & Interaction Topology
 
 ## 1. Two-Modality Navigation Architecture
 
-Per Section 4 of the specification, the interface operates across two main workflows while preserving a **maximum of 6 primary stage destinations** on the main navigation strip and providing a **1-tap return to `PERFORMANCE`** from every screen in the system:
+The interface operates across two main workflows while keeping **6 destination buttons + 1 bank cycle button** on the bottom navigation bar and providing a **1-tap return to `PERFORMANCE`** from every screen:
 
-1. **PERFORMANCE MODE (`TELA 01 — PERFORMANCE`)**:
-   - Optimized for live playing on the `800 × 480` stage screen.
-   - Zero vertical scrolling; 1-tap access to `< PREV` / `NEXT >` patch, Master Volume, Expression, 4 or 8 contextual Macros, Layer Mode (`SINGLE` / `DUAL` / `SPLIT`), Octave Shift, Sustain, Panic, and Virtual Keyboard / Harmony preview.
-2. **EDIT & SYSTEM MODE (`TELA 02` – `TELA 14`)**:
-   - Reached via the bottom `TabBar` (`6 Primary` + `4 Secondary` buttons) or contextual launcher buttons inside `PERFORMANCE` and related editors.
-   - The top `StatusStrip` (`y: 0..40`) remains visible at all times with a dedicated `PERF` return button and `PANIC` button.
+1. **PERFORMANCE MODE (`TELA 01 — PERFORMANCE STAGE`, `PresentationLevel::StageMinimal`)**:
+   - Optimized for live playing on the `800 × 480` stage screen with reduced badge clutter while preserving the mandatory `UI DEMO` badge in `StatusStrip`.
+   - Two preserved stage layouts:
+     - **`MACRO FOCUS` (`subTab = 0`)**: 4 large macros per page (`BANK: MACROS 1-4` / `BANK: MACROS 5-8`), Master Level, Octave `-`/`+`, and 1-octave keyboard.
+     - **`KEYS FOCUS` (`subTab = 1`)**: 4 compact macro knobs, Master Level, Octave `-`/`+`, and full-width 2-octave keyboard (`784 × 170 px`).
+2. **EDIT & SYSTEM MODE (`TELA 02` – `TELA 14`, `PresentationLevel::BlueprintVerbose`)**:
+   - Reached via the banked bottom navigation bar (`BottomNavBar`) or contextual stage shortcuts (`BROWSER`, `EDIT`, `HARM`).
+   - Retains full technical status badges (`AVAIL`, `PLAN`, `N/A`, `DEMO`) and diagnostic details.
 
 ```mermaid
 flowchart LR
     subgraph Global_Chrome["Persistent Chrome (Always Visible)"]
-        TopPerf["Top StatusStrip: 1-Tap PERF + PANIC"]
-        PriBar["Bottom TabBar Primary (6):\nPERF | SOUND | LAYERS | FX | SEQ | HARMONY"]
-        SecBar["Bottom TabBar Secondary (4):\nPATCHES | MIDI | SETUP | DIAG"]
+        TopPerf["Top StatusStrip: UI DEMO + 1-Tap PERF + PANIC"]
+        Bank0["BottomNavBar Bank 0 (MAIN):\nPERF | SOUND | LAYERS | FX | SEQ | HARMONY"]
+        Bank1["BottomNavBar Bank 1 (TOOLS):\nPERF | PATCHES | MIXER | MOD | ARP | DRUMS"]
+        Bank2["BottomNavBar Bank 2 (SYS):\nPERF | PATCHES | MIDI | SETTINGS | DIAG | HARMONY"]
     end
 
-    S01["01 PERFORMANCE\n(Compact / Detailed)"]
-    S02["02 PATCH BROWSER\n(Categories / Sources)"]
+    S01["01 PERFORMANCE STAGE\n(MACRO FOCUS / KEYS FOCUS)"]
+    S02["02 PATCH BROWSER\n(Banks / 12 Categories)"]
     S03["03 SOUND EDITOR\n(OSC|FM|FILTER|AMP|ENV|LFO|MOD)"]
-    S04["04 LAYERS\n(Single / Dual / Split)"]
+    S04["04 LAYERS & SPLIT\n(Single A / B / Dual / Split)"]
     S05["05 MIXER\n(Layer A / B / Drums / Master)"]
-    S06["06 MODULATION\n(8-Slot Matrix + Monitor)"]
-    S07["07 EFFECTS\n(CHORUS | REVERB | DELAY | DRIVE)"]
-    S08["08 ARPEGGIATOR\n(Mode / Gate / Oct / Latch)"]
-    S09["09 SEQUENCER\n(16-Step Grid + Inspector)"]
-    S10["10 DRUMS\n(4x16 Rhythm Matrix)"]
-    S11["11 HARMONY\n(Scale Lock + Chord Assist)"]
-    S12["12 MIDI\n(SMK25 Profile + Monitor)"]
-    S13["13 SETTINGS\n(Display / Audio / Storage)"]
-    S14["14 DIAGNOSTICS\n(Real LVGL Heap + Demo Status)"]
+    S06["06 MODULATION\n(Slots 1-4 / 5-8 + LFO 1)"]
+    S07["07 EFFECTS\n(Chorus / Delay / Reverb / Drive)"]
+    S08["08 ARPEGGIATOR\n(Rate / Dir / Oct / Gate / Swing)"]
+    S09["09 SEQUENCER\n(16-Step Grid + Transport)"]
+    S10["10 DRUMS\n(8 Pads + 16-Step Grid)"]
+    S11["11 HARMONY ASSIST\n(Scale Quantizer + Chord Assist)"]
+    S12["12 MIDI & MAPPING\n(Channels + SMK25 CC Learn)"]
+    S13["13 GLOBAL SETTINGS\n(Display / Audio / Storage)"]
+    S14["14 SYSTEM DIAGNOSTICS\n(Real LVGL Heap + Telemetry)"]
 
     TopPerf --> S01
-    PriBar --> S01 & S03 & S04 & S07 & S09 & S11
-    SecBar --> S02 & S12 & S13 & S14
+    Bank0 --> S01 & S03 & S04 & S07 & S09 & S11
+    Bank1 --> S01 & S02 & S05 & S06 & S08 & S10
+    Bank2 --> S01 & S02 & S12 & S13 & S14 & S11
 
     S01 -- "BROWSER" --> S02
-    S01 -- "SOUND EDIT" --> S03
-    S01 -- "MIXER" --> S05
-    S01 -- "ARP" --> S08
-    S01 -- "DRUMS" --> S10
-
-    S02 -- "OPEN IN SOUND EDITOR" --> S03
-    S03 -- "OPEN FULL MOD MATRIX" --> S06
-    S04 -- "OPEN MIXER" --> S05
-    S08 <-- "OPEN SEQ / OPEN ARP" --> S09
-    S09 <-- "DRUMS / MELODIC SEQ" --> S10
-    S13 -- "OPEN DIAGNOSTICS" --> S14
+    S01 -- "EDIT" --> S03
+    S01 -- "HARM" --> S11
 ```
 
 ---
 
-## 2. Navigation Bar Layout (`widgets/tab_bar.cpp`)
+## 2. Safe Navigation Lifecycle (`UiNavigationManager`)
 
-The bottom navigation bar (`800 × 46 px`, `y: 434..480`) is divided into two distinct groups separated by an industrial divider:
+`UiNavigationManager` ([`ui_navigation.h`](file:///C:/Users/devx/Documents/PlatformIO/Projects/amy/build/worktrees/smk-p4-ui-integration-ready/smk-p4/components/ui_blueprint/include/ui_navigation.h) / [`ui_navigation.cpp`](file:///C:/Users/devx/Documents/PlatformIO/Projects/amy/build/worktrees/smk-p4-ui-integration-ready/smk-p4/components/ui_blueprint/src/ui_navigation.cpp)) provides:
 
-### Primary Group (6 Stage/Synthesis Destinations, `x: 6..478`)
-1. **`PERF`** $\rightarrow$ `ScreenId::Performance` (`TELA 01`)
-2. **`SOUND`** $\rightarrow$ `ScreenId::SoundEditor` (`TELA 03`)
-3. **`LAYERS`** $\rightarrow$ `ScreenId::Layers` (`TELA 04`)
-4. **`FX`** $\rightarrow$ `ScreenId::Effects` (`TELA 07`)
-5. **`SEQ`** $\rightarrow$ `ScreenId::Sequencer` (`TELA 09`)
-6. **`HARMONY`** $\rightarrow$ `ScreenId::Harmony` (`TELA 11`)
-
-### Secondary Group (4 Library/System Destinations, `x: 492..794`)
-1. **`PATCHES`** $\rightarrow$ `ScreenId::PatchBrowser` (`TELA 02`)
-2. **`MIDI`** $\rightarrow$ `ScreenId::Midi` (`TELA 12`)
-3. **`SETUP`** $\rightarrow$ `ScreenId::Settings` (`TELA 13`)
-4. **`DIAG`** $\rightarrow$ `ScreenId::Diagnostics` (`TELA 14`)
-
-### Contextual Companion Screens (4 Paired Screens)
-- **`TELA 05 — MIXER`**: Reached in 1 tap from `PERFORMANCE` (`MIXER` button) or `LAYERS` (`OPEN MIXER` button). Highlights `LAYERS` group in `TabBar`.
-- **`TELA 06 — MODULATION`**: Reached in 1 tap from `SOUND EDITOR` (`OPEN FULL MOD MATRIX` or `MOD` sub-tab). Highlights `SOUND` group in `TabBar`.
-- **`TELA 08 — ARPEGGIATOR`**: Reached in 1 tap from `PERFORMANCE` (`ARP` button) or `SEQUENCER` (`ARP` button). Highlights `SEQ` group in `TabBar`.
-- **`TELA 10 — DRUMS`**: Reached in 1 tap from `PERFORMANCE` (`DRUMS` button) or `SEQUENCER` (`DRUMS` button). Highlights `SEQ` group in `TabBar`.
-
----
-
-## 3. Sub-Tab Persistence & History Stack (`UiNavigationManager`)
-
-`UiNavigationManager` (`ui_navigation.h` / `ui_navigation.cpp`) maintains:
-- **History Ring Stack (`history_[16]`)**: Supports `navigateBack()` across screen transitions.
-- **Persistent Sub-Tab State**:
-  - `soundEditorTab()`: Remembers the last active tab (`OSC`, `FM`, `FILTER`, `AMP`, `ENV`, `LFO`, `MOD`) when switching away from `SOUND EDITOR` and returning.
-  - `effectsTab()`: Remembers the last active FX tab (`CHORUS`, `REVERB`, `DELAY`, `DRIVE`) when switching away from `EFFECTS` and returning.
-  - `performanceCompact()`: Preserves the user's choice between `COMPACT` (4 macros) and `DETAILED` (8 macros) on `PERFORMANCE`.
-- **Guaranteed 1-Tap Return (`returnToPerformance()`)**:
-  - Clears navigation history and immediately mounts `ScreenId::Performance`. Accessible from both the top-right `PERF` button in `StatusStrip` and the bottom-left `PERF` button in `TabBar`.
+- **Automatic Note Release on Teardown (`unmountCurrent()`)**:
+  - Calls `backend_->releaseAllUiNotes()` before `active_view_->onDestroy()` and `lv_obj_clean(content_root_)`, ensuring screen transitions never leave stuck notes.
+- **In-Place Refresh (`refreshActive()`)**:
+  - Updates the active screen's dynamic labels and `VirtualKeyboard` state in-place without destroying LVGL objects (used by `OCT -` / `OCT +`, `PANIC`, and `HarmonyView` key presses).
+- **Deferred Navigation (`requestNavigateTo()` / `requestReturnToPerformance()` / `processPendingNavigation()`)**:
+  - Allows any callback to schedule a screen transition that is executed safely at the start of `UiBlueprint::service(now_ms)`, outside of active LVGL event dispatch.
+- **History Stack & Sub-Tab Persistence**:
+  - Maintains a 16-entry navigation history stack for `back()` and preserves each screen's active sub-tab (`subTab(screen)`), including the user's choice of `MACRO FOCUS` (`0`) vs `KEYS FOCUS` (`1`) on `PERFORMANCE`.

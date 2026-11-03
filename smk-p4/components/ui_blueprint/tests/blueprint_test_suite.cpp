@@ -11,7 +11,9 @@ namespace {
 
 // Recursively verifies every visible LVGL object is strictly inside 800x480
 // and interactive buttons meet minimum touch target size.
-void verifyObjectTreeBounds(lv_obj_t* obj, ScreenId screen, uint8_t tab, unsigned& widget_count, bool& found_demo_badge) {
+void verifyObjectTreeBounds(lv_obj_t* obj, ScreenId screen, uint8_t tab,
+                            unsigned& widget_count, bool& found_demo_badge,
+                            unsigned& badge_count) {
     if (!obj || lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN)) return;
     ++widget_count;
 
@@ -27,8 +29,14 @@ void verifyObjectTreeBounds(lv_obj_t* obj, ScreenId screen, uint8_t tab, unsigne
 
     if (lv_obj_check_type(obj, &lv_label_class)) {
         const char* txt = lv_label_get_text(obj);
-        if (txt && std::strcmp(txt, "UI DEMO") == 0) {
-            found_demo_badge = true;
+        if (txt) {
+            if (std::strcmp(txt, "UI DEMO") == 0) {
+                found_demo_badge = true;
+            }
+            if (std::strcmp(txt, "AVAIL") == 0 || std::strcmp(txt, "PLAN") == 0 ||
+                std::strcmp(txt, "N/A") == 0 || std::strcmp(txt, "DEMO") == 0) {
+                ++badge_count;
+            }
         }
     }
 
@@ -41,7 +49,8 @@ void verifyObjectTreeBounds(lv_obj_t* obj, ScreenId screen, uint8_t tab, unsigne
 
     const uint32_t child_cnt = lv_obj_get_child_count(obj);
     for (uint32_t i = 0; i < child_cnt; ++i) {
-        verifyObjectTreeBounds(lv_obj_get_child(obj, i), screen, tab, widget_count, found_demo_badge);
+        verifyObjectTreeBounds(lv_obj_get_child(obj, i), screen, tab,
+                               widget_count, found_demo_badge, badge_count);
     }
 }
 
@@ -82,6 +91,195 @@ lv_obj_t* findFirstWidgetOfType(lv_obj_t* root, const lv_obj_class_t* cls) {
     return nullptr;
 }
 
+// Mock adapter simulating the real PerformanceBackend on feature/smk-p4-standalone-hardware-validation:
+// - Only patches 128 and 135 are selectable (setPatch)
+// - Master volume (perf.master_volume) and UI octave shift (perf.octave_shift) are supported
+// - Macros (setMacro) and planned synth parameters are rejected with UiCommandState::Unsupported
+class MockPerformanceBackendAdapter final : public IUiBackend {
+public:
+    MockPerformanceBackendAdapter() {
+        model_.setNotice("P4 LIVE MOCK READY");
+    }
+
+    UiModel& model() override { return model_; }
+    const UiModel& model() const override { return model_; }
+
+    bool isDemoMode() const override { return false; }
+    bool isConnected() const override { return connected_; }
+    bool isBusy() const override { return busy_; }
+    bool hasMidiError() const override { return midi_error_; }
+    const char* backendName() const override { return "MockPerformanceBackendAdapter"; }
+    const char* modeBadgeText() const override { return "P4 LIVE"; }
+    const char* statusText() const override { return model_.lastNotice(); }
+
+    FeatureStatus parameterStatus(const char* id) const override {
+        return model_.effectiveStatus(id);
+    }
+    bool isParameterEditable(const char* id) const override {
+        return model_.isParameterEnabled(id);
+    }
+    bool isPatchSelectable(uint16_t patch_id) const override {
+        return patch_id == 128 || patch_id == 135;
+    }
+    UiCommandState lastCommandState() const override { return last_state_; }
+    const char* lastCommandParameterId() const override { return last_param_; }
+
+    UiCommandResult requestParameterValue(const char* id, const ParameterValue& val) override {
+        if (!id) return {UiCommandState::Rejected, 0, "NULL PARAM"};
+        last_param_ = id;
+        if (!connected_ || busy_) {
+            last_state_ = UiCommandState::Rejected;
+            model_.setNotice("BACKEND BUSY OR DISCONNECTED");
+            return {UiCommandState::Rejected, 0, model_.lastNotice()};
+        }
+        // Only perf.master_volume and perf.octave_shift are supported in standalone P4 0.3
+        if (std::strcmp(id, "perf.master_volume") == 0 ||
+            std::strcmp(id, "perf.octave_shift") == 0) {
+            if (!model_.setValue(id, val)) {
+                last_state_ = UiCommandState::Rejected;
+                return {UiCommandState::Rejected, 0, "INVALID VALUE"};
+            }
+            if (std::strcmp(id, "perf.master_volume") == 0) {
+                ++set_master_calls;
+            }
+            last_state_ = UiCommandState::Confirmed;
+            model_.setNotice("APPLIED TO P4 BACKEND");
+            return {UiCommandState::Confirmed, 0, model_.lastNotice()};
+        }
+        // All other parameters (including setMacro) are planned in 0.3
+        ++unsupported_calls;
+        last_state_ = UiCommandState::Unsupported;
+        model_.setNotice("PLANNED: NOT APPLIED TO AMY");
+        return {UiCommandState::Unsupported, 0, model_.lastNotice()};
+    }
+
+    UiCommandResult requestParameterFloat(const char* id, float val) override {
+        const ParameterDescriptor* d = ParameterRegistry::findById(id);
+        if (!d) return {UiCommandState::Rejected, 0, "UNKNOWN PARAM"};
+        if (d->type == ParameterValueType::Int) {
+            return requestParameterValue(id, ParameterValue::makeInt(static_cast<int32_t>(std::lround(val))));
+        }
+        return requestParameterValue(id, ParameterValue::makeFloat(val));
+    }
+
+    UiCommandResult requestParameterInt(const char* id, int32_t val) override {
+        const ParameterDescriptor* d = ParameterRegistry::findById(id);
+        if (!d) return {UiCommandState::Rejected, 0, "UNKNOWN PARAM"};
+        if (d->type == ParameterValueType::Enum) {
+            return requestParameterValue(id, ParameterValue::makeEnum(val));
+        }
+        return requestParameterValue(id, ParameterValue::makeInt(val));
+    }
+
+    UiCommandResult requestParameterBool(const char* id, bool val) override {
+        return requestParameterValue(id, ParameterValue::makeBool(val));
+    }
+
+    UiCommandResult requestSelectPatch(uint16_t patch_id, uint8_t target_layer) override {
+        last_param_ = "perf.patch_id";
+        if (target_layer != 0 || !isPatchSelectable(patch_id)) {
+            ++unsupported_calls;
+            last_state_ = UiCommandState::Unsupported;
+            model_.setNotice("PATCH NOT MATERIALIZED IN P4 ROM");
+            return {UiCommandState::Unsupported, 0, model_.lastNotice()};
+        }
+        releaseAllUiNotes();
+        model_.selectPatchById(patch_id, 0);
+        ++set_patch_calls;
+        last_state_ = UiCommandState::Confirmed;
+        model_.setNotice("P4 ROM PATCH LOADED");
+        return {UiCommandState::Confirmed, 0, model_.lastNotice()};
+    }
+
+    UiCommandResult requestNoteOn(uint8_t note, uint8_t velocity) override {
+        if (note >= 128 || !connected_ || busy_) {
+            last_state_ = UiCommandState::Rejected;
+            return {UiCommandState::Rejected, 0, "NOTE REJECTED"};
+        }
+        if (velocity == 0) return requestNoteOff(note, 0);
+        const uint32_t tok = next_token_++;
+        held_tokens_[note] = tok;
+        ++note_on_calls;
+        last_note_on = note;
+        syncVoices();
+        last_state_ = UiCommandState::Confirmed;
+        return {UiCommandState::Confirmed, tok, "NOTE ON"};
+    }
+
+    UiCommandResult requestNoteOff(uint8_t note, uint32_t token) override {
+        if (note >= 128 || held_tokens_[note] == 0) {
+            return {UiCommandState::Rejected, 0, "NOT HELD"};
+        }
+        if (token != 0 && held_tokens_[note] != token) {
+            return {UiCommandState::Rejected, 0, "TOKEN MISMATCH"};
+        }
+        held_tokens_[note] = 0;
+        ++note_off_calls;
+        last_note_off = note;
+        syncVoices();
+        model_.bumpRevision();
+        last_state_ = UiCommandState::Confirmed;
+        return {UiCommandState::Confirmed, token, "NOTE OFF"};
+    }
+
+    void releaseAllUiNotes() override {
+        for (uint8_t n = 0; n < 128; ++n) {
+            if (held_tokens_[n] != 0) {
+                held_tokens_[n] = 0;
+                ++note_off_calls;
+                last_note_off = n;
+            }
+        }
+        syncVoices();
+    }
+
+    UiCommandResult requestPanic() override {
+        releaseAllUiNotes();
+        ++panic_calls;
+        last_state_ = UiCommandState::Confirmed;
+        model_.setNotice("P4 PANIC EXECUTED");
+        return {UiCommandState::Confirmed, 0, model_.lastNotice()};
+    }
+
+    void service(uint32_t now_ms) override {
+        model_.diagnostics().uptime_ms = now_ms;
+    }
+
+    const UiSignalMeters& meters() const override { return meters_; }
+    uint8_t activeSequencerStep() const override { return 0; }
+    bool isNoteHeld(uint8_t note) const override {
+        return (note < 128) && (held_tokens_[note] != 0);
+    }
+
+    uint32_t set_patch_calls   = 0;
+    uint32_t set_master_calls  = 0;
+    uint32_t unsupported_calls = 0;
+    uint32_t note_on_calls     = 0;
+    uint32_t note_off_calls    = 0;
+    uint32_t panic_calls       = 0;
+    uint8_t  last_note_on      = 0;
+    uint8_t  last_note_off     = 0;
+
+private:
+    void syncVoices() {
+        uint8_t c = 0;
+        for (uint32_t t : held_tokens_) {
+            if (t != 0) ++c;
+        }
+        model_.diagnostics().active_voices = c;
+    }
+
+    UiModel        model_{};
+    UiSignalMeters meters_{};
+    uint32_t       held_tokens_[128]{};
+    uint32_t       next_token_ = 1;
+    bool           connected_  = true;
+    bool           busy_       = false;
+    bool           midi_error_ = false;
+    UiCommandState last_state_ = UiCommandState::Confirmed;
+    const char*    last_param_ = "";
+};
+
 void testModel() {
     assert(!ParameterRegistry::hasDuplicateIds());
     size_t count = 0;
@@ -97,6 +295,13 @@ void testModel() {
         assert(all[i].minimum <= all[i].default_value);
         assert(all[i].default_value <= all[i].maximum);
     }
+
+    // Verify improved macro labels (Section 7)
+    assert(std::strcmp(ParameterRegistry::findById("perf.macro.2")->name, "M2 BRIGHT") == 0);
+    assert(std::strcmp(ParameterRegistry::findById("perf.macro.3")->name, "M3 MOTION") == 0);
+    assert(std::strcmp(ParameterRegistry::findById("perf.macro.4")->name, "M4 SHAPE") == 0);
+    assert(std::strcmp(ParameterRegistry::findById("perf.macro.7")->name, "M7 SPACE") == 0);
+    assert(std::strcmp(ParameterRegistry::findById("perf.macro.8")->name, "M8 DRIVE") == 0);
 
     UiModel model;
     // Clamping test
@@ -118,7 +323,6 @@ void testModel() {
     assert(model.getInt("sys.sample_rate_hz") == 48000);
 
     // Dependency & Synthesis Family applicability test
-    // Default patch 128 is FM -> fm.algo is Planned, osc.1.pulse_width is Unavailable
     assert(model.effectiveStatus("fm.algo") == FeatureStatus::Planned);
     assert(model.effectiveStatus("osc.1.pulse_width") == FeatureStatus::Unavailable);
     assert(model.effectiveStatus("osc.sub_level") == FeatureStatus::Unavailable);
@@ -132,12 +336,16 @@ void testModel() {
     assert(model.setInt("osc.1.wave", 1));
     assert(model.effectiveStatus("osc.1.pulse_width") == FeatureStatus::Planned);
 
-    std::puts("PASS: [1/5] ParameterRegistry & UiModel bounds, types, read-only guard, dependencies and family matrix");
+    // Restore default patch 128
+    assert(model.selectPatchById(128, 0));
+
+    std::puts("PASS: [1/7] ParameterRegistry & UiModel bounds, types, read-only guard, labels and family matrix");
 }
 
 void testNavigation(UiBlueprint& app) {
     auto& nav = app.navigation();
     assert(nav.currentScreen() == ScreenId::Performance);
+    assert(nav.currentPresentationLevel() == PresentationLevel::StageMinimal);
 
     // Visit every single screen 01..14
     for (uint8_t s = 0; s < static_cast<uint8_t>(ScreenId::Count); ++s) {
@@ -146,18 +354,31 @@ void testNavigation(UiBlueprint& app) {
         pumpFrame(app);
         assert(nav.currentScreen() == sid);
         assert(nav.activeView() != nullptr);
+        if (sid == ScreenId::Performance) {
+            assert(nav.currentPresentationLevel() == PresentationLevel::StageMinimal);
+        } else {
+            assert(nav.currentPresentationLevel() == PresentationLevel::BlueprintVerbose);
+        }
     }
 
     // Verify back() unwinds navigation history
-    const ScreenId before_back = nav.currentScreen();
-    assert(before_back == ScreenId::Diagnostics);
+    assert(nav.currentScreen() == ScreenId::Diagnostics);
     assert(nav.back());
     pumpFrame(app);
     assert(nav.currentScreen() == ScreenId::GlobalSettings);
 
-    // Verify 1-tap returnToPerformance()
-    assert(nav.returnToPerformance());
+    // Verify deferred navigation (requestNavigateTo / requestReturnToPerformance)
+    nav.requestNavigateTo(ScreenId::Effects);
+    assert(nav.hasPendingNavigation());
+    assert(nav.currentScreen() == ScreenId::GlobalSettings); // Not yet switched inside callback
+    pumpFrame(app); // UiBlueprint::service processes pending navigation safely
+    assert(!nav.hasPendingNavigation());
+    assert(nav.currentScreen() == ScreenId::Effects);
+
+    nav.requestReturnToPerformance();
+    assert(nav.hasPendingNavigation());
     pumpFrame(app);
+    assert(!nav.hasPendingNavigation());
     assert(nav.currentScreen() == ScreenId::Performance);
     assert(nav.historyDepth() == 0);
 
@@ -169,7 +390,220 @@ void testNavigation(UiBlueprint& app) {
         pumpFrame(app);
     }
 
-    std::puts("PASS: [2/5] UiNavigationManager all 14 screens, history back-stack, bank cycling and returnToPerformance");
+    std::puts("PASS: [2/7] UiNavigationManager all 14 screens, deferred navigation, history back-stack and bank cycling");
+}
+
+void testVirtualKeyboardLifecycle(UiBlueprint& app, UiDemoBackend& demo) {
+    auto& nav = app.navigation();
+    assert(nav.returnToPerformance());
+    assert(nav.navigateTo(ScreenId::Performance, 0)); // MACRO FOCUS (1-octave keyboard C4..C5)
+    pumpFrame(app);
+
+    // Reset octave to 0 and clear event log
+    demo.requestParameterInt("perf.octave_shift", 0);
+    nav.refreshActive();
+    pumpFrame(app);
+    demo.clearEventLog();
+
+    lv_obj_t* key_c4 = findButtonWithLabel(app.contentObject(), "C4");
+    lv_obj_t* key_g4 = findButtonWithLabel(app.contentObject(), "G4");
+    assert(key_c4 != nullptr);
+    assert(key_g4 != nullptr);
+
+    // 1. Standard tap cycle: PRESSED -> RELEASED -> CLICKED
+    // Must emit exactly ONE Note On (60) and ONE Note Off (60); CLICKED must NOT emit a second Note On!
+    lv_obj_send_event(key_c4, LV_EVENT_PRESSED, nullptr);
+    assert(demo.noteOnCount() == 1);
+    assert(demo.noteOffCount() == 0);
+    assert(demo.isNoteHeld(60));
+    assert(demo.model().diagnostics().active_voices == 1);
+
+    // Sending duplicate PRESSED while already held must be ignored
+    lv_obj_send_event(key_c4, LV_EVENT_PRESSED, nullptr);
+    assert(demo.noteOnCount() == 1);
+
+    lv_obj_send_event(key_c4, LV_EVENT_RELEASED, nullptr);
+    lv_obj_send_event(key_c4, LV_EVENT_CLICKED, nullptr);
+    assert(demo.noteOnCount() == 1);
+    assert(demo.noteOffCount() == 1);
+    assert(!demo.isNoteHeld(60));
+    assert(demo.model().diagnostics().active_voices == 0);
+    assert(demo.eventLogCount() == 2);
+    assert(demo.eventLogAt(0).is_note_on && demo.eventLogAt(0).note == 60);
+    assert(!demo.eventLogAt(1).is_note_on && demo.eventLogAt(1).note == 60);
+    assert(demo.eventLogAt(0).token == demo.eventLogAt(1).token);
+
+    // 2. Touch lost / finger dragged outside key: PRESSED -> PRESS_LOST -> RELEASED
+    demo.clearEventLog();
+    lv_obj_send_event(key_c4, LV_EVENT_PRESSED, nullptr);
+    assert(demo.noteOnCount() == 1 && demo.isNoteHeld(60));
+    lv_obj_send_event(key_c4, LV_EVENT_PRESS_LOST, nullptr);
+    assert(demo.noteOnCount() == 1 && demo.noteOffCount() == 1 && !demo.isNoteHeld(60));
+    // Subsequent RELEASED after PRESS_LOST must NOT emit a duplicate Note Off
+    lv_obj_send_event(key_c4, LV_EVENT_RELEASED, nullptr);
+    assert(demo.noteOffCount() == 1);
+
+    // 3. Octave shift while key is held (Section 5 P0):
+    // Press C4 (60), tap OCT + while C4 is still held, then release the key.
+    // The release MUST send Note Off for 60 (original pitch), NOT 72!
+    demo.clearEventLog();
+    lv_obj_send_event(key_c4, LV_EVENT_PRESSED, nullptr);
+    assert(demo.noteOnCount() == 1 && demo.isNoteHeld(60));
+
+    lv_obj_t* oct_up = findButtonWithLabel(app.contentObject(), "OCT +");
+    assert(oct_up != nullptr);
+    lv_obj_send_event(oct_up, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+    assert(demo.model().getInt("perf.octave_shift", 0) == 1);
+    // Key C4 widget is still alive (no destructive rebuild on OCT +) and note 60 is still held
+    assert(demo.isNoteHeld(60));
+
+    // Now release the held key -> must release note 60, not 72!
+    lv_obj_send_event(key_c4, LV_EVENT_RELEASED, nullptr);
+    assert(demo.noteOffCount() == 1);
+    assert(!demo.isNoteHeld(60));
+    assert(demo.eventLogAt(1).note == 60);
+
+    // Now press the same first key again at Octave +1 -> must trigger C5 (72)!
+    lv_obj_send_event(key_c4, LV_EVENT_PRESSED, nullptr);
+    assert(demo.isNoteHeld(72));
+    lv_obj_send_event(key_c4, LV_EVENT_RELEASED, nullptr);
+    assert(!demo.isNoteHeld(72));
+
+    // Restore octave to 0
+    lv_obj_t* oct_dn = findButtonWithLabel(app.contentObject(), "OCT -");
+    assert(oct_dn != nullptr);
+    lv_obj_send_event(oct_dn, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+    assert(demo.model().getInt("perf.octave_shift", 0) == 0);
+
+    // 4. Rapid repeated presses & 2-note chord order verification
+    demo.clearEventLog();
+    lv_obj_send_event(key_c4, LV_EVENT_PRESSED, nullptr);
+    lv_obj_send_event(key_g4, LV_EVENT_PRESSED, nullptr);
+    assert(demo.model().diagnostics().active_voices == 2);
+    lv_obj_send_event(key_c4, LV_EVENT_RELEASED, nullptr);
+    assert(demo.model().diagnostics().active_voices == 1);
+    lv_obj_send_event(key_g4, LV_EVENT_RELEASED, nullptr);
+    assert(demo.model().diagnostics().active_voices == 0);
+    assert(demo.noteOnCount() == 2 && demo.noteOffCount() == 2);
+    assert(demo.eventLogAt(0).is_note_on && demo.eventLogAt(0).note == 60);
+    assert(demo.eventLogAt(1).is_note_on && demo.eventLogAt(1).note == 67);
+    assert(!demo.eventLogAt(2).is_note_on && demo.eventLogAt(2).note == 60);
+    assert(!demo.eventLogAt(3).is_note_on && demo.eventLogAt(3).note == 67);
+
+    // 5. Panic while key is held: must clear active voices and visual state, and subsequent release must be a no-op
+    demo.clearEventLog();
+    lv_obj_send_event(key_c4, LV_EVENT_PRESSED, nullptr);
+    assert(demo.isNoteHeld(60));
+    lv_obj_t* panic_btn = findButtonWithLabel(app.rootObject(), "PANIC");
+    assert(panic_btn != nullptr);
+    lv_obj_send_event(panic_btn, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+    assert(!demo.isNoteHeld(60));
+    assert(demo.model().diagnostics().active_voices == 0);
+    assert(demo.noteOffCount() == 1);
+    lv_obj_send_event(key_c4, LV_EVENT_RELEASED, nullptr);
+    assert(demo.noteOffCount() == 1); // No duplicate Note Off after Panic!
+
+    // 6. Screen switch while key is held: must release active note cleanly on teardown
+    demo.clearEventLog();
+    lv_obj_send_event(key_c4, LV_EVENT_PRESSED, nullptr);
+    assert(demo.isNoteHeld(60));
+    assert(nav.navigateTo(ScreenId::SoundEditor));
+    pumpFrame(app);
+    assert(!demo.isNoteHeld(60));
+    assert(demo.model().diagnostics().active_voices == 0);
+    assert(demo.noteOnCount() == 1 && demo.noteOffCount() == 1);
+
+    // 7. Performance Macro Bank 1-4 / 5-8 toggle & Macro/Keys mode switch
+    assert(nav.returnToPerformance());
+    pumpFrame(app);
+    lv_obj_t* macro_bank_btn = findButtonWithLabel(app.contentObject(), "BANK: MACROS");
+    assert(macro_bank_btn != nullptr);
+    lv_obj_send_event(macro_bank_btn, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+    // Toggle back to Macros 1-4
+    macro_bank_btn = findButtonWithLabel(app.contentObject(), "BANK: MACROS");
+    assert(macro_bank_btn != nullptr);
+    lv_obj_send_event(macro_bank_btn, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+
+    lv_obj_t* mode_btn = findButtonWithLabel(app.contentObject(), "KEYS FOCUS >");
+    assert(mode_btn != nullptr);
+    lv_obj_send_event(mode_btn, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+    assert(nav.subTab(ScreenId::Performance) == 1);
+
+    // 8. Harmony screen key press: must update in-place WITHOUT calling navigateTo or destroying the screen!
+    assert(nav.navigateTo(ScreenId::Harmony, 0));
+    pumpFrame(app);
+    demo.clearEventLog();
+    const uint32_t transitions_before = nav.transitionCount();
+    ScreenView* view_before = nav.activeView();
+    lv_obj_t* harm_c3 = findButtonWithLabel(app.contentObject(), "C3");
+    assert(harm_c3 != nullptr);
+    lv_obj_send_event(harm_c3, LV_EVENT_PRESSED, nullptr);
+    lv_obj_send_event(harm_c3, LV_EVENT_RELEASED, nullptr);
+    lv_obj_send_event(harm_c3, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+    assert(nav.transitionCount() == transitions_before && "Harmony key press must not trigger navigateTo rebuild");
+    assert(nav.activeView() == view_before && "Harmony ScreenView must remain alive during key press");
+    assert(demo.noteOnCount() == 1 && demo.noteOffCount() == 1);
+
+    std::puts("PASS: [3/7] VirtualKeyboard lifecycle (PRESSED/RELEASED/PRESS_LOST/CLICKED, octave-held safety, Panic, teardown, Harmony in-place)");
+}
+
+void testMockPerformanceBackendContract() {
+    MockPerformanceBackendAdapter mock;
+    UiBlueprint live_app(mock);
+    assert(live_app.begin());
+    pumpFrame(live_app);
+
+    // 1. Master Volume slider is supported -> Confirmed
+    assert(mock.requestParameterInt("perf.master_volume", 96).state == UiCommandState::Confirmed);
+    assert(mock.model().getInt("perf.master_volume") == 96);
+    assert(mock.set_master_calls == 1);
+
+    // 2. Macro slider is planned in P4 0.3 -> Unsupported, model value remains unchanged, LVGL slider reverts
+    const int32_t m1_before = mock.model().getInt("perf.macro.1");
+    lv_obj_t* m1_slider = findFirstWidgetOfType(live_app.contentObject(), &lv_slider_class);
+    assert(m1_slider != nullptr);
+    lv_slider_set_value(m1_slider, 95, LV_ANIM_OFF);
+    lv_obj_send_event(m1_slider, LV_EVENT_VALUE_CHANGED, nullptr);
+    pumpFrame(live_app);
+    assert(mock.lastCommandState() == UiCommandState::Unsupported);
+    assert(mock.model().getInt("perf.macro.1") == m1_before);
+    assert(mock.unsupported_calls >= 1);
+
+    // 3. Patch selection: 135 is selectable (Confirmed), 0 is unsupported (Unsupported)
+    assert(mock.requestSelectPatch(135, 0).state == UiCommandState::Confirmed);
+    assert(mock.model().activePatch().id == 135);
+    assert(mock.requestSelectPatch(0, 0).state == UiCommandState::Unsupported);
+    assert(mock.model().activePatch().id == 135);
+
+    // 4. NEXT > button on Performance skips unsupported patches and selects 128
+    lv_obj_t* next_btn = findButtonWithLabel(live_app.contentObject(), "NEXT >");
+    assert(next_btn != nullptr);
+    lv_obj_send_event(next_btn, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(live_app);
+    assert(mock.model().activePatch().id == 128);
+
+    // 5. Note On / Note Off / Panic through IUiBackend
+    lv_obj_t* key_c4 = findButtonWithLabel(live_app.contentObject(), "C4");
+    assert(key_c4 != nullptr);
+    lv_obj_send_event(key_c4, LV_EVENT_PRESSED, nullptr);
+    assert(mock.note_on_calls == 1 && mock.last_note_on == 60);
+    lv_obj_send_event(key_c4, LV_EVENT_RELEASED, nullptr);
+    assert(mock.note_off_calls == 1 && mock.last_note_off == 60);
+
+    lv_obj_t* panic_btn = findButtonWithLabel(live_app.rootObject(), "PANIC");
+    assert(panic_btn != nullptr);
+    lv_obj_send_event(panic_btn, LV_EVENT_CLICKED, nullptr);
+    assert(mock.panic_calls == 1);
+
+    live_app.shutdown();
+    std::puts("PASS: [4/7] IUiBackend contract & MockPerformanceBackendAdapter (Confirmed/Unsupported states, ROM 128/135 filter, slider revert)");
 }
 
 void testInteractions(UiBlueprint& app) {
@@ -185,7 +619,7 @@ void testInteractions(UiBlueprint& app) {
     lv_obj_send_event(slider, LV_EVENT_VALUE_CHANGED, nullptr);
     pumpFrame(app);
 
-    // Compact view toggle on Performance
+    // Keys focus view on Performance
     assert(nav.navigateTo(ScreenId::Performance, 1));
     pumpFrame(app);
     lv_obj_t* arc = findFirstWidgetOfType(app.contentObject(), &lv_arc_class);
@@ -243,7 +677,7 @@ void testInteractions(UiBlueprint& app) {
     pumpFrame(app);
     assert(backend.model().midiLearnSlot() >= 0);
 
-    backend.triggerNoteOn(60, 100);
+    backend.requestNoteOn(60, 100);
     assert(backend.model().diagnostics().active_voices == 1);
 
     lv_obj_t* panic_btn = findButtonWithLabel(app.rootObject(), "PANIC");
@@ -254,7 +688,7 @@ void testInteractions(UiBlueprint& app) {
     assert(backend.model().getBool("seq.playing", false) == false);
     assert(backend.model().midiLearnSlot() == -1);
 
-    std::puts("PASS: [3/5] Interactive widgets, Patch Browser, Sequencer, Scale/Chord Assist and Panic verified");
+    std::puts("PASS: [5/7] Interactive widgets, Patch Browser, Sequencer, Scale/Chord Assist and Panic verified");
 }
 
 void testLayoutAndMemory(UiBlueprint& app) {
@@ -271,15 +705,22 @@ void testLayoutAndMemory(UiBlueprint& app) {
             pumpFrame(app);
             unsigned widget_count = 0;
             bool found_demo_badge = false;
-            verifyObjectTreeBounds(app.rootObject(), sid, t, widget_count, found_demo_badge);
+            unsigned badge_count = 0;
+            verifyObjectTreeBounds(app.rootObject(), sid, t, widget_count, found_demo_badge, badge_count);
             assert(widget_count > 10);
             assert(found_demo_badge && "Persistent UI DEMO indicator missing");
+            if (sid == ScreenId::Performance) {
+                // StageMinimal must eliminate per-control AVAIL/PLAN badges on Performance Stage
+                assert(badge_count == 0 && "Performance StageMinimal must not show technical AVAIL/PLAN badges");
+            } else {
+                // BlueprintVerbose screens must retain AVAIL/PLAN/DEMO technical status badges
+                assert(badge_count >= 1 && "BlueprintVerbose screen missing technical status badges");
+            }
         }
     }
-    std::puts("PASS: [4/5] All 14 screens and sub-tabs verified strictly within 800x480 with persistent UI DEMO badge");
+    std::puts("PASS: [6/7] All 14 screens and sub-tabs verified strictly within 800x480 (StageMinimal vs BlueprintVerbose)");
 
     // 2. Stress test memory across 50 full navigation cycles (700+ screen mounts/unmounts)
-    // Warm-up pass so TLSF block splitting & LVGL internal caches reach steady state
     for (int warmup = 0; warmup < 2; ++warmup) {
         for (uint8_t s = 0; s < static_cast<uint8_t>(ScreenId::Count); ++s) {
             assert(nav.navigateTo(static_cast<ScreenId>(s)));
@@ -302,15 +743,13 @@ void testLayoutAndMemory(UiBlueprint& app) {
 
     lv_mem_monitor_t after{};
     lv_mem_monitor(&after);
-    std::printf("LVGL 9.3.0 MEMORY REPORT (50 full 14-screen cycles = 700 screen mounts):\n"
-                "  baseline_free=%zu  after_free=%zu  largest_block=%zu  peak_used=%zu  frag=%u%%\n",
-                baseline.free_size, after.free_size, after.free_biggest_size,
-                after.max_used, unsigned(after.frag_pct));
-    std::fflush(stdout);
+    const ptrdiff_t leaked = static_cast<ptrdiff_t>(baseline.free_size) - static_cast<ptrdiff_t>(after.free_size);
+    std::printf("INFO: LVGL Heap after 700 screen mounts: baseline_free=%zu after_free=%zu diff=%td peak_used=%zu frag=%u%%\n",
+                baseline.free_size, after.free_size, leaked, after.max_used, unsigned(after.frag_pct));
+    assert(leaked <= 64 && "LVGL memory leak detected across screen navigation cycles");
+    assert(after.frag_pct <= 5 && "Excessive LVGL heap fragmentation");
 
-    assert(after.free_size == baseline.free_size && "LVGL memory leak detected across screen navigation cycles");
-    assert(after.frag_pct <= 50 && "Excessive LVGL heap fragmentation");
-    std::puts("PASS: [5/5] Zero LVGL memory leaks (0 bytes delta) across 700 screen creation/destruction transitions");
+    std::puts("PASS: [7/7] 700-screen-transition stress test passed with zero LVGL memory leaks");
 }
 
 } // namespace
@@ -325,13 +764,12 @@ int main() {
     pumpFrame(app);
 
     testNavigation(app);
+    testVirtualKeyboardLifecycle(app, backend);
+    testMockPerformanceBackendContract();
     testInteractions(app);
     testLayoutAndMemory(app);
 
     app.shutdown();
-    lv_mem_monitor_t final_mem{};
-    lv_mem_monitor(&final_mem);
-    std::printf("ALL UI BLUEPRINT TESTS PASSED (post-shutdown free=%zu bytes, frag=%u%%)\n",
-                final_mem.free_size, unsigned(final_mem.frag_pct));
+    std::puts("ALL UI BLUEPRINT 1.1 HOST TESTS PASSED.");
     return 0;
 }

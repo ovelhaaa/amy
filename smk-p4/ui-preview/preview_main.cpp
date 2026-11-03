@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
     };
 
     // Trigger a non-scale note (C#4 = 61) so Harmony visualizer shows quantization & chord tones
-    backend.triggerNoteOn(61, 100);
+    backend.model().setLastPreviewNote(61);
 
     for (const auto& cap : kCaptures) {
         if (!app.navigation().navigateTo(cap.screen, cap.sub_tab)) {
