@@ -224,9 +224,17 @@ void UiNavigationManager::setSubTab(ScreenId screen, uint8_t tab) {
     }
 }
 
+namespace {
+void refreshWidgets(lv_obj_t* obj) {
+    lv_obj_send_event(obj,LV_EVENT_REFRESH,nullptr);
+    const uint32_t count=lv_obj_get_child_count(obj);
+    for(uint32_t i=0;i<count;++i) refreshWidgets(lv_obj_get_child(obj,static_cast<int32_t>(i)));
+}
+}
 void UiNavigationManager::refreshActive() {
     if (active_view_ && backend_) {
         active_view_->refresh(*backend_);
+        if(content_root_) refreshWidgets(content_root_);
     }
 }
 

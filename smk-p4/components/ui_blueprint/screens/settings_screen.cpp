@@ -68,6 +68,10 @@ public:
             auto* ctx = static_cast<SysActionCtx*>(lv_event_get_user_data(e));
             if (!ctx || !ctx->backend || !ctx->nav) return;
             if (ctx->action == 0) {
+                if (!ctx->backend->isDemoMode()) {
+                    ctx->backend->model().setNotice("RESET UNSUPPORTED IN LIVE MODE; NO DSP CHANGE");
+                    return;
+                }
                 ctx->backend->model().resetToDefaults();
                 ctx->backend->model().setNotice("ALL UI DEMO PARAMETERS RESET TO DEFAULTS IN RAM");
             } else if (ctx->action == 1) {

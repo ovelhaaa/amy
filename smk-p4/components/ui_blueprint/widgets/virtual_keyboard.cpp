@@ -117,7 +117,7 @@ void updateKeyVisuals(KeyboardState& state) {
     }
 }
 
-void releaseActiveSlots(KeyboardState& state) {
+void releaseActiveSlots(KeyboardState& state, bool update_visuals=true) {
     if (!state.backend) return;
     for (size_t i = 0; i < state.key_count; ++i) {
         KeySlot& slot = state.keys[i];
@@ -125,7 +125,7 @@ void releaseActiveSlots(KeyboardState& state) {
             state.backend->requestNoteOff(slot.active_note, slot.active_token);
             slot.pressed = false;
             slot.active_token = 0;
-            if (slot.btn) {
+            if (update_visuals && slot.btn) {
                 lv_obj_remove_state(slot.btn, LV_STATE_PRESSED);
             }
         }
@@ -137,6 +137,14 @@ void onKeyboardKeyEvent(lv_event_t* e) {
     auto* slot = static_cast<KeySlot*>(lv_event_get_user_data(e));
     if (!slot || !slot->owner || !slot->owner->backend) return;
     KeyboardState& state = *slot->owner;
+    if (code == LV_EVENT_DELETE) {
+        if (slot->pressed) state.backend->requestNoteOff(slot->active_note, slot->active_token);
+        slot->pressed=false; slot->active_token=0; slot->btn=nullptr; slot->lbl=nullptr;
+        return;
+    }
+    // Split and harmony keyboards are visual previews; never send live notes.
+    if (!state.backend->isDemoMode() &&
+        (state.mode == KeyboardDisplayMode::SplitZones || state.mode == KeyboardDisplayMode::HarmonyView)) return;
 
     if (code == LV_EVENT_PRESSED) {
         // Guard against duplicate PRESSED without an intervening release
@@ -198,7 +206,12 @@ lv_obj_t* createVirtualKeyboard(lv_obj_t* parent, IUiBackend& backend, UiNavigat
             if (lv_event_get_code(e) == LV_EVENT_DELETE) {
                 auto* st = static_cast<KeyboardState*>(lv_event_get_user_data(e));
                 if (st) {
-                    releaseActiveSlots(*st);
+                    // LVGL 9.3 sends parent DELETE before child DELETE. Detach callbacks
+                    // referencing KeySlot storage before freeing it; no child accesses here.
+                    releaseActiveSlots(*st, false);
+                    for (size_t i=0;i<st->key_count;++i) {
+                        if (st->keys[i].btn) lv_obj_remove_event_cb(st->keys[i].btn, onKeyboardKeyEvent);
+                    }
                     lv_obj_set_user_data(st->box, nullptr);
                     delete st;
                 }

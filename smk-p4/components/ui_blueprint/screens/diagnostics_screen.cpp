@@ -12,6 +12,11 @@ public:
 
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager&) override {
         const auto& d = backend.model().diagnostics();
+        if(!backend.isDemoMode()) {
+            createLabel(parent,"LIVE SNAPSHOTS | UNMEASURED VALUES ARE N/A | TOUCH LEASE 10s",8,4,784,&lv_font_montserrat_14,palette::kAccentPrimary);
+            for(unsigned i=0;i<16;++i) live_[i]=createLabel(parent,"",8+(i/8)*396,42+(i%8)*40,388,&lv_font_montserrat_14,palette::kTextPrimary);
+            refresh(backend); return true;
+        }
 
         // 1. Explicit UI DEMO Telemetry Honesty Banner (Section 5 Tela 14 requirement)
         lv_obj_t* banner = lv_obj_create(parent);
@@ -118,7 +123,35 @@ public:
         return true;
     }
 
-    void refresh(IUiBackend&) override {}
+    void refresh(IUiBackend& backend) override {
+        if(backend.isDemoMode() || !live_[0]) return;
+        const auto& d=backend.model().diagnostics();
+        lv_label_set_text(live_[0],d.firmware_version);
+        lv_label_set_text(live_[1],d.amy_status);
+        lv_label_set_text_fmt(live_[2],"I2S: %s | USB: %s",d.i2s_status,d.usb_status);
+        lv_label_set_text_fmt(live_[3],"VOICES: %u/%u (logical gates)",d.active_voices,d.max_voices);
+        lv_label_set_text_fmt(live_[4],"RENDER MAX: %lu / %lu us",(unsigned long)d.render_max_us,(unsigned long)d.budget_us);
+        lv_label_set_text_fmt(live_[5],"RENDER DEADLINES: %lu",(unsigned long)d.deadline_misses);
+        lv_label_set_text(live_[6],"DMA UNDERRUNS / METERS: N/A");
+        lv_label_set_text_fmt(live_[7],"UPTIME: %lu ms | NAV: %lu",(unsigned long)d.uptime_ms,(unsigned long)d.screen_switches);
+        lv_label_set_text_fmt(live_[8],"LVGL FREE: %lu",(unsigned long)d.lvgl_free_bytes);
+        lv_label_set_text_fmt(live_[9],"LVGL LARGEST: %lu",(unsigned long)d.lvgl_largest_block);
+        lv_label_set_text_fmt(live_[10],"LVGL PEAK: %lu FRAG: %u%%",(unsigned long)d.lvgl_peak_used,d.lvgl_frag_pct);
+        lv_label_set_text_fmt(live_[11],"INTERNAL FREE: %lu",(unsigned long)d.free_internal_ram);
+        lv_label_set_text_fmt(live_[12],"PSRAM FREE: %lu",(unsigned long)d.free_psram);
+        if(!d.memory_valid) {
+            lv_label_set_text(live_[8],"LVGL FREE: N/A (WAIT SAMPLE)");
+            lv_label_set_text(live_[9],"LVGL LARGEST: N/A");
+            lv_label_set_text(live_[10],"LVGL PEAK / FRAG: N/A");
+            lv_label_set_text(live_[11],"INTERNAL FREE: N/A");
+            lv_label_set_text(live_[12],"PSRAM FREE: N/A");
+        }
+        lv_label_set_text(live_[13],"MORE METRICS: 5s SERIAL LOG");
+        lv_label_set_text_fmt(live_[14],"CMD: %s",commandStateLabel(backend.lastCommandState()));
+        lv_label_set_text(live_[15],backend.model().lastNotice());
+    }
+private:
+    lv_obj_t* live_[16]{};
 };
 
 } // namespace

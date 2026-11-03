@@ -36,6 +36,8 @@ jobs:
             environment: guition-link
           - project: smk-p4
             environment: guition-standalone
+          - project: smk-p4
+            environment: guition-standalone-blueprint
           - project: smk-s3
             environment: esp32-s3-link
     steps:
@@ -53,3 +55,20 @@ jobs:
       - name: Verify standalone target and safe hardware defaults
         if: matrix.environment == 'guition-standalone'
         run: python smk-p4/tests/check_standalone_build.py
+
+  blueprint-live-host:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install platformio==6.1.18
+      - name: Resolve pinned LVGL via existing firmware build
+        run: pio run -d smk-p4 -e guition-standalone-blueprint
+      - name: Demo regression, live adapter lifecycle and real AMY coexistence
+        shell: pwsh
+        run: |
+          ./smk-p4/ui-preview/run_preview.ps1
+          ./smk-p4/tests/run_amy.ps1
+          ./smk-p4/tests/run_blueprint_adapter.ps1

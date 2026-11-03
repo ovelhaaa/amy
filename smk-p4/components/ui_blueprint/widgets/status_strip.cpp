@@ -97,6 +97,7 @@ void StatusStrip::refresh(IUiBackend& backend, UiNavigationManager& nav) {
     const auto& patch = backend.model().activePatch();
     if (patch_lbl_) {
         std::snprintf(patch_buf_, sizeof(patch_buf_), "%03u %s", patch.id, patch.name);
+        if (!backend.isDemoMode() && !backend.isConnected()) std::snprintf(patch_buf_, sizeof(patch_buf_), "PATCH: WAIT OWNER");
         lv_label_set_text_static(patch_lbl_, patch_buf_);
         lv_obj_invalidate(patch_lbl_);
     }
@@ -106,7 +107,7 @@ void StatusStrip::refresh(IUiBackend& backend, UiNavigationManager& nav) {
             lv_label_set_text_static(midi_lbl_, diag.active_voices > 0 ? "MIDI: DEMO*" : "MIDI: DEMO");
         } else if (backend.hasMidiError()) {
             lv_label_set_text_static(midi_lbl_, "MIDI: ERR");
-        } else if (backend.isConnected()) {
+        } else if (diag.midi_connected) {
             lv_label_set_text_static(midi_lbl_, diag.active_voices > 0 ? "MIDI: ON*" : "MIDI: OK");
         } else {
             lv_label_set_text_static(midi_lbl_, "MIDI: WAIT");
@@ -114,7 +115,7 @@ void StatusStrip::refresh(IUiBackend& backend, UiNavigationManager& nav) {
         lv_obj_invalidate(midi_lbl_);
     }
     if (audio_lbl_) {
-        lv_label_set_text_static(audio_lbl_, backend.isDemoMode() ? "AUD: SIM" : "AUD: 48K");
+        lv_label_set_text_static(audio_lbl_, backend.isDemoMode() ? "AUD: SIM" : diag.audio_live ? "AUD: RUN" : "AUD: OFF");
         lv_obj_invalidate(audio_lbl_);
     }
     if (voices_lbl_) {

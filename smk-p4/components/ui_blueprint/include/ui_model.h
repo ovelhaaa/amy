@@ -80,6 +80,9 @@ struct HarmonyPreviewResult {
 
 struct DiagnosticsSnapshot {
     bool        is_demo_mode         = true;
+    bool        midi_connected       = false;
+    bool        audio_live           = false;
+    bool        memory_valid         = false;
     const char* firmware_version     = "SMK-P4 BLUEPRINT 1.1 (DEMO)";
     const char* amy_status           = "DISCONNECTED (UI DEMO)";
     const char* i2s_status           = "NOT INITIALIZED (UI DEMO)";

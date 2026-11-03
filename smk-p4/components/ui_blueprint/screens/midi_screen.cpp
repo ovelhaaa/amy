@@ -33,7 +33,7 @@ public:
         lv_obj_set_pos(dev_card, 556, 4);
         lv_obj_set_size(dev_card, 236, 36);
         lv_obj_set_style_pad_all(dev_card, 4, 0);
-        createLabel(dev_card, "USB: SMK25 V2 [DEMO]", 6, 4, 220,
+        usb_label_=createLabel(dev_card, backend.isDemoMode() ? "USB: SMK25 V2 [DEMO]" : backend.model().diagnostics().usb_status, 6, 4, 220,
                     &lv_font_montserrat_14, palette::kAccentPrimary);
 
         if (tab == 0) {
@@ -129,7 +129,11 @@ public:
         return true;
     }
 
-    void refresh(IUiBackend&) override {}
+    void refresh(IUiBackend& backend) override {
+        if(usb_label_ && !backend.isDemoMode()) lv_label_set_text_fmt(usb_label_,"USB: %s",backend.model().diagnostics().usb_status);
+    }
+private:
+    lv_obj_t* usb_label_=nullptr;
 };
 
 } // namespace

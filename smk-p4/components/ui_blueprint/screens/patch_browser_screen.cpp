@@ -37,6 +37,7 @@ public:
     ScreenId id() const override { return ScreenId::PatchBrowser; }
 
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
+        nav_=&nav; shown_patch_=backend.model().activePatch().id;
         auto cb = [](lv_event_t* e) {
             if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
             auto* ctx = static_cast<BrowserActionCtx*>(lv_event_get_user_data(e));
@@ -66,6 +67,7 @@ public:
                     g_browser.target_layer = (g_browser.target_layer == 0) ? 1 : 0;
                     break;
                 case 7: {
+                    if (!ctx->backend->isDemoMode()) break;
                     const UiCommandResult r = ctx->backend->requestNoteOn(60, 100);
                     if (r.accepted()) {
                         ctx->backend->requestNoteOff(60, r.token);
@@ -182,6 +184,7 @@ public:
         createLabel(insp, macros_line, 8, 104, 254, &lv_font_montserrat_14, palette::kTextPrimary);
 
         const char* status_note =
+            (!backend.isDemoMode() && g_browser.target_layer != 0) ? "LAYER B PLANNED; NO DSP" :
             (cur.status == FeatureStatus::Available) ? "P4 RUNTIME: AMY ROM READY"
           : (cur.status == FeatureStatus::Planned)   ? "S3/AMY ROM: PLANNED FOR P4"
                                                      : "DEMO SLOT: UI RAM PROTOTYPE";
@@ -194,7 +197,7 @@ public:
             insp, backend.model().isFavorite(cur.id) ? "FAVORITE: YES *" : "FAVORITE: NO",
             8, 204, 242, 38, nullptr, nullptr, backend.model().isFavorite(cur.id), false);
         lv_obj_t* prv_btn = createActionButton(
-            insp, "AUDITION DEMO NOTE (RAM)",
+            insp, backend.isDemoMode() ? "AUDITION DEMO NOTE (RAM)" : "AUDITION: USE STAGE KEYS",
             8, 248, 242, 38, nullptr, nullptr, false, true);
 
         if (tgt_btn) attachLvContext<BrowserActionCtx>(tgt_btn, BrowserActionCtx{&backend, &nav, 6, 0}, cb, LV_EVENT_CLICKED);
@@ -204,7 +207,12 @@ public:
         return true;
     }
 
-    void refresh(IUiBackend&) override {}
+    void refresh(IUiBackend& backend) override {
+        if(nav_ && shown_patch_!=backend.model().activePatch().id) nav_->requestNavigateTo(ScreenId::PatchBrowser);
+    }
+private:
+    UiNavigationManager* nav_=nullptr;
+    uint16_t shown_patch_=0;
 };
 
 } // namespace

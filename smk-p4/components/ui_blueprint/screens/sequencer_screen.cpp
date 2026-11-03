@@ -46,7 +46,7 @@ public:
             if (!ctx || !ctx->backend || !ctx->nav) return;
             if (ctx->action == 0) {
                 const bool next = !ctx->backend->model().getBool("seq.playing", false);
-                ctx->backend->requestParameterBool("seq.playing", next);
+                if (!ctx->backend->requestParameterBool("seq.playing", next).accepted()) return;
                 ctx->backend->model().setNotice(next ? "DEMO SEQUENCER RUNNING (VISUAL ONLY)"
                                                      : "DEMO SEQUENCER STOPPED");
             } else if (ctx->action == 1) {
@@ -59,6 +59,10 @@ public:
             } else if (ctx->action == 2) {
                 ctx->backend->model().setNotice("DEMO PATTERN SNAPSHOT KEPT IN RAM (NO NVS WRITE)");
             } else if (ctx->action == 3) {
+                if (!ctx->backend->isDemoMode()) {
+                    ctx->backend->model().setNotice("RESET UNSUPPORTED IN LIVE MODE; NO DSP CHANGE");
+                    return;
+                }
                 ctx->backend->model().resetToDefaults();
                 ctx->backend->model().setNotice("DEFAULT DEMO PATTERN RESTORED IN RAM");
             }

@@ -13,7 +13,7 @@ lv_obj_t* createSignalMeter(lv_obj_t* parent, const char* title, uint8_t left_pc
     lv_obj_set_size(box, w, h);
 
     char hdr[48];
-    std::snprintf(hdr, sizeof(hdr), "%s %s", title ? title : "BUS", is_simulated ? "[SIM DEMO]" : "");
+    std::snprintf(hdr, sizeof(hdr), "%s %s", title ? title : "BUS", is_simulated ? "[SIM DEMO]" : "[N/A]");
     createLabel(box, hdr, 6, 2, w - 16, &lv_font_montserrat_14,
                 is_simulated ? palette::kWarning : palette::kTextPrimary);
 

@@ -95,7 +95,7 @@ public:
                 if (written > 0) pos += static_cast<size_t>(written);
             }
 
-            char summary[160];
+            char summary[224];
             std::snprintf(summary, sizeof(summary),
                           "IN: %s [%s]  ->  QUANT: %s  ->  CHORD (%u): %s   [TAP KEYS]",
                           in_s, harm.input_in_scale ? "IN SCALE" : "CORRECTED",

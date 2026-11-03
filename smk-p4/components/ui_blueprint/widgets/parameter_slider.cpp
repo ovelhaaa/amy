@@ -34,6 +34,7 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
     backend.model().getValue(param_id, pv);
     char vbuf[28];
     ParameterRegistry::formatValue(*desc, pv, vbuf, sizeof(vbuf));
+    if (!backend.isDemoMode() && status != FeatureStatus::Available) std::snprintf(vbuf,sizeof(vbuf),"PLAN");
 
     lv_obj_t* vlbl = nullptr;
     if (level == PresentationLevel::StageMinimal) {
@@ -104,6 +105,23 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
             LV_EVENT_VALUE_CHANGED);
     }
 
+    if (slider) {
+        attachLvContext<SliderCtx>(slider, SliderCtx{&backend, desc->id, vlbl}, [](lv_event_t* e) {
+            auto* ctx=static_cast<SliderCtx*>(lv_event_get_user_data(e));
+            auto* obj=static_cast<lv_obj_t*>(lv_event_get_target(e));
+            const auto* d=ParameterRegistry::findById(ctx->param_id);
+            ParameterValue value{}; ctx->backend->model().getValue(ctx->param_id,value);
+            char text[28]; ParameterRegistry::formatValue(*d,value,text,sizeof(text));
+            if(!ctx->backend->isDemoMode() && ctx->backend->parameterStatus(ctx->param_id)!=FeatureStatus::Available) std::snprintf(text,sizeof(text),"PLAN");
+            if(ctx->val_label) lv_label_set_text(ctx->val_label,text);
+            if(!lv_obj_has_state(obj,LV_STATE_PRESSED)) {
+                const float span=d->maximum-d->minimum;
+                lv_slider_set_value(obj,span>0?static_cast<int32_t>(std::lround((value.asFloat()-d->minimum)*100/span)):0,LV_ANIM_OFF);
+            }
+            if(ctx->backend->isParameterEditable(ctx->param_id)) lv_obj_remove_state(obj,LV_STATE_DISABLED);
+            else lv_obj_add_state(obj,LV_STATE_DISABLED);
+        }, LV_EVENT_REFRESH);
+    }
     return card;
 }
 

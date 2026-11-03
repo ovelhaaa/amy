@@ -61,6 +61,7 @@ lv_obj_t* createParameterKnob(lv_obj_t* parent, IUiBackend& backend, const char*
         backend.model().getValue(param_id, pv);
         char vbuf[24];
         ParameterRegistry::formatValue(*desc, pv, vbuf, sizeof(vbuf));
+    if (!backend.isDemoMode() && status != FeatureStatus::Available) std::snprintf(vbuf,sizeof(vbuf),"PLAN");
 
         const int32_t val_w = (level == PresentationLevel::StageMinimal) ? (w - 16) : (w - 62);
         lv_obj_t* vlbl = createLabel(card, vbuf, 6, h - 26, val_w, &lv_font_montserrat_14, palette::kAccentPrimary);

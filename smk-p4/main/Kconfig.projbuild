@@ -1,0 +1,12 @@
+menu "SMK-P4 presentation"
+config SMKP4_UI_BLUEPRINT
+    bool "Use Blueprint 1.1 with live Performance adapter"
+    depends on SMKP4_STANDALONE && !SMKP4_PCM_DIAGNOSTIC
+    default n
+    select LV_FONT_MONTSERRAT_14
+    select LV_FONT_MONTSERRAT_20
+    select LV_FONT_MONTSERRAT_28
+    help
+        Reuses the existing UI task and LVGL display/touch. Legacy UI remains
+        default until physical memory/audio integration gates pass.
+endmenu

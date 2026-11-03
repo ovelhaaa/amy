@@ -7,7 +7,12 @@
 #include "amy_runtime.h"
 #include "self_test.h"
 #include "local_performance_backend.h"
+#if defined(CONFIG_SMKP4_UI_BLUEPRINT)
+#include "ui_blueprint.h"
+#include "ui_blueprint_performance_adapter.h"
+#else
 #include "performance_ui.h"
+#endif
 #include "usb_midi_host.h"
 #include "standalone_boot.h"
 #include "esp_heap_caps.h"
@@ -224,7 +229,14 @@ extern "C" void app_main() {
 #endif
     const bool display_ready = smk::p4::beginDisplayTest(diagnostic);
     static smk::p4::LocalAmyPerformanceBackend backend(runtime.commands());
+    #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
+    if(snapshot_received) backend.publish(initial.engine,initial.running && initial.physical,initial.render_max_us,initial.render_deadlines);
+    static smk::p4::UiBlueprintPerformanceAdapter adapter(backend);
+    adapter.service(static_cast<uint32_t>(esp_timer_get_time()/1000));
+    static smk::p4::ui::UiBlueprint ui(adapter);
+#else
     static smk::p4::PerformanceUi ui(backend);
+#endif
     const bool ui_ready=display_ready && !diagnostic && ui.begin();
     if(!display_ready || (!diagnostic && !ui_ready)) ESP_LOGE(kTag,"Display/UI failed; audio owner continues");
     TickType_t last_report = xTaskGetTickCount();
@@ -260,6 +272,18 @@ extern "C" void app_main() {
                     (unsigned long long)(state.blocks?state.dma_total_us/state.blocks:0),(unsigned long)state.dma_max_us);
             }
             smk::p4::reportMemory();
+#if defined(CONFIG_SMKP4_UI_BLUEPRINT)
+            if(ui_ready) {
+                lv_mem_monitor_t memory{}; lv_mem_monitor(&memory);
+                auto& d=adapter.model().diagnostics();
+                d.memory_valid=true;
+                d.lvgl_free_bytes=memory.free_size; d.lvgl_largest_block=memory.free_biggest_size;
+                d.lvgl_peak_used=memory.max_used; d.lvgl_frag_pct=memory.frag_pct;
+                d.free_internal_ram=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+                d.free_psram=heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+                adapter.model().bumpRevision();
+            }
+#endif
 #if defined(CONFIG_SMKP4_USB_MIDI_TRACE)
             smk::p4::amy::UsbInput::Trace trace;
             for(unsigned i=0;i<4 && runtime.usbInput().popTrace(trace);++i)

@@ -1,5 +1,5 @@
-idf_component_register(
-    SRCS
+if(CONFIG_SMKP4_UI_BLUEPRINT OR CMAKE_PROJECT_NAME STREQUAL "smk_p4_ui_blueprint")
+set(blueprint_sources
         "src/ui_theme.cpp"
         "src/ui_parameters.cpp"
         "src/ui_model.cpp"
@@ -31,7 +31,12 @@ idf_component_register(
         "screens/midi_screen.cpp"
         "screens/settings_screen.cpp"
         "screens/diagnostics_screen.cpp"
+ )
+endif()
+idf_component_register(SRCS ${blueprint_sources}
     INCLUDE_DIRS "include"
     REQUIRES lvgl
 )
-target_compile_options(${COMPONENT_LIB} PRIVATE -Wall -Wextra -Werror)
+if(blueprint_sources)
+    target_compile_options(${COMPONENT_LIB} PRIVATE -Wall -Wextra -Werror)
+endif()

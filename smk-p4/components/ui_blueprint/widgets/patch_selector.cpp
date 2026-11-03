@@ -24,7 +24,7 @@ lv_obj_t* createPatchSelectorCard(lv_obj_t* parent, IUiBackend& backend, UiNavig
     const auto& patch = backend.model().activePatch();
     char title_buf[64];
     std::snprintf(title_buf, sizeof(title_buf), "%03u  %s", patch.id, patch.name);
-    createLabel(card, title_buf, 8, 2, 338, &lv_font_montserrat_20, palette::kTextPrimary);
+    lv_obj_t* title_lbl=createLabel(card, title_buf, 8, 2, 338, &lv_font_montserrat_20, palette::kTextPrimary);
 
     char sub_buf[80];
     if (level == PresentationLevel::StageMinimal) {
@@ -89,6 +89,13 @@ lv_obj_t* createPatchSelectorCard(lv_obj_t* parent, IUiBackend& backend, UiNavig
     if (brw_btn)  attachLvContext<PatchSelCtx>(brw_btn,  PatchSelCtx{&backend, &nav,  2}, handler, LV_EVENT_CLICKED);
     if (edt_btn)  attachLvContext<PatchSelCtx>(edt_btn,  PatchSelCtx{&backend, &nav,  4}, handler, LV_EVENT_CLICKED);
 
+    struct TitleCtx { IUiBackend* backend; };
+    attachLvContext<TitleCtx>(title_lbl, TitleCtx{&backend}, [](lv_event_t* e) {
+        auto* ctx=static_cast<TitleCtx*>(lv_event_get_user_data(e));
+        const auto& patch=ctx->backend->model().activePatch();
+        char text[64]; std::snprintf(text,sizeof(text),"%03u  %s",patch.id,patch.name);
+        lv_label_set_text(static_cast<lv_obj_t*>(lv_event_get_target(e)),text);
+    }, LV_EVENT_REFRESH);
     return card;
 }
 

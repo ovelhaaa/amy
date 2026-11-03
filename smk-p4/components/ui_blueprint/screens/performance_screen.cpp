@@ -60,6 +60,7 @@ public:
         char harm_buf[64];
         std::snprintf(harm_buf, sizeof(harm_buf), "HARM: %s %s | %s",
                       r_str, scale_on ? s_str : "OFF", chord_on ? c_str : "OFF");
+        if (!backend.isDemoMode()) std::snprintf(harm_buf, sizeof(harm_buf), "HARMONY: PLANNED / PREVIEW");
 
         lv_obj_t* lmode_btn = createActionButton(strip, lmode_buf, 4, 1, 174, 32, nullptr, nullptr);
         lv_obj_t* harm_btn  = createActionButton(strip, harm_buf, 184, 1, 266, 32, nullptr, nullptr,
