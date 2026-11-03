@@ -26,6 +26,13 @@ int main() {
     mock_event(at(18,392),LV_EVENT_PRESSED); service(5);
     mock_event(at(674,4),LV_EVENT_CLICKED); service(6); assert(!runtime.snapshot().active_notes);
     service(7); assert(!runtime.snapshot().active_notes);
+    lv_obj_t* midi=nullptr;
+    for(unsigned i=1;i<mock_count;++i) if(mock_objects[i].x==320 && mock_objects[i].y==14) midi=&mock_objects[i];
+    assert(midi && std::strcmp(midi->text,"MIDI OFF")==0);
+    backend.publishMidi(true,false,1); service(10); assert(std::strcmp(midi->text,"MIDI *")==0);
+    service(300); assert(std::strcmp(midi->text,"MIDI ON")==0);
+    backend.publishMidi(false,true,1); service(310); assert(std::strcmp(midi->text,"MIDI ERROR")==0);
+    backend.publishMidi(false,false,1); service(320); assert(std::strcmp(midi->text,"MIDI OFF")==0);
     mock_event(at(570,50),LV_EVENT_CLICKED); service(500); service(1000);
     assert(runtime.snapshot().patch_id==135);
     service(1001); mock_event(at(18,392),LV_EVENT_PRESSED); service(1002);

@@ -296,7 +296,7 @@ void PerformanceUi::service(uint32_t now_ms) {
     for(auto* key:keys_) enable(key,playable);
     enable(page_previous_,online && page_>0); enable(page_next_,online && (page_+1)*8<backend_.patchCount());
     const bool activity=online && (s.flags&link::kUsbConnected) && uint32_t(now_ms-midi_changed_ms_)<150;
-    const char* midi=online && (s.flags&link::kUsbConnected)?(activity?"MIDI *":"MIDI ON"):"MIDI OFF";
+    const char* midi=backend_.midiError()?"MIDI ERROR":online && (s.flags&link::kUsbConnected)?(activity?"MIDI *":"MIDI ON"):"MIDI OFF";
     const bool warning=online && (misses_ || gaps_) && uint32_t(now_ms-warning_ms_)<2000;
     const char* audio=!online?"AUDIO --":backend_.local() && !(s.flags&link::kAudioLive)?"AUDIO RAM":!playable?"AUDIO STOP":warning?"AUDIO WARN":"AUDIO RUN";
     // Only change labels/styles when the visual state actually changes.

@@ -16,6 +16,7 @@ public:
     virtual const char* status() const=0;
     virtual const char* takeNotice() { return nullptr; }
     virtual bool local() const { return false; }
+    virtual bool midiError() const { return false; }
     virtual uint16_t patchCount() const=0;
     virtual uint16_t patchAt(uint16_t index) const=0;
     virtual bool patchInfo(uint16_t index,PatchInfo& info,uint32_t now_ms)=0;

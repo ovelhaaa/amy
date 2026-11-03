@@ -22,7 +22,8 @@ def main():
                      "CONFIG_ESP32P4_SELECTS_REV_LESS_V3"):
         assert f"#define {required} 1" in config, required
     for disabled in ("CONFIG_SMK_LINK_ENABLED", "CONFIG_SMKP4_PCM_WIRING_CONFIRMED",
-                     "CONFIG_SMKP4_PCM_TEST_SEQUENCE", "CONFIG_SMKP4_PCM_DIAGNOSTIC"):
+                     "CONFIG_SMKP4_PCM_TEST_SEQUENCE", "CONFIG_SMKP4_PCM_DIAGNOSTIC",
+                     "CONFIG_SMKP4_USB_WIRING_CONFIRMED"):
         assert f"#define {disabled} 1" not in config, disabled
     assert ("#define CONFIG_SMKP4_AMY_RAM_SELF_TEST 1" in config) == args.ram_self_test
     commands = json.loads((build / "compile_commands.json").read_text())
@@ -35,10 +36,21 @@ def main():
     command += " -DCONFIG_SMKP4_PCM_WIRING_CONFIRMED=1 -DCONFIG_SMKP4_PCM_TEST_SEQUENCE=1"
     subprocess.run(command if os.name == "nt" else shlex.split(command),
                    cwd=entry["directory"], check=True)
+    usb_command=command+" -DCONFIG_SMKP4_USB_WIRING_CONFIRMED=1 -DCONFIG_SMKP4_USB_CONTROLLER=0 -DCONFIG_SMKP4_USB_MIDI_TRACE=1"
+    usb_command=usb_command.replace('enabled-main-check.o','enabled-usb-main-check.o')
+    subprocess.run(usb_command if os.name == "nt" else shlex.split(usb_command),
+                   cwd=entry["directory"], check=True)
+    host_entry=next(item for item in commands if item["file"].endswith("usb_midi_host.cpp"))
+    host_command,count=re.subn(r'-o\s+("[^"]+"|\S+)',
+        f'-o "{(build / "enabled-host-check.o").as_posix()}"',host_entry["command"])
+    assert count==1
+    host_command+=" -DCONFIG_SMKP4_USB_DESCRIPTOR_LOG=1"
+    subprocess.run(host_command if os.name == "nt" else shlex.split(host_command),
+                   cwd=host_entry["directory"],check=True)
     command += " -DCONFIG_SMKP4_PCM_DIAGNOSTIC=1"
     subprocess.run(command if os.name == "nt" else shlex.split(command),
                    cwd=entry["directory"], check=True)
-    print("PASS: P4 ES, safe GPIO defaults, no P4Link and enabled AMY/diagnostic source compilation")
+    print("PASS: P4 ES, safe I2S/USB defaults, no P4Link; enabled AMY/diagnostic/USB/trace/descriptor source compilation")
 
 
 if __name__ == "__main__":

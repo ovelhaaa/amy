@@ -22,6 +22,7 @@ jobs:
         run: |
           ./tests/run_smk_link.ps1
           ./smk-p4/tests/run_host.ps1
+          ./smk-p4/tests/run_usb.ps1
           ./smk-p4/tests/run_amy.ps1
   build:
     runs-on: ubuntu-latest

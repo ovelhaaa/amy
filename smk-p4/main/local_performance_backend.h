@@ -13,7 +13,7 @@ public:
         std::snprintf(state_.patch_name,sizeof(state_.patch_name),"%s",index<0?"ERROR":amy::kPatches[index].name);
         state_.master=snapshot.master; state_.active_notes=snapshot.active_notes;
         state_.sample_rate_hz=amy::kSampleRateHz; state_.block_frames=amy::kBlockFrames;
-        state_.flags=output_live?link::kAudioLive:0;
+        state_.flags=(output_live?link::kAudioLive:0)|(midi_connected_?link::kUsbConnected:0);
         state_.max_render_us=max_render_us; state_.deadline_misses=deadlines;
         state_.commands_dropped=commands_.overflows();
         const uint32_t generation=commands_.generation();
@@ -21,6 +21,12 @@ public:
         ++revision_;
     }
     void service(uint32_t) override {}
+    void publishMidi(bool connected,bool error,uint32_t events) {
+        midi_connected_=connected; midi_error_=error; state_.midi_events=events;
+        if(connected) state_.flags|=link::kUsbConnected;
+        else state_.flags&=~link::kUsbConnected;
+    }
+    bool midiError() const override { return midi_error_; }
     bool connected() const override { return ready_; }
     bool busy() const override { return false; }
     bool local() const override { return true; }
@@ -63,5 +69,6 @@ private:
     amy::Commands& commands_; PerformanceState state_;
     uint32_t tokens_[128]{},revision_=0,generation_=0;
     bool ready_=false;
+    bool midi_connected_=false,midi_error_=false;
 };
 }

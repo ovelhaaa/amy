@@ -8,6 +8,7 @@
 #include "self_test.h"
 #include "local_performance_backend.h"
 #include "performance_ui.h"
+#include "usb_midi_host.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -24,6 +25,7 @@ namespace {
 using namespace smk::p4::audio;
 constexpr const char* kTag = "P4_AMY";
 smk::p4::amy::Runtime runtime;
+smk::p4::usb::Host usb_host(runtime.usbInput());
 struct Snapshot {
     smk::p4::amy::Snapshot engine;
     uint64_t frames = 0, render_total_us = 0, command_total_us = 0, dma_total_us = 0;
@@ -162,7 +164,7 @@ void audioTask(void*) {
 
 extern "C" void app_main() {
     if (!smk::p4::reportHardware()) return;
-    ESP_LOGI(kTag, "Standalone local AMY; no UART, USB Host, ES8311 or NS4150");
+    ESP_LOGI(kTag, "Standalone local AMY; USB opt-in; no UART, ES8311 or NS4150");
     ESP_LOGI(kTag, "PCM=%" PRIu32 "Hz signed16 stereo Philips; block=%u DMA=%ux%u MCLK=unused",
              kSampleRateHz, unsigned(kBlockFrames), kDmaDescriptors, unsigned(kBlockFrames));
     snapshots = xQueueCreateStatic(1, sizeof(Snapshot), snapshot_storage, &snapshot_control);
@@ -188,6 +190,14 @@ extern "C" void app_main() {
     constexpr unsigned boot_polls=200;
 #endif
     for(unsigned i=0;i<boot_polls && xQueuePeek(snapshots,&initial,0)!=pdTRUE;++i) vTaskDelay(pdMS_TO_TICKS(10));
+#if defined(CONFIG_SMKP4_USB_WIRING_CONFIRMED)
+#if defined(CONFIG_SMKP4_USB_MIDI_TRACE)
+    runtime.usbInput().enableTrace();
+#endif
+    if(initial.running && initial.engine.ready) {
+        if(!usb_host.begin(CONFIG_SMKP4_USB_CONTROLLER)) ESP_LOGE(kTag,"USB Host initialization failed; Touch remains available");
+    } else ESP_LOGE(kTag,"USB Host not started: audio owner unavailable");
+#endif
 #if defined(CONFIG_SMKP4_PCM_DIAGNOSTIC)
     constexpr bool diagnostic=true;
 #else
@@ -203,6 +213,8 @@ extern "C" void app_main() {
         Snapshot current;
         if(xQueuePeek(snapshots,&current,0)==pdTRUE)
             backend.publish(current.engine,current.running && current.physical,current.render_max_us,current.render_deadlines);
+        backend.publishMidi(usb_host.state()==smk::p4::usb::Host::State::Connected,
+            usb_host.state()==smk::p4::usb::Host::State::Error,runtime.usbInput().events.load());
         if (display_ready) smk::p4::serviceDisplayTest();
         if(ui_ready) ui.service(static_cast<uint32_t>(esp_timer_get_time()/1000));
         if (xTaskGetTickCount() - last_report >= pdMS_TO_TICKS(smk::p4::config::kDiagnosticsIntervalMs)) {
@@ -229,6 +241,19 @@ extern "C" void app_main() {
                     (unsigned long long)(state.blocks?state.dma_total_us/state.blocks:0),(unsigned long)state.dma_max_us);
             }
             smk::p4::reportMemory();
+#if defined(CONFIG_SMKP4_USB_MIDI_TRACE)
+            smk::p4::amy::UsbInput::Trace trace;
+            for(unsigned i=0;i<4 && runtime.usbInput().popTrace(trace);++i)
+                ESP_LOGI(kTag,"MIDI_TRACE t_ms=%lu cable=%u channel=%u packet=%02x %02x %02x %02x trace_dropped=%lu",
+                    (unsigned long)trace.timestamp_ms,unsigned(trace.packet[0]>>4),unsigned((trace.packet[1]&15)+1),
+                    trace.packet[0],trace.packet[1],trace.packet[2],trace.packet[3],(unsigned long)runtime.usbInput().trace_dropped.load());
+#endif
+            ESP_LOGI(kTag,"USB state=%u connects=%lu disconnects=%lu errors=%lu events=%lu parse_errors=%lu dropped=%lu queue=%lu overflow=%lu stack_free=%lu polyphony_rejected=%lu",
+                unsigned(usb_host.state()),(unsigned long)usb_host.connects(),(unsigned long)usb_host.disconnects(),
+                (unsigned long)usb_host.errors(),(unsigned long)runtime.usbInput().events.load(),
+                (unsigned long)runtime.usbInput().parse_errors.load(),(unsigned long)runtime.usbInput().dropped.load(),
+                (unsigned long)runtime.usbInput().commands.depth(),(unsigned long)runtime.usbInput().commands.overflows(),
+                (unsigned long)usb_host.stackFree(),(unsigned long)state.engine.polyphony_rejected);
         }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
