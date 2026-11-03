@@ -541,3 +541,86 @@ Próximo menor passo: capturar tecla real no trace anterior à validação, corr
 somente a causa comprovada e repetir Note On/Off; depois sustain/bend/mod,
 identidade Touch+USB, Panic, hot-plug e30min sob carga.
 Não substituir dados elétricos por troca de controlador ou injeção de5V.
+
+## Atualização de bancada — 2026-11-03 (substitui o checkpoint acima)
+
+O operador escolheu retomar standalone e diagnóstico MIDI. Antes da gravação,
+a imagem de display encontrada na placa foi preservada integralmente em
+`build/p403a/flash_before_resume_trace.bin` (16 MiB), SHA256
+`a17653a1cf83758a47fe8011da370da5fa5432793b6046617c8287c5cccf0bc9`.
+
+### MIDI real e testes musicais
+
+A captura contínua mostrou pares de eventos equivalentes nos cabos virtuais 0 e 1:
+`09 90 3c 50 / 19 90 3c 50`, depois `08 80 3c 40 / 18 80 3c 40`.
+O parser rejeitava o cabo não selecionado e descartava a transferência inteira.
+Commit `fe1d44cb` passou a ignorar e contar cabos auxiliares, roteando somente 0,
+sem duplicar notas. Pacotes malformados no cabo selecionado continuam rejeitados.
+Testes reproduzem esses bytes reais, incluindo isolamento de resets auxiliares.
+Cabos virtuais fazem parte do formato USB MIDI 1.0, seção 4:
+https://www.usb.org/sites/default/files/midi10.pdf.
+
+MANUAL — operador confirmou som limpo pelo PCM5102A em nota/release, acorde de
+quatro notas, velocidades suave/forte, Pitch Bend e Modulation. Confirmou C4 de
+USB e Touch com releases independentes nas duas ordens; Master, patches 128/135,
+Browser, oitava, Panic seguido de nova nota e sustain independente do Touch.
+A captura `build/p403a/cable_fixed_runtime.log` registrou 3974 eventos selecionados
+e 3974 pacotes auxiliares ignorados, sem erro de parsing, drop MIDI ou overflow.
+`trace_dropped` é perda do diagnóstico limitado, não descarte de eventos musicais.
+A polifonia permanece limitada a quatro vozes; rejeições por limite são contadas.
+
+### Correção da idade de eventos
+
+Sob input real apareceu `latency_max_ms=4294967295`: o produtor podia marcar um
+evento 1 ms depois do instante amostrado pelo consumidor antes de drenar a fila.
+A subtração unsigned também podia expirar uma nota recém-chegada. Commit
+`1360fec8` usa idade zero para timestamp futuro dentro da comparação modular
+existente. Testes AMY reais cobrem USB, Touch, expiração legítima e wrap de relógio.
+PASS `./smk-p4/tests/run_amy.ps1` e build standalone. Imagem arquivada em
+`build/p403a/time_fixed_image`, SHA256
+`c67b3c56efb4de443dc771319bdfb551261f8a11ef664bd25c17afc150ec57b5`.
+
+### Hot-plug: recuperação funcional, contagem incorreta detectada
+
+O operador confirmou explicitamente um ciclo no HS com nota mantida: a nota
+parou ao retirar e voltou a tocar após reconectar. Contudo, a captura contínua
+`build/p403a/final_soak_runtime.log` mostrou connects=2, disconnects=0, errors=2.
+Esse resultado não aprova hot-plug nem soak. A janela foi preservada e interrompida
+para correção; não se apagaram os erros. Até uptime 1221845 ms: 149 eventos,
+149 pacotes auxiliares, parsing/drop/overflow=0, latência máxima observada 6 ms,
+DSP máximo 1804 us, render/compute deadlines=0, clipping/OOM=0, erros/timeouts
+I2S=0. DMA underruns continuam UNMEASURED; latência é idade da fila, não medição
+física tecla–saída.
+
+O SDK define NO_DEVICE como transferência cujo dispositivo desapareceu e pode
+entregar esse callback antes de DEV_GONE. O Host tratava essa conclusão como erro,
+fechava o handle e perdia a contagem posterior; ainda tentava o endereço removido.
+A correção centraliza cancelamento e contagem idempotentes nas duas notificações,
+aguarda NEW_DEV e mantém o drain antes de liberar recursos. PASS
+`./smk-p4/tests/run_usb.ps1`: regressões nas duas ordens de callback, uma única
+mudança de geração/Panic, zero erro, ausência de retry após 2 s e reconexão.
+Build e confirmação física dessa correção ainda pendentes neste checkpoint.
+
+### Estado atual dos gates
+
+Gate1 PASS. Gate2 PASS funcional por procedimento e confirmação do operador;
+dados elétricos quantitativos ainda MANUAL. Gate3 PASS parsing e execução MIDI;
+hot-plug corrigido em teste mock, confirmação no novo firmware pendente. Gate4
+MANUAL confirmado para os controles e independência descritos. Gate5 NOT RUN:
+nenhuma janela contínua de 30 min aceita após as correções. Não declarar release
+estável ou aptidão para palco com base nestes checkpoints.
+
+Não houve mudança no core AMY, driver PCM, dependências ou nova UI. A alteração
+fica na aplicação/adaptador P4, com operações USB na tarefa proprietária e sem
+novo trabalho no render de áudio. Permanecem não fornecidos os valores de VCC,
+straps e detalhes quantitativos da origem/proteção VBUS; a qualificação elétrica
+foi declarada pelo operador. Não se introduziu ligação ou injeção de 5 V.
+
+PASS build nativo da correção de hot-plug:
+`C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-standalone`,
+231,89 s; Flash 1157206 bytes. Imagem arquivada em
+`build/p403a/hotplug_fixed_image`, SHA256
+`eeafaf9b05384189445febc5400358e4e8e43bb5aa4f99f6469647623503325b`.
+Configuração preserva PCM GPIO50/51/52 e Host HS controlador0 qualificados pelo
+operador. `git diff --check` PASS. A confirmação física da correção e o soak
+continuam pendentes; o resultado de compilação não os substitui.

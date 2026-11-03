@@ -53,6 +53,22 @@ int main() {
         close(h); assert(mock_usb::allocations==mock_usb::frees);
         mock_usb::descriptor[12]=0;
     }
+    // Physical removal can complete the transfer before or after DEV_GONE.
+    for(bool callback_first:{false,true}) {
+        mock_usb::reset(); usb::Host detached(input); assert(detached.initialize(0)); connect(detached);
+        const auto generation=input.commands.generation();
+        mock_usb::event(callback_first?10:USB_HOST_CLIENT_EVENT_DEV_GONE);
+        detached.service();
+        mock_usb::event(callback_first?USB_HOST_CLIENT_EVENT_DEV_GONE:10);
+        detached.service();
+        assert(detached.disconnects()==1 && detached.errors()==0);
+        assert(input.commands.generation()==generation+1);
+        mock_time::us+=2000000; detached.service();
+        assert(detached.state()==usb::Host::State::Disconnected && detached.connects()==1);
+        connect(detached);
+        assert(detached.connects()==2 && detached.state()==usb::Host::State::Connected);
+        close(detached); assert(mock_usb::allocations==mock_usb::frees);
+    }
     // Every failure retains resources until callbacks and dependent APIs finish.
     for(unsigned fault=0;fault<10;++fault) {
         mock_usb::reset(); usb::Host h(input);

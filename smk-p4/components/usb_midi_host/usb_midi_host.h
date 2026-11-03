@@ -31,6 +31,7 @@ private:
     static void received(usb_transfer_t*);
     void open(uint8_t);
     void fail(bool retry);
+    void deviceGone();
     bool cleanup();
     amy::UsbInput& input_;
     usb_host_client_handle_t client_=nullptr;
@@ -40,6 +41,7 @@ private:
     uint8_t pending_[16]{};
     unsigned transfer_bytes_=0;
     bool installed_=false, claimed_=false, inflight_=false, closing_=false;
+    bool device_gone_=false;
     uint32_t retry_at_ms_=0;
     std::atomic<State> state_{State::Disabled};
     std::atomic<uint32_t> connects_{0},disconnects_{0},errors_{0},stack_free_{0};

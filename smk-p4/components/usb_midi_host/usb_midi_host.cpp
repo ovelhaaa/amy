@@ -57,16 +57,22 @@ void Host::event(const usb_host_client_event_msg_t* e,void* ctx) {
         const unsigned a=e->new_dev.address;
         if(a && a<128) h.pending_[a/8]|=1U<<(a%8);
     } else if(e->event==USB_HOST_CLIENT_EVENT_DEV_GONE && e->dev_gone.dev_hdl==h.device_) {
-        ++h.disconnects_; h.retry_address_=0;
-        h.input_.disconnect(); h.closing_=true; h.state_=State::Disconnected;
+        h.deviceGone();
     }
 }
 void Host::fail(bool retry) {
     ++errors_; input_.disconnect(); state_=State::Error; closing_=true;
     retry_address_=retry?address_:0; retry_at_ms_=nowMs()+kRetryMs;
 }
+void Host::deviceGone() {
+    // IDF may deliver NO_DEVICE before DEV_GONE. Count/cancel once and
+    // await a fresh NEW_DEV instead of retrying the removed address.
+    if(device_gone_) return;
+    device_gone_=true; ++disconnects_; retry_address_=0;
+    input_.disconnect(); closing_=true; state_=State::Disconnected;
+}
 void Host::open(uint8_t address) {
-    address_=address; input_.disconnect();
+    address_=address; device_gone_=false; input_.disconnect();
     if(usb_host_device_open(client_,address,&device_)!=ESP_OK) { device_=nullptr; fail(false); return; }
     const usb_device_desc_t* dd=nullptr; const usb_config_desc_t* cfg=nullptr;
     if(usb_host_get_device_descriptor(device_,&dd)!=ESP_OK || !dd ||
@@ -95,6 +101,7 @@ void Host::open(uint8_t address) {
 }
 void Host::received(usb_transfer_t* t) {
     auto& h=*static_cast<Host*>(t->context); h.inflight_=false;
+    if(t->status==USB_TRANSFER_STATUS_NO_DEVICE) { h.deviceGone(); return; }
     if(h.closing_ || h.stopping_) return;
     if(t->status!=USB_TRANSFER_STATUS_COMPLETED || t->actual_num_bytes<0 ||
        t->actual_num_bytes>t->num_bytes || t->actual_num_bytes>t->data_buffer_size ||
