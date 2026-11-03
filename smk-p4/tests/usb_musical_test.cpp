@@ -154,6 +154,27 @@ int main() {
     assert(r.snapshot().active_notes==1 && usb.parse_errors==parse_errors_before);
     assert(usb.transfer(dual_off,sizeof(dual_off),1)); r.apply(1); audio(r);
     assert(!r.snapshot().active_notes && usb.ignored_cable_packets==2);
+    // The producer may enqueue after the owner's once-per-block clock sample.
+    // Such a fresh gate must neither expire nor poison maximum latency.
+    const uint32_t latency_before=r.snapshot().command_latency_max_ms;
+    const uint8_t timed_on[]={9,0x90,60,100}, timed_off[]={8,0x80,60,0};
+    assert(usb.transfer(timed_on,sizeof(timed_on),101)); r.apply(100);
+    assert(r.snapshot().active_notes==1 && r.snapshot().command_latency_max_ms==latency_before);
+    assert(usb.transfer(timed_off,sizeof(timed_off),102)); r.apply(101);
+    assert(!r.snapshot().active_notes && r.snapshot().command_latency_max_ms==latency_before);
+    const auto future_touch=ui.nextToken();
+    assert(ui.push({CommandType::NoteOn,60,100,0,future_touch,201})); r.apply(200);
+    assert(r.snapshot().active_notes==1 && r.snapshot().command_latency_max_ms==latency_before);
+    ui.release(60,future_touch); r.apply(201); assert(!r.snapshot().active_notes);
+    // Truly stale gates remain rejected, while a recent pre-wrap timestamp
+    // is accepted after wrap. A just-future timestamp across wrap has age zero.
+    assert(usb.transfer(timed_on,sizeof(timed_on),1)); r.apply(1+kLeaseMs);
+    assert(!r.snapshot().active_notes);
+    assert(eventAgeMs(1,0xfffffffdU)==4 && eventAgeMs(0xffffffffU,0)==0);
+    assert(usb.transfer(timed_on,sizeof(timed_on),0xfffffffdU)); r.apply(1);
+    assert(r.snapshot().active_notes==1);
+    assert(usb.transfer(timed_off,sizeof(timed_off),2)); r.apply(1);
+    assert(!r.snapshot().active_notes && r.snapshot().command_latency_max_ms<0x80000000U);
     // Two independent SPSC producers, one real AMY owner, finite stress.
     std::atomic<unsigned> done{0};
     std::thread touch([&] {

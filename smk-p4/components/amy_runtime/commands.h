@@ -46,4 +46,10 @@ private:
     std::atomic<uint32_t> read_{0},write_{0},generation_{1},overflows_{0},released_[128]{};
 };
 inline bool atOrAfter(uint32_t a,uint32_t b) { return static_cast<int32_t>(a-b)>=0; }
+// The owner samples its clock before draining. A concurrent producer can
+// timestamp a command just after that sample; it is fresh, not UINT32_MAX ms
+// old. Modular ordering also preserves normal clock wrap (intervals <2^31 ms).
+inline uint32_t eventAgeMs(uint32_t now_ms,uint32_t timestamp_ms) {
+    return atOrAfter(now_ms,timestamp_ms)?now_ms-timestamp_ms:0;
+}
 }

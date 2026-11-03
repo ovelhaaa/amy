@@ -101,7 +101,7 @@ void Runtime::applyUsb(uint32_t now_ms) {
     Command c;
     for(unsigned n=0;n<kCommandCapacity && q.pop(c);++n) {
         if(c.generation!=usb_generation_ || c.generation!=q.generation()) continue;
-        const uint32_t latency=now_ms-c.timestamp_ms;
+        const uint32_t latency=eventAgeMs(now_ms,c.timestamp_ms);
         if(latency>state_.command_latency_max_ms) state_.command_latency_max_ms=latency;
         if(c.channel>=16) { ++state_.invalid_commands; continue; }
         if(c.type==CommandType::NoteOn || c.type==CommandType::NoteOff) {
@@ -166,7 +166,7 @@ void Runtime::apply(uint32_t now_ms) {
     Command c;
     for(unsigned i=0;i<kCommandCapacity && commands_.pop(c);++i) {
         if(c.generation!=state_.generation || c.generation!=commands_.generation()) continue;
-        const uint32_t latency=now_ms-c.timestamp_ms;
+        const uint32_t latency=eventAgeMs(now_ms,c.timestamp_ms);
         if(latency>state_.command_latency_max_ms) state_.command_latency_max_ms=latency;
         if(c.type==CommandType::NoteOn) {
             if(c.id>=128 || c.value>127 || !c.token) { ++state_.invalid_commands; continue; }
