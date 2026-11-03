@@ -1,11 +1,13 @@
 """Read-only verification of the recorded 0.3A bundle/config; never flashes.
 
 No implicit search in another worktree. Binary verification needs --image-dir;
---sdkconfig compares a generated build to the recorded musical profile.
+--sdkconfig checks the requested profile; --config-header also checks what
+Kconfig emitted for the compiler, catching a stale PlatformIO cache.
 """
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 
 
@@ -24,7 +26,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image-dir", type=Path)
     parser.add_argument("--sdkconfig", type=Path)
+    parser.add_argument("--config-header", type=Path)
     args = parser.parse_args()
+    if args.config_header and not args.sdkconfig:
+        parser.error("--config-header requires --sdkconfig for input/output comparison")
     root = Path(__file__).resolve().parents[1] / "docs" / "baselines"
     manifest = json.loads((root / "standalone_03a.json").read_text())
     for name, expected in manifest["tracked_reference_files"].items():
@@ -52,7 +57,17 @@ def main():
         for key, expected in manifest["required_config"].items():
             if generated.get(key, "n") != expected:
                 raise SystemExit(f"FAIL: generated config mismatch: {key}")
-        print("PASS: effective musical build configuration; not binary/audio qualification")
+        print("PASS: requested musical sdkconfig profile")
+        if args.config_header:
+            compiled = dict(re.findall(r"^#define\s+(CONFIG_\w+)\s+([^\r\n]+)",
+                                       args.config_header.read_text(), re.MULTILINE))
+            for key, value in manifest["required_config"].items():
+                expected = None if value == "n" else "1" if value == "y" else value
+                if compiled.get(key) != expected:
+                    raise SystemExit(f"FAIL: effective header mismatch: {key}")
+            print("PASS: effective musical C configuration; not binary/audio qualification")
+        else:
+            print("NOT RUN: effective C configuration (supply --config-header)")
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 from verify_03a_reference import config_values
@@ -26,7 +27,8 @@ class ReferenceTests(unittest.TestCase):
         result = self.run_check("--sdkconfig", self.frozen)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("NOT RUN: exact binary", result.stdout)
-        self.assertIn("PASS: effective musical", result.stdout)
+        self.assertIn("PASS: requested musical", result.stdout)
+        self.assertIn("NOT RUN: effective C configuration", result.stdout)
 
     def test_no_implicit_bundle_fallback(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -41,6 +43,30 @@ class ReferenceTests(unittest.TestCase):
             result = self.run_check("--sdkconfig", config)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("CONFIG_SMKP4_USB_CONTROLLER", result.stderr)
+
+    def generated_header(self, path, stale=False):
+        manifest = json.loads((self.frozen.parent / "standalone_03a.json").read_text())
+        lines = []
+        for key, value in manifest["required_config"].items():
+            if value == "n" or (stale and key == "CONFIG_SMKP4_USB_WIRING_CONFIRMED"):
+                continue
+            lines.append(f"#define {key} {'1' if value == 'y' else value}")
+        path.write_text("\n".join(lines)+"\n")
+
+    def test_matching_compiled_header(self):
+        with tempfile.TemporaryDirectory() as directory:
+            header = Path(directory) / "sdkconfig.h"
+            self.generated_header(header)
+            result = self.run_check("--sdkconfig", self.frozen, "--config-header", header)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_stale_compiled_header_is_not_equivalent_to_requested_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            header = Path(directory) / "sdkconfig.h"
+            self.generated_header(header, stale=True)
+            result = self.run_check("--sdkconfig", self.frozen, "--config-header", header)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("effective header mismatch: CONFIG_SMKP4_USB_WIRING_CONFIRMED", result.stderr)
 
 
 if __name__ == "__main__":
