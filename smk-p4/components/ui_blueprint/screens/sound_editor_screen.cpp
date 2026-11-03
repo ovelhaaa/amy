@@ -12,7 +12,7 @@ class SoundEditorScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::SoundEditor; }
 
-    bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav) override {
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
         const uint8_t tab = nav.subTab(ScreenId::SoundEditor) % 7;
 
         // 1. Sub-tab bar (y = 4..40)
@@ -66,13 +66,13 @@ public:
                     lv_obj_set_size(algo_card, 784, 94);
                     char atxt[120];
                     std::snprintf(atxt, sizeof(atxt),
-                                  "DX7 6-OP ROUTING [ALGO %ld] : [OP6 fb] -> [OP5] -> [OP4] -> [OP3]  +  [OP2] -> [OP1 CARRIER]",
+                                  "DX7 6-OP ROUTING [ALGO %ld] : [OP6 fb] -> [OP5] -> [OP4] -> [OP3] + [OP2] -> [OP1 CARRIER]",
                                   static_cast<long>(backend.model().getInt("fm.algo", 1)));
                     createLabel(algo_card, atxt, 8, 8, 756, &lv_font_montserrat_14, palette::kTextPrimary);
                     createLabel(algo_card,
                                 patch.family == SynthFamily::FM
-                                    ? "FM FAMILY ACTIVE: Operator controls enabled in UI Demo; runtime AMY uses pre-materialized ROM 128/135."
-                                    : "NON-FM PATCH SELECTED: FM operator controls marked UNAVAILABLE for subtractive/PCM patches.",
+                                    ? "FM FAMILY ACTIVE: Operator controls enabled in UI Demo; P4 uses ROM 128/135."
+                                    : "NON-FM PATCH SELECTED: FM operator controls marked UNAVAILABLE for this patch.",
                                 8, 38, 756, &lv_font_montserrat_14, palette::kTextSecondary);
                 }
                 break;
@@ -94,7 +94,7 @@ public:
                     createLabel(fcard, "BIQUAD / ZDF FILTER TOPOLOGY NOTES", 8, 6, 420,
                                 &lv_font_montserrat_14, palette::kAccentPrimary);
                     createLabel(fcard,
-                                "AMY supports LPF12/BPF/HPF/LPF24 per voice. Real-time filter modulation is PLANNED for P4 standalone.",
+                                "AMY supports LPF12/BPF/HPF/LPF24 per voice. Real-time filter mod is PLANNED on P4.",
                                 8, 34, 756, &lv_font_montserrat_14, palette::kTextSecondary);
                 }
                 break;
@@ -134,7 +134,7 @@ public:
         return true;
     }
 
-    void refresh(UiDemoBackend&) override {}
+    void refresh(IUiBackend&) override {}
 };
 
 } // namespace

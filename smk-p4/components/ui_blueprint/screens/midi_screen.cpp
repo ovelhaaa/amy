@@ -12,7 +12,7 @@ constexpr const char* kMidiTabs[2] = {
 };
 
 struct MidiLearnBtnCtx {
-    UiDemoBackend*       backend = nullptr;
+    IUiBackend*          backend = nullptr;
     UiNavigationManager* nav     = nullptr;
     uint8_t              slot    = 0;
     int                  action  = 0; // 0=ToggleLearn, 1=DecCC, 2=IncCC
@@ -22,7 +22,7 @@ class MidiScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::MidiSettings; }
 
-    bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav) override {
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
         const uint8_t tab = nav.subTab(ScreenId::MidiSettings) % 2;
 
         // 1. Sub-tab bar (y = 4..40)
@@ -46,8 +46,10 @@ public:
             // Row 2: Planned MIDI routing & velocity/clock features (y = 158..264)
             createParameterCard(parent, backend, "midi.vel_curve",  8,   158, 190, 104);
             createParameterCard(parent, backend, "midi.clock_sync", 206, 158, 190, 104);
-            createParameterCard(parent, backend, "layer_a.channel", 404, 158, 190, 104);
-            createParameterCard(parent, backend, "layer_b.channel", 602, 158, 190, 104);
+            createParameterCard(parent, backend, "layer_a.channel", 404, 158, 190, 104,
+                                PresentationLevel::BlueprintVerbose, "LAYER A CH");
+            createParameterCard(parent, backend, "layer_b.channel", 602, 158, 190, 104,
+                                PresentationLevel::BlueprintVerbose, "LAYER B CH");
 
             // Row 3: USB-MIDI Implementation Status Summary (y = 272..386)
             lv_obj_t* info = lv_obj_create(parent);
@@ -127,7 +129,7 @@ public:
         return true;
     }
 
-    void refresh(UiDemoBackend&) override {}
+    void refresh(IUiBackend&) override {}
 };
 
 } // namespace

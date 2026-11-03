@@ -10,7 +10,7 @@ class EffectsScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::Effects; }
 
-    bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager&) override {
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager&) override {
         // 1. Top FX Chain & AMY Support Classification Banner (y = 4..42)
         lv_obj_t* banner = lv_obj_create(parent);
         applyPanelStyle(banner, true);
@@ -41,7 +41,7 @@ public:
         return true;
     }
 
-    void refresh(UiDemoBackend&) override {}
+    void refresh(IUiBackend&) override {}
 };
 
 } // namespace

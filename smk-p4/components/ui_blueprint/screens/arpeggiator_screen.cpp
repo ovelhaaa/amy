@@ -10,7 +10,7 @@ class ArpeggiatorScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::Arpeggiator; }
 
-    bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav) override {
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
         // 1. Row 1: Enable, Latch, Tempo BPM, Clock Source (y = 4..104)
         createParameterCard(parent, backend, "arp.enable",       8,   4, 190, 98);
         createParameterCard(parent, backend, "arp.latch",        206, 4, 190, 98);
@@ -42,7 +42,7 @@ public:
         return true;
     }
 
-    void refresh(UiDemoBackend&) override {}
+    void refresh(IUiBackend&) override {}
 };
 
 } // namespace

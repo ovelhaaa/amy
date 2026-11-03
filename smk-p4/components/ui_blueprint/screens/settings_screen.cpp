@@ -7,7 +7,7 @@ namespace smk::p4::ui {
 namespace {
 
 struct SysActionCtx {
-    UiDemoBackend*       backend = nullptr;
+    IUiBackend*          backend = nullptr;
     UiNavigationManager* nav     = nullptr;
     int                  action  = 0; // 0=ResetDefaults, 1=BackupNotice, 2=RestoreNotice
 };
@@ -16,7 +16,7 @@ class SettingsScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::GlobalSettings; }
 
-    bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav) override {
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
         // 1. Row 1: Display, Theme, Sample Rate (Read-Only), Master Tuning, Boot Mode (y = 4..116)
         createParameterCard(parent, backend, "sys.brightness",       8,   4, 190, 108);
         createParameterCard(parent, backend, "sys.theme",            206, 4, 190, 108);
@@ -57,7 +57,7 @@ public:
         createStatusBadge(store_card, FeatureStatus::Demo, 700, 4);
 
         createLabel(store_card,
-                    "FW: SMK-P4 UI BLUEPRINT 1.0  |  TARGET: GUITION JC-ESP32P4-M3  |  LVGL 9.3.0 / ESP-IDF 5.5.2",
+                    "FW: SMK-P4 UI BLUEPRINT 1.1  |  TARGET: GUITION JC-ESP32P4-M3  |  LVGL 9.3.0 / ESP-IDF 5.5.2",
                     8, 28, 760, &lv_font_montserrat_14, palette::kTextPrimary);
         createLabel(store_card,
                     "PERSISTENCE POLICY: NVS/Flash writes are strictly disabled in UI Demo. All edits live only in RAM.",
@@ -89,7 +89,7 @@ public:
         return true;
     }
 
-    void refresh(UiDemoBackend&) override {}
+    void refresh(IUiBackend&) override {}
 };
 
 } // namespace

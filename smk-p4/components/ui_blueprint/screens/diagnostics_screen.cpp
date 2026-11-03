@@ -10,7 +10,7 @@ class DiagnosticsScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::Diagnostics; }
 
-    bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager&) override {
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager&) override {
         const auto& d = backend.model().diagnostics();
 
         // 1. Explicit UI DEMO Telemetry Honesty Banner (Section 5 Tela 14 requirement)
@@ -113,12 +113,12 @@ public:
         createLabel(c6, "DISPLAY: 800x480 HORIZONTAL", 6, 56, 240, &lv_font_montserrat_14, palette::kTextPrimary);
         createLabel(c6, "INT RAM / PSRAM: TARGET ONLY", 6, 82, 240, &lv_font_montserrat_14, palette::kTextSecondary);
         createLabel(c6, "NVS WRITES: 0 (STRICT RAM)", 6, 108, 240, &lv_font_montserrat_14, palette::kActive);
-        createLabel(c6, backend.model().lastNotice(), 6, 134, 240, &lv_font_montserrat_14, palette::kAccentPrimary);
+        createLabel(c6, backend.statusText(), 6, 134, 240, &lv_font_montserrat_14, palette::kAccentPrimary);
 
         return true;
     }
 
-    void refresh(UiDemoBackend&) override {}
+    void refresh(IUiBackend&) override {}
 };
 
 } // namespace

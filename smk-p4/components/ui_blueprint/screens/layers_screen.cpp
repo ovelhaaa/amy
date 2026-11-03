@@ -7,7 +7,7 @@ namespace smk::p4::ui {
 namespace {
 
 struct LayerModeBtnCtx {
-    UiDemoBackend*       backend = nullptr;
+    IUiBackend*          backend = nullptr;
     UiNavigationManager* nav     = nullptr;
     int32_t              mode    = 0;
 };
@@ -16,7 +16,7 @@ class LayersScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::Layers; }
 
-    bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav) override {
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
         // 1. Top Performance Mode Selector (SINGLE A | SINGLE B | DUAL LAYER | SPLIT A/B)
         static constexpr const char* kModes[4] = {
             "SINGLE LAYER A", "SINGLE LAYER B", "DUAL LAYER A+B", "KEYBOARD SPLIT A/B"
@@ -32,7 +32,7 @@ public:
                         if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
                         auto* ctx = static_cast<LayerModeBtnCtx*>(lv_event_get_user_data(e));
                         if (!ctx || !ctx->backend || !ctx->nav) return;
-                        ctx->backend->model().setInt("perf.layer_mode", ctx->mode);
+                        ctx->backend->requestParameterInt("perf.layer_mode", ctx->mode);
                         ctx->nav->navigateTo(ScreenId::Layers);
                     },
                     LV_EVENT_CLICKED);
@@ -89,11 +89,16 @@ public:
                       static_cast<long>(backend.model().getInt("layer_b.key_high", 96)));
         createLabel(parent, zone_info, 10, 270, 780, &lv_font_montserrat_14, palette::kTextSecondary);
 
-        createVirtualKeyboard(parent, backend, nav, KeyboardDisplayMode::SplitZones, 8, 290, 784, 98);
+        kb_ = createVirtualKeyboard(parent, backend, nav, KeyboardDisplayMode::SplitZones, 8, 290, 784, 98);
         return true;
     }
 
-    void refresh(UiDemoBackend&) override {}
+    void refresh(IUiBackend&) override {
+        if (kb_) refreshVirtualKeyboard(kb_);
+    }
+
+private:
+    lv_obj_t* kb_ = nullptr;
 };
 
 } // namespace

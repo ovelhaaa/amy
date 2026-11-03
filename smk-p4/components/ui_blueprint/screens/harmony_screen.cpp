@@ -23,7 +23,7 @@ class HarmonyScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::Harmony; }
 
-    bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav) override {
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
         const uint8_t tab = nav.subTab(ScreenId::Harmony) % 2;
 
         // 1. Sub-tab selector (y = 4..40)
@@ -64,42 +64,55 @@ public:
         }
 
         // 3. Live Harmony Calculation Inspector Strip (y = 224..266)
-        const HarmonyPreviewResult harm = backend.model().computeHarmony(backend.model().lastPreviewNote());
         lv_obj_t* insp = lv_obj_create(parent);
         applyPanelStyle(insp, false);
         lv_obj_set_pos(insp, 8, 224);
         lv_obj_set_size(insp, 784, 42);
         lv_obj_set_style_pad_all(insp, 4, 0);
 
-        char in_s[20], q_s[20], chord_s[96]{};
-        formatMidiNote(harm.input_note, in_s, sizeof(in_s));
-        formatMidiNote(harm.quantized_note, q_s, sizeof(q_s));
-
-        size_t pos = 0;
-        for (uint8_t i = 0; i < harm.chord_count; ++i) {
-            const uint8_t cn = harm.chord_notes[i];
-            const int written = std::snprintf(
-                chord_s + pos, sizeof(chord_s) - pos, "%s%s%d",
-                (i > 0) ? " + " : "", kPitchNames[cn % 12], int(cn / 12) - 1);
-            if (written > 0) pos += static_cast<size_t>(written);
-        }
-
-        char summary[160];
-        std::snprintf(summary, sizeof(summary),
-                      "IN: %s [%s]  ->  QUANTIZED: %s  ->  CHORD (%u): %s   [TAP KEYS TO TEST]",
-                      in_s, harm.input_in_scale ? "IN SCALE" : "CORRECTED",
-                      q_s, harm.chord_count, chord_s);
-        createLabel(insp, summary, 6, 6, 768, &lv_font_montserrat_14,
-                    harm.input_in_scale ? palette::kActive : palette::kAccentPrimary);
+        summary_lbl_ = createLabel(insp, "", 6, 6, 768, &lv_font_montserrat_14, palette::kActive);
 
         // 4. 2-Octave Harmony Visualizer Touch Keyboard (y = 270..388)
-        // Colors: Green = Quantized Root, Amber = Generated Chord Tones, Red = Out-of-Scale Input, Light Blue = Scale Degrees
-        createVirtualKeyboard(parent, backend, nav, KeyboardDisplayMode::HarmonyView, 8, 270, 784, 118);
+        kb_ = createVirtualKeyboard(parent, backend, nav, KeyboardDisplayMode::HarmonyView, 8, 270, 784, 118);
 
+        refresh(backend);
         return true;
     }
 
-    void refresh(UiDemoBackend&) override {}
+    void refresh(IUiBackend& backend) override {
+        if (summary_lbl_) {
+            const HarmonyPreviewResult harm = backend.model().computeHarmony(backend.model().lastPreviewNote());
+            char in_s[20], q_s[20], chord_s[96]{};
+            formatMidiNote(harm.input_note, in_s, sizeof(in_s));
+            formatMidiNote(harm.quantized_note, q_s, sizeof(q_s));
+
+            size_t pos = 0;
+            for (uint8_t i = 0; i < harm.chord_count; ++i) {
+                const uint8_t cn = harm.chord_notes[i];
+                const int written = std::snprintf(
+                    chord_s + pos, sizeof(chord_s) - pos, "%s%s%d",
+                    (i > 0) ? " + " : "", kPitchNames[cn % 12], int(cn / 12) - 1);
+                if (written > 0) pos += static_cast<size_t>(written);
+            }
+
+            char summary[160];
+            std::snprintf(summary, sizeof(summary),
+                          "IN: %s [%s]  ->  QUANT: %s  ->  CHORD (%u): %s   [TAP KEYS]",
+                          in_s, harm.input_in_scale ? "IN SCALE" : "CORRECTED",
+                          q_s, harm.chord_count, chord_s);
+            lv_label_set_text(summary_lbl_, summary);
+            lv_obj_set_style_text_color(
+                summary_lbl_,
+                lv_color_hex(harm.input_in_scale ? palette::kActive : palette::kAccentPrimary), 0);
+        }
+        if (kb_) {
+            refreshVirtualKeyboard(kb_);
+        }
+    }
+
+private:
+    lv_obj_t* summary_lbl_ = nullptr;
+    lv_obj_t* kb_          = nullptr;
 };
 
 } // namespace

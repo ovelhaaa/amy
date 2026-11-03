@@ -6,21 +6,27 @@ namespace smk::p4::ui {
 
 namespace {
 
+// Preserved across screen switches so Macro Bank 1-4 / 5-8 selection stays sticky on stage
+uint8_t g_macro_bank = 0;
+
 struct PerfActionCtx {
-    UiDemoBackend*       backend = nullptr;
+    IUiBackend*          backend = nullptr;
     UiNavigationManager* nav     = nullptr;
-    int                  action  = 0; // 0=CycleLayerMode, 1=GoHarmony, 2=ToggleCompactView, 3=OctDown, 4=OctUp
+    int                  action  = 0; // 0=CycleLayerMode, 1=GoHarmony, 2=ToggleStageMode, 3=OctDown, 4=OctUp, 5=ToggleMacroBank
 };
 
 class PerformanceScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::Performance; }
 
-    bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav) override {
-        // 1. Top Patch Selector Card (y = 4..62)
-        createPatchSelectorCard(parent, backend, nav, 8, 4, 784, 58);
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
+        const uint8_t view_mode = nav.subTab(ScreenId::Performance) % 2; // 0=MACRO FOCUS, 1=KEYS FOCUS
+        const auto& patch = backend.model().activePatch();
 
-        // 2. Stage Quick Status & Mode Strip (y = 66..104)
+        // 1. Dominant Stage Patch Banner (y = 4..62, StageMinimal)
+        createPatchSelectorCard(parent, backend, nav, 8, 4, 784, 58, PresentationLevel::StageMinimal);
+
+        // 2. Stage Control & Focus Strip (y = 66..104)
         lv_obj_t* strip = lv_obj_create(parent);
         applyPanelStyle(strip, false);
         lv_obj_set_pos(strip, 8, 66);
@@ -34,7 +40,7 @@ public:
         if (lmode_desc) {
             char tmp[20];
             ParameterRegistry::formatValue(*lmode_desc, lmode_pv, tmp, sizeof(tmp));
-            std::snprintf(lmode_buf, sizeof(lmode_buf), "MODE: %s", tmp);
+            std::snprintf(lmode_buf, sizeof(lmode_buf), "LAYER: %s", tmp);
         }
 
         const bool scale_on = backend.model().getBool("harmony.scale_enable", true);
@@ -52,21 +58,30 @@ public:
             ParameterRegistry::formatValue(*d, chord_pv, c_str, sizeof(c_str));
 
         char harm_buf[64];
-        std::snprintf(harm_buf, sizeof(harm_buf), "SCALE: %s %s [%s] | CHORD: %s",
-                      r_str, s_str, scale_on ? "ON" : "OFF", chord_on ? c_str : "OFF");
+        std::snprintf(harm_buf, sizeof(harm_buf), "HARM: %s %s | %s",
+                      r_str, scale_on ? s_str : "OFF", chord_on ? c_str : "OFF");
 
-        const uint8_t view_mode = nav.subTab(ScreenId::Performance);
-        lv_obj_t* lmode_btn = createActionButton(strip, lmode_buf, 4, 1, 180, 32, nullptr, nullptr);
-        lv_obj_t* harm_btn  = createActionButton(strip, harm_buf, 190, 1, 356, 32, nullptr, nullptr,
+        lv_obj_t* lmode_btn = createActionButton(strip, lmode_buf, 4, 1, 174, 32, nullptr, nullptr);
+        lv_obj_t* harm_btn  = createActionButton(strip, harm_buf, 184, 1, 266, 32, nullptr, nullptr,
                                                  scale_on || chord_on, false);
-        char bpm_buf[24];
-        std::snprintf(bpm_buf, sizeof(bpm_buf), "%.1f BPM",
-                      static_cast<double>(backend.model().getFloat("perf.bpm", 120.0f)));
-        createLabel(strip, bpm_buf, 554, 8, 86, &lv_font_montserrat_14, palette::kAccentPrimary);
+
+        lv_obj_t* bank_btn = nullptr;
+        if (view_mode == 0) {
+            bank_btn = createActionButton(
+                strip,
+                (g_macro_bank == 0) ? "BANK: MACROS 1-4" : "BANK: MACROS 5-8",
+                456, 1, 158, 32, nullptr, nullptr, g_macro_bank == 1, false);
+        } else {
+            char st_buf[32];
+            std::snprintf(st_buf, sizeof(st_buf), "CMD: %s", commandStateLabel(backend.lastCommandState()));
+            status_lbl_ = createLabel(strip, st_buf, 460, 7, 152,
+                                      &lv_font_montserrat_14, palette::kAccentPrimary);
+        }
 
         lv_obj_t* view_btn = createActionButton(
-            strip, view_mode == 0 ? "VIEW: 8 MACROS" : "VIEW: 2-OCT KEYS",
-            644, 1, 132, 32, nullptr, nullptr, false, true);
+            strip,
+            view_mode == 0 ? "KEYS FOCUS >" : "< MACRO FOCUS",
+            620, 1, 156, 32, nullptr, nullptr, false, true);
 
         auto act_cb = [](lv_event_t* e) {
             if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
@@ -74,7 +89,7 @@ public:
             if (!ctx || !ctx->backend || !ctx->nav) return;
             if (ctx->action == 0) {
                 const int32_t cur = ctx->backend->model().getInt("perf.layer_mode", 0);
-                ctx->backend->model().setInt("perf.layer_mode", (cur + 1) % 4);
+                ctx->backend->requestParameterInt("perf.layer_mode", (cur + 1) % 4);
                 ctx->nav->navigateTo(ScreenId::Performance, ctx->nav->subTab(ScreenId::Performance));
             } else if (ctx->action == 1) {
                 ctx->nav->navigateTo(ScreenId::Harmony);
@@ -83,11 +98,14 @@ public:
                 ctx->nav->navigateTo(ScreenId::Performance, next_tab);
             } else if (ctx->action == 3) {
                 const int32_t oct = ctx->backend->model().getInt("perf.octave_shift", 0);
-                ctx->backend->model().setInt("perf.octave_shift", oct - 1);
-                ctx->nav->navigateTo(ScreenId::Performance, ctx->nav->subTab(ScreenId::Performance));
+                ctx->backend->requestParameterInt("perf.octave_shift", oct - 1);
+                ctx->nav->refreshActive();
             } else if (ctx->action == 4) {
                 const int32_t oct = ctx->backend->model().getInt("perf.octave_shift", 0);
-                ctx->backend->model().setInt("perf.octave_shift", oct + 1);
+                ctx->backend->requestParameterInt("perf.octave_shift", oct + 1);
+                ctx->nav->refreshActive();
+            } else if (ctx->action == 5) {
+                g_macro_bank = (g_macro_bank == 0) ? 1 : 0;
                 ctx->nav->navigateTo(ScreenId::Performance, ctx->nav->subTab(ScreenId::Performance));
             }
         };
@@ -95,6 +113,7 @@ public:
         if (lmode_btn) attachLvContext<PerfActionCtx>(lmode_btn, PerfActionCtx{&backend, &nav, 0}, act_cb, LV_EVENT_CLICKED);
         if (harm_btn)  attachLvContext<PerfActionCtx>(harm_btn,  PerfActionCtx{&backend, &nav, 1}, act_cb, LV_EVENT_CLICKED);
         if (view_btn)  attachLvContext<PerfActionCtx>(view_btn,  PerfActionCtx{&backend, &nav, 2}, act_cb, LV_EVENT_CLICKED);
+        if (bank_btn)  attachLvContext<PerfActionCtx>(bank_btn,  PerfActionCtx{&backend, &nav, 5}, act_cb, LV_EVENT_CLICKED);
 
         static constexpr const char* kMacroIds[8] = {
             "perf.macro.1", "perf.macro.2", "perf.macro.3", "perf.macro.4",
@@ -102,45 +121,82 @@ public:
         };
 
         if (view_mode == 0) {
-            // Detailed 8-Macro Grid (4x2, y = 108..264)
-            for (uint8_t i = 0; i < 8; ++i) {
-                const int32_t mx = 8 + (i % 4) * 198;
-                const int32_t my = 108 + (i / 4) * 78;
-                createParameterSlider(parent, backend, kMacroIds[i], mx, my, 190, 74);
+            // ── MACRO FOCUS (SMK25 Physical Controller Stage View) ────────────
+            // 4 Large Macros per page (2x2 grid of 388x76 cards, y = 108..264)
+            const uint8_t base_m = (g_macro_bank == 0) ? 0 : 4;
+            for (uint8_t i = 0; i < 4; ++i) {
+                const uint8_t m_idx = static_cast<uint8_t>(base_m + i);
+                const int32_t mx = 8 + (i % 2) * 396;
+                const int32_t my = 108 + (i / 2) * 78;
+                char m_label[24];
+                std::snprintf(m_label, sizeof(m_label), "M%u  %s",
+                              unsigned(m_idx + 1), patch.macro_labels[m_idx]);
+                createParameterSlider(parent, backend, kMacroIds[m_idx], mx, my, 388, 74,
+                                      PresentationLevel::StageMinimal, m_label);
             }
 
-            // Bottom Stage Control Bar: Master Volume + Octave + 1-Octave Stage Keyboard (y = 268..388)
-            createParameterSlider(parent, backend, "perf.master_volume", 8, 268, 232, 74);
+            // Bottom Performance Deck: Master Volume + Octave + 1-Octave Stage Keyboard (y = 268..388)
+            createParameterSlider(parent, backend, "perf.master_volume", 8, 268, 232, 72,
+                                  PresentationLevel::StageMinimal, "MASTER LEVEL");
 
-            lv_obj_t* oct_dn = createActionButton(parent, "OCT -", 8, 346, 112, 42, nullptr, nullptr);
-            lv_obj_t* oct_up = createActionButton(parent, "OCT +", 128, 346, 112, 42, nullptr, nullptr);
+            lv_obj_t* oct_dn = createActionButton(parent, "OCT -", 8, 344, 82, 44, nullptr, nullptr);
+            oct_lbl_ = createLabel(parent, "OCT +0", 92, 356, 60, &lv_font_montserrat_14, palette::kAccentPrimary);
+            if (oct_lbl_) lv_obj_set_style_text_align(oct_lbl_, LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_t* oct_up = createActionButton(parent, "OCT +", 158, 344, 82, 44, nullptr, nullptr);
+
             if (oct_dn) attachLvContext<PerfActionCtx>(oct_dn, PerfActionCtx{&backend, &nav, 3}, act_cb, LV_EVENT_CLICKED);
             if (oct_up) attachLvContext<PerfActionCtx>(oct_up, PerfActionCtx{&backend, &nav, 4}, act_cb, LV_EVENT_CLICKED);
 
-            createVirtualKeyboard(parent, backend, nav, KeyboardDisplayMode::StagePlay, 248, 268, 544, 120);
+            kb_ = createVirtualKeyboard(parent, backend, nav, KeyboardDisplayMode::StagePlay, 248, 268, 544, 120);
         } else {
-            // Compact 4-Knob + Full-Width 2-Octave Keyboard View
+            // ── KEYS FOCUS (Direct Touchscreen Performance View) ──────────────
+            // 4 Compact Macros (y = 108..214) + Master Volume + Octave + Large 2-Octave Keyboard (y = 218..388)
             for (uint8_t i = 0; i < 4; ++i) {
-                createParameterKnob(parent, backend, kMacroIds[i], 8 + i * 136, 108, 130, 114);
+                char m_label[24];
+                std::snprintf(m_label, sizeof(m_label), "M%u %s",
+                              unsigned(i + 1), patch.macro_labels[i]);
+                createParameterKnob(parent, backend, kMacroIds[i], 8 + i * 136, 108, 130, 106,
+                                    PresentationLevel::StageMinimal, m_label);
             }
-            createParameterSlider(parent, backend, "perf.master_volume", 552, 108, 240, 74);
-            notice_lbl_ = createLabel(parent, backend.model().lastNotice(), 554, 190, 236,
-                                      &lv_font_montserrat_14, palette::kTextSecondary);
+            createParameterSlider(parent, backend, "perf.master_volume", 552, 108, 240, 64,
+                                  PresentationLevel::StageMinimal, "MASTER LEVEL");
 
-            createVirtualKeyboard(parent, backend, nav, KeyboardDisplayMode::HarmonyView, 8, 226, 784, 162);
+            lv_obj_t* oct_dn = createActionButton(parent, "OCT -", 552, 176, 86, 38, nullptr, nullptr);
+            oct_lbl_ = createLabel(parent, "OCT +0", 642, 185, 60, &lv_font_montserrat_14, palette::kAccentPrimary);
+            if (oct_lbl_) lv_obj_set_style_text_align(oct_lbl_, LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_t* oct_up = createActionButton(parent, "OCT +", 706, 176, 86, 38, nullptr, nullptr);
+
+            if (oct_dn) attachLvContext<PerfActionCtx>(oct_dn, PerfActionCtx{&backend, &nav, 3}, act_cb, LV_EVENT_CLICKED);
+            if (oct_up) attachLvContext<PerfActionCtx>(oct_up, PerfActionCtx{&backend, &nav, 4}, act_cb, LV_EVENT_CLICKED);
+
+            kb_ = createVirtualKeyboard(parent, backend, nav, KeyboardDisplayMode::StageKeys2Oct, 8, 218, 784, 170);
         }
 
+        refresh(backend);
         return true;
     }
 
-    void refresh(UiDemoBackend& backend) override {
-        if (notice_lbl_) {
-            lv_label_set_text(notice_lbl_, backend.model().lastNotice());
+    void refresh(IUiBackend& backend) override {
+        if (oct_lbl_) {
+            const int32_t oct = backend.model().getInt("perf.octave_shift", 0);
+            char obuf[16];
+            std::snprintf(obuf, sizeof(obuf), "OCT %+ld", static_cast<long>(oct));
+            lv_label_set_text(oct_lbl_, obuf);
+        }
+        if (status_lbl_) {
+            char st_buf[32];
+            std::snprintf(st_buf, sizeof(st_buf), "CMD: %s", commandStateLabel(backend.lastCommandState()));
+            lv_label_set_text(status_lbl_, st_buf);
+        }
+        if (kb_) {
+            refreshVirtualKeyboard(kb_);
         }
     }
 
 private:
-    lv_obj_t* notice_lbl_ = nullptr;
+    lv_obj_t* oct_lbl_    = nullptr;
+    lv_obj_t* status_lbl_ = nullptr;
+    lv_obj_t* kb_         = nullptr;
 };
 
 } // namespace

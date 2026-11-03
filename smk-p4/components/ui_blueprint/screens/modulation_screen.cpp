@@ -12,7 +12,7 @@ class ModulationScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::Modulation; }
 
-    bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav) override {
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
         const uint8_t page = nav.subTab(ScreenId::Modulation) % 2;
 
         // 1. Page selector (y = 4..40)
@@ -38,7 +38,7 @@ public:
         return true;
     }
 
-    void refresh(UiDemoBackend&) override {}
+    void refresh(IUiBackend&) override {}
 };
 
 } // namespace

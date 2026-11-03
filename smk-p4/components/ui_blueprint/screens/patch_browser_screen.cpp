@@ -17,7 +17,7 @@ struct BrowserState {
 BrowserState g_browser{};
 
 struct BrowserActionCtx {
-    UiDemoBackend*       backend = nullptr;
+    IUiBackend*          backend = nullptr;
     UiNavigationManager* nav     = nullptr;
     uint8_t              kind    = 0; // 0=Bank, 1=Category, 2=SelectPatch, 3=PagePrev, 4=PageNext, 5=FavToggle, 6=LayerTarget, 7=PreviewNote
     uint16_t             value   = 0;
@@ -36,7 +36,7 @@ class PatchBrowserScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::PatchBrowser; }
 
-    bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav) override {
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
         auto cb = [](lv_event_t* e) {
             if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
             auto* ctx = static_cast<BrowserActionCtx*>(lv_event_get_user_data(e));
@@ -51,7 +51,7 @@ public:
                     g_browser.page = 0;
                     break;
                 case 2:
-                    ctx->backend->model().selectPatchById(ctx->value, g_browser.target_layer);
+                    ctx->backend->requestSelectPatch(ctx->value, g_browser.target_layer);
                     break;
                 case 3:
                     if (g_browser.page > 0) --g_browser.page;
@@ -65,9 +65,13 @@ public:
                 case 6:
                     g_browser.target_layer = (g_browser.target_layer == 0) ? 1 : 0;
                     break;
-                case 7:
-                    ctx->backend->triggerNoteOn(60, 100);
+                case 7: {
+                    const UiCommandResult r = ctx->backend->requestNoteOn(60, 100);
+                    if (r.accepted()) {
+                        ctx->backend->requestNoteOff(60, r.token);
+                    }
                     break;
+                }
             }
             ctx->nav->navigateTo(ScreenId::PatchBrowser);
         };
@@ -173,12 +177,12 @@ public:
         createLabel(insp, meta2, 8, 82, 246, &lv_font_montserrat_14, palette::kActive);
 
         char macros_line[80];
-        std::snprintf(macros_line, sizeof(macros_line), "M1-4: %s/%s/%s/%s",
+        std::snprintf(macros_line, sizeof(macros_line), "M1-4: %s|%s|%s|%s",
                       cur.macro_labels[0], cur.macro_labels[1], cur.macro_labels[2], cur.macro_labels[3]);
-        createLabel(insp, macros_line, 8, 104, 246, &lv_font_montserrat_14, palette::kTextPrimary);
+        createLabel(insp, macros_line, 8, 104, 254, &lv_font_montserrat_14, palette::kTextPrimary);
 
         const char* status_note =
-            (cur.status == FeatureStatus::Available) ? "P4 RUNTIME: MATERIALIZED IN AMY"
+            (cur.status == FeatureStatus::Available) ? "P4 RUNTIME: AMY ROM READY"
           : (cur.status == FeatureStatus::Planned)   ? "S3/AMY ROM: PLANNED FOR P4"
                                                      : "DEMO SLOT: UI RAM PROTOTYPE";
         createLabel(insp, status_note, 8, 128, 246, &lv_font_montserrat_14, palette::kWarning);
@@ -200,7 +204,7 @@ public:
         return true;
     }
 
-    void refresh(UiDemoBackend&) override {}
+    void refresh(IUiBackend&) override {}
 };
 
 } // namespace

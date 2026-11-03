@@ -7,7 +7,7 @@ namespace smk::p4::ui {
 namespace {
 
 struct SeqActionCtx {
-    UiDemoBackend*       backend = nullptr;
+    IUiBackend*          backend = nullptr;
     UiNavigationManager* nav     = nullptr;
     int                  action  = 0; // 0=PlayStop, 1=Clear, 2=DemoSave, 3=DemoLoad
 };
@@ -16,7 +16,7 @@ class SequencerScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::Sequencer; }
 
-    bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav) override {
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
         // 1. Top Transport & Pattern Bar (y = 4..46)
         lv_obj_t* tbar = lv_obj_create(parent);
         applyPanelStyle(tbar, false);
@@ -46,7 +46,7 @@ public:
             if (!ctx || !ctx->backend || !ctx->nav) return;
             if (ctx->action == 0) {
                 const bool next = !ctx->backend->model().getBool("seq.playing", false);
-                ctx->backend->model().setBool("seq.playing", next);
+                ctx->backend->requestParameterBool("seq.playing", next);
                 ctx->backend->model().setNotice(next ? "DEMO SEQUENCER RUNNING (VISUAL ONLY)"
                                                      : "DEMO SEQUENCER STOPPED");
             } else if (ctx->action == 1) {
@@ -86,7 +86,7 @@ public:
         return true;
     }
 
-    void refresh(UiDemoBackend&) override {}
+    void refresh(IUiBackend&) override {}
 };
 
 } // namespace

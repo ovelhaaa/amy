@@ -12,7 +12,7 @@ constexpr const char* kDrumPads[8] = {
 };
 
 struct DrumPadCtx {
-    UiDemoBackend*       backend = nullptr;
+    IUiBackend*          backend = nullptr;
     UiNavigationManager* nav     = nullptr;
     uint8_t              track   = 0;
 };
@@ -21,7 +21,7 @@ class DrumsScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::Drums; }
 
-    bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav) override {
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
         const uint8_t cur_trk = static_cast<uint8_t>(backend.model().getInt("drums.track", 0) % 8);
 
         // 1. 8 Percussion Pad / Track Selector Buttons (y = 4..46)
@@ -36,7 +36,7 @@ public:
                         if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
                         auto* ctx = static_cast<DrumPadCtx*>(lv_event_get_user_data(e));
                         if (!ctx || !ctx->backend || !ctx->nav) return;
-                        ctx->backend->model().setInt("drums.track", ctx->track);
+                        ctx->backend->requestParameterInt("drums.track", ctx->track);
                         ctx->nav->navigateTo(ScreenId::Drums);
                     },
                     LV_EVENT_CLICKED);
@@ -62,15 +62,15 @@ public:
         lv_obj_set_size(info, 322, 94);
         createLabel(info, "808 PCM DRUM ENGINE", 8, 6, 226,
                     &lv_font_montserrat_14, palette::kAccentPrimary);
-        createStatusBadge(info, FeatureStatus::Planned, 250, 6);
+        createStatusBadge(info, FeatureStatus::Planned, 248, 6);
         createLabel(info,
-                    "808 PCM samples in src/pcm_tiny.h (P4 PLANNED).",
+                    "PCM 808 in src/pcm_tiny.h (PLANNED).",
                     8, 34, 300, &lv_font_montserrat_14, palette::kTextSecondary);
 
         return true;
     }
 
-    void refresh(UiDemoBackend&) override {}
+    void refresh(IUiBackend&) override {}
 };
 
 } // namespace

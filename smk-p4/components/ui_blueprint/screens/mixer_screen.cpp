@@ -10,7 +10,7 @@ class MixerScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::Mixer; }
 
-    bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager&) override {
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager&) override {
         // Explicit simulation disclaimer banner (Section 5 Tela 05 requirement)
         lv_obj_t* banner = lv_obj_create(parent);
         applyPanelStyle(banner, false);
@@ -51,7 +51,7 @@ public:
         return true;
     }
 
-    void refresh(UiDemoBackend&) override {}
+    void refresh(IUiBackend&) override {}
 };
 
 } // namespace
