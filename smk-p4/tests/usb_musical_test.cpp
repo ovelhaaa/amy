@@ -1,0 +1,129 @@
+#include "amy_runtime.h"
+#include <cassert>
+#include <cstdio>
+#include <thread>
+#include <initializer_list>
+#include <cmath>
+extern "C" {
+#include "amy.h"
+}
+using namespace smk::p4::amy;
+extern "C" void probe_realtime(bool);
+extern "C" uint32_t probe_live();
+static void midi(Runtime& r,uint8_t status,uint8_t a,uint8_t b) {
+    uint8_t p[]={uint8_t(status>>4),status,a,b}; assert(r.usbInput().transfer(p,4,0));
+}
+static void audio(Runtime& r) { for(unsigned i=0;i<8;++i) assert(r.render()); }
+static float voicePitch(unsigned instrument) {
+    uint16_t voice; assert(instrument_get_num_voices(instrument,&voice)==1);
+    return synth[voice_to_base_osc[voice]]->midi_note;
+}
+static void queueOrder() {
+    Commands touch,usb;
+    constexpr unsigned count=50000;
+    const auto produce=[](Commands& q,uint8_t channel) {
+        for(uint32_t n=1;n<=count;++n) {
+            Command c{CommandType::Master,static_cast<uint16_t>(n),100,0,n,n^0x12345678U,channel};
+            while(!q.push(c)) std::this_thread::yield();
+        }
+    };
+    std::thread a(produce,std::ref(touch),0),b(produce,std::ref(usb),1);
+    uint32_t expected[2]={1,1}; Command c;
+    while(expected[0]<=count || expected[1]<=count) {
+        for(unsigned source=0;source<2;++source) if((source?usb:touch).pop(c)) {
+            assert(c.channel==source && c.token==expected[source]);
+            assert(c.id==uint16_t(c.token) && c.timestamp_ms==(c.token^0x12345678U));
+            ++expected[source];
+        }
+    }
+    a.join(); b.join();
+}
+int main() {
+    queueOrder();
+    Runtime r; const auto baseline=probe_live(); assert(r.begin());
+    probe_realtime(true);
+    auto& ui=r.commands(); auto& usb=r.usbInput();
+    // USB C4 and Touch C4 are distinct voices; either release order works.
+    for(bool touch_first:{true,false}) {
+        auto t=ui.nextToken(); assert(ui.push({CommandType::NoteOn,60,100,0,t,0}));
+        midi(r,0x90,60,90); r.apply(0); assert(r.snapshot().active_notes==2); audio(r);
+        midi(r,0xe0,127,127); r.apply(0); audio(r);
+        assert(std::fabs(voicePitch(1)-60.0f)<0.001f && voicePitch(2)>61.99f);
+        midi(r,0xe0,0,64); r.apply(0); audio(r);
+        if(touch_first) ui.release(60,t); else midi(r,0x80,60,0);
+        r.apply(1); assert(r.snapshot().active_notes==1); audio(r);
+        if(touch_first) midi(r,0x80,60,0); else ui.release(60,t);
+        r.apply(2); assert(!r.snapshot().active_notes);
+    }
+    midi(r,0xb0,64,127); midi(r,0x90,60,100); midi(r,0x91,60,127);
+    midi(r,0x90,60,100); // Duplicate held On cannot accrue ownership.
+    r.apply(0); assert(r.snapshot().active_notes==2);
+    r.apply(20000); assert(r.snapshot().active_notes==2); // USB is not a Touch lease.
+    midi(r,0x90,60,0); midi(r,0x81,60,0); r.apply(1);
+    assert(r.snapshot().active_notes==1); // Sustain only channel 1.
+    midi(r,0xb1,64,0); r.apply(2); assert(r.snapshot().active_notes==1);
+    midi(r,0xe0,0,0); r.apply(3); audio(r); assert(std::fabs(voicePitch(1)-58.0f)<0.001f);
+    midi(r,0xe0,127,127); r.apply(4); audio(r); assert(voicePitch(1)>61.99f);
+    midi(r,0xb0,1,127); r.apply(4); audio(r); assert(voicePitch(1)>62.0f);
+    midi(r,0xe0,0,64); midi(r,0xb0,1,0); midi(r,0xb0,64,0); r.apply(5);
+    assert(!r.snapshot().active_notes);
+    audio(r); // Applied commands become oscillator state at the next render.
+    assert(std::fabs(voicePitch(1)-60.0f)<0.001f);
+    // Disconnect clears USB sustain and pending events, preserving Touch.
+    auto t=ui.nextToken(); assert(ui.push({CommandType::NoteOn,60,100,0,t,0}));
+    midi(r,0xb0,64,127); midi(r,0x90,64,100); r.apply(0);
+    midi(r,0x90,67,100); usb.disconnect(); r.apply(1);
+    assert(r.snapshot().active_notes==1);
+    midi(r,0x90,64,100); r.apply(2); assert(r.snapshot().active_notes==2);
+    midi(r,0x80,64,0); r.apply(3); assert(r.snapshot().active_notes==1);
+    ui.release(60,t); r.apply(4);
+    // Exactly four total voices. Rejected gates carry no unreleaseable refs.
+    for(unsigned n=60;n<65;++n) midi(r,0x90,n,100);
+    r.apply(0); assert(r.snapshot().active_notes==4 && r.snapshot().polyphony_rejected==1);
+    for(unsigned n=60;n<65;++n) midi(r,0x80,n,0);
+    r.apply(1); assert(!r.snapshot().active_notes);
+    for(unsigned cc:{120,123}) {
+        midi(r,0x90,60,100); midi(r,0x91,60,100); r.apply(0);
+        midi(r,0xb0,cc,0); r.apply(1); assert(r.snapshot().active_notes==1);
+        midi(r,0xb1,cc,0); r.apply(2); assert(!r.snapshot().active_notes);
+    }
+    // Release under saturation triggers USB source cancellation outside queue.
+    midi(r,0x90,60,100); r.apply(0);
+    for(unsigned i=0;i<kCommandCapacity;++i) midi(r,0xb0,1,i);
+    midi(r,0x80,60,0); assert(usb.dropped==1); r.apply(1); assert(!r.snapshot().active_notes);
+    // Whole malformed transfer is rejected before publishing a partial chord.
+    uint8_t bad[]={9,0x90,60,100,8,0x90,60,0};
+    assert(!usb.transfer(bad,sizeof(bad),0)); r.apply(0); assert(!r.snapshot().active_notes);
+    assert(!usb.transfer(bad,3,0));
+    for(unsigned channel=0;channel<16;++channel) {
+        midi(r,0x90|channel,60,100); r.apply(0); assert(r.snapshot().active_notes==1);
+        midi(r,0x90|channel,60,0); r.apply(1); assert(!r.snapshot().active_notes);
+    }
+    midi(r,0x90,60,100); r.apply(0);
+    assert(ui.push({CommandType::Patch,135,0,0,0,0}));
+    midi(r,0x90,64,100); r.apply(1); audio(r);
+    assert(!r.snapshot().active_notes && r.snapshot().patch_id==135);
+    midi(r,0x90,60,100); r.apply(2); audio(r); assert(r.snapshot().active_notes==1);
+    ui.panic(); r.apply(3); audio(r); assert(!r.snapshot().active_notes);
+    // Two independent SPSC producers, one real AMY owner, finite stress.
+    std::atomic<unsigned> done{0};
+    std::thread touch([&] {
+        for(unsigned i=0;i<20000;++i) {
+            auto token=ui.nextToken(); ui.push({CommandType::NoteOn,60,100,0,token,0});
+            ui.release(60,token); if(i%127==0) ui.panic();
+        }
+        done.fetch_add(1);
+    });
+    std::thread physical([&] {
+        for(unsigned i=0;i<20000;++i) {
+            midi(r,0x91,60,100); midi(r,0xb1,64,127); midi(r,0x81,60,0);
+            midi(r,0xb1,64,0); if(i%113==0) usb.disconnect();
+        }
+        done.fetch_add(1);
+    });
+    while(done.load()!=2 || ui.depth() || usb.commands.depth()) { r.apply(0); assert(r.render()); }
+    touch.join(); physical.join(); ui.panic(); r.apply(0); audio(r);
+    assert(!r.snapshot().active_notes && !r.snapshot().oom_count);
+    probe_realtime(false); r.end(); assert(probe_live()==baseline);
+    std::puts("PASS: real AMY two-source/channel identity, sustain, bend/modulation, capacity, saturation, disconnect epochs and two-producer stress; no service heap");
+}

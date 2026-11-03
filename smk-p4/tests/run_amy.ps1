@@ -19,6 +19,10 @@ try {
     if($LASTEXITCODE -ne 0) { throw 'Runtime link failed' }
     & "$build/runtime.exe"
     if($LASTEXITCODE -ne 0) { throw 'Runtime test failed' }
+    & g++ -std=c++17 -pthread @flags smk-p4/tests/usb_musical_test.cpp smk-p4/tests/heap_probe.cpp smk-p4/components/amy_runtime/amy_runtime.cpp @objects @wraps -lm -o "$build/usb_musical.exe"
+    if($LASTEXITCODE -ne 0) { throw 'USB musical link failed' }
+    & "$build/usb_musical.exe"
+    if($LASTEXITCODE -ne 0) { throw 'USB musical test failed' }
     $includes=@('-Ismk-p4/main','-Ishared/smk_protocol')
     foreach($test in @('local_backend_test','performance_ui_test')) {
         $extra=@()

@@ -2,12 +2,13 @@
 #include "runtime_config.h"
 #include <atomic>
 namespace smk::p4::amy {
-enum class CommandType : uint8_t { NoteOn, Patch, Master };
+enum class CommandType : uint8_t { NoteOn, Patch, Master, NoteOff, Control, Bend };
 struct Command {
     CommandType type{};
     uint16_t id=0;
     uint8_t value=0;
     uint32_t generation=0, token=0, timestamp_ms=0;
+    uint8_t channel=0;
 };
 // Exactly one producer (UI) and one consumer (AMY owner). Off/Panic have
 // dedicated atomic latches and never compete with controls for queue space.
