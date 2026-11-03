@@ -14,7 +14,7 @@ prevalece sobre specs.md/AGENTS gerais S3/284×76; nenhuma migração do core AM
 - Status Host independente da readiness: `df9a9f26`.
 - Watermark da pilha UI no diagnóstico a5s: `e2b583d3`.
 - Análise versionada de janelas seriais e8 testes: `d1b7d420`.
-- Branches de origem e worktrees começaram limpos; nenhum reset/force-push/upload.
+- Branches de origem e worktrees começaram limpos; nenhum reset Git ou force-push nas origens.
 - PASS verificador do bundle físico original, fornecido explicitamente em
   `build/p403a/removal_grace_image` no checkout original. SHA firmware0.3A:
   `89fc42a19b0d588970bf6bd18ded139af1bc3843ae398d0cc2404fa1cfa2e9a7`.
