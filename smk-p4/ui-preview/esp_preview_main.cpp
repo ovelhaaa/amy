@@ -4,6 +4,7 @@
 
 #include "ui_blueprint.h"
 #include "display_test.h"
+#include "gate0_diagnostics.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -11,11 +12,14 @@
 
 namespace {
 constexpr const char* kTag = "UI_BLUEPRINT_PREVIEW";
-smk::p4::ui::UiBlueprint g_blueprint;
+smk::p4::ui::UiDemoBackend g_backend;
+smk::p4::ui::UiBlueprint g_blueprint(g_backend);
 } // namespace
 
 extern "C" void app_main(void) {
     ESP_LOGI(kTag, "Starting SMK-P4 UI Blueprint 1.0 isolated preview (800x480)");
+    smk::p4::reportHardware();
+
     if (!smk::p4::beginDisplayTest(false)) {
         ESP_LOGE(kTag, "Display initialization failed");
         return;
@@ -27,10 +31,15 @@ extern "C" void app_main(void) {
     }
 
     ESP_LOGI(kTag, "UiBlueprint 1.0 mounted on active 800x480 screen (UI DEMO backend)");
+    uint32_t last_mem_report_ms = 0;
     while (true) {
         const uint32_t now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
         g_blueprint.service(now_ms);
         smk::p4::serviceDisplayTest();
+        if (now_ms - last_mem_report_ms >= 5000U) {
+            last_mem_report_ms = now_ms;
+            smk::p4::reportMemory();
+        }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
