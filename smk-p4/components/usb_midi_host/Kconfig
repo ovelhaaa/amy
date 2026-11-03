@@ -1,0 +1,26 @@
+menu "SMK-P4 native USB MIDI Host"
+config SMKP4_USB_WIRING_CONFIRMED
+    bool "Operator qualified USB connector, CC, VBUS and backfeed protection"
+    depends on SMKP4_STANDALONE && !SMKP4_PCM_DIAGNOSTIC && !SMKP4_AMY_RAM_SELF_TEST
+    default n
+    help
+        Electrical gate, independent of the PCM5102A gate. Never enable based
+        only on a successful build. Does not enable a VBUS GPIO or supply 5V.
+config SMKP4_USB_CONTROLLER
+    int "Qualified USB controller (0=HS dedicated PHY, 1=FS OTG PHY)"
+    depends on SMKP4_USB_WIRING_CONFIRMED
+    range 0 1
+    default 0
+    help
+        Confirm actual connector routing and PHY selection for the tested ES
+        unit before enabling. Serial/JTAG is a different USB controller;
+        sharing a physical connector can still preclude simultaneous use.
+config SMKP4_USB_DESCRIPTOR_LOG
+    bool "Dump bounded configuration descriptor bytes at enumeration"
+    depends on SMKP4_USB_WIRING_CONFIRMED
+    default n
+config SMKP4_USB_MIDI_TRACE
+    bool "Record bounded raw MIDI trace (main prints at most four packets per 5s)"
+    depends on SMKP4_USB_WIRING_CONFIRMED
+    default n
+endmenu
