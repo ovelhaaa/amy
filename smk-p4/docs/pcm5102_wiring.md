@@ -103,7 +103,10 @@ C:/.platformio/penv/Scripts/python.exe smk-p4/tests/capture_serial.py --port COM
 7. Se houver falha I²S, o owner para o canal, publica erro e não faz retry em
    loop. Baixar volume antes de reiniciar; não declarar ausência de pops sem ouvir.
 
-Nenhum ES8311, NS4150, USB Host ou enlace S3 é inicializado pelo novo caminho.
+Nenhum ES8311, NS4150 ou enlace S3 é inicializado pelo caminho standalone.
+Desde a [entrega0.3](standalone_usb_audio_03_results.md), USB Host nativo é
+opcional e possui gate elétrico independente, desligado por padrão. A aprovação
+do PCM5102A não aprova CC/VBUS/porta USB nem habilita o Host automaticamente.
 As versões híbridas continuam disponíveis para recuperar a montagem anterior.
 
 

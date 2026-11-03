@@ -200,6 +200,14 @@ the operator's visual/touch observations must be recorded separately.
 
 ## Native AMY software validation
 
+Native P4 USB-MIDI integration, independent Touch/USB queues, four-voice
+ownership, sustain and opt-in electrical gates are documented in
+[the standalone 0.3 report](docs/standalone_usb_audio_03_results.md).
+Run `./smk-p4/tests/run_usb.ps1` for mock USB lifecycle/descriptor checks and
+`./smk-p4/tests/run_amy.ps1` for real-AMY musical and concurrent-source tests.
+Both physical output and USB remain disabled until their separate wiring gates
+are qualified; successful tests/builds do not certify VBUS or analog audio.
+
 ```powershell
 ./smk-p4/tests/run_amy.ps1
 ```

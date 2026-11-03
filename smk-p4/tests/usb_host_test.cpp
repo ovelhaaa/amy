@@ -77,5 +77,27 @@ int main() {
     mock_time::us+=1001000; h.service();
     assert(h.state()==usb::Host::State::Connected && h.connects()==2);
     close(h); assert(mock_usb::allocations==mock_usb::frees);
+    mock_usb::reset();
+    {
+        usb::Host failed(input); mock_task::create_result=pdFALSE;
+        assert(!failed.begin(0) && failed.state()==usb::Host::State::Error);
+        mock_task::create_result=pdPASS;
+    }
+    mock_usb::reset(); mock_task::async=true;
+    {
+        usb::Host threaded(input); assert(threaded.begin(0));
+        mock_usb::event(USB_HOST_CLIENT_EVENT_NEW_DEV);
+        for(unsigned i=0;i<1000 && threaded.state()!=usb::Host::State::Connected;++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        assert(threaded.state()==usb::Host::State::Connected);
+        threaded.stop(); mock_task::join();
+        assert(!mock_usb::installed && mock_usb::allocations==mock_usb::frees);
+    }
+    mock_usb::reset(); mock_usb::fail_register=true;
+    {
+        usb::Host failed(input); assert(!failed.begin(0)); mock_task::join();
+        assert(!mock_usb::installed && failed.state()==usb::Host::State::Error);
+    }
+    mock_task::async=false;
     std::puts("PASS: P4 USB controller, descriptors, enumeration, RX, failure drain, disconnect/reconnect while in-flight, cleanup retries and shutdown (mock IDF)");
 }

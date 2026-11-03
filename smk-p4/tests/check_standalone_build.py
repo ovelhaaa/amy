@@ -12,6 +12,34 @@ import shlex
 import subprocess
 
 
+def link_usb_check(build, entry):
+    """Link the enabled object with the native build's actual IDF flags/libs.
+
+    No sdkconfig or production objects/ELF/map are replaced. This catches
+    undefined USB symbols that a safe, disabled firmware can garbage-collect.
+    """
+    ninja=(build / "build.ninja").read_text()
+    target=re.search(r"^build smk-p4-gate0\.elf:.*\n((?:  .*\n)+)",ninja,re.M)
+    assert target, "Missing native application link rule"
+    values=dict(re.findall(r"^  (\w+) = (.*)$",target.group(1),re.M))
+    flags=shlex.split(values["LINK_FLAGS"])
+    flags=[arg for arg in flags if not arg.startswith(("-Wl,-Map=","-Wl,--Map="))]
+    flags.append("-Wl,-Map="+str(build / "enabled-usb-check.map").replace("\\","/"))
+    flags+=shlex.split(values.get("LINK_PATH",""))
+    libraries=shlex.split(values["LINK_LIBRARIES"])
+    # PlatformIO compiles main sources as loose objects instead of IDF libmain.
+    libraries=[arg for arg in libraries if not arg.endswith(("/main/libmain.a","/__pio_env/lib__pio_env.a"))]
+    objects=[str(build / "enabled-usb-main-check.o")]
+    for name in ("gate0_diagnostics.cpp.o","display_test.cpp.o","performance_ui.cpp.o"):
+        objects.append(str(build / "main" / name))
+    compiler=re.search(r'"?([^"\n]*riscv32-esp-elf-g\+\+(?:\.exe)?)"?\s',entry["command"])
+    assert compiler, "Expected native P4 C++ compiler"
+    args=["-o",str(build / "enabled-usb-check.elf"),*flags,*objects,*libraries]
+    rsp=build / "enabled-usb-check.rsp"
+    rsp.write_text("\n".join('"'+arg.replace('\\','/')+'"' for arg in args))
+    subprocess.run([compiler.group(1),"@"+str(rsp)],cwd=build,check=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ram-self-test", action="store_true", help="Allow the explicit RAM diagnostic image")
@@ -47,10 +75,11 @@ def main():
     host_command+=" -DCONFIG_SMKP4_USB_DESCRIPTOR_LOG=1"
     subprocess.run(host_command if os.name == "nt" else shlex.split(host_command),
                    cwd=host_entry["directory"],check=True)
+    link_usb_check(build,entry)
     command += " -DCONFIG_SMKP4_PCM_DIAGNOSTIC=1"
     subprocess.run(command if os.name == "nt" else shlex.split(command),
                    cwd=entry["directory"], check=True)
-    print("PASS: P4 ES, safe I2S/USB defaults, no P4Link; enabled AMY/diagnostic/USB/trace/descriptor source compilation")
+    print("PASS: P4 ES, safe I2S/USB defaults, no P4Link; enabled AMY/diagnostic/USB/trace/descriptor compilation and separate USB-enabled ELF link")
 
 
 if __name__ == "__main__":
