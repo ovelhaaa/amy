@@ -5,15 +5,17 @@ namespace smk::p4::ui {
 
 namespace {
 struct CardActionCtx {
-    UiDemoBackend* backend   = nullptr;
-    const char*    param_id  = nullptr;
-    lv_obj_t*      val_label = nullptr;
-    int32_t        delta     = 0;
+    IUiBackend* backend   = nullptr;
+    const char* param_id  = nullptr;
+    lv_obj_t*   val_label = nullptr;
+    int32_t     delta     = 0;
 };
 } // namespace
 
-lv_obj_t* createParameterCard(lv_obj_t* parent, UiDemoBackend& backend, const char* param_id,
-                              int32_t x, int32_t y, int32_t w, int32_t h) {
+lv_obj_t* createParameterCard(lv_obj_t* parent, IUiBackend& backend, const char* param_id,
+                              int32_t x, int32_t y, int32_t w, int32_t h,
+                              PresentationLevel level,
+                              const char* label_override) {
     if (!parent || !param_id) return nullptr;
     const ParameterDescriptor* desc = ParameterRegistry::findById(param_id);
     if (!desc) return nullptr;
@@ -22,7 +24,7 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, UiDemoBackend& backend, const ch
     if (desc->type == ParameterValueType::Float ||
         (desc->type == ParameterValueType::Int && (desc->maximum - desc->minimum) > 24.0f &&
          !(desc->capabilities & kCapReadOnly))) {
-        return createParameterSlider(parent, backend, param_id, x, y, w, h);
+        return createParameterSlider(parent, backend, param_id, x, y, w, h, level, label_override);
     }
 
     lv_obj_t* card = lv_obj_create(parent);
@@ -31,12 +33,16 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, UiDemoBackend& backend, const ch
     lv_obj_set_pos(card, x, y);
     lv_obj_set_size(card, w, h);
 
-    const FeatureStatus status = backend.model().effectiveStatus(param_id);
-    const bool enabled = backend.model().isParameterEnabled(param_id);
+    const FeatureStatus status = backend.parameterStatus(param_id);
+    const bool enabled = backend.isParameterEditable(param_id);
+    const char* title = (label_override && label_override[0] != '\0') ? label_override : desc->name;
 
-    createLabel(card, desc->name, 6, 4, w - 64, &lv_font_montserrat_14,
+    const int32_t title_w = (level == PresentationLevel::StageMinimal) ? (w - 16) : (w - 64);
+    createLabel(card, title, 6, 4, title_w, &lv_font_montserrat_14,
                 enabled ? palette::kTextPrimary : palette::kTextSecondary);
-    createStatusBadge(card, status, w - 62, 4);
+    if (level == PresentationLevel::BlueprintVerbose) {
+        createStatusBadge(card, status, w - 62, 4);
+    }
 
     ParameterValue pv{};
     backend.model().getValue(param_id, pv);
@@ -56,9 +62,10 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, UiDemoBackend& backend, const ch
                     auto* ctx = static_cast<CardActionCtx*>(lv_event_get_user_data(e));
                     if (!ctx || !ctx->backend || !ctx->param_id) return;
                     const bool next = !ctx->backend->model().getBool(ctx->param_id, false);
-                    ctx->backend->model().setBool(ctx->param_id, next);
+                    ctx->backend->requestParameterBool(ctx->param_id, next);
+                    const bool applied = ctx->backend->model().getBool(ctx->param_id, false);
                     if (ctx->val_label) {
-                        lv_label_set_text(ctx->val_label, next ? "ON" : "OFF");
+                        lv_label_set_text(ctx->val_label, applied ? "ON" : "OFF");
                     }
                 },
                 LV_EVENT_CLICKED);
@@ -67,8 +74,9 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, UiDemoBackend& backend, const ch
         createLabel(card, vbuf, 8, h - 34, w - 24, &lv_font_montserrat_20, palette::kTextSecondary);
     } else {
         // Stepper buttons [-] [VALUE] [+] for Enum and discrete Int
-        const int32_t btn_w = (w < 140) ? 26 : 36;
-        lv_obj_t* vlbl = createLabel(card, vbuf, btn_w + 8, h - 34, w - (btn_w * 2 + 24), &lv_font_montserrat_14, palette::kAccentPrimary);
+        const int32_t btn_w = (w < 140) ? 28 : 38;
+        lv_obj_t* vlbl = createLabel(card, vbuf, btn_w + 8, h - 34, w - (btn_w * 2 + 24),
+                                     &lv_font_montserrat_14, palette::kAccentPrimary);
         lv_obj_t* dec_btn = createActionButton(card, "-", 4, h - 42, btn_w, 34, nullptr, nullptr);
         lv_obj_t* inc_btn = createActionButton(card, "+", w - btn_w - 14, h - 42, btn_w, 34, nullptr, nullptr);
         if (!enabled) {
@@ -89,7 +97,7 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, UiDemoBackend& backend, const ch
             cur += ctx->delta;
             if (cur < min_v) cur = max_v;
             if (cur > max_v) cur = min_v;
-            ctx->backend->model().setInt(ctx->param_id, cur);
+            ctx->backend->requestParameterInt(ctx->param_id, cur);
             if (ctx->val_label) {
                 ParameterValue cur_pv{};
                 ctx->backend->model().getValue(ctx->param_id, cur_pv);

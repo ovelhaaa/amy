@@ -5,14 +5,14 @@ namespace smk::p4::ui {
 
 namespace {
 struct StepCtx {
-    UiDemoBackend*       backend = nullptr;
+    IUiBackend*          backend = nullptr;
     UiNavigationManager* nav     = nullptr;
     StepGridKind         kind    = StepGridKind::MelodicSequencer;
     uint8_t              step    = 0;
 };
 } // namespace
 
-lv_obj_t* createStepGrid(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav,
+lv_obj_t* createStepGrid(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav,
                          StepGridKind kind, int32_t x, int32_t y, int32_t w, int32_t h) {
     if (!parent) return nullptr;
     lv_obj_t* panel = lv_obj_create(parent);
@@ -27,7 +27,7 @@ lv_obj_t* createStepGrid(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationM
     const int32_t step_w = (inner_w - gap * 15) / 16;
     const int32_t step_h = h - 12;
 
-    const uint8_t play_step = backend.activeDemoStep();
+    const uint8_t play_step = backend.activeSequencerStep();
     const size_t sel_step = backend.model().selectedSeqStep();
     const size_t drum_track = static_cast<size_t>(backend.model().getInt("drums.track", 0));
     const int32_t seq_len = backend.model().getInt("seq.length", 16);

@@ -5,12 +5,12 @@ namespace smk::p4::ui {
 
 namespace {
 struct StripCtx {
-    UiDemoBackend*       backend = nullptr;
+    IUiBackend*          backend = nullptr;
     UiNavigationManager* nav     = nullptr;
 };
 } // namespace
 
-bool StatusStrip::build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav) {
+bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) {
     if (!parent) return false;
     root_ = lv_obj_create(parent);
     if (!root_) return false;
@@ -20,12 +20,14 @@ bool StatusStrip::build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationMa
     lv_obj_set_style_radius(root_, 0, 0);
     lv_obj_set_style_pad_all(root_, 0, 0);
 
-    // Persistent discrete UI DEMO badge (mandatory requirement Section 8)
+    // Persistent discrete mode badge (mandatory requirement Section 7: UI DEMO always visible in demo mode)
     demo_badge_ = lv_obj_create(root_);
     lv_obj_remove_style_all(demo_badge_);
     lv_obj_add_style(demo_badge_, &theme().badge, 0);
-    lv_obj_set_style_bg_color(demo_badge_, lv_color_hex(palette::kAccentPrimary), 0);
-    lv_obj_set_pos(demo_badge_, 8, 7);
+    lv_obj_set_style_bg_color(
+        demo_badge_,
+        lv_color_hex(backend.isDemoMode() ? palette::kAccentPrimary : palette::kActive), 0);
+    lv_obj_set_pos(demo_badge_, 6, 7);
     lv_obj_set_size(demo_badge_, 78, 28);
     lv_obj_t* badge_lbl = lv_label_create(demo_badge_);
     if (badge_lbl) {
@@ -36,18 +38,18 @@ bool StatusStrip::build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationMa
     }
 
     // Screen title & Mode
-    screen_lbl_ = createLabel(root_, "01 PERFORMANCE STAGE", 94, 11, 186, &lv_font_montserrat_14, palette::kTextPrimary);
+    screen_lbl_ = createLabel(root_, "01 PERFORMANCE STAGE", 90, 11, 184, &lv_font_montserrat_14, palette::kTextPrimary);
 
     // Active Patch pill
-    patch_lbl_ = createLabel(root_, "128 DX7 BRASS 1", 284, 11, 158, &lv_font_montserrat_14, palette::kAccentPrimary);
+    patch_lbl_ = createLabel(root_, "128 DX7 BRASS 1", 278, 11, 156, &lv_font_montserrat_14, palette::kAccentPrimary);
 
-    // MIDI, Audio, Voices/BPM indicators
-    midi_lbl_   = createLabel(root_, "MIDI: DEMO", 446, 11, 96, &lv_font_montserrat_14, palette::kActive);
-    audio_lbl_  = createLabel(root_, "AUD: SIM", 544, 11, 78, &lv_font_montserrat_14, palette::kTextSecondary);
-    voices_lbl_ = createLabel(root_, "VX:0/4", 624, 11, 56, &lv_font_montserrat_14, palette::kTextSecondary);
+    // MIDI, Audio, Voices indicators
+    midi_lbl_   = createLabel(root_, "MIDI: DEMO", 438, 11, 92, &lv_font_montserrat_14, palette::kActive);
+    audio_lbl_  = createLabel(root_, "AUD: SIM", 532, 11, 74, &lv_font_montserrat_14, palette::kTextSecondary);
+    voices_lbl_ = createLabel(root_, "VX:0/4", 608, 11, 56, &lv_font_montserrat_14, palette::kTextSecondary);
 
-    // Quick return to Performance button
-    home_btn_ = createActionButton(root_, "PERF", 682, 4, 52, 34, nullptr, nullptr, false, false);
+    // Quick return to Performance button (enlarged touch target)
+    home_btn_ = createActionButton(root_, "PERF", 666, 3, 58, 36, nullptr, nullptr, false, false);
     attachLvContext<StripCtx>(
         home_btn_, StripCtx{&backend, &nav},
         [](lv_event_t* e) {
@@ -57,12 +59,12 @@ bool StatusStrip::build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationMa
         },
         LV_EVENT_CLICKED);
 
-    // Global PANIC button
+    // Global PANIC button (enlarged touch target)
     panic_btn_ = lv_button_create(root_);
     if (panic_btn_) {
         applyPanicButtonStyle(panic_btn_);
-        lv_obj_set_pos(panic_btn_, 738, 4);
-        lv_obj_set_size(panic_btn_, 56, 34);
+        lv_obj_set_pos(panic_btn_, 728, 3);
+        lv_obj_set_size(panic_btn_, 66, 36);
         lv_obj_t* plbl = lv_label_create(panic_btn_);
         if (plbl) {
             lv_label_set_text_static(plbl, "PANIC");
@@ -75,7 +77,7 @@ bool StatusStrip::build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationMa
                 if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
                 auto* ctx = static_cast<StripCtx*>(lv_event_get_user_data(e));
                 if (ctx && ctx->backend) {
-                    ctx->backend->triggerPanic();
+                    ctx->backend->requestPanic();
                     if (ctx->nav) ctx->nav->refreshActive();
                 }
             },
@@ -86,7 +88,7 @@ bool StatusStrip::build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationMa
     return true;
 }
 
-void StatusStrip::refresh(UiDemoBackend& backend, UiNavigationManager& nav) {
+void StatusStrip::refresh(IUiBackend& backend, UiNavigationManager& nav) {
     if (!root_) return;
     if (screen_lbl_) {
         lv_label_set_text_static(screen_lbl_, screenTitle(nav.currentScreen()));
@@ -100,11 +102,20 @@ void StatusStrip::refresh(UiDemoBackend& backend, UiNavigationManager& nav) {
     }
     const auto& diag = backend.model().diagnostics();
     if (midi_lbl_) {
-        lv_label_set_text_static(midi_lbl_, diag.active_voices > 0 ? "MIDI: DEMO*" : "MIDI: DEMO");
+        if (backend.isDemoMode()) {
+            lv_label_set_text_static(midi_lbl_, diag.active_voices > 0 ? "MIDI: DEMO*" : "MIDI: DEMO");
+        } else if (backend.hasMidiError()) {
+            lv_label_set_text_static(midi_lbl_, "MIDI: ERR");
+        } else if (backend.isConnected()) {
+            lv_label_set_text_static(midi_lbl_, diag.active_voices > 0 ? "MIDI: ON*" : "MIDI: OK");
+        } else {
+            lv_label_set_text_static(midi_lbl_, "MIDI: WAIT");
+        }
         lv_obj_invalidate(midi_lbl_);
     }
     if (audio_lbl_) {
-        lv_label_set_text_static(audio_lbl_, "AUD: SIM");
+        lv_label_set_text_static(audio_lbl_, backend.isDemoMode() ? "AUD: SIM" : "AUD: 48K");
+        lv_obj_invalidate(audio_lbl_);
     }
     if (voices_lbl_) {
         std::snprintf(voices_buf_, sizeof(voices_buf_), "VX:%u/%u", diag.active_voices, diag.max_voices);

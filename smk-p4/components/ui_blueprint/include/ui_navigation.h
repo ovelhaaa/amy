@@ -1,6 +1,6 @@
 #pragma once
 #include "lvgl.h"
-#include "ui_model.h"
+#include "ui_backend.h"
 #include <cstddef>
 #include <cstdint>
 
@@ -32,8 +32,8 @@ enum class UiMode : uint8_t {
 const char* screenTitle(ScreenId id);
 const char* screenShortName(ScreenId id);
 UiMode screenMode(ScreenId id);
+PresentationLevel screenPresentationLevel(ScreenId id);
 
-class UiDemoBackend;
 class UiNavigationManager;
 
 // Abstract base for on-demand LVGL screen controllers.
@@ -42,8 +42,8 @@ class ScreenView {
 public:
     virtual ~ScreenView() = default;
     virtual ScreenId id() const = 0;
-    virtual bool build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav) = 0;
-    virtual void refresh(UiDemoBackend& backend) = 0;
+    virtual bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) = 0;
+    virtual void refresh(IUiBackend& backend) = 0;
     virtual void onDestroy() {}
 };
 
@@ -55,15 +55,24 @@ public:
     UiNavigationManager() = default;
     ~UiNavigationManager() { shutdown(); }
 
-    bool begin(lv_obj_t* content_container, UiDemoBackend& backend);
+    bool begin(lv_obj_t* content_container, IUiBackend& backend);
     void shutdown();
 
+    // Direct navigation (releases any active UI touch notes before tearing down the screen)
     bool navigateTo(ScreenId target, uint8_t sub_tab = 0xFF);
     bool back();
     bool returnToPerformance();
 
+    // Deferred navigation: schedules a screen or sub-tab transition to be processed
+    // safely outside of an active LVGL widget callback (e.g. inside UiBlueprint::service).
+    void requestNavigateTo(ScreenId target, uint8_t sub_tab = 0xFF);
+    void requestReturnToPerformance();
+    bool hasPendingNavigation() const { return pending_nav_; }
+    bool processPendingNavigation();
+
     ScreenId currentScreen() const { return current_; }
     UiMode currentMode() const { return screenMode(current_); }
+    PresentationLevel currentPresentationLevel() const { return screenPresentationLevel(current_); }
     uint8_t subTab(ScreenId screen) const;
     void setSubTab(ScreenId screen, uint8_t tab);
 
@@ -91,7 +100,7 @@ private:
     void unmountCurrent();
 
     lv_obj_t*          content_root_     = nullptr;
-    UiDemoBackend*     backend_          = nullptr;
+    IUiBackend*        backend_          = nullptr;
     ScreenView*        active_view_      = nullptr;
     ScreenId           current_          = ScreenId::Performance;
     ScreenId           history_[kHistoryCapacity]{};
@@ -100,6 +109,10 @@ private:
     uint8_t            nav_bank_         = 0;
     uint32_t           transitions_      = 0;
     bool               mounted_          = false;
+    bool               pending_nav_      = false;
+    bool               pending_home_     = false;
+    ScreenId           pending_target_   = ScreenId::Performance;
+    uint8_t            pending_sub_tab_  = 0xFF;
     NavigationCallback on_navigate_      = nullptr;
     void*              on_navigate_user_ = nullptr;
 };

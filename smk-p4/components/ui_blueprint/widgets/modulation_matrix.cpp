@@ -18,7 +18,7 @@ constexpr const char* kDstNames[10] = {
 constexpr const char* kPolNames[3] = {"UNI +", "BIP +/-", "INV -"};
 
 struct ModRowCtx {
-    UiDemoBackend*       backend = nullptr;
+    IUiBackend*          backend = nullptr;
     UiNavigationManager* nav     = nullptr;
     uint8_t              slot    = 0;
     uint8_t              field   = 0; // 0=Enable, 1=Src, 2=Dst, 3=Amt-, 4=Amt+, 5=Pol
@@ -26,7 +26,7 @@ struct ModRowCtx {
 
 } // namespace
 
-lv_obj_t* createModulationMatrixWidget(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationManager& nav,
+lv_obj_t* createModulationMatrixWidget(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav,
                                        uint8_t page, int32_t x, int32_t y, int32_t w, int32_t h) {
     if (!parent) return nullptr;
     lv_obj_t* box = lv_obj_create(parent);

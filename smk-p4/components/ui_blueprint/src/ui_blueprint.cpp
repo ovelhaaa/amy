@@ -83,6 +83,12 @@ void UiBlueprint::shutdown() {
 
 void UiBlueprint::service(uint32_t now_ms) {
     if (!root_) return;
+
+    // Process any deferred navigation safely outside of LVGL widget callbacks
+    if (nav_.hasPendingNavigation()) {
+        nav_.processPendingNavigation();
+    }
+
     backend_.service(now_ms);
 
     const uint32_t rev = backend_.model().revision();

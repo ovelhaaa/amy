@@ -80,7 +80,7 @@ struct HarmonyPreviewResult {
 
 struct DiagnosticsSnapshot {
     bool        is_demo_mode         = true;
-    const char* firmware_version     = "SMK-P4 BLUEPRINT 1.0 (DEMO)";
+    const char* firmware_version     = "SMK-P4 BLUEPRINT 1.1 (DEMO)";
     const char* amy_status           = "DISCONNECTED (UI DEMO)";
     const char* i2s_status           = "NOT INITIALIZED (UI DEMO)";
     const char* usb_status           = "NOT INITIALIZED (UI DEMO)";
@@ -186,7 +186,7 @@ private:
     int            active_learn_slot_ = -1;
     uint8_t        last_preview_note_ = 60; // C4
     uint32_t       revision_          = 1;
-    char           last_notice_[64]   = "UI DEMO READY (RAM ONLY - NO AMY WRITES)";
+    char           last_notice_[64]   = "UI DEMO: RAM ONLY (NO AMY)";
     DiagnosticsSnapshot diag_{};
 };
 

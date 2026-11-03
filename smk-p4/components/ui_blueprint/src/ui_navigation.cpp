@@ -1,5 +1,4 @@
 #include "ui_navigation.h"
-#include "ui_demo_backend.h"
 #include "ui_screens.h"
 
 namespace smk::p4::ui {
@@ -48,6 +47,10 @@ UiMode screenMode(ScreenId id) {
     return (id == ScreenId::Performance) ? UiMode::PerformanceMode : UiMode::EditMode;
 }
 
+PresentationLevel screenPresentationLevel(ScreenId id) {
+    return (id == ScreenId::Performance) ? PresentationLevel::StageMinimal : PresentationLevel::BlueprintVerbose;
+}
+
 ScreenView* createScreenById(ScreenId id) {
     switch (id) {
         case ScreenId::Performance:    return createPerformanceScreen();
@@ -68,7 +71,7 @@ ScreenView* createScreenById(ScreenId id) {
     }
 }
 
-bool UiNavigationManager::begin(lv_obj_t* content_container, UiDemoBackend& backend) {
+bool UiNavigationManager::begin(lv_obj_t* content_container, IUiBackend& backend) {
     shutdown();
     if (!content_container) return false;
     content_root_ = content_container;
@@ -76,6 +79,8 @@ bool UiNavigationManager::begin(lv_obj_t* content_container, UiDemoBackend& back
     history_depth_ = 0;
     transitions_ = 0;
     nav_bank_ = 0;
+    pending_nav_ = false;
+    pending_home_ = false;
     for (size_t i = 0; i < kScreenCount; ++i) {
         sub_tabs_[i] = 0;
     }
@@ -90,11 +95,16 @@ void UiNavigationManager::shutdown() {
     backend_ = nullptr;
     mounted_ = false;
     history_depth_ = 0;
+    pending_nav_ = false;
+    pending_home_ = false;
 }
 
 bool UiNavigationManager::navigateTo(ScreenId target, uint8_t sub_tab) {
     if (!content_root_ || !backend_) return false;
     if (static_cast<size_t>(target) >= kScreenCount) return false;
+
+    pending_nav_ = false;
+    pending_home_ = false;
 
     if (sub_tab != 0xFF) {
         sub_tabs_[static_cast<size_t>(target)] = sub_tab;
@@ -132,6 +142,8 @@ bool UiNavigationManager::navigateTo(ScreenId target, uint8_t sub_tab) {
 
 bool UiNavigationManager::back() {
     if (!content_root_ || !backend_) return false;
+    pending_nav_ = false;
+    pending_home_ = false;
     if (history_depth_ == 0) {
         return returnToPerformance();
     }
@@ -148,9 +160,14 @@ bool UiNavigationManager::back() {
 }
 
 bool UiNavigationManager::returnToPerformance() {
+    pending_nav_ = false;
+    pending_home_ = false;
     history_depth_ = 0;
     nav_bank_ = 0;
     if (mounted_ && current_ == ScreenId::Performance) {
+        if (backend_) {
+            backend_->releaseAllUiNotes();
+        }
         refreshActive();
         if (on_navigate_) on_navigate_(on_navigate_user_, current_);
         return true;
@@ -166,6 +183,33 @@ bool UiNavigationManager::returnToPerformance() {
     }
     mounted_ = mountScreen(ScreenId::Performance);
     return mounted_;
+}
+
+void UiNavigationManager::requestNavigateTo(ScreenId target, uint8_t sub_tab) {
+    pending_nav_ = true;
+    pending_home_ = false;
+    pending_target_ = target;
+    pending_sub_tab_ = sub_tab;
+}
+
+void UiNavigationManager::requestReturnToPerformance() {
+    pending_nav_ = true;
+    pending_home_ = true;
+    pending_target_ = ScreenId::Performance;
+    pending_sub_tab_ = 0xFF;
+}
+
+bool UiNavigationManager::processPendingNavigation() {
+    if (!pending_nav_) return false;
+    const bool home = pending_home_;
+    const ScreenId target = pending_target_;
+    const uint8_t tab = pending_sub_tab_;
+    pending_nav_ = false;
+    pending_home_ = false;
+    if (home) {
+        return returnToPerformance();
+    }
+    return navigateTo(target, tab);
 }
 
 uint8_t UiNavigationManager::subTab(ScreenId screen) const {
@@ -203,6 +247,10 @@ bool UiNavigationManager::mountScreen(ScreenId target) {
 }
 
 void UiNavigationManager::unmountCurrent() {
+    // Always release any active UI touch notes before tearing down the screen
+    if (backend_) {
+        backend_->releaseAllUiNotes();
+    }
     if (active_view_) {
         active_view_->onDestroy();
         delete active_view_;

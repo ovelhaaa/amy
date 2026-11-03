@@ -6,14 +6,16 @@ namespace smk::p4::ui {
 
 namespace {
 struct SliderCtx {
-    UiDemoBackend* backend   = nullptr;
-    const char*    param_id  = nullptr;
-    lv_obj_t*      val_label = nullptr;
+    IUiBackend* backend   = nullptr;
+    const char* param_id  = nullptr;
+    lv_obj_t*   val_label = nullptr;
 };
 } // namespace
 
-lv_obj_t* createParameterSlider(lv_obj_t* parent, UiDemoBackend& backend, const char* param_id,
-                                int32_t x, int32_t y, int32_t w, int32_t h) {
+lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const char* param_id,
+                                int32_t x, int32_t y, int32_t w, int32_t h,
+                                PresentationLevel level,
+                                const char* label_override) {
     if (!parent || !param_id) return nullptr;
     const ParameterDescriptor* desc = ParameterRegistry::findById(param_id);
     if (!desc) return nullptr;
@@ -24,27 +26,43 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, UiDemoBackend& backend, const 
     lv_obj_set_pos(card, x, y);
     lv_obj_set_size(card, w, h);
 
-    const FeatureStatus status = backend.model().effectiveStatus(param_id);
-    const bool enabled = backend.model().isParameterEnabled(param_id);
-
-    createLabel(card, desc->name, 6, 4, w - 64, &lv_font_montserrat_14,
-                enabled ? palette::kTextPrimary : palette::kTextSecondary);
-    createStatusBadge(card, status, w - 62, 4);
+    const FeatureStatus status = backend.parameterStatus(param_id);
+    const bool enabled = backend.isParameterEditable(param_id);
+    const char* title = (label_override && label_override[0] != '\0') ? label_override : desc->name;
 
     ParameterValue pv{};
     backend.model().getValue(param_id, pv);
     char vbuf[28];
     ParameterRegistry::formatValue(*desc, pv, vbuf, sizeof(vbuf));
-    lv_obj_t* vlbl = createLabel(card, vbuf, 6, 24, w - 16, &lv_font_montserrat_14, palette::kAccentPrimary);
+
+    lv_obj_t* vlbl = nullptr;
+    if (level == PresentationLevel::StageMinimal) {
+        // StageMinimal: cleaner header with title on left and prominent value on right, no technical badge clutter
+        createLabel(card, title, 8, 4, w - 96, &lv_font_montserrat_14,
+                    enabled ? palette::kTextPrimary : palette::kTextSecondary);
+        const lv_font_t* val_font = (h >= 72) ? &lv_font_montserrat_20 : &lv_font_montserrat_14;
+        vlbl = createLabel(card, vbuf, w - 88, (h >= 72) ? 2 : 4, 76, val_font, palette::kAccentPrimary);
+        if (vlbl) {
+            lv_obj_set_style_text_align(vlbl, LV_TEXT_ALIGN_RIGHT, 0);
+        }
+    } else {
+        createLabel(card, title, 6, 4, w - 64, &lv_font_montserrat_14,
+                    enabled ? palette::kTextPrimary : palette::kTextSecondary);
+        createStatusBadge(card, status, w - 62, 4);
+        vlbl = createLabel(card, vbuf, 6, 24, w - 16, &lv_font_montserrat_14, palette::kAccentPrimary);
+    }
 
     lv_obj_t* slider = lv_slider_create(card);
     if (slider) {
         lv_obj_add_style(slider, &theme().slider_main, LV_PART_MAIN);
         lv_obj_add_style(slider, &theme().slider_indicator, LV_PART_INDICATOR);
         lv_obj_add_style(slider, &theme().slider_knob, LV_PART_KNOB);
-        lv_obj_set_pos(slider, 8, h - 26);
-        lv_obj_set_size(slider, w - 24, 14);
-        lv_obj_set_ext_click_area(slider, 10);
+
+        const int32_t bar_h = (level == PresentationLevel::StageMinimal && h >= 68) ? 18 : 14;
+        const int32_t bar_y = (level == PresentationLevel::StageMinimal && h >= 68) ? (h - 32) : (h - 26);
+        lv_obj_set_pos(slider, 10, bar_y);
+        lv_obj_set_size(slider, w - 28, bar_h);
+        lv_obj_set_ext_click_area(slider, 14);
         lv_slider_set_range(slider, 0, 100);
 
         const float span = (desc->maximum > desc->minimum) ? (desc->maximum - desc->minimum) : 1.0f;
@@ -66,9 +84,15 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, UiDemoBackend& backend, const 
                 if (!d) return;
                 auto* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
                 const int32_t pct_val = lv_slider_get_value(target);
+                const float span_v = (d->maximum > d->minimum) ? (d->maximum - d->minimum) : 1.0f;
                 const float norm = static_cast<float>(pct_val) / 100.0f;
-                const float mapped = d->minimum + norm * (d->maximum - d->minimum);
-                ctx->backend->model().setFloat(ctx->param_id, mapped);
+                const float mapped = d->minimum + norm * span_v;
+                const UiCommandResult res = ctx->backend->requestParameterFloat(ctx->param_id, mapped);
+                if (!res.accepted()) {
+                    const float confirmed = ctx->backend->model().getFloat(ctx->param_id, d->default_value);
+                    const int32_t conf_pct = static_cast<int32_t>(std::lround(((confirmed - d->minimum) / span_v) * 100.0f));
+                    lv_slider_set_value(target, conf_pct, LV_ANIM_OFF);
+                }
                 if (ctx->val_label) {
                     ParameterValue cur_pv{};
                     ctx->backend->model().getValue(ctx->param_id, cur_pv);

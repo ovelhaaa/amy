@@ -4,7 +4,7 @@
 
 namespace smk::p4::ui {
 
-lv_obj_t* createEnvelopeEditor(lv_obj_t* parent, UiDemoBackend& backend,
+lv_obj_t* createEnvelopeEditor(lv_obj_t* parent, IUiBackend& backend,
                                int32_t x, int32_t y, int32_t w, int32_t h) {
     if (!parent) return nullptr;
     lv_obj_t* box = lv_obj_create(parent);

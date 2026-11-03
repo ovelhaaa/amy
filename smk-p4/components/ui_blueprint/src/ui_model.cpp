@@ -11,41 +11,41 @@ namespace {
 const BlueprintPatchEntry kPatchCatalog[UiModel::kCatalogSize] = {
     // Real P4 standalone ROM patches (Available in smk-p4/components/amy_runtime/runtime_config.h)
     {128, "DX7 BRASS 1",     "ROM P4",   PatchCategory::Brass,         SynthFamily::FM,            FeatureStatus::Available, true,
-     {"CHAR", "BRTE", "MOTN", "FDBK", "RATIO", "DTUNE", "SPCE", "EDGE"}},
+     {"CHAR", "BRIGHT", "MOTION", "FDBK", "RATIO", "DTUNE", "SPACE", "EDGE"}},
     {135, "DX7 PIANO 1",     "ROM P4",   PatchCategory::Piano,         SynthFamily::FM,            FeatureStatus::Available, true,
-     {"CHAR", "BRTE", "MOTN", "FDBK", "RATIO", "DTUNE", "SPCE", "EDGE"}},
+     {"CHAR", "BRIGHT", "MOTION", "FDBK", "RATIO", "DTUNE", "SPACE", "EDGE"}},
 
     // Existing S3 / AMY ROM Factory Patches (Planned for P4 standalone expansion)
     {  0, "JUNO BRASS SET 1","ROM JUNO", PatchCategory::Brass,         SynthFamily::Subtractive,   FeatureStatus::Planned,   true,
-     {"CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV"}},
+     {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
     {  1, "JUNO BRASS SWELL","ROM JUNO", PatchCategory::Pads,          SynthFamily::Subtractive,   FeatureStatus::Planned,   false,
-     {"CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV"}},
+     {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
     {  4, "MOVING STRINGS",  "ROM JUNO", PatchCategory::Strings,       SynthFamily::Subtractive,   FeatureStatus::Planned,   true,
-     {"CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV"}},
+     {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
     {  8, "JUNO ORGAN I",    "ROM JUNO", PatchCategory::Organ,         SynthFamily::Subtractive,   FeatureStatus::Planned,   false,
-     {"CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV"}},
+     {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
     { 12, "DONALD PLUCK",    "ROM JUNO", PatchCategory::Plucks,        SynthFamily::Subtractive,   FeatureStatus::Planned,   false,
-     {"CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV"}},
+     {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
     { 14, "ELECT. PIANO I",  "ROM JUNO", PatchCategory::ElectricPiano, SynthFamily::Subtractive,   FeatureStatus::Planned,   true,
-     {"CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV"}},
+     {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
     { 17, "STEEL DRUMS PCM", "ROM JUNO", PatchCategory::Percussion,    SynthFamily::PCM,           FeatureStatus::Planned,   false,
-     {"CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV"}},
+     {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
     { 31, "SYNTH BASS I",    "ROM JUNO", PatchCategory::Bass,          SynthFamily::Subtractive,   FeatureStatus::Planned,   true,
-     {"CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV"}},
+     {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
     { 32, "JUNO LEAD I",     "ROM JUNO", PatchCategory::Leads,         SynthFamily::Subtractive,   FeatureStatus::Planned,   false,
-     {"CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV"}},
+     {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
     { 38, "THUD WAH FX",     "ROM JUNO", PatchCategory::FX,            SynthFamily::Subtractive,   FeatureStatus::Planned,   false,
-     {"CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV"}},
+     {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
     {138, "DX7 E.PIANO 1",   "ROM DX7",  PatchCategory::ElectricPiano, SynthFamily::FM,            FeatureStatus::Planned,   true,
-     {"CHAR", "BRTE", "MOTN", "FDBK", "RATIO", "DTUNE", "SPCE", "EDGE"}},
+     {"CHAR", "BRIGHT", "MOTION", "FDBK", "RATIO", "DTUNE", "SPACE", "EDGE"}},
     {142, "DX7 BASS 1",      "ROM DX7",  PatchCategory::Bass,          SynthFamily::FM,            FeatureStatus::Planned,   true,
-     {"CHAR", "BRTE", "MOTN", "FDBK", "RATIO", "DTUNE", "SPCE", "EDGE"}},
+     {"CHAR", "BRIGHT", "MOTION", "FDBK", "RATIO", "DTUNE", "SPACE", "EDGE"}},
 
     // User Bank Demo Slots (Explicitly marked DEMO)
     {240, "USER STAGE PAD",  "USER DEMO",PatchCategory::Pads,          SynthFamily::Subtractive,   FeatureStatus::Demo,      false,
-     {"CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV"}},
+     {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
     {241, "USER KARPLUS PLK","USER DEMO",PatchCategory::Plucks,        SynthFamily::KarplusStrong, FeatureStatus::Demo,      false,
-     {"CHAR", "BRTE", "MOTN", "SHAP", "ATK", "REL", "SPCE", "DRV"}}
+     {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}}
 };
 
 // Bitmask of active pitch classes relative to root (bit 0 = root)
@@ -183,7 +183,7 @@ void UiModel::resetToDefaults() {
 
     active_learn_slot_ = -1;
     last_preview_note_ = 60;
-    std::snprintf(last_notice_, sizeof(last_notice_), "UI DEMO READY (RAM ONLY - NO AMY WRITES)");
+    std::snprintf(last_notice_, sizeof(last_notice_), "UI DEMO: RAM ONLY (NO AMY)");
     ++revision_;
 }
 
