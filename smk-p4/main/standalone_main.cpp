@@ -281,6 +281,8 @@ extern "C" void app_main() {
                 d.lvgl_peak_used=memory.max_used; d.lvgl_frag_pct=memory.frag_pct;
                 d.free_internal_ram=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
                 d.free_psram=heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+                ESP_LOGI(kTag,"UI_BLUEPRINT stack_free_bytes=%u screen_switches=%lu",
+                    unsigned(uxTaskGetStackHighWaterMark(nullptr)),(unsigned long)d.screen_switches);
                 adapter.model().bumpRevision();
             }
 #endif
