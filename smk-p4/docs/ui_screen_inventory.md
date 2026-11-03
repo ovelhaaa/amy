@@ -1,6 +1,6 @@
 # SMK-P4 UI Blueprint 1.1 — Complete 14-Screen Inventory
 
-All 14 screens are implemented as real, interactive LVGL 9.3.0 `ScreenView` classes under `smk-p4/components/ui_blueprint/screens/`, operating over the generic [`IUiBackend`](file:///C:/Users/devx/Documents/PlatformIO/Projects/amy/build/worktrees/smk-p4-ui-integration-ready/smk-p4/components/ui_blueprint/include/ui_backend.h) contract and constrained to the `800 × 480` horizontal frame (`StatusStrip` `y: 0..42`, `Content` `y: 42..434`, `BottomNavBar` `y: 434..480`).
+All 14 screens are implemented as real, interactive LVGL 9.3.0 `ScreenView` classes under `smk-p4/components/ui_blueprint/screens/`, operating over the generic [`IUiBackend`](../components/ui_blueprint/include/ui_backend.h) contract and constrained to the `800 × 480` horizontal frame (`StatusStrip` `y: 0..42`, `Content` `y: 42..434`, `BottomNavBar` `y: 434..480`).
 
 ---
 

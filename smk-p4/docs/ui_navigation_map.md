@@ -51,7 +51,7 @@ flowchart LR
 
 ## 2. Safe Navigation Lifecycle (`UiNavigationManager`)
 
-`UiNavigationManager` ([`ui_navigation.h`](file:///C:/Users/devx/Documents/PlatformIO/Projects/amy/build/worktrees/smk-p4-ui-integration-ready/smk-p4/components/ui_blueprint/include/ui_navigation.h) / [`ui_navigation.cpp`](file:///C:/Users/devx/Documents/PlatformIO/Projects/amy/build/worktrees/smk-p4-ui-integration-ready/smk-p4/components/ui_blueprint/src/ui_navigation.cpp)) provides:
+`UiNavigationManager` ([`ui_navigation.h`](../components/ui_blueprint/include/ui_navigation.h) / [`ui_navigation.cpp`](../components/ui_blueprint/src/ui_navigation.cpp)) provides:
 
 - **Automatic Note Release on Teardown (`unmountCurrent()`)**:
   - Calls `backend_->releaseAllUiNotes()` before `active_view_->onDestroy()` and `lv_obj_clean(content_root_)`, ensuring screen transitions never leave stuck notes.

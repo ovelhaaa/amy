@@ -1,10 +1,16 @@
 # SMK-P4 UI Blueprint 1.1 — Visual & Software Architecture
 
+Integration0.4: o adaptador real já está implementado em
+[main/ui_blueprint_performance_adapter.h](../main/ui_blueprint_performance_adapter.h).
+As descrições de demo/futuro abaixo registram a origem1.1; o comportamento live
+vigente e as limitações estão no [contrato auditado](ui_backend_port_contract.md)
+e no [relatório0.4](integration_04_results.md).
+
 ## 1. Purpose and Scope
 
 `smk-p4/components/ui_blueprint` defines the complete `800 × 480` horizontal LVGL 9.3.0 user interface architecture for the **Guition JC-ESP32P4-M3** (`ST7701S` MIPI-DSI panel + `GT911` capacitive touch).
 
-In **UI Blueprint 1.1** (`feature/smk-p4-ui-integration-ready`), the visual library is fully decoupled from `UiDemoBackend` through the generic [`IUiBackend`](file:///C:/Users/devx/Documents/PlatformIO/Projects/amy/build/worktrees/smk-p4-ui-integration-ready/smk-p4/components/ui_blueprint/include/ui_backend.h) contract:
+In **UI Blueprint 1.1** (`feature/smk-p4-ui-integration-ready`), the visual library is fully decoupled from `UiDemoBackend` through the generic [`IUiBackend`](../components/ui_blueprint/include/ui_backend.h) contract:
 
 1. **Visual Interface (`screens/`, `widgets/`, `ui_theme.*`)**: Pure LVGL 9.3.0 presentation and touch interaction on a fixed `800 × 480` landscape canvas, with two presentation density levels (`PresentationLevel::StageMinimal` on `PERFORMANCE` and `PresentationLevel::BlueprintVerbose` on editor/system screens).
 2. **Backend Contract (`ui_backend.h`)**: Defines `IUiBackend`, `UiCommandState` (`Confirmed`, `Requested`, `DemoApplied`, `Unsupported`, `Rejected`), and `UiCommandResult`, separating the visual snapshot (`model()`) from musical command requests (`requestParameter*`, `requestSelectPatch`, `requestNoteOn`, `requestNoteOff`, `requestPanic`).

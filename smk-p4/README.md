@@ -1,3 +1,19 @@
+# Integration0.4 — candidato Blueprint1.1
+
+UI antiga preservada como padrão em `guition-standalone`. Candidato de14 telas,
+com adaptador musical real, sem gravar:
+
+```powershell
+C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-standalone-blueprint
+```
+
+Usa sdkconfig.defaults.blueprint / CONFIG_SMKP4_UI_BLUEPRINT. Não habilita
+PCM/USB automaticamente. Reutiliza a tarefa/port LVGL. Patch128/135, Master,
+teclado (lease10s), oitava e Panic conectados; demais funções são planejadas ou
+previews sem DSP. Nova validação física pendente; não herda aprovação0.3A.
+Veja [contrato auditado](docs/ui_backend_port_contract.md) e
+[relatório0.4](docs/integration_04_results.md).
+
 # SMK-P4 — standalone AMY 0.2 e controlador híbrido
 
 Standalone 0.2: `guition-standalone` now builds native AMY from the shared

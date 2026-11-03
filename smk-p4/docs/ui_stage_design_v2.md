@@ -2,7 +2,7 @@
 
 **Display:** Guition JC-ESP32P4-M3 (`800 × 480` horizontal, RGB565)  
 **Framework:** LVGL 9.3.0  
-**Implementação:** [`performance_screen.cpp`](file:///C:/Users/devx/Documents/PlatformIO/Projects/amy/build/worktrees/smk-p4-ui-integration-ready/smk-p4/components/ui_blueprint/screens/performance_screen.cpp)
+**Implementação:** [`performance_screen.cpp`](../components/ui_blueprint/screens/performance_screen.cpp)
 
 ---
 
