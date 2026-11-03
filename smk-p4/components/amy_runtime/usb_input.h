@@ -15,6 +15,7 @@ public:
     }
     Commands commands;
     bool packet(const uint8_t* p,uint32_t now_ms) {
+        if(p[0]>>4) return true; // This application routes only virtual cable 0.
         const unsigned cin=p[0]&15, status=p[1]>>4;
         if(cin>=8 && cin<=14 && (cin!=status || p[2]>=128 ||
             (cin!=12 && cin!=13 && p[3]>=128))) return false;
@@ -57,7 +58,12 @@ public:
         // Reject a malformed transfer before publishing any of its notes.
         for(size_t i=0;i<size;i+=4) {
             const auto* p=data+i; const unsigned cin=p[0]&15;
-            if((p[0]>>4)!=0 || (cin>=8 && cin<=14 &&
+            // Valid multiport devices may duplicate keyboard traffic on other
+            // virtual cables. Keep their identities separate: trace/count and
+            // ignore unselected cables, without canceling cable 0 or reopening
+            // the device. Never merge them into the musical voice ownership.
+            if(p[0]>>4) { ++ignored_cable_packets; continue; }
+            if((cin>=8 && cin<=14 &&
                 ((p[1]>>4)!=cin || p[2]>=128 || (cin!=12 && cin!=13 && p[3]>=128))) ||
                 (cin==15 && p[1]<0xf8)) {
                 ++parse_errors; commands.panic(); return false;
@@ -69,7 +75,7 @@ public:
         return true;
     }
     void disconnect() { commands.panic(); }
-    std::atomic<uint32_t> events{0},dropped{0},parse_errors{0};
+    std::atomic<uint32_t> events{0},dropped{0},parse_errors{0},ignored_cable_packets{0};
     std::atomic<uint32_t> trace_dropped{0};
 private:
     bool trace_enabled_=false;

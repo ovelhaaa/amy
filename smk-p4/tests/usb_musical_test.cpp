@@ -54,6 +54,31 @@ int main() {
         assert(trace.packet[0]==9 && trace.packet[3]==0);
         assert(!diagnostic.popTrace(trace) && !diagnostic.commands.depth());
     }
+    {
+        // Real SMK25 stream: a parsed event duplicated on cable 0 and cable 1.
+        // The auxiliary copy must not invalidate or duplicate the selected one.
+        UsbInput input;
+        input.enableTrace();
+        const auto generation=input.commands.generation();
+        const uint8_t on[]={0x09,0x90,0x3c,0x50,0x19,0x90,0x3c,0x50};
+        const uint8_t off[]={0x08,0x80,0x3c,0x40,0x18,0x80,0x3c,0x40};
+        assert(input.transfer(on,sizeof(on),1) && input.transfer(off,sizeof(off),2));
+        assert(input.events==2 && input.ignored_cable_packets==2 && input.parse_errors==0);
+        assert(input.commands.generation()==generation);
+        Command c;
+        assert(input.commands.pop(c) && c.type==CommandType::NoteOn && c.id==60 && c.value==80);
+        assert(input.commands.pop(c) && c.type==CommandType::NoteOff && c.id==60);
+        assert(!input.commands.pop(c));
+        // A reset or even malformed data on an unselected port cannot affect
+        // the selected cable. Malformed selected data still fails closed.
+        const uint8_t auxiliary[]={0x1f,0xff,0,0,0x29,0xff,0xff,0xff};
+        assert(input.transfer(auxiliary,sizeof(auxiliary),3));
+        assert(input.commands.generation()==generation && input.ignored_cable_packets==4);
+        const uint8_t malformed[]={0x09,0x90,60,100,0x08,0x90,60,0};
+        assert(!input.transfer(malformed,sizeof(malformed),4));
+        assert(!input.commands.depth() && input.parse_errors==1 && input.events==2);
+        assert(input.commands.generation()!=generation);
+    }
     queueOrder();
     Runtime r; const auto baseline=probe_live(); assert(r.begin());
     probe_realtime(true);
@@ -120,6 +145,15 @@ int main() {
     assert(!r.snapshot().active_notes && r.snapshot().patch_id==135);
     midi(r,0x90,60,100); r.apply(2); audio(r); assert(r.snapshot().active_notes==1);
     ui.panic(); r.apply(3); audio(r); assert(!r.snapshot().active_notes);
+    // Replay the captured mixed-cable C4 after the phase-sensitive modulation
+    // checks above, so this extra render does not alter their initial LFO phase.
+    const uint8_t dual_on[]={0x09,0x90,0x3c,0x50,0x19,0x90,0x3c,0x50};
+    const uint8_t dual_off[]={0x08,0x80,0x3c,0x40,0x18,0x80,0x3c,0x40};
+    const auto parse_errors_before=usb.parse_errors.load();
+    assert(usb.transfer(dual_on,sizeof(dual_on),0)); r.apply(0); audio(r);
+    assert(r.snapshot().active_notes==1 && usb.parse_errors==parse_errors_before);
+    assert(usb.transfer(dual_off,sizeof(dual_off),1)); r.apply(1); audio(r);
+    assert(!r.snapshot().active_notes && usb.ignored_cable_packets==2);
     // Two independent SPSC producers, one real AMY owner, finite stress.
     std::atomic<unsigned> done{0};
     std::thread touch([&] {

@@ -267,10 +267,11 @@ extern "C" void app_main() {
                     (unsigned long)trace.timestamp_ms,unsigned(trace.valid_bytes),unsigned(trace.packet[0]>>4),unsigned((trace.packet[1]&15)+1),
                     trace.packet[0],trace.packet[1],trace.packet[2],trace.packet[3],(unsigned long)runtime.usbInput().trace_dropped.load());
 #endif
-            ESP_LOGI(kTag,"USB state=%u connects=%lu disconnects=%lu errors=%lu events=%lu parse_errors=%lu dropped=%lu queue=%lu overflow=%lu stack_free=%lu polyphony_rejected=%lu",
+            ESP_LOGI(kTag,"USB state=%u connects=%lu disconnects=%lu errors=%lu events=%lu parse_errors=%lu ignored_cable_packets=%lu dropped=%lu queue=%lu overflow=%lu stack_free=%lu polyphony_rejected=%lu",
                 unsigned(usb_host.state()),(unsigned long)usb_host.connects(),(unsigned long)usb_host.disconnects(),
                 (unsigned long)usb_host.errors(),(unsigned long)runtime.usbInput().events.load(),
-                (unsigned long)runtime.usbInput().parse_errors.load(),(unsigned long)runtime.usbInput().dropped.load(),
+                (unsigned long)runtime.usbInput().parse_errors.load(),(unsigned long)runtime.usbInput().ignored_cable_packets.load(),
+                (unsigned long)runtime.usbInput().dropped.load(),
                 (unsigned long)runtime.usbInput().commands.depth(),(unsigned long)runtime.usbInput().commands.overflows(),
                 (unsigned long)usb_host.stackFree(),(unsigned long)state.engine.polyphony_rejected);
         }
