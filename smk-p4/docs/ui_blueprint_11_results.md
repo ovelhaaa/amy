@@ -1,9 +1,9 @@
 # SMK-P4 UI Blueprint 1.1 — Validation Results & Stage Polish Report
 
-**Branch:** `feature/smk-p4-ui-integration-ready`  
-**Base Branch:** `feature/smk-p4-ui-blueprint`  
-**Target Display:** Guition JC-ESP32P4-M3 (`800 × 480` horizontal, RGB565, GT911 Capacitive Touch)  
-**UI Engine:** LVGL 9.3.0  
+**Branch:** `feature/smk-p4-ui-integration-ready`\
+**Base Branch:** `feature/smk-p4-ui-blueprint`\
+**Target Display:** Guition JC-ESP32P4-M3 (`800 × 480` horizontal, RGB565, GT911 Capacitive Touch)\
+**UI Engine:** LVGL 9.3.0\
 
 ---
 

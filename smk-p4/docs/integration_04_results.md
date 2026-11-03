@@ -159,7 +159,7 @@ Logs locais ignorados em `build/p404/` deste worktree. Comandos executados da ra
 | PASS | python -m unittest discover -s smk-p4/tests -p test_standalone_capture_report.py | capture_report_tests.log;8 casos de validação fail-closed |
 | PASS | python -m unittest discover -s smk-p4/tests -p test_*.py | python_final.log;23 testes |
 | PASS | standalone_capture_report.py <log0.3A> --legacy --output <json> | baseline_03a_serial_analysis.json; amostras históricas, não novo GateE |
-| PASS | git diff --check | Sem whitespace incorreto |
+| PASS | git diff adf2e95a --check | Diff completo;6 hard-breaks Markdown importados convertidos para backslash sem espaços finais |
 | NOT RUN | Build S3 nativo nesta rodada | Produção S3 intacta; testes compartilhados executados |
 | PASS | pio run -d smk-p4 -e guition-standalone-blueprint -j 8 após restaurar sdkconfig seguro/mtime | blueprint_safe_restored_build.log;302,64s |
 | PASS | python smk-p4/tests/check_blueprint_build.py (seguro) | blueprint_safe_check.log; ambos gates efetivos desabilitados |

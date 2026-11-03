@@ -1,7 +1,7 @@
 # SMK-P4 UI Blueprint 1.1 — Performance Stage v2 Design
 
-**Display:** Guition JC-ESP32P4-M3 (`800 × 480` horizontal, RGB565)  
-**Framework:** LVGL 9.3.0  
+**Display:** Guition JC-ESP32P4-M3 (`800 × 480` horizontal, RGB565)\
+**Framework:** LVGL 9.3.0\
 **Implementação:** [`performance_screen.cpp`](../components/ui_blueprint/screens/performance_screen.cpp)
 
 ---
