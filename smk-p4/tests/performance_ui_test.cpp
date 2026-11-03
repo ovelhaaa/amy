@@ -14,12 +14,18 @@ int main() {
     PerformanceUi ui(backend); assert(ui.begin()); assert(!runtime.commands().depth());
     assert(lv_obj_has_state(at(18,392),LV_STATE_DISABLED));
     assert(runtime.begin());
+    bool output_live=false;
     const auto service=[&](uint32_t ms) {
         mock_time_us=ms*1000;
-        backend.publish(runtime.snapshot(),true,100,0); ui.service(ms); runtime.apply(ms);
+        backend.publish(runtime.snapshot(),output_live,100,0); ui.service(ms); runtime.apply(ms);
     };
     service(0); assert(!runtime.commands().depth());
+    lv_obj_t* audio=nullptr;
+    for(unsigned i=1;i<mock_count;++i) if(mock_objects[i].x==416 && mock_objects[i].y==14) audio=&mock_objects[i];
+    assert(audio && std::strcmp(audio->text,"AUDIO RAM")==0);
+    output_live=true;
     mock_event(at(18,392),LV_EVENT_PRESSED); service(1); assert(runtime.snapshot().active_notes==1);
+    assert(std::strcmp(audio->text,"AUDIO RUN")==0);
     mock_event(at(18,392),LV_EVENT_PRESS_LOST); service(2); assert(!runtime.snapshot().active_notes);
     mock_event(at(18,392),LV_EVENT_PRESSED); service(3);
     mock_event(at(702,318),LV_EVENT_CLICKED); service(4); assert(!runtime.snapshot().active_notes);

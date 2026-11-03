@@ -61,6 +61,17 @@ def main():
     output = (build / "enabled-main-check.o").as_posix()
     command, count = re.subn(r'-o\s+("[^"]+"|\S+)', f'-o "{output}"', entry["command"])
     assert count == 1, "Expected exactly one compiler output"
+    base_command = command
+    # Compile isolated opt-in variants without modifying effective sdkconfig
+    # or replacing production objects. These are not electrical approvals.
+    for name, definitions in (
+        ("disabled", ""),
+        ("usb-only", " -DCONFIG_SMKP4_USB_WIRING_CONFIRMED=1 -DCONFIG_SMKP4_USB_CONTROLLER=0"),
+        ("ram-self-test", " -DCONFIG_SMKP4_AMY_RAM_SELF_TEST=1"),
+    ):
+        variant = base_command.replace("enabled-main-check.o", f"boot-{name}-check.o") + definitions
+        subprocess.run(variant if os.name == "nt" else shlex.split(variant),
+                       cwd=entry["directory"], check=True)
     command += " -DCONFIG_SMKP4_PCM_WIRING_CONFIRMED=1 -DCONFIG_SMKP4_PCM_TEST_SEQUENCE=1"
     subprocess.run(command if os.name == "nt" else shlex.split(command),
                    cwd=entry["directory"], check=True)
@@ -79,7 +90,7 @@ def main():
     command += " -DCONFIG_SMKP4_PCM_DIAGNOSTIC=1"
     subprocess.run(command if os.name == "nt" else shlex.split(command),
                    cwd=entry["directory"], check=True)
-    print("PASS: P4 ES, safe I2S/USB defaults, no P4Link; enabled AMY/diagnostic/USB/trace/descriptor compilation and separate USB-enabled ELF link")
+    print("PASS: effective P4 ES safe defaults; no P4Link; neither/USB-only/PCM-only/both/self-test/diagnostic compilation; trace/descriptor compilation and separate USB-enabled ELF link")
 
 
 if __name__ == "__main__":

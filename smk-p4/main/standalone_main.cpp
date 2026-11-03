@@ -9,6 +9,7 @@
 #include "local_performance_backend.h"
 #include "performance_ui.h"
 #include "usb_midi_host.h"
+#include "standalone_boot.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -36,6 +37,7 @@ struct Snapshot {
     unsigned stack_free_bytes = 0;
     esp_err_t error = ESP_OK;
     bool running = false;
+    bool owner_initialized = false;
 };
 StaticQueue_t snapshot_control;
 uint8_t snapshot_storage[sizeof(Snapshot)];
@@ -44,7 +46,7 @@ QueueHandle_t snapshots = nullptr;
 void runAudio() {
     Pcm5102Output output;
     TestTone tone;
-    Snapshot state;
+    Snapshot state{};
     int16_t pcm[kBlockSamples]{};
 #if !defined(CONFIG_SMKP4_PCM_DIAGNOSTIC)
 #if defined(CONFIG_SMKP4_AMY_RAM_SELF_TEST)
@@ -89,6 +91,7 @@ void runAudio() {
     if(!tone.configure(CONFIG_SMKP4_PCM_TEST_HZ,kTestAmplitude)) state.error=ESP_ERR_INVALID_ARG;
     state.running=state.error==ESP_OK;
     state.engine=runtime.snapshot();
+    state.owner_initialized=true;
     xQueueOverwrite(snapshots, &state);
     int64_t previous_start = 0;
     while (state.running) {
@@ -176,27 +179,43 @@ extern "C" void app_main() {
              0,
 #endif
              CONFIG_SMKP4_PCM_TEST_HZ, double(kTestAmplitude));
-    if (!snapshots) { ESP_LOGE(kTag,"Snapshot mailbox creation failed"); return; }
-    if (xTaskCreate(audioTask, "amy_owner", smk::p4::amy::kOwnerStackBytes, nullptr,
-                                  smk::p4::amy::kOwnerPriority, nullptr) != pdPASS) {
+    if (!snapshots) ESP_LOGE(kTag,"Snapshot mailbox creation failed; diagnostics continue without audio/USB");
+    const bool owner_started=snapshots && xTaskCreate(audioTask, "amy_owner", smk::p4::amy::kOwnerStackBytes, nullptr,
+                                  smk::p4::amy::kOwnerPriority, nullptr) == pdPASS;
+    if (!owner_started) {
         ESP_LOGE(kTag, "AUDIO FAIL: task/mailbox creation failed");
     }
     // Let the boot owner finish before display allocations. A failed display
     // never stops the independent audio owner. No serial upload in this task.
-    Snapshot initial;
+    Snapshot initial{};
 #if defined(CONFIG_SMKP4_AMY_RAM_SELF_TEST)
     constexpr unsigned boot_polls=12000; // Explicit diagnostic can render long ROM releases.
 #else
     constexpr unsigned boot_polls=200;
 #endif
-    for(unsigned i=0;i<boot_polls && xQueuePeek(snapshots,&initial,0)!=pdTRUE;++i) vTaskDelay(pdMS_TO_TICKS(10));
+    const bool snapshot_received=smk::p4::boot::awaitSnapshot(snapshots!=nullptr,owner_started,initial,boot_polls,
+        [](Snapshot& value) { return xQueuePeek(snapshots,&value,0)==pdTRUE; },
+        [] { vTaskDelay(pdMS_TO_TICKS(10)); });
+    if(!snapshot_received) ESP_LOGE(kTag,"Initial audio snapshot unavailable: %s; diagnostics continue; no automatic restart",
+        !snapshots?"mailbox unavailable":owner_started?"timeout":"owner task not started");
+#if defined(CONFIG_SMKP4_USB_WIRING_CONFIRMED)
+    // This opt-in config records operator electrical qualification and enables
+    // USB mode. Compilation never supplies that qualification.
+    constexpr bool usb_enabled_and_qualified=true;
+#else
+    constexpr bool usb_enabled_and_qualified=false;
+#endif
+    const auto usb_start=smk::p4::boot::usbStart(usb_enabled_and_qualified,snapshots!=nullptr,
+        owner_started,snapshot_received,initial);
+    ESP_LOGI(kTag,"USB boot gate: %s",smk::p4::boot::reason(usb_start));
 #if defined(CONFIG_SMKP4_USB_WIRING_CONFIRMED)
 #if defined(CONFIG_SMKP4_USB_MIDI_TRACE)
     runtime.usbInput().enableTrace();
 #endif
-    if(initial.running && initial.engine.ready) {
+    if(usb_start==smk::p4::boot::UsbStart::Ready) {
+        ESP_LOGI(kTag,"Starting qualified USB Host controller=%d",CONFIG_SMKP4_USB_CONTROLLER);
         if(!usb_host.begin(CONFIG_SMKP4_USB_CONTROLLER)) ESP_LOGE(kTag,"USB Host initialization failed; Touch remains available");
-    } else ESP_LOGE(kTag,"USB Host not started: audio owner unavailable");
+    } else ESP_LOGE(kTag,"USB Host not started: %s",smk::p4::boot::reason(usb_start));
 #endif
 #if defined(CONFIG_SMKP4_PCM_DIAGNOSTIC)
     constexpr bool diagnostic=true;
@@ -210,8 +229,8 @@ extern "C" void app_main() {
     if(!display_ready || (!diagnostic && !ui_ready)) ESP_LOGE(kTag,"Display/UI failed; audio owner continues");
     TickType_t last_report = xTaskGetTickCount();
     for (;;) {
-        Snapshot current;
-        if(xQueuePeek(snapshots,&current,0)==pdTRUE)
+        Snapshot current{};
+        if(snapshots && xQueuePeek(snapshots,&current,0)==pdTRUE)
             backend.publish(current.engine,current.running && current.physical,current.render_max_us,current.render_deadlines);
         backend.publishMidi(usb_host.state()==smk::p4::usb::Host::State::Connected,
             usb_host.state()==smk::p4::usb::Host::State::Error,runtime.usbInput().events.load());
@@ -219,8 +238,8 @@ extern "C" void app_main() {
         if(ui_ready) ui.service(static_cast<uint32_t>(esp_timer_get_time()/1000));
         if (xTaskGetTickCount() - last_report >= pdMS_TO_TICKS(smk::p4::config::kDiagnosticsIntervalMs)) {
             last_report = xTaskGetTickCount();
-            Snapshot state;
-            if (xQueuePeek(snapshots, &state, 0) == pdTRUE) {
+            Snapshot state{};
+            if (snapshots && xQueuePeek(snapshots, &state, 0) == pdTRUE) {
                 ESP_LOGI(kTag, "AUDIO %s frames_written=%" PRIu64 " blocks_rendered=%" PRIu32
                          " render_avg_us=%" PRIu64 " render_max_us=%" PRIu32
                          " render_deadlines=%" PRIu32 " service_max_us=%" PRIu32
