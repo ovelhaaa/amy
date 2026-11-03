@@ -146,7 +146,7 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     // MIDI publication does not advance stateRevision. Inspect flags every tick.
     auto& d=model_.diagnostics();
     const auto& s=backend_.state();
-    const bool midi=backend_.connected() && (s.flags&link::kUsbConnected);
+    const bool midi=(s.flags&link::kUsbConnected)!=0;
     const bool audio=backend_.connected() && (s.flags&link::kAudioLive);
     const char* usb_status=backend_.midiError()?"ERROR":midi?"CONNECTED":"DISCONNECTED";
     if(d.midi_connected!=midi || d.audio_live!=audio || std::strcmp(d.usb_status,usb_status)!=0 || std::strcmp(d.amy_status,backend_.status())!=0) model_.bumpRevision();

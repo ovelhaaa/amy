@@ -73,7 +73,8 @@ static void contract() {
     assert(!a.isNoteHeld(60) && !a.requestNoteOff(60,x.token).accepted());
     x=a.requestNoteOn(72,100);m.s.flags=smk::link::kUsbConnected; a.service(10201);assert(a.model().diagnostics().midi_connected);
     m.s.flags=0;a.service(10202);assert(!a.model().diagnostics().midi_connected && a.isNoteHeld(72)); // USB loss preserves touch
-    m.ready=false;a.service(10203);assert(!a.isNoteHeld(72) && !a.requestNoteOn(60,100).accepted());
+    m.ready=false;m.s.flags=smk::link::kUsbConnected;a.service(10203);
+    assert(a.model().diagnostics().midi_connected && !a.isNoteHeld(72) && !a.requestNoteOn(60,100).accepted());
     Mock empty;empty.rev=0;UiBlueprintPerformanceAdapter no_snapshot(empty);no_snapshot.service(1);assert(!no_snapshot.requestNoteOn(60,100).accepted());
     a.releaseAllUiNotes();m.ready=true;++m.rev;a.service(11000);
     for(unsigned i=0;i<UiBlueprintPerformanceAdapter::kGestureCapacity;++i) assert(a.requestNoteOn(63,100).accepted());
