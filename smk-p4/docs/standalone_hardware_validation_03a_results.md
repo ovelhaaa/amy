@@ -1,6 +1,10 @@
 # SMK-P4 Standalone 0.3A — hardware validation
 
-2026-11-02–03. Entrega de software e validação incremental de bancada. **Não aprovado para ensaio.**
+2026-11-02–03. **Teste inicial integrado concluído; candidato a ensaio assistido
+com quatro vozes, condicionado à qualificação elétrica declarada pelo operador.**
+Resultado vigente no [consolidado final](#consolidado-final--2026-11-03).
+Os checkpoints abaixo preservam a sequência de falhas, correções e validações;
+os estados pendentes históricos não substituem o consolidado final.
 PASS = executado com sucesso; FAIL = executado com falha; BLOCKED = dependência
 identificada; NOT RUN = não executado; MANUAL = exige verificação física.
 
@@ -275,10 +279,12 @@ não são medições0.3A. Nenhuma janela física nova foi executada.
    Não reutilizar COM13 sem identificar novamente a unidade/conector.
 3. Usar `C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-standalone -t menuconfig`,
    aplicar apenas gate já qualificado e recompilar. Inspecionar sdkconfig gerado.
-   Upload só com porta confirmada e condições acima; nenhum upload nesta entrega.
+   Upload só com porta confirmada e condições acima. As gravações realizadas,
+   imagens e confirmações desta rodada estão registradas nos checkpoints abaixo.
 4. Captura sem reset, com monitor fechado:
    `C:/.platformio/penv/Scripts/python.exe smk-p4/tests/capture_serial.py --port <P4_PORT> --output build/p403a_physical.log --seconds 60`.
-   Para30min usar `--seconds 1800`; anotar cenários e observações separadamente.
+   Para garantir30min entre amostras de5s, usar `--seconds 1860` ou mais;
+   anotar cenários e observações separadamente.
 5. Se falhar: baixar mixer, preservar logs/config/contadores. Panic, soltar
    teclas/pedal e confirmar notes0; USB ERROR: desconectar, conferir alimentação,
    reconectar e observar enumeração. Não usar reset automático para esconder causa.
@@ -704,3 +710,135 @@ PASS adicional run_usb para shutdown durante a espera e reinício do mesmo Host.
 Configuração de PCM/HS preservada e sem alteração no AMY core. Falha USB genuína
 sem remoção pode levar até1s adicional antes da recuperação; notas são canceladas
 imediatamente. Validação física e soak da nova imagem continuam MANUAL/NOT RUN.
+
+### Hot-plug confirmado na imagem com retenção limitada
+
+O operador relatou que os ciclos aparentemente funcionaram corretamente. A
+captura contínua `build/p403a/removal_grace_runtime.log` confirma quatro remoções
+e cinco conexões no mesmo boot, errors=0, parse_errors=0, dropped=0 e overflow=0.
+Há 82 eventos MIDI e 82 pacotes auxiliares ignorados. As quatro notificações de
+ERROR aguardaram confirmação de remoção, sem timeout da janela nem tentativa de
+reabrir endereço ausente. Isso valida a correção contra o problema observado,
+sem apagar os resultados negativos das imagens anteriores. Áudio permaneceu sem
+render/compute deadlines, erros de escrita ou timeouts; notes=0 após as ações.
+
+PASS hot-plug observado nos contadores; MANUAL confirmação auditiva do operador.
+Gate3 funcional passa neste perfil qualificado; detalhes elétricos continuam
+baseados na qualificação declarada, não em nova medição independente. Gate5
+aguarda completar30min nesta mesma captura, agora com USB/MIDI/hot-plug reais.
+Não misturar essa janela com o soak anterior em que o SMK25 estava desligado.
+
+O operador confirmou a carga musical adicional (acordes, notas rápidas, sustain,
+Pitch Bend/Modulation e controles): tudo funcionando, com a ressalva do limite de
+quatro notas. Esse limite é a polifonia total atual, partilhada entre USB/Touch;
+sustain também mantém vozes ocupadas. Não foi ampliado nesta rodada de bring-up.
+As rejeições por polifonia são contadas separadamente (223 no checkpoint de
+361915ms); não são drops do transporte MIDI, que permanece em zero. Aumentar a
+polifonia exige outra medição do DSP e da margem de deadline. Não há promessa de
+polifonia maior neste candidato.
+
+## Consolidado final — 2026-11-03
+
+### Implementado e arquitetura
+
+Boot condicionado a snapshot inicial válido e owner inicializado; trace limitado
+anterior à validação de pacotes; seleção do cabo virtual0 sem rejeitar a duplicação
+auxiliar real do SMK25; idade de eventos imune ao pequeno skew entre produtor e
+consumidor; retenção limitada do handle USB para receber DEV_GONE após ERROR.
+Panic/cancelamento de notas é imediato. Erro sem confirmação de remoção continua
+contado e recuperado. A alteração final de lifecycle está em `a31a78bc`; a imagem
+instalada corresponde a esse código. Somente aplicação/adaptadores P4 e testes;
+core AMY, driver PCM, dependências e arquitetura standalone preservados.
+
+### Perfil instalado e evidência
+
+P4 ES1.3, COM13, serial80:F1:B2:D3:CC:86. PCM GPIO50/51/52 conforme montagem
+qualificada pelo operador; USB HS controlador0. 48kHz, PCM16 estéreo, blocos256,
+DMA4×256, ROM128/135, quatro vozes totais USB/Touch. Bundle local
+`build/p403a/removal_grace_image`; firmware SHA256
+`89fc42a19b0d588970bf6bd18ded139af1bc3843ae398d0cc2404fa1cfa2e9a7`.
+Build: RAM estática30344bytes, Flash1157856bytes. Upload esptool verificado por
+hash; os backups integrais anteriores continuam preservados. Defaults do
+repositório permanecem desabilitados para periféricos sem qualificação.
+
+PASS execução integrada: `build/p403a/removal_grace_runtime.log`, SHA256
+`689c9d7d0680de685f499eb46816f571ae6e90b9014515303d7815b189f36678`.
+366 amostras por subsistema, 1825,04s entre a primeira e a última (30min25s),
+maior intervalo5,01s. Mesmo boot e contadores monotônicos. Incluiu ciclos HS,
+carga musical confirmada pelo operador e períodos de repouso conectado; não foi
+execução musical contínua ininterrupta durante todos os30min.
+
+| Medida final | Resultado |
+|---|---|
+| USB | 5 conexões, 4 desconexões, 0 erros, Connected ao terminar |
+| MIDI | 3215 eventos selecionados; 3215 pacotes auxiliares ignorados |
+| Parsing / drop MIDI / overflow | 0 / 0 / 0 |
+| Vozes amostradas | máximo4; nenhuma ativa ao terminar |
+| Limite de polifonia | 227 rejeições contadas, separadas de drops MIDI |
+| Patches observados | 128 e135 |
+| Áudio | I2S_PRODUCING; 88583168 frames escritos no boot |
+| Continuidade pela contagem | +87601920 frames em1825,04s, coerente com48000frames/s |
+| Render/DSP | média final185us, máximo2601us; prazo do bloco5333,33us |
+| Render / compute deadlines | 0 / 0 |
+| Write errors / timeouts / refill risks | 0 / 0 / 0 |
+| Clipping digital / OOM / fila overflow / expirados | 0 / 0 / 0 / 0 |
+| Fila de comandos | máximo4; idade máxima6ms |
+| Comandos / troca de patch | máximos1302us /225us |
+| DMA write / serviço completo | máximos5234us /5672us |
+| Heap interno final / menor amostrado | 250283 /250283bytes |
+| PSRAM livre final / menor amostrada | 31176952 /31176952bytes |
+| Pilha livre mínima áudio / USB | 7332 /4144bytes |
+
+O serviço inclui espera no DMA; seu máximo não é o tempo de cálculo DSP. Não
+há aumento progressivo de uso de memória observado após conectar/trocar patches.
+Isso não substitui teste de integridade do heap nem prova ausência universal de
+vazamentos. `trace_dropped=6210` é descarte da fila diagnóstica limitada; MIDI
+`dropped=0`. Os sinais WARN de ERROR durante retirada foram correlacionados com
+DEV_GONE dentro da janela; não houve falha persistente nem retry de endereço
+removido. A idade de6ms mede fila, não latência física tecla–saída.
+
+### Validação e gates
+
+PASS `./smk-p4/tests/run_usb.ps1` na correção final: três ciclos com ERROR antes
+de DEV_GONE atrasado, NO_DEVICE nas duas ordens, cancelamento único, erro genuíno
+sem remoção, timeout/retry, falhas de APIs, drain, shutdown durante espera e
+reinício. PASS build final
+`C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-standalone`
+(250,41s). PASS `git diff --check`.
+
+PASS análise offline:
+`C:/.platformio/penv/Scripts/python.exe build/p403a/analyze_final_soak.py build/p403a/removal_grace_runtime.log --output build/p403a/removal_grace_final_analysis.json`.
+Todos os checks do artefato ficaram true, incluindo duração, lacunas, counters,
+MIDI e hot-plug. A captura originalmente aberta por3600s foi interrompida
+intencionalmente por Ctrl+C depois da duração comprovada; KeyboardInterrupt do
+script encerrou a leitura e liberou COM13, não representa crash/reset do P4.
+Não houve reboot nem gravação ao terminar a janela.
+
+PASS host/AMY/safety/UI, checker de configurações e builds de outros perfis
+executados nesta rodada conforme a tabela histórica; NÃO foram todos repetidos
+após a última mudança exclusiva de Host P4. O teste USB e build standalone acima
+são os executados sobre a correção final. Nenhuma dependência nova foi adicionada.
+
+| Gate | Resultado vigente |
+|---|---|
+| 1 Segurança | PASS política de boot e boot físico observado; falhas injetadas em mock |
+| 2 Áudio | PASS funcional; MANUAL silêncio, L/R limpos, AMY e touch confirmados pelo operador |
+| 3 USB | PASS enumeração/input/hot-plug reais; qualificação VBUS declarada pelo operador |
+| 4 Música | PASS funcional/MANUAL controles, sustain, releases independentes, Panic e patches |
+| 5 Estabilidade inicial | PASS janela integrada30min25s, dentro dos limites medidos acima |
+
+### Hipóteses físicas, limites e próximo passo
+
+MANUAL: qualificação elétrica declarada; valores numéricos de VCC/straps e
+origem/proteção VBUS não fornecidos, sem certificação elétrica independente.
+NOT RUN: osciloscópio/clock, latência analógica ponta a ponta, CPU total, teste de
+integridade de heap em execução, boot físico alimentado sem computador e ensaio
+prolongado. DMA underruns exatos permanecem UNMEASURED; os zeros reportados são
+os contadores efetivamente instrumentados e a confirmação auditiva separada.
+
+Prontidão: candidato funcional para ensaio assistido inicial no perfil de quatro
+vozes e montagem qualificada pelo operador. Não é qualificação para palco nem
+release estável geral. Próximo menor passo: ensaio prolongado assistido mantendo
+o perfil, backups e diagnóstico; preservar logs caso surja falha. O procedimento
+de recuperação acima continua aplicável. Aumentar polifonia exige medição própria
+antes de alterar o limite; sustain também ocupa as quatro vozes atuais.

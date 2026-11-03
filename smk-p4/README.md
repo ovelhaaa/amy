@@ -11,6 +11,11 @@ and [wiring](docs/pcm5102_wiring.md). No UART/S3/HELLO in standalone;
 native USB Host is opt-in behind its independent electrical qualification gate.
 
 Standalone 0.3A adds deterministic owner-mailbox validation before USB startup.
+The qualified SMK25 profile routes virtual cable 0 and counts ignored auxiliary
+cables, handles event timestamp skew, and retains the USB handle briefly when a
+transfer error precedes device removal. Notes are canceled immediately; an error
+without confirmed removal still enters bounded recovery. Four total voices are
+shared by USB and Touch, including sustained notes.
 See [hardware validation, bench gates and recovery](docs/standalone_hardware_validation_03a_results.md).
 PCM and USB remain disabled by default. The report distinguishes the safe build
 from operator-qualified bench images and records the actual flashed profile;
