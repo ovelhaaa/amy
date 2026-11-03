@@ -624,3 +624,25 @@ PASS build nativo da correção de hot-plug:
 Configuração preserva PCM GPIO50/51/52 e Host HS controlador0 qualificados pelo
 operador. `git diff --check` PASS. A confirmação física da correção e o soak
 continuam pendentes; o resultado de compilação não os substitui.
+
+### Janela concluída após hotplug fix — evidência ainda divergente
+
+PASS gravação COM13 da imagem acima com hashes verificados. Captura contínua
+`build/p403a/hotplug_fixed_soak_runtime.log`: 372 amostras por subsistema,
+1855 s entre primeira e última; 89039872 frames adicionais (~47999,93 frames/s).
+PASS repouso por mais de 30 min: sem reset observado, render/compute deadlines,
+refill risks, write errors, timeouts, clipping, OOM e overflows todos zero;
+DSP máximo 284 us. Entretanto, Host permaneceu Disconnected, connects=0,
+disconnects=0, events=0. Portanto FAIL critérios de evidência MIDI/hot-plug do
+soak integrado; não equivale a falha auditiva demonstrada nem a aprovação musical.
+Análise reproduzível:
+`C:/.platformio/penv/Scripts/python.exe build/p403a/analyze_final_soak.py build/p403a/hotplug_fixed_soak_runtime.log --output build/p403a/hotplug_fixed_soak_analysis.json`.
+
+O operador respondeu que os três ciclos funcionaram. Essa confirmação é
+registrada como MANUAL, mas diverge dos contadores, ainda zerados em captura
+posterior no mesmo boot (~3801 s). Não houve regravação ou reset para esconder
+a divergência. Nova captura `build/p403a/hotplug_fixed_followup.log` aberta sem
+reset; solicitada verificação do conector/dispositivo e C4 Touch com cabo HS
+retirado antes de qualquer nova mudança. Próximo menor passo: resolver essa
+divergência e observar enumeração/input/ciclos reais nesta imagem, depois obter
+30 min integrados. Gate3 hot-plug e Gate5 permanecem pendentes.
