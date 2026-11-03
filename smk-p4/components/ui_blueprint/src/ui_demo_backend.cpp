@@ -53,7 +53,7 @@ void UiDemoBackend::triggerNoteOn(uint8_t note, uint8_t velocity) {
 
     const HarmonyPreviewResult harm = model_.computeHarmony(note);
     char buf[64];
-    std::snprintf(buf, sizeof(buf), "DEMO NOTE %u -> QUANT %u (%u CHORD NOTES, NO AMY TX)",
+    std::snprintf(buf, sizeof(buf), "NOTE %u -> QUANT %u (%u NOTES)",
                   note, harm.quantized_note, harm.chord_count);
     model_.setNotice(buf);
     recomputeMeters();

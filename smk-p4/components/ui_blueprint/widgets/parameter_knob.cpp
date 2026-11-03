@@ -56,8 +56,8 @@ lv_obj_t* createParameterKnob(lv_obj_t* parent, UiDemoBackend& backend, const ch
         backend.model().getValue(param_id, pv);
         char vbuf[24];
         ParameterRegistry::formatValue(*desc, pv, vbuf, sizeof(vbuf));
-        lv_obj_t* vlbl = createLabel(card, vbuf, 4, h - 26, w - 68, &lv_font_montserrat_14, palette::kAccentPrimary);
-        createStatusBadge(card, status, w - 72, h - 26);
+        lv_obj_t* vlbl = createLabel(card, vbuf, 4, h - 26, w - 60, &lv_font_montserrat_14, palette::kAccentPrimary);
+        createStatusBadge(card, status, w - 60, h - 26);
 
         attachLvContext<KnobCtx>(
             arc, KnobCtx{&backend, desc->id, vlbl},

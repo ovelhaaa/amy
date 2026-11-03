@@ -37,13 +37,13 @@ public:
         createParameterCard(parent, backend, "mixer.layer_b.mute",  206, 294, 190, 92);
 
         // Strip 3: Drums Bus
-        createSignalMeter(parent, "DRUMS BUS", m.drums_l, m.drums_r, m.is_simulated, 404, 40, 190, 66);
+        createSignalMeter(parent, "DRUMS", m.drums_l, m.drums_r, m.is_simulated, 404, 40, 190, 66);
         createParameterCard(parent, backend, "mixer.drums.level", 404, 110, 190, 88);
         createParameterCard(parent, backend, "mixer.fx_send",     404, 202, 190, 88);
         createParameterCard(parent, backend, "mixer.drums.mute",  404, 294, 190, 92);
 
         // Strip 4: Master Out
-        createSignalMeter(parent, "MASTER OUT", m.master_l, m.master_r, m.is_simulated, 602, 40, 190, 66);
+        createSignalMeter(parent, "MASTER", m.master_l, m.master_r, m.is_simulated, 602, 40, 190, 66);
         createParameterCard(parent, backend, "perf.master_volume", 602, 110, 190, 88);
         createParameterCard(parent, backend, "fx.drive",           602, 202, 190, 88);
         createParameterCard(parent, backend, "fx.master_tone",     602, 294, 190, 92);

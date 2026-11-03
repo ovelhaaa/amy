@@ -16,7 +16,7 @@ const char* screenTitle(ScreenId id) {
         case ScreenId::Arpeggiator:    return "08 ARPEGGIATOR";
         case ScreenId::Sequencer:      return "09 STEP SEQUENCER";
         case ScreenId::Drums:          return "10 DRUM MACHINE";
-        case ScreenId::Harmony:        return "11 HARMONY & SCALE ASSIST";
+        case ScreenId::Harmony:        return "11 HARMONY ASSIST";
         case ScreenId::MidiSettings:   return "12 MIDI & MAPPING";
         case ScreenId::GlobalSettings: return "13 GLOBAL SETTINGS";
         case ScreenId::Diagnostics:    return "14 SYSTEM DIAGNOSTICS";
@@ -103,8 +103,8 @@ bool UiNavigationManager::navigateTo(ScreenId target, uint8_t sub_tab) {
     if (mounted_ && current_ == target) {
         // Rebuild/refresh current screen if sub_tab changed
         unmountCurrent();
-        mounted_ = mountScreen(target);
         if (on_navigate_) on_navigate_(on_navigate_user_, current_);
+        mounted_ = mountScreen(target);
         return mounted_;
     }
 
@@ -121,13 +121,12 @@ bool UiNavigationManager::navigateTo(ScreenId target, uint8_t sub_tab) {
 
     unmountCurrent();
     current_ = target;
-    mounted_ = mountScreen(target);
     ++transitions_;
     backend_->model().diagnostics().screen_switches = transitions_;
-
     if (on_navigate_) {
         on_navigate_(on_navigate_user_, current_);
     }
+    mounted_ = mountScreen(target);
     return mounted_;
 }
 
@@ -139,12 +138,12 @@ bool UiNavigationManager::back() {
     const ScreenId prev = history_[--history_depth_];
     unmountCurrent();
     current_ = prev;
-    mounted_ = mountScreen(prev);
     ++transitions_;
     backend_->model().diagnostics().screen_switches = transitions_;
     if (on_navigate_) {
         on_navigate_(on_navigate_user_, current_);
     }
+    mounted_ = mountScreen(prev);
     return mounted_;
 }
 
@@ -158,7 +157,6 @@ bool UiNavigationManager::returnToPerformance() {
     }
     unmountCurrent();
     current_ = ScreenId::Performance;
-    mounted_ = mountScreen(ScreenId::Performance);
     ++transitions_;
     if (backend_) {
         backend_->model().diagnostics().screen_switches = transitions_;
@@ -166,6 +164,7 @@ bool UiNavigationManager::returnToPerformance() {
     if (on_navigate_) {
         on_navigate_(on_navigate_user_, current_);
     }
+    mounted_ = mountScreen(ScreenId::Performance);
     return mounted_;
 }
 

@@ -32,10 +32,10 @@ public:
         lv_obj_set_style_pad_all(viz, 6, 0);
 
         createLabel(viz,
-                    "ARP VISUALIZER (DEMO)  |  IMPLEMENTATION EXISTS IN smk-s3/components/sequencer/include/arpeggiator.h (PLANNED FOR P4)",
+                    "ARP VISUALIZER (DEMO)  |  S3 ARPEGGIATOR ENGINE EXISTS (PLANNED FOR P4 RUNTIME)",
                     6, 4, 760, &lv_font_montserrat_14, palette::kAccentPrimary);
         createLabel(viz,
-                    "Tap any step below to preview gate rhythm in the UI model. No real MIDI notes are emitted by the UI Demo.",
+                    "Tap any step below to preview gate rhythm in the UI model. No real MIDI notes are emitted.",
                     6, 24, 760, &lv_font_montserrat_14, palette::kTextSecondary);
 
         createStepGrid(parent, backend, nav, StepGridKind::ArpPreview, 8, 282, 784, 104);

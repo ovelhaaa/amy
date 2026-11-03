@@ -173,14 +173,14 @@ public:
         createLabel(insp, meta2, 8, 82, 246, &lv_font_montserrat_14, palette::kActive);
 
         char macros_line[80];
-        std::snprintf(macros_line, sizeof(macros_line), "MACROS: %s/%s/%s/%s",
+        std::snprintf(macros_line, sizeof(macros_line), "M1-4: %s/%s/%s/%s",
                       cur.macro_labels[0], cur.macro_labels[1], cur.macro_labels[2], cur.macro_labels[3]);
         createLabel(insp, macros_line, 8, 104, 246, &lv_font_montserrat_14, palette::kTextPrimary);
 
         const char* status_note =
-            (cur.status == FeatureStatus::Available) ? "P4 STANDALONE: MATERIALIZED IN AMY"
-          : (cur.status == FeatureStatus::Planned)   ? "S3/AMY ROM: PLANNED FOR P4 RUNTIME"
-                                                     : "DEMO SLOT: UI RAM PROTOTYPE ONLY";
+            (cur.status == FeatureStatus::Available) ? "P4 RUNTIME: MATERIALIZED IN AMY"
+          : (cur.status == FeatureStatus::Planned)   ? "S3/AMY ROM: PLANNED FOR P4"
+                                                     : "DEMO SLOT: UI RAM PROTOTYPE";
         createLabel(insp, status_note, 8, 128, 246, &lv_font_montserrat_14, palette::kWarning);
 
         lv_obj_t* tgt_btn = createActionButton(

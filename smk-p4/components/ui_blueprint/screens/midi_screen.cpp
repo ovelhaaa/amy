@@ -8,7 +8,7 @@ namespace {
 
 constexpr const char* kMidiTabs[2] = {
     "MIDI CHANNELS & FILTERS",
-    "SMK25 CC MAPPING & LEARN (DEMO)"
+    "SMK25 CC MAPPING & LEARN"
 };
 
 struct MidiLearnBtnCtx {
@@ -58,10 +58,10 @@ public:
                         &lv_font_montserrat_14, palette::kAccentPrimary);
             createStatusBadge(info, FeatureStatus::Available, 480, 6);
             createLabel(info,
-                        "AVAILABLE IN P4 0.3: Note On/Off, Velocity 0->Off, Sustain CC64, All Notes Off CC120/123, Pitch Bend +/-2st, Mod Wheel CC1.",
+                        "AVAILABLE IN P4: Note On/Off, Vel 0->Off, Sustain CC64, All Notes Off, Pitch Bend, Mod Wheel CC1.",
                         8, 32, 760, &lv_font_montserrat_14, palette::kTextPrimary);
             createLabel(info,
-                        "PLANNED FOR P4: Data-driven MIDI Learn & Controller Profile persistence (already implemented in smk-s3/components/midi/).",
+                        "PLANNED FOR P4: Data-driven MIDI Learn & Controller Profile persistence (implemented in smk-s3).",
                         8, 58, 760, &lv_font_montserrat_14, palette::kTextSecondary);
         } else {
             // Tab 1: Data-Driven SMK25 V2 Knob CC Mapping & Demo Learn

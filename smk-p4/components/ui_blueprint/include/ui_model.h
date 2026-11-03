@@ -80,8 +80,8 @@ struct HarmonyPreviewResult {
 
 struct DiagnosticsSnapshot {
     bool        is_demo_mode         = true;
-    const char* firmware_version     = "SMK-P4 UI BLUEPRINT 1.0 (DEMO)";
-    const char* amy_status           = "DISCONNECTED (UI DEMO BACKEND)";
+    const char* firmware_version     = "SMK-P4 BLUEPRINT 1.0 (DEMO)";
+    const char* amy_status           = "DISCONNECTED (UI DEMO)";
     const char* i2s_status           = "NOT INITIALIZED (UI DEMO)";
     const char* usb_status           = "NOT INITIALIZED (UI DEMO)";
     uint8_t     active_voices        = 0;
@@ -103,7 +103,7 @@ struct DiagnosticsSnapshot {
 
 class UiModel {
 public:
-    static constexpr size_t kMaxParameters = 128;
+    static constexpr size_t kMaxParameters = 160;
     static constexpr size_t kSeqSteps      = 16;
     static constexpr size_t kDrumTracks    = 8;
     static constexpr size_t kModSlots      = 8;

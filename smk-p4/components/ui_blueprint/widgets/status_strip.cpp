@@ -39,11 +39,11 @@ bool StatusStrip::build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationMa
     screen_lbl_ = createLabel(root_, "01 PERFORMANCE STAGE", 94, 11, 186, &lv_font_montserrat_14, palette::kTextPrimary);
 
     // Active Patch pill
-    patch_lbl_ = createLabel(root_, "128 DX7 BRASS 1", 284, 11, 166, &lv_font_montserrat_14, palette::kAccentPrimary);
+    patch_lbl_ = createLabel(root_, "128 DX7 BRASS 1", 284, 11, 158, &lv_font_montserrat_14, palette::kAccentPrimary);
 
     // MIDI, Audio, Voices/BPM indicators
-    midi_lbl_   = createLabel(root_, "MIDI: DEMO", 454, 11, 84, &lv_font_montserrat_14, palette::kActive);
-    audio_lbl_  = createLabel(root_, "AUD: DEMO", 542, 11, 80, &lv_font_montserrat_14, palette::kTextSecondary);
+    midi_lbl_   = createLabel(root_, "MIDI: DEMO", 446, 11, 96, &lv_font_montserrat_14, palette::kActive);
+    audio_lbl_  = createLabel(root_, "AUD: SIM", 544, 11, 78, &lv_font_montserrat_14, palette::kTextSecondary);
     voices_lbl_ = createLabel(root_, "VX:0/4", 624, 11, 56, &lv_font_montserrat_14, palette::kTextSecondary);
 
     // Quick return to Performance button
@@ -89,25 +89,27 @@ bool StatusStrip::build(lv_obj_t* parent, UiDemoBackend& backend, UiNavigationMa
 void StatusStrip::refresh(UiDemoBackend& backend, UiNavigationManager& nav) {
     if (!root_) return;
     if (screen_lbl_) {
-        lv_label_set_text(screen_lbl_, screenTitle(nav.currentScreen()));
+        lv_label_set_text_static(screen_lbl_, screenTitle(nav.currentScreen()));
+        lv_obj_invalidate(screen_lbl_);
     }
     const auto& patch = backend.model().activePatch();
     if (patch_lbl_) {
-        char buf[48];
-        std::snprintf(buf, sizeof(buf), "%03u %s", patch.id, patch.name);
-        lv_label_set_text(patch_lbl_, buf);
+        std::snprintf(patch_buf_, sizeof(patch_buf_), "%03u %s", patch.id, patch.name);
+        lv_label_set_text_static(patch_lbl_, patch_buf_);
+        lv_obj_invalidate(patch_lbl_);
     }
     const auto& diag = backend.model().diagnostics();
     if (midi_lbl_) {
-        lv_label_set_text(midi_lbl_, diag.active_voices > 0 ? "MIDI: DEMO*" : "MIDI: DEMO");
+        lv_label_set_text_static(midi_lbl_, diag.active_voices > 0 ? "MIDI: DEMO*" : "MIDI: DEMO");
+        lv_obj_invalidate(midi_lbl_);
     }
     if (audio_lbl_) {
         lv_label_set_text_static(audio_lbl_, "AUD: SIM");
     }
     if (voices_lbl_) {
-        char vbuf[24];
-        std::snprintf(vbuf, sizeof(vbuf), "VX:%u/%u", diag.active_voices, diag.max_voices);
-        lv_label_set_text(voices_lbl_, vbuf);
+        std::snprintf(voices_buf_, sizeof(voices_buf_), "VX:%u/%u", diag.active_voices, diag.max_voices);
+        lv_label_set_text_static(voices_lbl_, voices_buf_);
+        lv_obj_invalidate(voices_lbl_);
     }
     if (home_btn_) {
         if (nav.currentScreen() == ScreenId::Performance) {

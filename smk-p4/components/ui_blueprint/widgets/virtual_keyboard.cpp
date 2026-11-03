@@ -118,7 +118,8 @@ lv_obj_t* createVirtualKeyboard(lv_obj_t* parent, UiDemoBackend& backend, UiNavi
         lv_obj_set_style_border_width(btn, 1, 0);
         lv_obj_set_style_border_color(btn, lv_color_hex(palette::kBorder), 0);
         lv_obj_set_style_radius(btn, 3, 0);
-        lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_PRESS_LOCK);
+        lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_remove_flag(btn, LV_OBJ_FLAG_PRESS_LOCK);
 
         if (deg == 0 || mode == KeyboardDisplayMode::StagePlay) {
             char nbuf[8];
@@ -155,7 +156,8 @@ lv_obj_t* createVirtualKeyboard(lv_obj_t* parent, UiDemoBackend& backend, UiNavi
             lv_obj_set_style_border_width(btn, 1, 0);
             lv_obj_set_style_border_color(btn, lv_color_hex(palette::kBorder), 0);
             lv_obj_set_style_radius(btn, 3, 0);
-            lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_PRESS_LOCK);
+            lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_remove_flag(btn, LV_OBJ_FLAG_PRESS_LOCK);
 
             attachLvContext<KeyCtx>(btn, KeyCtx{&backend, &nav, note, mode}, key_cb, LV_EVENT_ALL);
         }

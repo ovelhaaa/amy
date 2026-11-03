@@ -34,9 +34,9 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, UiDemoBackend& backend, const ch
     const FeatureStatus status = backend.model().effectiveStatus(param_id);
     const bool enabled = backend.model().isParameterEnabled(param_id);
 
-    createLabel(card, desc->name, 6, 4, w - 78, &lv_font_montserrat_14,
+    createLabel(card, desc->name, 6, 4, w - 64, &lv_font_montserrat_14,
                 enabled ? palette::kTextPrimary : palette::kTextSecondary);
-    createStatusBadge(card, status, w - 74, 4);
+    createStatusBadge(card, status, w - 62, 4);
 
     ParameterValue pv{};
     backend.model().getValue(param_id, pv);
@@ -67,9 +67,10 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, UiDemoBackend& backend, const ch
         createLabel(card, vbuf, 8, h - 34, w - 24, &lv_font_montserrat_20, palette::kTextSecondary);
     } else {
         // Stepper buttons [-] [VALUE] [+] for Enum and discrete Int
-        lv_obj_t* vlbl = createLabel(card, vbuf, 48, h - 34, w - 108, &lv_font_montserrat_14, palette::kAccentPrimary);
-        lv_obj_t* dec_btn = createActionButton(card, "-", 4, h - 42, 38, 34, nullptr, nullptr);
-        lv_obj_t* inc_btn = createActionButton(card, "+", w - 54, h - 42, 38, 34, nullptr, nullptr);
+        const int32_t btn_w = (w < 140) ? 26 : 36;
+        lv_obj_t* vlbl = createLabel(card, vbuf, btn_w + 8, h - 34, w - (btn_w * 2 + 24), &lv_font_montserrat_14, palette::kAccentPrimary);
+        lv_obj_t* dec_btn = createActionButton(card, "-", 4, h - 42, btn_w, 34, nullptr, nullptr);
+        lv_obj_t* inc_btn = createActionButton(card, "+", w - btn_w - 14, h - 42, btn_w, 34, nullptr, nullptr);
         if (!enabled) {
             if (dec_btn) lv_obj_add_state(dec_btn, LV_STATE_DISABLED);
             if (inc_btn) lv_obj_add_state(inc_btn, LV_STATE_DISABLED);

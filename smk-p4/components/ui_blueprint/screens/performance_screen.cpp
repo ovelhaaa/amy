@@ -52,8 +52,8 @@ public:
             ParameterRegistry::formatValue(*d, chord_pv, c_str, sizeof(c_str));
 
         char harm_buf[64];
-        std::snprintf(harm_buf, sizeof(harm_buf), "HARMONY: %s %s [%s] | CHORD: %s [%s]",
-                      r_str, s_str, scale_on ? "ON" : "OFF", c_str, chord_on ? "ON" : "OFF");
+        std::snprintf(harm_buf, sizeof(harm_buf), "SCALE: %s %s [%s] | CHORD: %s",
+                      r_str, s_str, scale_on ? "ON" : "OFF", chord_on ? c_str : "OFF");
 
         const uint8_t view_mode = nav.subTab(ScreenId::Performance);
         lv_obj_t* lmode_btn = createActionButton(strip, lmode_buf, 4, 1, 180, 32, nullptr, nullptr);

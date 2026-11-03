@@ -18,7 +18,7 @@ public:
         lv_obj_set_size(banner, 784, 38);
         lv_obj_set_style_pad_all(banner, 4, 0);
         createLabel(banner,
-                    "AMY CORE SUPPORTS: CHORUS, ECHO/DELAY, REVERB, 3-BAND EQ (CURRENTLY OFF IN P4 0.3 BUDGET)  |  DRIVE: APP DSP PLANNED",
+                    "AMY DSP: CHORUS, ECHO/DELAY, REVERB, 3-BAND EQ (PLANNED FOR P4)  |  DRIVE: APP DSP PLANNED",
                     6, 4, 768, &lv_font_montserrat_14, palette::kAccentPrimary);
 
         // 2. Row 1: Chorus & Delay (y = 46..156)

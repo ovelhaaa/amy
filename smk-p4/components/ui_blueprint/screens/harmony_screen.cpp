@@ -7,7 +7,7 @@ namespace smk::p4::ui {
 namespace {
 
 constexpr const char* kHarmonyTabs[2] = {
-    "SCALE QUANTIZER & KEYBOARD",
+    "SCALE QUANTIZER",
     "CHORD ASSIST & VOICING"
 };
 
@@ -86,7 +86,7 @@ public:
 
         char summary[160];
         std::snprintf(summary, sizeof(summary),
-                      "IN: %s [%s]  ->  QUANTIZED: %s  ->  CHORD (%u): %s   [TAP KEYS BELOW TO TEST]",
+                      "IN: %s [%s]  ->  QUANTIZED: %s  ->  CHORD (%u): %s   [TAP KEYS TO TEST]",
                       in_s, harm.input_in_scale ? "IN SCALE" : "CORRECTED",
                       q_s, harm.chord_count, chord_s);
         createLabel(insp, summary, 6, 6, 768, &lv_font_montserrat_14,

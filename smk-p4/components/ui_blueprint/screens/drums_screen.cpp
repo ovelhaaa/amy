@@ -60,12 +60,12 @@ public:
         applyPanelStyle(info, false);
         lv_obj_set_pos(info, 470, 290);
         lv_obj_set_size(info, 322, 94);
-        createLabel(info, "808 PCM / SYNTH DRUM ENGINE", 8, 6, 226,
+        createLabel(info, "808 PCM DRUM ENGINE", 8, 6, 226,
                     &lv_font_montserrat_14, palette::kAccentPrimary);
-        createStatusBadge(info, FeatureStatus::Planned, 240, 6);
+        createStatusBadge(info, FeatureStatus::Planned, 250, 6);
         createLabel(info,
-                    "Pad Bank & 808 PCM samples exist in src/pcm_tiny.h and smk-s3/pad_bank.h. P4 routing is PLANNED.",
-                    8, 30, 300, &lv_font_montserrat_14, palette::kTextSecondary);
+                    "808 PCM samples in src/pcm_tiny.h (P4 PLANNED).",
+                    8, 34, 300, &lv_font_montserrat_14, palette::kTextSecondary);
 
         return true;
     }

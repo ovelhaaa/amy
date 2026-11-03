@@ -57,6 +57,8 @@ private:
     lv_obj_t* voices_lbl_  = nullptr;
     lv_obj_t* home_btn_    = nullptr;
     lv_obj_t* panic_btn_   = nullptr;
+    char      patch_buf_[48]{};
+    char      voices_buf_[24]{};
 };
 
 // ── Bottom Navigation Bar (800 x 46) & Internal Sub-Tab Bar ──────────────

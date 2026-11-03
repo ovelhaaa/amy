@@ -34,7 +34,7 @@ public:
         createStatusBadge(touch_card, FeatureStatus::Available, 178, 4);
         createLabel(touch_card, "LCD: ST7701S 800x480 RGB565", 6, 30, 236, &lv_font_montserrat_14, palette::kTextPrimary);
         createLabel(touch_card, "TOUCH: GT911 CAPACITIVE I2C", 6, 54, 236, &lv_font_montserrat_14, palette::kTextPrimary);
-        createLabel(touch_card, "CALIB: FACTORY NATIVE 800x480", 6, 78, 236, &lv_font_montserrat_14, palette::kTextSecondary);
+        createLabel(touch_card, "CALIB: NATIVE 800x480", 6, 78, 236, &lv_font_montserrat_14, palette::kTextSecondary);
 
         lv_obj_t* aud_card = lv_obj_create(parent);
         applyPanelStyle(aud_card, false);

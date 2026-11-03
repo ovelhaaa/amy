@@ -9,10 +9,10 @@ ThemeStyles g_theme{};
 const char* featureStatusLabel(FeatureStatus status) {
     switch (status) {
         case FeatureStatus::Available:   return "AVAIL";
-        case FeatureStatus::Planned:     return "PLANNED";
-        case FeatureStatus::Unavailable: return "UNAVAIL";
+        case FeatureStatus::Planned:     return "PLAN";
+        case FeatureStatus::Unavailable: return "N/A";
         case FeatureStatus::Demo:        return "DEMO";
-        default:                         return "UNKNOWN";
+        default:                         return "UNK";
     }
 }
 
@@ -180,8 +180,9 @@ lv_obj_t* createStatusBadge(lv_obj_t* parent, FeatureStatus status, int32_t x, i
     lv_obj_add_style(box, &g_theme.badge, 0);
     lv_obj_set_style_bg_color(box, lv_color_hex(featureStatusColor(status)), 0);
     lv_obj_set_pos(box, x, y);
-    lv_obj_set_size(box, 64, 18);
-    lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_size(box, 52, 18);
+    lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(box, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t* lbl = lv_label_create(box);
     if (lbl) {

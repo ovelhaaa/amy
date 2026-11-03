@@ -20,7 +20,7 @@ public:
         lv_obj_set_size(banner, 784, 34);
         lv_obj_set_style_pad_all(banner, 4, 0);
         createLabel(banner,
-                    "DIAGNOSTICS  |  UI DEMO BACKEND ACTIVE: HARDWARE TELEMETRY IS NOT FABRICATED (REAL LVGL POOL SHOWN)",
+                    "DIAGNOSTICS  |  UI DEMO ACTIVE: HARDWARE TELEMETRY IS NOT FABRICATED (REAL LVGL HEAP)",
                     6, 2, 768, &lv_font_montserrat_14, palette::kWarning);
 
         // 2. 6 Structured Diagnostic Cards (3x2 grid, y = 42..386)
@@ -32,14 +32,15 @@ public:
         createLabel(c1, "1. FIRMWARE & UI", 6, 4, 170, &lv_font_montserrat_14, palette::kAccentPrimary);
         createStatusBadge(c1, FeatureStatus::Demo, 178, 4);
         createLabel(c1, d.firmware_version, 6, 28, 240, &lv_font_montserrat_14, palette::kTextPrimary);
-        char c1_b1[64], c1_b2[64], c1_b3[64];
+        char c1_b1[64], c1_b2[64], c1_b3[64], c1_b4[64];
         std::snprintf(c1_b1, sizeof(c1_b1), "UPTIME: %lu ms", static_cast<unsigned long>(d.uptime_ms));
         std::snprintf(c1_b2, sizeof(c1_b2), "NAV SWITCHES: %lu", static_cast<unsigned long>(d.screen_switches));
         std::snprintf(c1_b3, sizeof(c1_b3), "DEMO PANICS: %lu", static_cast<unsigned long>(d.demo_panic_count));
+        std::snprintf(c1_b4, sizeof(c1_b4), "PARAMS REGISTERED: %u", static_cast<unsigned>(ParameterRegistry::count()));
         createLabel(c1, c1_b1, 6, 56, 240, &lv_font_montserrat_14, palette::kTextSecondary);
         createLabel(c1, c1_b2, 6, 82, 240, &lv_font_montserrat_14, palette::kTextSecondary);
         createLabel(c1, c1_b3, 6, 108, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-        createLabel(c1, "PARAMS REGISTERED: 86", 6, 134, 240, &lv_font_montserrat_14, palette::kActive);
+        createLabel(c1, c1_b4, 6, 134, 240, &lv_font_montserrat_14, palette::kActive);
 
         // Card 2: LVGL 9.3.0 Memory Pool (Real measurement from lv_mem_monitor)
         lv_obj_t* c2 = lv_obj_create(parent);
@@ -72,7 +73,7 @@ public:
         std::snprintf(c3_b2, sizeof(c3_b2), "BLOCK BUDGET: %lu us", static_cast<unsigned long>(d.budget_us));
         createLabel(c3, c3_b1, 6, 56, 240, &lv_font_montserrat_14, palette::kTextPrimary);
         createLabel(c3, c3_b2, 6, 82, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-        createLabel(c3, "DSP RENDER: UNMEASURED (DEMO)", 6, 108, 240, &lv_font_montserrat_14, palette::kTextSecondary);
+        createLabel(c3, "DSP RENDER: UNMEASURED", 6, 108, 240, &lv_font_montserrat_14, palette::kTextSecondary);
         createLabel(c3, "DEADLINE MISSES: -- (DEMO)", 6, 134, 240, &lv_font_montserrat_14, palette::kTextSecondary);
 
         // Card 4: I2S & PCM5102A Output
@@ -83,9 +84,9 @@ public:
         createLabel(c4, "4. I2S & PCM5102A", 6, 4, 170, &lv_font_montserrat_14, palette::kAccentPrimary);
         createStatusBadge(c4, FeatureStatus::Demo, 178, 4);
         createLabel(c4, d.i2s_status, 6, 30, 240, &lv_font_montserrat_14, palette::kWarning);
-        createLabel(c4, "CANDIDATE: BCK=50 WS=51 DIN=52", 6, 56, 240, &lv_font_montserrat_14, palette::kTextPrimary);
+        createLabel(c4, "PINS: BCK=50 WS=51 DIN=52", 6, 56, 240, &lv_font_montserrat_14, palette::kTextPrimary);
         createLabel(c4, "FORMAT: 48kHz 16-BIT STEREO", 6, 82, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-        createLabel(c4, "DMA UNDERRUNS: UNMEASURED", 6, 108, 240, &lv_font_montserrat_14, palette::kTextSecondary);
+        createLabel(c4, "UNDERRUNS: UNMEASURED", 6, 108, 240, &lv_font_montserrat_14, palette::kTextSecondary);
         createLabel(c4, "WIRING GATE: OFF IN DEMO", 6, 134, 240, &lv_font_montserrat_14, palette::kTextSecondary);
 
         // Card 5: USB-MIDI Host

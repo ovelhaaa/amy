@@ -27,9 +27,9 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, UiDemoBackend& backend, const 
     const FeatureStatus status = backend.model().effectiveStatus(param_id);
     const bool enabled = backend.model().isParameterEnabled(param_id);
 
-    createLabel(card, desc->name, 6, 4, w - 78, &lv_font_montserrat_14,
+    createLabel(card, desc->name, 6, 4, w - 64, &lv_font_montserrat_14,
                 enabled ? palette::kTextPrimary : palette::kTextSecondary);
-    createStatusBadge(card, status, w - 74, 4);
+    createStatusBadge(card, status, w - 62, 4);
 
     ParameterValue pv{};
     backend.model().getValue(param_id, pv);
