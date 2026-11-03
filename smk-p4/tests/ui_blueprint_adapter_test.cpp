@@ -62,6 +62,9 @@ static void contract() {
     auto old=a.requestNoteOn(60,100);a.requestPanic();auto fresh=a.requestNoteOn(60,100);
     assert(!a.requestNoteOff(60,old.token).accepted() && a.isNoteHeld(60));
     a.requestNoteOff(60,fresh.token);
+    old=a.requestNoteOn(60,100);assert(a.requestSelectPatch(135).accepted());
+    fresh=a.requestNoteOn(60,100);assert(!a.requestNoteOff(60,old.token).accepted() && a.isNoteHeld(60));
+    a.requestNoteOff(60,fresh.token);
     a.service(200);x=a.requestNoteOn(61,100);a.service(300);y=a.requestNoteOn(61,100);
     a.requestNoteOff(61,x.token);a.service(10199);assert(a.isNoteHeld(61));
     a.service(10200);assert(!a.isNoteHeld(61));assert(!a.requestNoteOff(61,y.token).accepted());
@@ -85,9 +88,14 @@ static lv_obj_t* button(lv_obj_t* root,const char* text) {
 static void lifecycle() {
     Mock m;UiBlueprintPerformanceAdapter a(m);a.service(1);
     UiBlueprint app(a);assert(app.begin());auto& nav=app.navigation();
+    assert(button(app.rootObject(),"AUD: OFF") && button(app.rootObject(),"MIDI: WAIT"));
+    m.s.flags=smk::link::kAudioLive|smk::link::kUsbConnected;a.service(2);preview::pumpFrame(app);
+    assert(button(app.rootObject(),"AUD: RUN") && button(app.rootObject(),"MIDI: OK"));
+    m.error=true;preview::pumpFrame(app);assert(button(app.rootObject(),"MIDI: ERR"));m.error=false;
     auto* key=button(app.contentObject(),"C4");assert(key);
     lv_obj_send_event(key,LV_EVENT_PRESSED,nullptr);lv_obj_send_event(key,LV_EVENT_PRESSED,nullptr);
-    assert(m.ons==1);lv_obj_send_event(key,LV_EVENT_CLICKED,nullptr);assert(m.ons==1);
+    assert(m.ons==1);lv_obj_send_event(key,LV_EVENT_CLICKED,nullptr);
+    lv_obj_send_event(key,LV_EVENT_LONG_PRESSED,nullptr);lv_obj_send_event(key,LV_EVENT_LONG_PRESSED_REPEAT,nullptr);assert(m.ons==1);
     lv_obj_send_event(key,LV_EVENT_PRESS_LOST,nullptr);assert(m.offs==1);
     lv_obj_send_event(key,LV_EVENT_PRESSED,nullptr);assert(a.isNoteHeld(60));
     lv_obj_delete(key);assert(!a.isNoteHeld(60)); // child-first external deletion
@@ -144,6 +152,11 @@ static void realRuntime() {
         if(touch_first) assert(r.usbInput().transfer(off,4,2));else a.requestNoteOff(60,g.token);
         r.apply(2);assert(r.snapshot().active_notes==0);publish(3);
     }
+    uint8_t pedal[]={11,0xb0,64,127},usb_on[]={9,0x90,60,100},usb_off[]={8,0x80,60,0};
+    assert(r.usbInput().transfer(pedal,4,3) && r.usbInput().transfer(usb_on,4,3));r.apply(3);
+    assert(r.usbInput().transfer(usb_off,4,3));r.apply(3);
+    auto touch=a.requestNoteOn(60,100);assert(touch.accepted());r.apply(3);assert(r.snapshot().active_notes==2);
+    a.requestPanic();r.apply(3);assert(!r.snapshot().active_notes);
     a.requestSelectPatch(135);assert(a.model().activePatch().id==128);r.apply(3);publish(4);assert(a.model().activePatch().id==135);
     auto old=a.requestNoteOn(60,100);r.apply(4);a.requestPanic();r.apply(5);publish(6);
     auto fresh=a.requestNoteOn(60,100);assert(!a.requestNoteOff(60,old.token).accepted());r.apply(6);assert(r.snapshot().active_notes==1);
@@ -169,6 +182,10 @@ static void realRuntime() {
     assert(a.requestParameterInt("perf.master_volume",10).state==UiCommandState::Rejected);
     assert(!a.requestNoteOn(66,100).accepted());a.requestNoteOff(65,fresh.token);r.apply(10013);assert(!r.snapshot().active_notes);
     assert(a.requestSelectPatch(128).state==UiCommandState::Requested);r.apply(10013);publish(10014);assert(a.model().activePatch().id==128);
+    fresh=a.requestNoteOn(65,100);r.apply(10014);
+    for(unsigned i=0;i<amy::kCommandCapacity;++i) assert(p.setMaster(70,10014));
+    assert(a.requestSelectPatch(135).state==UiCommandState::Rejected);r.apply(10015);assert(!r.snapshot().active_notes);
+    assert(!a.requestNoteOff(65,fresh.token).accepted());
     r.end();std::puts("PASS real AMY + production adapter: USB/Touch same pitch both release orders, patch, panic generations, stale mailbox, lease/rearm and USB disconnect");
 }
 int main() { contract();preview::initHostLvgl();lifecycle();realRuntime(); }

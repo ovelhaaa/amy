@@ -52,6 +52,9 @@ jobs:
       - name: Verify S3 P4 profile actually disables local rendering
         if: matrix.project == 'smk-s3'
         run: python -c "from pathlib import Path; assert '#define CONFIG_SMKS3_P4_HEADLESS 1' in Path('smk-s3/.pio/build/esp32-s3-link/config/sdkconfig.h').read_text()"
+      - name: Verify Blueprint target and safe hardware defaults
+        if: matrix.environment == 'guition-standalone-blueprint'
+        run: python smk-p4/tests/check_blueprint_build.py
       - name: Verify standalone target and safe hardware defaults
         if: matrix.environment == 'guition-standalone'
         run: python smk-p4/tests/check_standalone_build.py
