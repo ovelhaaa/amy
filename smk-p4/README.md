@@ -7,7 +7,14 @@ release/Panic, ROM browser and smoothed master. Unsupported macros stay disabled
 I²S remains **disabled by default** until wiring/supply/straps are confirmed.
 Without I²S the engine renders to RAM and the screen says `AUDIO RAM`.
 See [0.2 results and acceptance](docs/standalone_amy_performance_02_results.md)
-and [wiring](docs/pcm5102_wiring.md). No UART/S3/HELLO or USB Host in standalone.
+and [wiring](docs/pcm5102_wiring.md). No UART/S3/HELLO in standalone;
+native USB Host is opt-in behind its independent electrical qualification gate.
+
+Standalone 0.3A adds deterministic owner-mailbox validation before USB startup.
+See [hardware validation, bench gates and recovery](docs/standalone_hardware_validation_03a_results.md).
+PCM and USB remain disabled by default. The report distinguishes the safe build
+from operator-qualified bench images and records the actual flashed profile;
+software tests alone do not certify physical audio, MIDI or rehearsal readiness.
 
 The preserved hybrid architecture is P4 touchscreen -> UART -> SMK-S3 Single
 engine -> PCM5102A (`guition-link`); `guition-display` remains the diagnostic.
