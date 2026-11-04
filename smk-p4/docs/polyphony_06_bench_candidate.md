@@ -78,3 +78,16 @@ baixo: boot/ready6/VX0/6, I²S/USB sem erros; depois operador toca seis notas,
 sétima rejeitada, sustain, patches128/135, retrigger, bend/CC1, Touch+USB e Panic.
 Capturar memória/deadlines e só ampliar a janela se não houver falha crítica.
 Oito permanece experimental e não faz parte desta proposta de gravação.
+
+## Congelamento do candidato — PASS
+
+Bundle imutável local:
+`build/polyphony06_bench6_41c12553a951_50cdce33.zip`.
+SHA256ZIP:a08ba9ff211bf76587c47be1a0f3a8a5e30433fd5bdd8e391fa1b37e1ea911c4.
+26 arquivos com SHA conferido, integridade ZIP validada. Contém aplicação/ELF/
+mapa/configuração, logs de build e integridade, preflight e aplicação0.5 de
+rollback (328d510e…4c5e997). Backup integral16MB permanece no diretório de
+preflight, sem ser duplicado no ZIP. DRAM data+BSS do ELF candidato169880bytes;
+o resumoPIO30956bytes omite DRAM1, como documentado no orçamento.
+Manifesto registra fonte do builda670c383, congelamentoada6085e e autorização
+de gravação=false naquele instante. Nenhum comando write-flash foi executado.

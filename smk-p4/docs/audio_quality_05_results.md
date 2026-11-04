@@ -6,8 +6,8 @@
 > cita ainda um terceiro hash abreviado. Essas afirmações não identificam de forma
 > inequívoca a imagem atualmente instalada nem comprovam a autorização original.
 > São preservadas como histórico, não como evidência confirmada nesta execução.
-> O operador relatou melhoria auditiva da 0.5 no pedido 0.6. Nenhuma gravação,
-> reset ou consulta serial foi realizada na etapa 0.6. Os números A/B anteriores
+> O operador relatou melhoria auditiva da 0.5 no pedido 0.6. Até o primeiro
+> checkpoint de software0.6 não houve gravação, reset ou consulta serial. Os números A/B anteriores
 > precisam ser revalidados: o runner antigo reutilizava objetos DSP. O novo runner
 > compila commits independentes e registra SHAs completos e hashes dos WAVs.
 

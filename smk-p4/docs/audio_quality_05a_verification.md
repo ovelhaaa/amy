@@ -43,7 +43,7 @@ isolada, C/E/F com redução, clipping0. Manifesto contém SHA completo e hashes
 Comando: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_retrigger_probe.ps1.
 GCC14.2.0 x86-64 UCRT; 48k/256/PCM16estéreo, mesmo harness e eventos.
 Gate0 PASS em software; limites auditivos e físicos continuam MANUAL.
-Nenhuma gravação, reset ou consulta serial. Relatos físicos históricos da0.5
+Até aquele checkpoint de software não houve gravação, reset ou consulta serial. Relatos físicos históricos da0.5
 foram anotados com errata sem apagar evidência; não identificam por si só a
 imagem atualmente instalada. Melhoria auditiva foi informada pelo operador.
 
