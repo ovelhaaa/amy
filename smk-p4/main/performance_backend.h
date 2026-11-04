@@ -15,6 +15,7 @@ public:
     virtual uint32_t stateRevision() const=0;
     virtual const char* status() const=0;
     virtual const char* takeNotice() { return nullptr; }
+    virtual uint8_t voiceCapacity() const { return 4; }
     virtual bool local() const { return false; }
     virtual bool midiError() const { return false; }
     virtual uint16_t patchCount() const=0;

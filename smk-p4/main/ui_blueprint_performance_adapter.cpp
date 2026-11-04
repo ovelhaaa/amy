@@ -145,6 +145,8 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     }
     // MIDI publication does not advance stateRevision. Inspect flags every tick.
     auto& d=model_.diagnostics();
+    if(d.max_voices!=backend_.voiceCapacity()) model_.bumpRevision();
+    d.max_voices=backend_.voiceCapacity();
     const auto& s=backend_.state();
     const bool midi=(s.flags&link::kUsbConnected)!=0;
     const bool audio=backend_.connected() && (s.flags&link::kAudioLive);

@@ -144,6 +144,7 @@ static void lifecycle() {
 static void realRuntime() {
     amy::Runtime r;assert(r.begin());LocalAmyPerformanceBackend p(r.commands());UiBlueprintPerformanceAdapter a(p);
     auto publish=[&](uint32_t t){p.publish(r.snapshot(),false,100,0);a.service(t);};publish(0);
+    assert(a.model().diagnostics().max_voices==amy::kVoices);
     for(bool touch_first:{true,false}) {
         auto g=a.requestNoteOn(60,100);assert(g.accepted());
         uint8_t on[]={9,0x90,60,90},off[]={8,0x80,60,0};

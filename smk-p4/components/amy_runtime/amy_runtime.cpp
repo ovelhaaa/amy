@@ -23,7 +23,7 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
     config.features.partials=config.features.custom=0;
     config.platform.multicore=config.platform.multithread=0;
     config.ks_oscs=0; config.max_oscs=kOscillators;
-    config.max_voices=kVoices*kPatchCount; config.max_synths=kPatchCount*kVoices+1;
+    config.max_voices=kAmyVoices; config.max_synths=kSynthCount;
     config.max_memory_patches=1; config.max_sequencer_tags=1;
 #ifdef ESP_PLATFORM
     config.ram_caps_synth=config.ram_caps_events=MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT;
@@ -31,7 +31,7 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
     config.ram_caps_delay=config.ram_caps_sample=config.ram_caps_sysex=MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT;
 #endif
     amy_start(config); started_=true;
-    for(size_t i=0;i<kPatchCount*kVoices;++i) {
+    for(size_t i=0;i<kAmyVoices;++i) {
         auto e=amy_default_event(); e.synth=static_cast<uint8_t>(i+1);
         e.patch_number=kPatches[i/kVoices].id; e.num_voices=1; e.bus=0; e.synth_delay_ms=0;
         amy_add_event(&e);
@@ -40,7 +40,7 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
         const int oscs=instrument_get_oscs_per_voice(e.synth);
         unsigned count=0;
         for(unsigned o=0;o<kOscillators;++o) if(osc_to_voice[o]==voice) ++count;
-        if(oscs!=8 || count!=static_cast<unsigned>(oscs)) { end(); return false; }
+        if(oscs!=static_cast<int>(kOscillatorsPerVoice) || count!=static_cast<unsigned>(oscs)) { end(); return false; }
     }
     usb_.disconnect(); usb_generation_=usb_.commands.generation();
     vibrato_frame_=0;
@@ -59,7 +59,7 @@ void Runtime::end() {
 }
 void Runtime::silence() {
     amy_deltas_reset();
-    for(size_t i=0;i<kPatchCount*kVoices;++i) {
+    for(size_t i=0;i<kAmyVoices;++i) {
         auto e=amy_default_event(); e.synth=static_cast<uint8_t>(i+1); e.pedal=0; e.velocity=0;
         amy_add_event(&e);
     }

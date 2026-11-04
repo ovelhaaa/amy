@@ -1,4 +1,4 @@
-param([string]$BaselineRef='cd9ed0ba', [string]$CandidateRef='dd4753af')
+param([string]$BaselineRef='cd9ed0ba', [string]$CandidateRef='3fa65331')
 $ErrorActionPreference='Stop'
 $repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 Push-Location $repo

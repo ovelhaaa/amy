@@ -13,10 +13,13 @@ def require(condition, message):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--musical", action="store_true")
+    parser.add_argument("--voices", type=int, choices=(4, 6, 8), default=4)
     args = parser.parse_args()
     project = Path(__file__).resolve().parents[1]
-    build = project / ".pio/build/guition-standalone-blueprint"
+    environment = "guition-standalone-blueprint" + (f"-{args.voices}" if args.voices != 4 else "")
+    build = project / ".pio/build" / environment
     defines = dict(re.findall(r"^#define (CONFIG_\w+) ([^\r\n]+)", (build / "config/sdkconfig.h").read_text(), re.M))
+    require(defines.get("CONFIG_SMKP4_AMY_VOICES") == str(args.voices), "compiled polyphony differs from selected profile")
     for key in ("CONFIG_IDF_TARGET_ESP32P4", "CONFIG_SMKP4_STANDALONE", "CONFIG_SMKP4_UI_BLUEPRINT", "CONFIG_LV_FONT_MONTSERRAT_14"):
         require(defines.get(key) == "1", key)
     for key in ("CONFIG_SMK_LINK_ENABLED", "CONFIG_SMKP4_PCM_DIAGNOSTIC"):

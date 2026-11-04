@@ -100,9 +100,9 @@ static void queueAndGestureCancellation() {
     runtime.apply(7); publish();
     assert(!runtime.snapshot().active_notes && runtime.snapshot().patch_id==128 && runtime.snapshot().master==70);
     assert(backend.state().commands_dropped==2);
-    for(uint8_t pitch=60;pitch<65;++pitch) assert(backend.noteOn(pitch,100,8));
+    for(uint8_t pitch=60;pitch<60+amy::kVoices+1;++pitch) assert(backend.noteOn(pitch,100,8));
     runtime.apply(8); publish();
-    assert(runtime.snapshot().active_notes==4 && runtime.snapshot().polyphony_rejected==1);
+    assert(runtime.snapshot().active_notes==amy::kVoices && runtime.snapshot().polyphony_rejected==1);
     assert(backend.state().commands_dropped==2); // accepted On can still be rejected by the owner
     backend.panic(); runtime.apply(9); assert(!runtime.snapshot().active_notes);
 }

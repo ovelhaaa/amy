@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <algorithm>
+#include <cstring>
 using namespace smk::p4::amy;
 static void le16(FILE* f,uint16_t x) { std::fputc(x&255,f);std::fputc(x>>8,f); }
 static void le32(FILE* f,uint32_t x) { le16(f,uint16_t(x));le16(f,uint16_t(x>>16)); }
@@ -46,7 +47,8 @@ struct Probe {
     }
 };
 int main(int argc,char** argv) {
-    assert(argc==3); // output directory + prefix; directories created by runner
+    assert(argc==3 || (argc==4 && std::strcmp(argv[3],"capacity")==0));
+    const bool capacity=argc==4; // Common 4-note stimulus remains the default.
     for(const auto& patch:kPatches) {
         char path[512];std::snprintf(path,sizeof(path),"%s/%s_patch_%u.wav",argv[1],argv[2],patch.id);
         Probe p(path,patch.id);p.blocks(38);
@@ -59,7 +61,13 @@ int main(int argc,char** argv) {
         const uint8_t notes[]={60,64,67,72};
         for(unsigned n=0;n<16;++n) { p.midi(true,notes[n%4]);p.blocks(8,1);p.midi(false,notes[n%4]);p.blocks(2,-1); }
         p.blocks(56);
-        for(unsigned n=0;n<8;++n) { for(auto note:notes) p.midi(true,note);p.blocks(12,1);for(auto note:notes) p.midi(false,note);p.blocks(3,-1); }
+        for(unsigned n=0;n<8;++n) {
+            const unsigned count=capacity?kVoices:4;
+            for(unsigned i=0;i<count;++i) p.midi(true,capacity?uint8_t(48+3*i):notes[i]);
+            p.blocks(12,1); assert(p.runtime.snapshot().active_notes==count);
+            for(unsigned i=0;i<count;++i) p.midi(false,capacity?uint8_t(48+3*i):notes[i]);
+            p.blocks(3,-1);
+        }
         p.blocks(375);assert(p.runtime.snapshot().active_notes==0);p.finish(patch.id);
     }
 }

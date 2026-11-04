@@ -1,0 +1,15 @@
+menu "SMK-P4 AMY capacity"
+choice SMKP4_AMY_POLYPHONY
+    prompt "Musical voices (fixed at boot)"
+    depends on SMKP4_STANDALONE
+    default SMKP4_AMY_VOICES_4
+config SMKP4_AMY_VOICES_4
+    bool "4 voices (qualified baseline)"
+config SMKP4_AMY_VOICES_6
+    bool "6 voices (candidate; hardware qualification required)"
+endchoice
+config SMKP4_AMY_VOICES
+    int
+    default 6 if SMKP4_AMY_VOICES_6
+    default 4
+endmenu

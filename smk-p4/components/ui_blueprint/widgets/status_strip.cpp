@@ -46,7 +46,7 @@ bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManag
     // MIDI, Audio, Voices indicators
     midi_lbl_   = createLabel(root_, "MIDI: DEMO", 438, 11, 92, &lv_font_montserrat_14, palette::kActive);
     audio_lbl_  = createLabel(root_, "AUD: SIM", 532, 11, 74, &lv_font_montserrat_14, palette::kTextSecondary);
-    voices_lbl_ = createLabel(root_, "VX:0/4", 608, 11, 56, &lv_font_montserrat_14, palette::kTextSecondary);
+    voices_lbl_ = createLabel(root_, "VX:--", 608, 11, 56, &lv_font_montserrat_14, palette::kTextSecondary);
 
     // Quick return to Performance button (enlarged touch target)
     home_btn_ = createActionButton(root_, "PERF", 666, 3, 58, 36, nullptr, nullptr, false, false);

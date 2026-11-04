@@ -28,10 +28,10 @@ int main() {
         assert(energy(r,4)==0);
         for(auto patch:kPatches) {
             assert(r.commands().push({CommandType::Patch,patch.id,0,0,0,0})); r.apply(0);
-            for(unsigned n=0;n<4;++n) { tokens[n]=r.commands().nextToken(); assert(r.commands().push({CommandType::NoteOn,uint16_t(60+n*4),100,0,tokens[n],0})); }
-            r.apply(1); assert(r.snapshot().active_notes==4);
+            for(unsigned n=0;n<kVoices;++n) { tokens[n]=r.commands().nextToken(); assert(r.commands().push({CommandType::NoteOn,uint16_t(60+n*4),100,0,tokens[n],0})); }
+            r.apply(1); assert(r.snapshot().active_notes==kVoices);
             assert(energy(r,40)>0); assert(r.snapshot().clipped==0);
-            for(unsigned n=0;n<4;++n) r.commands().release(60+n*4,tokens[n]);
+            for(unsigned n=0;n<kVoices;++n) r.commands().release(60+n*4,tokens[n]);
             r.apply(2); assert(!r.snapshot().active_notes);
             assert(energy(r,4)>0); assert(energy(r,15000)>=0); assert(energy(r,8)==0);
         }
@@ -61,5 +61,5 @@ int main() {
     };
     const double soft=velocity_energy(30),loud=velocity_energy(100);
     assert(soft>0 && loud>soft && probe_live()==baseline);
-    std::puts("PASS: real AMY initialization, ROM128/135, four notes, release, clipping, Panic and restart");
+    std::puts("PASS: real AMY initialization, ROM128/135, configured notes, release, clipping, Panic and restart");
 }

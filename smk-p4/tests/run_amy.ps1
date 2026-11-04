@@ -1,12 +1,13 @@
+param([ValidateSet(4,6,8)][int]$Voices=4)
 $ErrorActionPreference='Stop'
 $repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 Push-Location $repo
 try {
-    $build='build/smk_p4_amy'
+    $build=if($Voices -eq 4) { 'build/smk_p4_amy' } else { "build/smk_p4_amy_$Voices" }
     New-Item -ItemType Directory -Force $build | Out-Null
     $cmake=Get-Content smk-p4/components/amy_runtime/CMakeLists.txt -Raw
     $sources=[regex]::Matches($cmake,'\$\{AMY_SRC_DIR\}/([^"\r\n]+\.c)') | ForEach-Object { $_.Groups[1].Value }
-    $flags=@('-O2','-DAMY_NO_MINIAUDIO','-DAMY_SAMPLE_RATE=48000','-DAMY_BLOCK_SIZE=256','-DBLOCK_SIZE_BITS=8','-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1','-Isrc','-Ismk-p4/components/amy_runtime')
+    $flags=@("-DSMKP4_VOICES=$Voices",'-O2','-DAMY_NO_MINIAUDIO','-DAMY_SAMPLE_RATE=48000','-DAMY_BLOCK_SIZE=256','-DBLOCK_SIZE_BITS=8','-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1','-Isrc','-Ismk-p4/components/amy_runtime')
     $objects=@()
     foreach($source in $sources) {
         $obj="$build/$source.o"
@@ -23,6 +24,18 @@ try {
     if($LASTEXITCODE -ne 0) { throw 'USB musical link failed' }
     & "$build/usb_musical.exe"
     if($LASTEXITCODE -ne 0) { throw 'USB musical test failed' }
+    & g++ -std=c++17 @flags smk-p4/tests/polyphony_test.cpp smk-p4/tests/heap_probe.cpp smk-p4/components/amy_runtime/amy_runtime.cpp @objects @wraps -lm -o "$build/polyphony.exe"
+    if($LASTEXITCODE -ne 0) { throw 'Polyphony link failed' }
+    & "$build/polyphony.exe"
+    if($LASTEXITCODE -ne 0) { throw 'Polyphony test failed' }
+    foreach($test in @('test_retrigger_scenarios','render_retrigger_probe')) {
+        & g++ -std=c++17 @flags "smk-p4/tests/$test.cpp" smk-p4/components/amy_runtime/amy_runtime.cpp @objects -lm -o "$build/$test.exe"
+        if($LASTEXITCODE -ne 0) { throw "Link failed: $test" }
+        & "$build/$test.exe" $build "profile$Voices"
+        if($LASTEXITCODE -ne 0) { throw "Test failed: $test" }
+    }
+    & "$build/render_retrigger_probe.exe" $build "full$Voices" capacity
+    if($LASTEXITCODE -ne 0) { throw 'Full-capacity WAV probe failed' }
     $includes=@('-Ismk-p4/main','-Ishared/smk_protocol')
     foreach($test in @('local_backend_test','performance_backend_contract_test','performance_ui_test')) {
         $extra=@()

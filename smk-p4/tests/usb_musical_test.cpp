@@ -117,10 +117,10 @@ int main() {
     midi(r,0x90,64,100); r.apply(2); assert(r.snapshot().active_notes==2);
     midi(r,0x80,64,0); r.apply(3); assert(r.snapshot().active_notes==1);
     ui.release(60,t); r.apply(4);
-    // Exactly four total voices. Rejected gates carry no unreleaseable refs.
-    for(unsigned n=60;n<65;++n) midi(r,0x90,n,100);
-    r.apply(0); assert(r.snapshot().active_notes==4 && r.snapshot().polyphony_rejected==1);
-    for(unsigned n=60;n<65;++n) midi(r,0x80,n,0);
+    // Exactly the configured total voices. Rejected gates carry no unreleaseable refs.
+    for(unsigned n=60;n<60+kVoices+1;++n) midi(r,0x90,n,100);
+    r.apply(0); assert(r.snapshot().active_notes==kVoices && r.snapshot().polyphony_rejected==1);
+    for(unsigned n=60;n<60+kVoices+1;++n) midi(r,0x80,n,0);
     r.apply(1); assert(!r.snapshot().active_notes);
     for(unsigned cc:{120,123}) {
         midi(r,0x90,60,100); midi(r,0x91,60,100); r.apply(0);

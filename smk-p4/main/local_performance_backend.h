@@ -29,6 +29,7 @@ public:
     bool midiError() const override { return midi_error_; }
     bool connected() const override { return ready_; }
     bool busy() const override { return false; }
+    uint8_t voiceCapacity() const override { return amy::kVoices; }
     bool local() const override { return true; }
     const PerformanceState& state() const override { return state_; }
     uint32_t stateRevision() const override { return revision_; }

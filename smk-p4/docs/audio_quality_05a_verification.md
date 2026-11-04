@@ -35,7 +35,14 @@ registra commits completos, compilador e SHA256 de cada WAV em manifest.json.
 A aceitação compara ataques/releases, clipping e limites de transientes; não
 exige WAVs inteiros idênticos entre cores DSP diferentes.
 
-A execução integral com commits fixados está pendente nesta revisão do registro.
+PASS: execução integral independente cd9ed0ba2669cb974c6dec956b020a3d40145140
+versus 3fa65331, compilando ambos os cores do zero, em
+build/retrigger_ab/8ba24daf5b7549e4813db622071742c8. Onset274→16 (128),
+1087→225 (135); primeiro ataque/release byte-idêntico, A/B/H idênticos na matriz
+isolada, C/E/F com redução, clipping0. Manifesto contém SHA completo e hashes.
+Comando: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_retrigger_probe.ps1.
+GCC14.2.0 x86-64 UCRT; 48k/256/PCM16estéreo, mesmo harness e eventos.
+Gate0 PASS em software; limites auditivos e físicos continuam MANUAL.
 Nenhuma gravação, reset ou consulta serial. Relatos físicos históricos da0.5
 foram anotados com errata sem apagar evidência; não identificam por si só a
 imagem atualmente instalada. Melhoria auditiva foi informada pelo operador.
