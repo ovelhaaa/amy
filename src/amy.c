@@ -1721,7 +1721,7 @@ void play_delta(struct delta *d) {
                     //if(synth[osc]->filter_type != FILTER_NONE) reset_filter(osc);
                     // We no longer reset the phase here; instead, we reset phase when an oscillator falls silent.
                     // But if a trigger_phase is set, use that.
-                    if (AMY_IS_SET(synth[osc]->trigger_phase))
+                    if (AMY_IS_SET(synth[osc]->trigger_phase) && msynth[osc]->last_amp == 0)
                         synth[osc]->phase = F2P(synth[osc]->trigger_phase);
 
                     // restart the waveforms
@@ -1739,7 +1739,7 @@ void play_delta(struct delta *d) {
                     // trigger the mod source, if we have one
                     uint16_t mod_osc = synth[osc]->mod_source;
                     if(AMY_IS_SET(mod_osc)) {
-                        if (AMY_IS_SET(synth[mod_osc]->trigger_phase))
+                        if (AMY_IS_SET(synth[mod_osc]->trigger_phase) && msynth[mod_osc]->last_amp == 0)
                             synth[mod_osc]->phase = F2P(synth[mod_osc]->trigger_phase);
                         synth[mod_osc]->note_on_clock = amy_global.total_samples;  // Need a note_on_clock to have envelope work correctly.
                         switch(synth[mod_osc]->wave) {
