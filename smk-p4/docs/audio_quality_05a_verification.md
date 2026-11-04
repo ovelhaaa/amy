@@ -59,3 +59,7 @@ PASS cd9ed0ba versus581570c6, mesmo harness, compilação independente em
 build/retrigger_ab/8862ec3a00d04a0daa9ee8685b00bc63. Onsets274→16 e1087→225;
 blocos finais silenciosos, comparações A–H aprovadas. Manifesto registra hashes
 dos dois harnesses e flags. Comando pwsh -NoProfile -File smk-p4/tests/run_retrigger_probe.ps1.
+
+Checkpoint posterior de preparação6: montagem reconfirmada; leitura de Flash
+exigiu reinício temporário e comprovou a imagem0.5 instalada. Nenhuma0.6 gravada;
+isso não modifica os resultados A/B de software nem concede qualificação física6.

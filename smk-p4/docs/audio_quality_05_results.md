@@ -93,3 +93,13 @@ A correção é mínima, puramente algorítmica e atua diretamente na causa-raiz
 
 1. Obter autorização formal do operador para gravar a imagem candidata `9a0d65a8...` na placa Guition JC-ESP32P4-M3 via porta USB nativa / UART.
 2. Realizar teste de audição física A/B com fone de ouvido conectado à saída do PCM5102A tocando repetições rápidas de notas no controlador SMK25 V2 nos patches ROM 135 e 128 para confirmação do conforto acústico.
+
+## Identificação física posterior — preparação0.6, 2026-11-04
+
+O operador reconfirmou a montagem0.5. Leitura integral nova da COM13/P4v1.3
+(sem gravação) identificou a aplicação instalada byte a byte como
+328d510e8820881a3ae9f790cfd3ee0b76f5fc27f8ada01c9dddbb2ba4c5e997,
+1201472bytes, checksum/digest válidos. Isso confirma a imagem atual nesse
+checkpoint, não reconstrói a autorização histórica contraditória deste relatório.
+Backup16MiB:7525dbdd6a7b7d5d50af384c79ef87d169df0ef73ff49d53e1cca8b712590df9.
+Ver polyphony_06_bench_candidate.md. Nenhuma imagem0.6 foi gravada.

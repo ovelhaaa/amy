@@ -4,7 +4,9 @@
 `build/worktrees/smk-p4-polyphony-06`, base0.5 `dd4753af`.
 **Implementação e validação de software concluídas; qualificação física aberta.**
 Default4 preservado. Seis é o primeiro candidato de bancada; oito permanece
-experimental. Nenhuma gravação, consulta serial ou reset físico nesta execução.
+experimental. Nenhuma gravação de firmware. A etapa inicial de software não acessou a placa;
+o checkpoint posterior de preparação leu a Flash com reinício temporário e
+preservou a aplicação0.5, conforme polyphony_06_bench_candidate.md.
 O operador reconfirmou a mesma montagem elétrica0.5 em resposta posterior;
 a gravação continua sem autorização.
 
@@ -196,7 +198,8 @@ core legado. MIDI/display/USB físicos com estas imagens não foram exercitados.
 Rollback: perfil4 recompilável; branch/worktree0.5 intactos. Rollback físico
 somente bundle/backup anteriormente validado, hash e layout confirmados e
 autorização para aquela imagem. Firmware.bin não é backup integral. Não foi
-substituída nem identificada novamente a imagem atualmente instalada.
+substituída a imagem instalada; no checkpoint posterior ela foi identificada
+por leitura como328d510e…4c5e997 (0.5).
 
 ## Commits de implementação
 
@@ -214,3 +217,15 @@ no manifesto do bundle. Commits desde a base:
 - `581570c6` fix(amy): scope silent-owner phase restart to exclusive FM platforms
 - `7d7f5fa2` test(p4): pin final exclusive-FM A/B provenance and harness hashes
 - `94cfcae0` fix(p4): admit aggregate engine memory separately from contiguous reserve
+
+## Candidato audível6 — checkpoint posterior à confirmação
+
+Operador confirmou mesma montagem e autorizou build/testes. PASS build
+`guition-standalone-blueprint-6-bench`, auditoria --voices6/--musical e integridade
+esptool. SHA25641c12553a95136e7f9dbf45bbc1dbf199d119c23489294cd2aad435c62a5b3b8.
+Ainda sem autorização para gravar esta imagem concreta. Preparação e backup
+estão no [registro de bancada](polyphony_06_bench_candidate.md).
+Os bundles seguros anteriores permanecem congelados; os diretórios .pio
+anteriores foram invalidados pelo PlatformIO ao mudar platformio.ini. A tentativa
+de repetir o checker nesses caches ausentes foi BLOCKED por sdkconfig.h ausente;
+não altera os PASS nem hashes dos artefatos seguros preservados.
