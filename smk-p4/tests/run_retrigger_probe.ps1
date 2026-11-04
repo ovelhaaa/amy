@@ -1,11 +1,14 @@
-param([string]$BaselineRef='cd9ed0ba', [string]$CandidateRef='3fa65331')
+param([string]$BaselineRef='cd9ed0ba', [string]$CandidateRef='581570c6')
 $ErrorActionPreference='Stop'
 $repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 Push-Location $repo
 try {
     $output=Join-Path $repo ('build/retrigger_ab/'+[guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force $output | Out-Null
-    $manifest=@{ compiler=(& gcc --version | Select-Object -First 1); variants=@{} }
+    $manifest=@{ compiler=(& gcc --version | Select-Object -First 1); variants=@{}; harness_sha256=@{} }
+    foreach($test in @('render_retrigger_probe','test_retrigger_scenarios')) {
+        $manifest.harness_sha256[$test]=(Get-FileHash "smk-p4/tests/$test.cpp" -Algorithm SHA256).Hash
+    }
     foreach($variant in @('baseline','integration')) {
         $ref=if($variant -eq 'baseline') { $BaselineRef } else { $CandidateRef }
         $sha=(& git rev-parse "$ref^{commit}").Trim()
@@ -35,9 +38,9 @@ try {
         }
         $hashes=@{}
         foreach($patch in @(128,135)) { $hashes["$patch"]=(Get-FileHash "$output/${variant}_patch_$patch.wav" -Algorithm SHA256).Hash }
-        $manifest.variants[$variant]=@{ commit=$sha; wav_sha256=$hashes }
+        $manifest.variants[$variant]=@{ commit=$sha; wav_sha256=$hashes; compile_flags=$flags }
     }
-    $manifest | ConvertTo-Json -Depth 6 | Set-Content "$output/manifest.json"
+    $manifest | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 "$output/manifest.json"
     & python smk-p4/tests/check_retrigger_ab.py $output
     if($LASTEXITCODE -ne 0) { throw "A/B acceptance failed: $output" }
     Write-Host "Evidence: $output"
