@@ -1,0 +1,684 @@
+{
+  "candidate_firmware_sha256": "414624d934fc83f920cebe7d5359825aa3ddaf5f29cfdeb19192c7ffbc8259c7",
+  "operator_authorization": "Autorizar grava\u00e7\u00e3o e testes",
+  "unit": "COM13 ESP32-P4 ES1.3 80:F1:B2:D3:CC:86",
+  "upload_exit_code": 0,
+  "esptool_hash_verified": true,
+  "smoke_operator_confirmation": "Smoke passou em todos esses itens",
+  "smoke_log": {
+    "path": "build\\p404\\smoke_04_runtime.log",
+    "bytes": 41529,
+    "sha256": "5184b60b49ff666961a37793cce48252b94688dc3bd71392031f59d78d0c9882"
+  },
+  "smoke_span_seconds": {
+    "AUDIO": 170.73,
+    "ENGINE": 170.73,
+    "USB": 170.73,
+    "LVGL": 175.94,
+    "HEAP": 170.73,
+    "DISPLAY": 175.94,
+    "UI_BLUEPRINT": 170.73
+  },
+  "smoke_last": {
+    "AUDIO": {
+      "frames_written": 9415680,
+      "blocks_rendered": 36780,
+      "render_avg_us": 226,
+      "render_max_us": 2074,
+      "render_deadlines": 0,
+      "service_max_us": 5707,
+      "refill_risks": 0,
+      "write_errors": 0,
+      "timeouts": 0,
+      "stack_free_bytes": 7440,
+      "error": "ESP_OK",
+      "DMA_underruns": "UNMEASURED",
+      "t_ms": 197601,
+      "mode": "I2S_PRODUCING"
+    },
+    "ENGINE": {
+      "ready": 1,
+      "patch": 135,
+      "notes": 0,
+      "peak": 0,
+      "clipped": 0,
+      "oom": 0,
+      "queue": 0,
+      "high": 3,
+      "overflow": 0,
+      "expired": 0,
+      "latency_max_ms": 20,
+      "cmd_avg/max": "14/1112",
+      "dsp_avg/max": "226/2074",
+      "compute_deadlines": 0,
+      "patch_max_us": 325,
+      "dma_avg/max": "4976/5208",
+      "t_ms": 197601
+    },
+    "USB": {
+      "state": 2,
+      "connects": 1,
+      "disconnects": 0,
+      "errors": 0,
+      "events": 182,
+      "parse_errors": 0,
+      "ignored_cable_packets": 182,
+      "dropped": 0,
+      "queue": 0,
+      "overflow": 0,
+      "stack_free": 4144,
+      "polyphony_rejected": 0,
+      "t_ms": 197601
+    },
+    "UI_BLUEPRINT": {
+      "stack_free_bytes": 3348,
+      "screen_switches": 4,
+      "t_ms": 197601
+    },
+    "LVGL": {
+      "free": 95472,
+      "largest": 95372,
+      "peak_used": 35624,
+      "fragmentation": 1,
+      "t_ms": 202311
+    },
+    "HEAP": {
+      "internal_free": 248703,
+      "internal_min": 248703,
+      "internal_largest": 172032,
+      "psram_total": 33554432,
+      "psram_free": 31176952,
+      "psram_min": 31176952,
+      "psram_largest": 30932992,
+      "t_ms": 197601
+    },
+    "DISPLAY": {
+      "touch_errors": 0,
+      "flush_errors": 0,
+      "refresh": 12125,
+      "t_ms": 202311
+    }
+  },
+  "long_window_status": "PASS initial instrumented/functional stability; pre-existing retrigger clicks documented",
+  "operator_matrix_confirmation": "Roteiro executado sem falhas observadas",
+  "audible_issue": {
+    "operator_report": "Pequenos cliques ao repetir a mesma nota ou tocar notas r\u00e1pidas pelo SMK25 USB, mais claros no patch135 e tamb\u00e9m no128",
+    "status": "Reproduced the same on physical0.3A; operator explicitly deferred investigation to next stage",
+    "core_or_phase_cause_confirmed": false
+  },
+  "ab_authorization": "Autorizar compara\u00e7\u00e3o A/B",
+  "long_window": {
+    "log": "build\\p404\\soak_04_runtime.log",
+    "bytes": 428968,
+    "sha256": "3d8ad874cdafd77e625419ce0824474456deb251cb9621aa603b5fe1170eea43",
+    "analysis": "build/p404/soak_04_analysis.json",
+    "span_seconds": {
+      "AUDIO": 1851.7,
+      "ENGINE": 1851.7,
+      "USB": 1851.69,
+      "LVGL": 1851.89,
+      "HEAP": 1851.69,
+      "DISPLAY": 1851.89,
+      "UI_BLUEPRINT": 1851.69
+    },
+    "samples": {
+      "AUDIO": 371,
+      "ENGINE": 371,
+      "USB": 371,
+      "UI_BLUEPRINT": 371,
+      "LVGL": 371,
+      "HEAP": 371,
+      "DISPLAY": 371
+    },
+    "serial_checks_pass": true,
+    "last": {
+      "AUDIO": {
+        "frames_written": 101438464,
+        "blocks_rendered": 396244,
+        "render_avg_us": 159,
+        "render_max_us": 2113,
+        "render_deadlines": 0,
+        "service_max_us": 5707,
+        "refill_risks": 0,
+        "write_errors": 0,
+        "timeouts": 0,
+        "stack_free_bytes": 7440,
+        "error": "ESP_OK",
+        "DMA_underruns": "UNMEASURED",
+        "t_ms": 2114741,
+        "mode": "I2S_PRODUCING"
+      },
+      "ENGINE": {
+        "ready": 1,
+        "patch": 128,
+        "notes": 0,
+        "peak": 0,
+        "clipped": 0,
+        "oom": 0,
+        "queue": 0,
+        "high": 4,
+        "overflow": 0,
+        "expired": 0,
+        "latency_max_ms": 20,
+        "cmd_avg/max": "7/1221",
+        "dsp_avg/max": "159/2113",
+        "compute_deadlines": 0,
+        "patch_max_us": 325,
+        "dma_avg/max": "5053/5208",
+        "t_ms": 2114741
+      },
+      "USB": {
+        "state": 2,
+        "connects": 6,
+        "disconnects": 5,
+        "errors": 0,
+        "events": 1021,
+        "parse_errors": 0,
+        "ignored_cable_packets": 1021,
+        "dropped": 0,
+        "queue": 0,
+        "overflow": 0,
+        "stack_free": 4144,
+        "polyphony_rejected": 7,
+        "t_ms": 2114741
+      },
+      "UI_BLUEPRINT": {
+        "stack_free_bytes": 3332,
+        "screen_switches": 47,
+        "t_ms": 2114741
+      },
+      "LVGL": {
+        "free": 91116,
+        "largest": 91056,
+        "peak_used": 50176,
+        "fragmentation": 1,
+        "t_ms": 2114511
+      },
+      "HEAP": {
+        "internal_free": 248703,
+        "internal_min": 248703,
+        "internal_largest": 172032,
+        "psram_total": 33554432,
+        "psram_free": 31176952,
+        "psram_min": 31176952,
+        "psram_largest": 30932992,
+        "t_ms": 2114741
+      },
+      "DISPLAY": {
+        "touch_errors": 0,
+        "flush_errors": 0,
+        "refresh": 127742,
+        "t_ms": 2114511
+      }
+    },
+    "ranges": {
+      "AUDIO": {
+        "blocks_rendered": {
+          "min": 49052,
+          "max": 396244,
+          "last": 396244
+        },
+        "frames_written": {
+          "min": 12557312,
+          "max": 101438464,
+          "last": 101438464
+        },
+        "refill_risks": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        },
+        "render_avg_us": {
+          "min": 159,
+          "max": 297,
+          "last": 159
+        },
+        "render_deadlines": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        },
+        "render_max_us": {
+          "min": 2074,
+          "max": 2113,
+          "last": 2113
+        },
+        "service_max_us": {
+          "min": 5707,
+          "max": 5707,
+          "last": 5707
+        },
+        "stack_free_bytes": {
+          "min": 7440,
+          "max": 7440,
+          "last": 7440
+        },
+        "timeouts": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        },
+        "write_errors": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        }
+      },
+      "ENGINE": {
+        "clipped": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        },
+        "compute_deadlines": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        },
+        "expired": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        },
+        "high": {
+          "min": 3,
+          "max": 4,
+          "last": 4
+        },
+        "latency_max_ms": {
+          "min": 20,
+          "max": 20,
+          "last": 20
+        },
+        "notes": {
+          "min": 0,
+          "max": 4,
+          "last": 0
+        },
+        "oom": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        },
+        "overflow": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        },
+        "patch": {
+          "min": 128,
+          "max": 135,
+          "last": 128
+        },
+        "patch_max_us": {
+          "min": 325,
+          "max": 325,
+          "last": 325
+        },
+        "peak": {
+          "min": 0,
+          "max": 1782,
+          "last": 0
+        },
+        "queue": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        },
+        "ready": {
+          "min": 1,
+          "max": 1,
+          "last": 1
+        }
+      },
+      "USB": {
+        "connects": {
+          "min": 1,
+          "max": 6,
+          "last": 6
+        },
+        "disconnects": {
+          "min": 0,
+          "max": 5,
+          "last": 5
+        },
+        "dropped": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        },
+        "errors": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        },
+        "events": {
+          "min": 266,
+          "max": 1021,
+          "last": 1021
+        },
+        "ignored_cable_packets": {
+          "min": 266,
+          "max": 1021,
+          "last": 1021
+        },
+        "overflow": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        },
+        "parse_errors": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        },
+        "polyphony_rejected": {
+          "min": 0,
+          "max": 7,
+          "last": 7
+        },
+        "queue": {
+          "min": 0,
+          "max": 1,
+          "last": 0
+        },
+        "stack_free": {
+          "min": 4144,
+          "max": 4144,
+          "last": 4144
+        },
+        "state": {
+          "min": 1,
+          "max": 2,
+          "last": 2
+        }
+      },
+      "UI_BLUEPRINT": {
+        "screen_switches": {
+          "min": 4,
+          "max": 47,
+          "last": 47
+        },
+        "stack_free_bytes": {
+          "min": 3332,
+          "max": 3348,
+          "last": 3332
+        }
+      },
+      "LVGL": {
+        "fragmentation": {
+          "min": 1,
+          "max": 6,
+          "last": 1
+        },
+        "free": {
+          "min": 78992,
+          "max": 102708,
+          "last": 91116
+        },
+        "largest": {
+          "min": 74992,
+          "max": 102660,
+          "last": 91056
+        },
+        "peak_used": {
+          "min": 35624,
+          "max": 50176,
+          "last": 50176
+        }
+      },
+      "HEAP": {
+        "internal_free": {
+          "min": 248703,
+          "max": 252383,
+          "last": 248703
+        },
+        "internal_largest": {
+          "min": 172032,
+          "max": 180224,
+          "last": 172032
+        },
+        "internal_min": {
+          "min": 248703,
+          "max": 248703,
+          "last": 248703
+        },
+        "psram_free": {
+          "min": 31176952,
+          "max": 31177688,
+          "last": 31176952
+        },
+        "psram_largest": {
+          "min": 30932992,
+          "max": 30932992,
+          "last": 30932992
+        },
+        "psram_min": {
+          "min": 31176952,
+          "max": 31176952,
+          "last": 31176952
+        },
+        "psram_total": {
+          "min": 33554432,
+          "max": 33554432,
+          "last": 33554432
+        }
+      },
+      "DISPLAY": {
+        "flush_errors": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        },
+        "refresh": {
+          "min": 15772,
+          "max": 127742,
+          "last": 127742
+        },
+        "touch_errors": {
+          "min": 0,
+          "max": 0,
+          "last": 0
+        }
+      }
+    },
+    "midi_event_delta": 755,
+    "disconnect_delta": 5,
+    "ui_transitions_delta": 43,
+    "frames_per_second_by_count": 47999.75806016093
+  },
+  "ab_baseline": {
+    "firmware_sha256": "89fc42a19b0d588970bf6bd18ded139af1bc3843ae398d0cc2404fa1cfa2e9a7",
+    "upload_hash_verified": true,
+    "log": "build\\p404\\ab_baseline_runtime.log",
+    "log_bytes": 44980,
+    "log_sha256": "c04f0784e929770cde16dac8a918fd29a84e23e1872bb8c156f38ff2a93d9799",
+    "serial_checks_pass": true,
+    "last": {
+      "AUDIO": {
+        "frames_written": 9861632,
+        "blocks_rendered": 38522,
+        "render_avg_us": 261,
+        "render_max_us": 2126,
+        "render_deadlines": 0,
+        "service_max_us": 5682,
+        "refill_risks": 0,
+        "write_errors": 0,
+        "timeouts": 0,
+        "stack_free_bytes": 7252,
+        "error": "ESP_OK",
+        "DMA_underruns": "UNMEASURED",
+        "t_ms": 206885,
+        "mode": "I2S_PRODUCING"
+      },
+      "ENGINE": {
+        "ready": 1,
+        "patch": 135,
+        "notes": 0,
+        "peak": 0,
+        "clipped": 0,
+        "oom": 0,
+        "queue": 0,
+        "high": 6,
+        "overflow": 0,
+        "expired": 0,
+        "latency_max_ms": 6,
+        "cmd_avg/max": "9/1214",
+        "dsp_avg/max": "261/2126",
+        "compute_deadlines": 0,
+        "patch_max_us": 317,
+        "dma_avg/max": "4953/5225",
+        "t_ms": 206885
+      },
+      "USB": {
+        "state": 2,
+        "connects": 1,
+        "disconnects": 0,
+        "errors": 0,
+        "events": 746,
+        "parse_errors": 0,
+        "ignored_cable_packets": 746,
+        "dropped": 0,
+        "queue": 0,
+        "overflow": 0,
+        "stack_free": 4144,
+        "polyphony_rejected": 28,
+        "t_ms": 206885
+      },
+      "UI_BLUEPRINT": null,
+      "LVGL": {
+        "free": 90532,
+        "largest": 81172,
+        "peak_used": 45180,
+        "fragmentation": 11,
+        "t_ms": 206385
+      },
+      "HEAP": {
+        "internal_free": 250283,
+        "internal_min": 250283,
+        "internal_largest": 172032,
+        "psram_total": 33554432,
+        "psram_free": 31176952,
+        "psram_min": 31176952,
+        "psram_largest": 30932992,
+        "t_ms": 206885
+      },
+      "DISPLAY": {
+        "touch_errors": 0,
+        "flush_errors": 0,
+        "refresh": 12372,
+        "t_ms": 206385
+      }
+    },
+    "operator_report": "acontece da mesma forma. O problema n\u00e3o foi introduzido pela integra\u00e7\u00e3o da UI ao firmware. Podemos seguir e verificar isso em uma pr\u00f3xima etapa. Conclua os trabalhos"
+  },
+  "return_to_04": {
+    "firmware_sha256": "414624d934fc83f920cebe7d5359825aa3ddaf5f29cfdeb19192c7ffbc8259c7",
+    "upload_exit_code": 0,
+    "segments_hash_verified": 3,
+    "capture_seconds_requested": 60,
+    "log": "build\\p404\\return_04_runtime.log",
+    "log_bytes": 14849,
+    "log_sha256": "072466b0bafd2e5c2fcc1423c610a8b0dd1a4d3fae7673c7eca72837497f1b98",
+    "boot_stream_checks_pass": true,
+    "checks_applied": [
+      "complete_telemetry",
+      "no_malformed_records",
+      "no_observed_reboot",
+      "AUDIO_errors_zero",
+      "ENGINE_errors_zero",
+      "USB_errors_zero",
+      "DISPLAY_errors_zero",
+      "physical_audio",
+      "engine_ready_four_voices",
+      "host_connected_at_end",
+      "frames_coherent_with_48k",
+      "render_within_budget"
+    ],
+    "last": {
+      "AUDIO": {
+        "frames_written": 5086208,
+        "blocks_rendered": 19868,
+        "render_avg_us": 326,
+        "render_max_us": 2128,
+        "render_deadlines": 0,
+        "service_max_us": 5687,
+        "refill_risks": 0,
+        "write_errors": 0,
+        "timeouts": 0,
+        "stack_free_bytes": 7440,
+        "error": "ESP_OK",
+        "DMA_underruns": "UNMEASURED",
+        "t_ms": 107402,
+        "mode": "I2S_PRODUCING"
+      },
+      "ENGINE": {
+        "ready": 1,
+        "patch": 128,
+        "notes": 0,
+        "peak": 0,
+        "clipped": 0,
+        "oom": 0,
+        "queue": 0,
+        "high": 4,
+        "overflow": 0,
+        "expired": 0,
+        "latency_max_ms": 6,
+        "cmd_avg/max": "23/1304",
+        "dsp_avg/max": "326/2128",
+        "compute_deadlines": 0,
+        "patch_max_us": 0,
+        "dma_avg/max": "4866/5214",
+        "t_ms": 107402
+      },
+      "USB": {
+        "state": 2,
+        "connects": 1,
+        "disconnects": 0,
+        "errors": 0,
+        "events": 578,
+        "parse_errors": 0,
+        "ignored_cable_packets": 578,
+        "dropped": 0,
+        "queue": 0,
+        "overflow": 0,
+        "stack_free": 4144,
+        "polyphony_rejected": 3,
+        "t_ms": 107402
+      },
+      "UI_BLUEPRINT": {
+        "stack_free_bytes": 3348,
+        "screen_switches": 0,
+        "t_ms": 107402
+      },
+      "LVGL": {
+        "free": 95528,
+        "largest": 95168,
+        "peak_used": 32148,
+        "fragmentation": 1,
+        "t_ms": 106962
+      },
+      "HEAP": {
+        "internal_free": 248703,
+        "internal_min": 248703,
+        "internal_largest": 172032,
+        "psram_total": 33554432,
+        "psram_free": 31176952,
+        "psram_min": 31176952,
+        "psram_largest": 30932992,
+        "t_ms": 107402
+      },
+      "DISPLAY": {
+        "touch_errors": 0,
+        "flush_errors": 0,
+        "refresh": 6360,
+        "t_ms": 106962
+      }
+    },
+    "midi_events_since_fresh_boot": 578,
+    "midi_events_during_retained_capture": 0,
+    "sampling_note": "578 events already present in first post-return record; do not claim new input during this 60s capture."
+  },
+  "final_installed_image": "Integration0.4 approved musical candidate414624\u2026",
+  "gate_e": "PASS initial instrumented and functional stability on qualified P4; pre-existing retrigger clicks explicitly deferred"
+}

@@ -48,6 +48,6 @@
   "limits": [
     "Boundary jumps are not a causal oscillator-phase diagnosis.",
     "Host PCM equality does not exclude physical I2S scheduling artifacts.",
-    "Hardware A/B remains required; no DSP/core/patch changes made."
+    "Physical A/B subsequently completed: operator reported same clicks on0.3A and explicitly deferred the issue. See integration_04_hardware.json; no DSP changes."
   ]
 }

@@ -10,7 +10,9 @@ C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-standalone-blueprin
 Usa sdkconfig.defaults.blueprint / CONFIG_SMKP4_UI_BLUEPRINT. Não habilita
 PCM/USB automaticamente. Reutiliza a tarefa/port LVGL. Patch128/135, Master,
 teclado (lease10s), oitava e Panic conectados; demais funções são planejadas ou
-previews sem DSP. Nova validação física pendente; não herda aprovação0.3A.
+previews sem DSP. Validação física inicial0.4 executada na unidade qualificada:30min51,7s,
+sem falhas instrumentadas. Cliques de retrigger reproduzidos também no0.3A
+foram explicitamente adiados pelo operador; não é qualificação para palco.
 Veja [contrato auditado](docs/ui_backend_port_contract.md) e
 [relatório0.4](docs/integration_04_results.md).
 

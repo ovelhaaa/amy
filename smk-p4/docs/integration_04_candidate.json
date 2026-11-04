@@ -2,7 +2,7 @@
   "production_tree_commit": "e2b583d326c7fb61958cd08de46bf178b1170917",
   "environment": "guition-standalone-blueprint",
   "profile": "0.3A musical config + UI Blueprint opt-in",
-  "physically_validated": false,
+  "physically_validated": true,
   "files": {
     "bootloader.bin": {
       "bytes": 23120,
@@ -34,5 +34,7 @@
       "n",
       "y"
     ]
-  }
+  },
+  "physical_validation_scope": "Initial assisted bench: 30m51.7s continuous serial window, manual UI/music matrix and A/B baseline comparison on MAC80:F1:B2:D3:CC:86. Not general stage qualification.",
+  "known_audio_limitation": "Rapid-note retrigger clicks reproduced same on physical0.3A; operator deferred investigation; DSP unchanged."
 }
