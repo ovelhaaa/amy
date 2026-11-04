@@ -17,13 +17,19 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Protocol, touch gesture and display geometry regressions
         shell: pwsh
         run: |
           ./tests/run_smk_link.ps1
           ./smk-p4/tests/run_host.ps1
           ./smk-p4/tests/run_usb.ps1
-          ./smk-p4/tests/run_amy.ps1
+          ./smk-p4/tests/run_retrigger_probe.ps1
+          ./smk-p4/tests/run_amy.ps1 -Voices 4 | Tee-Object build/profile4_tests.log
+          ./smk-p4/tests/run_amy.ps1 -Voices 6 | Tee-Object build/profile6_tests.log
+          ./smk-p4/tests/run_amy.ps1 -Voices 8 | Tee-Object build/profile8_tests.log
+          python smk-p4/tests/summarize_polyphony.py
   build:
     runs-on: ubuntu-latest
     strategy:
@@ -38,6 +44,13 @@ jobs:
             environment: guition-standalone
           - project: smk-p4
             environment: guition-standalone-blueprint
+            voices: 4
+          - project: smk-p4
+            environment: guition-standalone-blueprint-6
+            voices: 6
+          - project: smk-p4
+            environment: guition-standalone-blueprint-8
+            voices: 8
           - project: smk-s3
             environment: esp32-s3-link
     steps:
@@ -53,8 +66,8 @@ jobs:
         if: matrix.project == 'smk-s3'
         run: python -c "from pathlib import Path; assert '#define CONFIG_SMKS3_P4_HEADLESS 1' in Path('smk-s3/.pio/build/esp32-s3-link/config/sdkconfig.h').read_text()"
       - name: Verify Blueprint target and safe hardware defaults
-        if: matrix.environment == 'guition-standalone-blueprint'
-        run: python smk-p4/tests/check_blueprint_build.py
+        if: startsWith(matrix.environment, 'guition-standalone-blueprint')
+        run: python smk-p4/tests/check_blueprint_build.py --voices ${{ matrix.voices }}
       - name: Verify standalone target and safe hardware defaults
         if: matrix.environment == 'guition-standalone'
         run: python smk-p4/tests/check_standalone_build.py
@@ -73,5 +86,9 @@ jobs:
         shell: pwsh
         run: |
           ./smk-p4/ui-preview/run_preview.ps1
-          ./smk-p4/tests/run_amy.ps1
-          ./smk-p4/tests/run_blueprint_adapter.ps1
+          foreach ($voices in @(4, 6, 8)) {
+            ./smk-p4/tests/run_amy.ps1 -Voices $voices
+            if ($LASTEXITCODE) { throw "AMY profile $voices failed" }
+            ./smk-p4/tests/run_blueprint_adapter.ps1 -Voices $voices
+            if ($LASTEXITCODE) { throw "UI profile $voices failed" }
+          }

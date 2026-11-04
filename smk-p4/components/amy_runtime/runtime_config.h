@@ -9,7 +9,7 @@
 #endif
 namespace smk::p4::amy {
 constexpr unsigned kVoices = SMKP4_VOICES, kCommandCapacity = 32;
-static_assert(kVoices == 4 || kVoices == 6, "Supported musical voice profiles: 4, 6");
+static_assert(kVoices == 4 || kVoices == 6 || kVoices == 8, "Supported musical voice profiles: 4, 6, 8");
 constexpr unsigned kOwnerStackBytes = 12288, kOwnerPriority = 5;
 // Conservative admission, not a measured P4 allocation size. Preserve the
 // original four-voice reserve and allow extra patch/delta/oscillator storage.

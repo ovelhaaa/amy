@@ -10,6 +10,7 @@ void probe_realtime(bool);
 uint32_t probe_live();
 size_t probe_bytes();
 size_t probe_peak_bytes();
+extern int next_delta_block;
 }
 using namespace smk::p4::amy;
 static uint32_t now_ms=0;
@@ -17,7 +18,7 @@ static void midi(Runtime& r,uint8_t status,uint8_t a,uint8_t b) {
     uint8_t p[]={uint8_t(status>>4),status,a,b};
     assert(r.usbInput().transfer(p,4,now_ms));
 }
-static void service(Runtime& r,unsigned blocks=1) {
+static void service(Runtime& r,unsigned blocks=1,const char* scene="events") {
     uint64_t total=0,render_total=0; unsigned maximum=0,render_max=0;
     for(unsigned b=0;b<blocks;++b) {
         const auto start=std::chrono::steady_clock::now();
@@ -31,7 +32,7 @@ static void service(Runtime& r,unsigned blocks=1) {
         now_ms+=5;
     }
     assert(!r.snapshot().oom_count && !r.snapshot().clipped);
-    if(blocks>=64) std::printf("HOST voices=%u gates=%u blocks=%u service_avg_us=%llu service_max_us=%u render_avg_us=%llu render_max_us=%u\n",kVoices,r.snapshot().active_notes,blocks,static_cast<unsigned long long>(total/blocks),maximum,static_cast<unsigned long long>(render_total/blocks),render_max);
+    if(blocks>=64) std::printf("HOST voices=%u patch=%u scene=%s gates=%u blocks=%u service_avg_us=%llu service_max_us=%u render_avg_us=%llu render_max_us=%u\n",kVoices,r.snapshot().patch_id,scene,r.snapshot().active_notes,blocks,static_cast<unsigned long long>(total/blocks),maximum,static_cast<unsigned long long>(render_total/blocks),render_max);
 }
 static void panic(Runtime& r) {
     r.commands().panic(); service(r);
@@ -59,9 +60,9 @@ int main() {
         assert(count==kOscillatorsPerVoice); boot_oscs+=count;
     }
     assert(boot_oscs==kOscillators);
-    std::printf("MEM voices=%u oscs=%u runtime_size=%zu live_bytes=%zu peak_bytes=%zu live_allocs=%u\n",kVoices,kOscillators,sizeof(r),probe_bytes()-bytes,probe_peak_bytes(),probe_live()-live);
+    std::printf("MEM voices=%u oscs=%u runtime_size=%zu live_bytes=%zu peak_bytes=%zu live_allocs=%u delta_blocks=%d delta_size=%zu\n",kVoices,kOscillators,sizeof(r),probe_bytes()-bytes,probe_peak_bytes(),probe_live()-live,next_delta_block,sizeof(struct delta));
     probe_realtime(true);
-    service(r,128); // idle
+    service(r,128,"idle"); // idle
     for(unsigned bank=0;bank<kPatchCount;++bank) {
         assert(r.commands().push({CommandType::Patch,kPatches[bank].id,0,0,0,now_ms})); service(r);
         // Full admission must produce independent real AMY instruments/notes.
@@ -74,7 +75,7 @@ int main() {
             assert(std::fabs(synth[base]->midi_note-(60.0f+n))<0.001f);
             assert(synth[base]->velocity>0);
         }
-        service(r,128);
+        service(r,128,"full");
         const auto rejected=r.snapshot().polyphony_rejected;
         midi(r,0x90,90,100); service(r);
         assert(r.snapshot().active_notes==kVoices && r.snapshot().polyphony_rejected==rejected+1);
@@ -82,7 +83,7 @@ int main() {
         // Reverse Off order; tails must remain, then full immediate re-admission.
         for(unsigned n=kVoices;n>0;--n) midi(r,0x80|((n-1)%2),59+n,0);
         service(r); assert(!r.snapshot().active_notes);
-        service(r,64); chord(r); service(r,64);
+        service(r,64,"release"); chord(r); service(r,64,"new_chord");
         // Sustain occupies capacity on each channel; channel 1 cannot clear 0.
         midi(r,0xb0,64,127); midi(r,0xb1,64,127); service(r);
         for(unsigned n=0;n<kVoices;++n) midi(r,0x80|(n%2),60+n,0);
@@ -97,7 +98,7 @@ int main() {
         assert(r.commands().push({CommandType::NoteOn,60,100,0,token,now_ms})); service(r);
         for(unsigned n=0;n<kVoices-1;++n) midi(r,0x90|(n%2),60+n,80);
         service(r); assert(r.snapshot().active_notes==kVoices);
-        midi(r,0xe0,127,127); midi(r,0xb1,1,127); service(r,128);
+        midi(r,0xe0,127,127); midi(r,0xb1,1,127); service(r,128,"mixed_bend_cc1");
         r.usbInput().disconnect(); service(r); assert(r.snapshot().active_notes==1);
         midi(r,0x90,60,100); service(r); assert(r.snapshot().active_notes==2);
         r.commands().release(60,token); service(r); assert(r.snapshot().active_notes==1);

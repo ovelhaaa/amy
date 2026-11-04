@@ -268,3 +268,31 @@ Select `CONFIG_SMKP4_PCM_DIAGNOSTIC` explicitly for the old tone/silence source;
 Leave diagnostic/self-test off for musical use. GPIO approval and the physical
 steps in the wiring guide remain required before enabling I²S or uploading an
 image that drives the DAC pins. Firmware compilation is not musical acceptance.
+
+## Polifonia estática 0.6
+
+O default continua em quatro vozes. Perfis6/8 são candidatos de software, sem
+aprovação de áudio físico, memória ou deadlines. Seis deve ser qualificado na
+Guition antes de gravar oito. Não há voice stealing nem mudança dinâmica.
+Veja [resultados](docs/polyphony_06_results.md), [memória](docs/polyphony_06_memory_budget.md),
+[matriz física](docs/polyphony_06_performance_matrix.md) e [Gate0](docs/audio_quality_05a_verification.md).
+
+```powershell
+./smk-p4/tests/run_retrigger_probe.ps1
+./smk-p4/tests/run_amy.ps1 -Voices 4
+./smk-p4/tests/run_amy.ps1 -Voices 6
+./smk-p4/tests/run_amy.ps1 -Voices 8
+python smk-p4/tests/summarize_polyphony.py
+C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-standalone-blueprint
+C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-standalone-blueprint-6
+C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-standalone-blueprint-8
+python smk-p4/tests/check_blueprint_build.py --voices 6
+```
+
+Kconfig SMKP4_AMY_POLYPHONY seleciona4/6/8 e deriva SMKP4_AMY_VOICES.
+Host usa SMKP4_VOICES, com validação de compilação. Não definir esse macro
+manualmente no firmware; ele lê o sdkconfig efetivo. Cada ambiente tem sdkconfig
+próprio. Gates elétricos continuam desligados; build não autoriza gravação.
+A UI recebe o limite do backend local e mostra VX:n/N, sem alteração de navegação.
+Os WAVs comuns e de capacidade total128/135 ficam em build/smk_p4_amy[_6|_8].
+O comparador exige PCM comum idêntico entre perfis, sem normalização/limitação.

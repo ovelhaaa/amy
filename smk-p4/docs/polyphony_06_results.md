@@ -28,10 +28,10 @@ A admissão ampliada é conservadora e fail-closed; não reduz capacidade sozinh
 |---|---|---|---|
 | 4 | PASS suíte e PCM comum idêntico à0.5A |116618 B vivos/116749 B pico;161 alocações | MANUAL para0.5A |
 | 6 | PASS suíte completa e PCM comum idêntico ao4 |136738 B vivos/136871 B pico;205 alocações | MANUAL |
-| 8 | NOT RUN nesta revisão | NOT RUN | MANUAL |
+| 8 | PASS suíte completa e PCM comum idêntico ao4/6 |156858 B vivos/156991 B pico;249 alocações | MANUAL |
 
-Seis notas reais foram admitidas com velocidades distintas e instrumentos DSP
-independentes. A sétima foi rejeitada sem alterar gates existentes. Release,
+Seis e oito notas reais foram admitidas com velocidades distintas e instrumentos DSP
+independentes. A sétima/nona foram rejeitadas sem alterar gates existentes. Release,
 sustain por canal, retrigger, pitch/CC1, USB/Touch, desconexão/reconexão lógica,
 lease, overflow, troca de patch e Panic passaram; zero heap durante serviço,
 zero OOM/clipping e alocações devolvidas no shutdown. Não é USB físico.
@@ -41,7 +41,8 @@ Comandos executados (paths relativos ao worktree):
 - PASS: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_retrigger_probe.ps1
 - PASS: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_amy.ps1 -Voices 4
 - PASS: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_amy.ps1 -Voices 6
-- PASS: python smk-p4/tests/summarize_polyphony.py --voices 4 6 --output build/polyphony_46_summary.json
+- PASS: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_amy.ps1 -Voices 8
+- PASS: python smk-p4/tests/summarize_polyphony.py (4/6/8; WAVs comuns idênticos)
 - PASS: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_host.ps1 (23 testes Python mais C++)
 - PASS: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_usb.ps1
 - PASS: powershell -ExecutionPolicy Bypass -File tests/run_smk_safety.ps1
@@ -73,3 +74,11 @@ físico: somente bundle/backup previamente validado, hash e layout confirmados e
 autorização para aquela imagem; não usar firmware.bin como backup integral.
 Próximo menor passo: concluir build/perfis e qualificar6 na Guition antes de8.
 Escopo físico permanece aberto; não se declara a missão inteira concluída.
+
+## Falhas de infraestrutura preservadas
+
+FAIL: tentativas iniciais de build6/8 simultâneas. O gerenciador ESP-IDF operou
+no mesmo managed_components/lvgl__lvgl, gerando arquivo ausente e WinError32.
+Um teste de adapter6 também falhou na compilação por lvgl.h temporariamente
+ausente. Não houve falha musical nesses casos. Builds passaram a ser executados
+sequencialmente no projeto; logs iniciais não foram apagados. Retries pendentes.

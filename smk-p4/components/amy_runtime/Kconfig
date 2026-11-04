@@ -7,9 +7,12 @@ config SMKP4_AMY_VOICES_4
     bool "4 voices (qualified baseline)"
 config SMKP4_AMY_VOICES_6
     bool "6 voices (candidate; hardware qualification required)"
+config SMKP4_AMY_VOICES_8
+    bool "8 voices (experimental; qualify 6 on hardware first)"
 endchoice
 config SMKP4_AMY_VOICES
     int
+    default 8 if SMKP4_AMY_VOICES_8
     default 6 if SMKP4_AMY_VOICES_6
     default 4
 endmenu
