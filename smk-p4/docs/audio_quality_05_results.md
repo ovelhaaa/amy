@@ -1,5 +1,16 @@
 # SMK-P4 0.5 — Resultados da Integração: Qualidade de Áudio e Retrigger
 
+> Correção de rastreabilidade (0.6, 2026-11-04): este documento contém
+> relatos históricos incompatíveis entre si: a seção 1 diz que não houve gravação,
+> enquanto as seções 4/5 registram gravação e outro tamanho de firmware; a seção 7
+> cita ainda um terceiro hash abreviado. Essas afirmações não identificam de forma
+> inequívoca a imagem atualmente instalada nem comprovam a autorização original.
+> São preservadas como histórico, não como evidência confirmada nesta execução.
+> O operador relatou melhoria auditiva da 0.5 no pedido 0.6. Nenhuma gravação,
+> reset ou consulta serial foi realizada na etapa 0.6. Os números A/B anteriores
+> precisam ser revalidados: o runner antigo reutilizava objetos DSP. O novo runner
+> compila commits independentes e registra SHAs completos e hashes dos WAVs.
+
 ## 1. Resumo Executivo
 
 O objetivo desta fase foi diagnosticar, reproduzir, isolar matematicamente e corrigir os cliques audíveis percebidos durante repetições rápidas de notas e retriggers no sintetizador SMK-P4 (Guition JC-ESP32P4-M3 com DAC PCM5102A e controlador M-VAVE SMK25 V2 via USB MIDI Host).

@@ -1,5 +1,6 @@
 #include "amy_runtime.h"
 #include <cstdio>
+#include <cassert>
 #include <cstdlib>
 #include <cmath>
 #include <vector>
@@ -25,7 +26,7 @@ struct ScenarioResult {
 class ScenarioRunner {
 public:
     explicit ScenarioRunner(uint16_t patch) : patch_(patch) {
-        rt_.begin();
+        assert(rt_.begin());
         rt_.commands().push({CommandType::Patch, patch_, 0, 0, 0, 0});
         rt_.apply(0);
         // warm up
@@ -63,7 +64,7 @@ public:
             now_ms_ += 256 * 1000 / 48000;
             rt_.apply(now_ms_);
             const int16_t* pcm = rt_.render();
-            if (!pcm) continue;
+            assert(pcm);
 
             if (b == 0 && edge_type != 0) {
                 int jump = std::abs(pcm[0] - prev_sample_);
@@ -106,7 +107,14 @@ public:
             noteOn(60);
             blocks(20, 1, r);
             noteOff(60);
-            blocks(150, -1, r); // tail finishes
+            blocks(15000, -1, r); // FM tails can exceed one second.
+            assert(prev_sample_ == 0 && prev_sample_r_ == 0);
+            // Output silence is not equivalent to operator last_amp == 0.
+            uint16_t voice; assert(instrument_get_num_voices(patchIndex(patch_)*kVoices+1,&voice)==1);
+            unsigned residual=0;
+            for(unsigned o=0;o<kOscillators;++o)
+                if(osc_to_voice[o]==voice && msynth[o] && msynth[o]->last_amp!=0) ++residual;
+            assert(residual>0); // Exercise the frozen-operator case explicitly.
         }
         finishRms(r);
         return r;
@@ -235,21 +243,22 @@ void run_all_scenarios(uint16_t patch) {
     std::printf("\n=======================================================================\n");
     std::printf("REPRODUCTION MATRIX - PATCH %d BASELINE\n", patch);
     std::printf("=======================================================================\n");
-    ScenarioRunner runner(patch);
 
     auto print_res = [](const ScenarioResult& r) {
+        assert(r.max_amp > 0 && r.rms > 0 && std::isfinite(r.rms));
+        assert(r.clipped == 0);
         std::printf("%-32s | OnsetJump: %4d | OffJump: %4d | MaxDelta: %4d | Peak: %5d | RMS: %6.1f | Clip: %d\n",
                     r.name.c_str(), r.onset_jump, r.off_jump, r.max_delta, r.max_amp, r.rms, r.clipped);
     };
 
-    print_res(runner.runA());
-    print_res(runner.runB());
-    print_res(runner.runC());
-    print_res(runner.runD());
-    print_res(runner.runE());
-    print_res(runner.runF());
-    print_res(runner.runG());
-    print_res(runner.runH());
+    { ScenarioRunner runner(patch); print_res(runner.runA()); }
+    { ScenarioRunner runner(patch); print_res(runner.runB()); }
+    { ScenarioRunner runner(patch); print_res(runner.runC()); }
+    { ScenarioRunner runner(patch); print_res(runner.runD()); }
+    { ScenarioRunner runner(patch); print_res(runner.runE()); }
+    { ScenarioRunner runner(patch); print_res(runner.runF()); }
+    { ScenarioRunner runner(patch); print_res(runner.runG()); }
+    { ScenarioRunner runner(patch); print_res(runner.runH()); }
 }
 
 int main() {

@@ -1,5 +1,13 @@
 # SMK-P4 0.5 — Matriz de Testes de Áudio e Retrigger
 
+> Errata 0.6: os números abaixo são históricos. O runner antigo não compilava
+> dois cores AMY independentes. Além disso, A–H reutilizavam o mesmo runtime;
+> caudas de cenários anteriores contaminavam os seguintes. O cenário B agora
+> aguarda 15.000 blocos (80 s simulados) e verifica silêncio; não presume que
+> 1 s encerra um envelope FM. A nova execução isola cada cenário, falha em
+> clipping/ausência de áudio e aplica limites comparativos. Ver relatório 0.6
+> para os resultados novos; não interpretar estas tabelas como medição atual.
+
 ## 1. Metodologia de Teste
 
 Para validar a integridade acústica e a ausência de cliques em repetições de notas, foi implementada a suíte automatizada `smk-p4/tests/test_retrigger_scenarios.cpp`.
