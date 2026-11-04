@@ -19,14 +19,17 @@ Causa: amy_render deixa de executar um pai FM inaudível e limpa seu mod_synthin
 mas não limpa last_amp de seus operadores. Esperar mais tempo não resolve.
 A guarda 0.5 usa last_amp do operador e ignora que o instrumento já está parado.
 
-Correção restrita a note_on_mod: permitir trigger_phase também quando last_amp
+Correção restrita a note_on_mod e ao disparo de sua fonte de modulação: permitir trigger_phase também quando last_amp
 do pai FM é zero. A guarda para retrigger com amplitude no pai permanece;
 nenhuma alteração em I²S, USB, ganho, envelopes ou pools. A aplicação não possui
 extensão para a escolha de fase dos operadores, exigindo essa alteração no core.
 É candidata upstream após validação em outras plataformas e audição física.
 
-PASS (teste direcionado): matriz A–H no core corrigido; cenário B voltou a
-pico536/delta180 no135 e delta386 no128. Cada cenário possui runtime próprio;
+O primeiro ajuste somente em note_on_mod restaurou pico536/delta180 no135,
+mas FAIL no128 (delta391 vs386 e diferença na fronteira de Off). A fonte auxiliar
+mod_osc também retém last_amp; a mesma condição do dono silencioso foi aplicada
+no disparo dessa fonte em play_delta. Logs das tentativas estão preservados.
+A matriz completa do ajuste final ainda está em execução. Cada cenário possui runtime próprio;
 B verifica PCM zero e existência de operador residual. O runner independente
 registra commits completos, compilador e SHA256 de cada WAV em manifest.json.
 A aceitação compara ataques/releases, clipping e limites de transientes; não
