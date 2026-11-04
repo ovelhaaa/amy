@@ -95,3 +95,18 @@ checked, não todas as falhas possíveis do core legado. Não afirmar segurança
 formal contra fragmentação/OOM ou alocação concorrente. Heap interno real,
 maior bloco, PSRAM e stacks: MANUAL. Estática/Flash dos builds finais constam
 no relatório. Nenhum consumo PSRAM adicional por voz foi solicitado pelo adapter.
+
+## Estática medida nos ELFs finais
+
+|Vozes|DRAM0+DRAM1 data/BSS|IRAM texto/padding|
+|---|---|---|
+|4|169484 B|96768 B|
+|6|169504 B|96768 B|
+|8|169548 B|96768 B|
+
+Medição por riscv32-esp-elf-size -A. O resumo RAM do PlatformIO conta DRAM0,
+mas omite DRAM1 neste alvo: não é a memória estática total. O símbolo LVGL
+work_mem_int.0 de131072 B está em DRAM1. Variações de alinhamento explicam
+pequenas diferenças não lineares; não são otimização de memória. IRAM e
+RTC/TCM não são heap. ELFs/mapas/seções congelados acompanham o bundle;
+heap interno e PSRAM livres continuam dependentes da execução física.

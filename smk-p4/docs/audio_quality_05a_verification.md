@@ -53,3 +53,9 @@ fontes compartilhadas; por isso a extensão está atrás de
 AMY_EXCLUSIVE_FM_PHASE_RESTART, ativada somente no componente P4 e nos harnesses
 correspondentes. Outras plataformas mantêm a política0.5. Não se presume ownership
 exclusivo no core genérico. A configuração P4 mantém o resultado verificado.
+
+Verificação final com flag exclusiva e cenários A/B de release completo:
+PASS cd9ed0ba versus581570c6, mesmo harness, compilação independente em
+build/retrigger_ab/8862ec3a00d04a0daa9ee8685b00bc63. Onsets274→16 e1087→225;
+blocos finais silenciosos, comparações A–H aprovadas. Manifesto registra hashes
+dos dois harnesses e flags. Comando pwsh -NoProfile -File smk-p4/tests/run_retrigger_probe.ps1.

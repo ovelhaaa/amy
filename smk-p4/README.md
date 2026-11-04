@@ -296,3 +296,10 @@ próprio. Gates elétricos continuam desligados; build não autoriza gravação.
 A UI recebe o limite do backend local e mostra VX:n/N, sem alteração de navegação.
 Os WAVs comuns e de capacidade total128/135 ficam em build/smk_p4_amy[_6|_8].
 O comparador exige PCM comum idêntico entre perfis, sem normalização/limitação.
+
+Após os builds/testes, o relatório final registra seções DRAM0/DRAM1 (o resumo
+RAM PIO omite DRAM1), memória host e limites de interpretação. Para congelar um
+bundle sem gravação, com ELF/mapa/configuração, WAVs e hashes, use
+`python smk-p4/tests/package_polyphony_review.py` após gerar os logs finais
+indicados no relatório. O script recusa gates elétricos ligados e não sobrescreve
+bundles. O manifesto não constitui aprovação de hardware ou de gravação.

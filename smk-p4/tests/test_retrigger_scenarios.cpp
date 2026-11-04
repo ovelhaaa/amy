@@ -72,9 +72,11 @@ public:
                 else res.off_jump = std::max(res.off_jump, jump);
             }
 
+            last_block_silent_ = true;
             for (int f = 0; f < 256; ++f) {
                 for (int c = 0; c < 2; ++c) {
                     int val = pcm[f * 2 + c];
+                    if(val != 0) last_block_silent_ = false;
                     int delta = std::abs(val - (c == 0 ? prev_sample_ : prev_sample_r_));
                     res.max_delta = std::max(res.max_delta, delta);
                     res.max_amp = std::max(res.max_amp, std::abs(val));
@@ -94,7 +96,8 @@ public:
         noteOn(60);
         blocks(30, 1, r);
         noteOff(60);
-        blocks(200, -1, r);
+        blocks(15000, -1, r);
+        assert(last_block_silent_);
         finishRms(r);
         return r;
     }
@@ -108,7 +111,7 @@ public:
             blocks(20, 1, r);
             noteOff(60);
             blocks(15000, -1, r); // FM tails can exceed one second.
-            assert(prev_sample_ == 0 && prev_sample_r_ == 0);
+            assert(last_block_silent_);
             // Output silence is not equivalent to operator last_amp == 0.
             uint16_t voice; assert(instrument_get_num_voices(patchIndex(patch_)*kVoices+1,&voice)==1);
             unsigned residual=0;
@@ -237,6 +240,7 @@ private:
     int16_t prev_sample_r_ = 0;
     double sum_sq_ = 0.0;
     size_t total_samples_ = 0;
+    bool last_block_silent_ = true;
 };
 
 void run_all_scenarios(uint16_t patch) {

@@ -44,3 +44,23 @@ rejeitar gates/configuração incompatíveis. Obter autorização explícita par
 substituir aquela imagem concreta. Nenhuma gravação está autorizada pelo build.
 Preservar logs negativos. Rollback usa bundle físico previamente validado e seus
 offsets documentados, nunca confundir firmware.bin com backup integral da Flash.
+
+## Execução host final, sem builds Codex concorrentes
+
+Microssegundos em Windows x86-64, GCC14.2.0 -O2. Não são tempos P4.
+Serviço inclui apply+render; render isolado não revela o custo da fila cheia.
+
+|Vozes|Render cheio128 média/máximo|Render cheio135 média/máximo|Pior render em todos cenários|Pior serviço em todos cenários|
+|---|---|---|---|---|
+|4|31/50|29/45|99|1703|
+|6|43/87|44/52|172|2849|
+|8|57/78|59/72|258|4223|
+
+Pior serviço ocorreu com as duas filas de32 cheias (Touch retrigger+CC1 para
+N-1 USB), em contraste com o render regular. Essa carga precisa de medição no
+P4: não inferir margem do orçamento5333,33 us a partir do render host isolado.
+As amostras anteriores, sob compilação concorrente, incluíram10558 us de render;
+logs preservados. Diferenças de ambiente não são otimização nem regressão DSP
+comprovada. A reserva mudou alocação no boot, não o algoritmo de ordenação de
+eventos nem o trabalho por controle. JSON final contém cada cena/patch, memória,
+RMS/pico/hashes e a comparação PCM. Deadlines/CPUload/latência P4: MANUAL.

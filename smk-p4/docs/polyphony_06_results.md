@@ -1,103 +1,213 @@
-# SMK-P4 0.6 — resultados de polifonia
+# SMK-P4 0.6 — resultados finais de software
 
-2026-11-04. Branch feature/smk-p4-polyphony-06 em worktree separado
-build/worktrees/smk-p4-polyphony-06, base dd4753af. Checkout principal e outras
-branches/backups preservados. Nenhum reset/rebase/force-push ou acesso físico.
+2026-11-04. Branch `feature/smk-p4-polyphony-06`, worktree separado
+`build/worktrees/smk-p4-polyphony-06`, base0.5 `dd4753af`.
+**Implementação e validação de software concluídas; qualificação física aberta.**
+Default4 preservado. Seis é o primeiro candidato de bancada; oito permanece
+experimental. Nenhuma gravação, consulta serial ou reset físico nesta execução.
+A montagem atual ainda não foi reconfirmada pelo operador.
 
-## Gate0 — PASS software
+O pedido explícito P4/Guition/800×480 prevalece sobre specs.md/AGENTS gerais
+S3/284×76. Checkout principal, branches anteriores, backups, configurações físicas
+e bundles validados não foram alterados. Sem reset Git, rebase ou force-push.
 
-Ver audio_quality_05a_verification.md. A comparação independente encontrou e
-corrigiu um defeito adicional da guarda0.5 em ataques após silêncio: operadores
-e fonte auxiliar FM retêm last_amp quando o pai deixa de renderizar. Somente
-as condições de trigger_phase foram ampliadas para o dono silencioso; caudas
-ativas continuam sem reset de fase. Dois commits pequenos d8cd25b3 e3fa65331.
-Comparação0.4→0.5A: onset274→16 (128),1087→225 (135), primeiro ataque/release
-idêntico, A–H com verificações efetivas, zero clipping. Nenhuma nova otimização.
+## Implementado e impacto de arquitetura
 
-## Arquitetura e etapas
+- Kconfig/ambientes estáticos4/6/8; host usa SMKP4_VOICES. Sem mudança dinâmica.
+- Dimensionamento único de instrumentos, vozes AMY, osciladores e reserva delta;
+  limites de compilação e verificação real dos mapas/instrumentos. Sem stealing.
+- Dois bancos ROM128/135 mantidos pré-carregados; somente um musicalmente ativo.
+  Os slots livres ainda podem ter cauda DSP, reutilizada com fase contínua.
+- Pré-alocação do pior caso das duas filas no boot, com falha checked e teardown.
+  Sem alocação/locks/logs novos no serviço. I²S/DMA/USB não foram modificados.
+- Admissão verifica total livre e maior bloco separadamente, preserva margem
+  interna pós-boot em6/8 e falha sem fallback silencioso nem engine ready.
+- Contrato mínimo PerformanceBackend::voiceCapacity atualiza VX:n/N desde o
+  primeiro frame. Navegação/controles Blueprint1.1 preservados; sem recursos novos.
+- Core AMY: duas condições de fase ampliadas sob AMY_EXCLUSIVE_FM_PHASE_RESTART,
+  habilitado somente no P4 e harnesses correspondentes. Fontes privadas dos dois
+  patches foram auditadas; outras plataformas mantêm a política0.5. Nenhuma
+  mudança de API AMY, envelopes, ganho, normalização, patches ou filtros.
 
-25355c55 centraliza capacidade estática em Kconfig/host, deriva osciladores,
-vozes AMY e synths, preserva os dois bancos pré-carregados e rejeição sem stealing.
-IDs/limites são verificados em compilação e ownership real é auditado no boot/teste.
-Driver I²S, DMA, USB, envelopes, ganho e navegação não foram alterados.
-A UI recebe a capacidade pelo contrato PerformanceBackend::voiceCapacity,
-sem mudar o DTO/UART compartilhado. VX:-- é o placeholder antes do snapshot.
-A admissão ampliada é conservadora e fail-closed; não reduz capacidade sozinha.
+|Vozes musicais|Instrumentos/vozes AMY (2 bancos)|Osciladores|max_synths (ID0 reservado)|Deltas reservados/blocos|
+|---|---|---|---|---|
+|4|8|64|9|1944/1|
+|6|12|96|13|2536/2|
+|8|16|128|17|3128/2|
 
-| Etapa | Software host | Memória rastreada host | Situação física |
+## Gates e comportamento musical
+
+|Gate|Resultado|
+|---|---|
+|0 — Audio0.5A|PASS software A/B independente e matriz A–H; audição nova MANUAL|
+|A — quatro|PASS host e build; PCM comum idêntico à0.5A|
+|B — seis|PASS software/build; memória/deadlines/qualidade física MANUAL|
+|C — oito|PASS software/build; NÃO aprovado para uso físico/padrão|
+|D — interface|PASS host/adaptadores; operacionalidade/memória na Guition MANUAL|
+|E — hardware|MANUAL/NOT RUN; janela>=30min e audição pendentes|
+
+Seis/oito notas reais foram admitidas em instrumentos DSP distintos, com alturas
+verificadas no engine. A sétima/nona foi rejeitada sem alterar gates existentes.
+PASS: release em ordem inversa, caudas/novos acordes, velocity, sustain por canal,
+repetição sob sustain, bend/CC1, USB/Touch de mesma altura nas duas ordens,
+disconnect/reconnect lógico com Touch preservado, Panic ativo/release, patch
+ativo, oitava/pressões/lease10s e filas saturadas. Drops/cancelamentos esperados
+nos testes negativos são distintos de perdas MIDI inesperadas. Não é USB físico.
+
+## Consolidação0.5A e falhas encontradas
+
+Ver [verificação0.5A](audio_quality_05a_verification.md). O runner antigo
+vinculava ambos runtimes ao mesmo core e exigia WAV idêntico. Agora compila
+cd9ed0ba e581570c6 em árvores/objetos independentes, mesmo harness/configuração,
+registra SHA completo, flags e hashes do harness/WAV. A/B mais recente:
+`build/retrigger_ab/8862ec3a00d04a0daa9ee8685b00bc63`.
+
+PASS: onset274→16 no128 e1087→225 no135; primeiro ataque/release byte-idêntico,
+A/B/H idênticos na matriz isolada, C/E/F com redução, clipping0. A/B aguardam
+15000 blocos de release e verificam bloco totalmente silencioso; B também prova
+operadores com last_amp residual. A0.5 alterava ataques após silêncio porque o
+pai parava de renderizar operadores/fontes; a extensão exclusiva restaura esse
+ataque sem reiniciar fase durante caudas audíveis. Relatos contraditórios de
+imagem/hash/autorização0.5 foram anotados sem apagar histórico.
+
+FAIL preservado:8 vozes com32 CC1 de um canal cresciam o pool durante o serviço.
+A reserva calculada eliminou isso em4/6/8, inclusive32 Touch retriggers+32 CC1
+simultâneos, velocity/master127,16 acordes rápidos e todos os testes anteriores.
+PASS: OOM injetado no bloco adicional6/8, sem ready/render parcial, sem leak e
+com retry normal. Quatro manteve o pool e os bytes de heap anteriores.
+
+## Memória
+
+|Vozes|Runtime estático host|Heap AMY vivo/pico host|Alocações vivas|
 |---|---|---|---|
-| 4 | PASS suíte e PCM comum idêntico à0.5A |116618 B vivos/116749 B pico;161 alocações | MANUAL para0.5A |
-| 6 | PASS suíte completa e PCM comum idêntico ao4 |185890 B vivos/186023 B pico;206 alocações | MANUAL |
-| 8 | PASS suíte completa e PCM comum idêntico ao4/6 |206010 B vivos/206143 B pico;250 alocações | MANUAL |
+|4|3212 B|116618/116749 B|161|
+|6|3244 B|185890/186023 B|206|
+|8|3276 B|206010/206143 B|250|
 
-Seis e oito notas reais foram admitidas com velocidades distintas e instrumentos DSP
-independentes. A sétima/nona foram rejeitadas sem alterar gates existentes. Release,
-sustain por canal, retrigger, pitch/CC1, USB/Touch, desconexão/reconexão lógica,
-lease, overflow, troca de patch e Panic passaram; zero heap durante serviço,
-zero OOM/clipping e alocações devolvidas no shutdown. Não é USB físico.
+ABI P4 medida com comando real do compilador: delta20 B, synthinfo356 B,
+mod_synthinfo52 B. Host delta24 B; não converter seus totais em heap físico.
+Bloco extra é40960 B no P4,49152 B no host. Ver [orçamento](polyphony_06_memory_budget.md).
 
-Comandos executados (paths relativos ao worktree):
+|Vozes|DRAM data+BSS ELF (B)|IRAM ELF (B)|firmware.bin (B)|SHA256 firmware.bin seguro|
+|---|---|---|---|---|
+|4|169484|96768|1108336|dfb7a3bf88cafdd9e64c8d8c80aa5bbdf0ad0fe566a6df5f63a695325aacbaff|
+|6|169504|96768|1108528|b9d8cacc61914e14166178bda19e825803ef8e8032871059719a02158dcf8a55|
+|8|169548|96768|1108512|9ee48f7c7320e949509ab0103b6d12e68d86c7a1614441ab628b350ba6ff738a|
 
-- PASS: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_retrigger_probe.ps1
-- PASS: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_amy.ps1 -Voices 4
-- PASS: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_amy.ps1 -Voices 6
-- PASS: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_amy.ps1 -Voices 8
-- PASS: python smk-p4/tests/summarize_polyphony.py (4/6/8; WAVs comuns idênticos)
-- PASS: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_host.ps1 (23 testes Python mais C++)
-- PASS: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_usb.ps1
-- PASS: powershell -ExecutionPolicy Bypass -File tests/run_smk_safety.ps1
-- PASS: powershell -ExecutionPolicy Bypass -File tests/run_smk_ui.ps1
-- PASS: powershell -ExecutionPolicy Bypass -File tests/run_smk_link.ps1
-- PASS: powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_preview.ps1 (20 capturas/700 telas)
-- PASS: powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_blueprint_adapter.ps1 -Voices 4 (1400 telas, sem crescimento na segunda janela)
+DRAM soma os bancos0/1. O resumo PlatformIO omite DRAM1 neste alvo e não deve
+ser apresentado como RAM estática total. DRAM1 inclui work_mem_int de131072 B
+(LVGL). Variações de alinhamento/link não são otimização. IRAM permanece96768 B;
+RTC/TCM/padding constam nas seções do manifesto. Esses números não medem heap.
+Heap interno/maior bloco/PSRAM livre/stacks físicos atuais: MANUAL/NOT RUN.
+Nenhuma nova alocação PSRAM por voz foi solicitada pelo adapter.
 
-Builds finais, estática/Flash e candidatos serão registrados após conclusão.
-A primeira compilação exploratória P4 passou; não é o candidato final, pois a
-verificação0.5A e a configuração foram consolidadas depois.
+## DSP e áudio
 
-## Limites, decisão e rollback
+48kHz/PCM16estéreo/256frames; orçamento5333,33 us, DMA inalterado. Medições
+host finais, sem builds Codex concorrentes:
 
-Heap interno, maior bloco, PSRAM, stacks, render/deadlines P4, DMA, MIDI físico,
-LVGL concorrente e janela>=30min: MANUAL/NOT RUN. Os tempos HOST são medidos em
-Windows durante compilações concorrentes: máximo pode refletir agendamento do OS;
-não são prazo de firmware nem prova de margem DSP. Ver matriz de performance.
+|Vozes|Render cheio128 média/máximo(us)|Render cheio135 média/máximo(us)|Pior render(us)|Pior serviço apply+render(us)|
+|---|---|---|---|---|
+|4|31/50|29/45|99|1703|
+|6|43/87|44/52|172|2849|
+|8|57/78|59/72|258|4223|
 
-Default permanece4. Seis é o primeiro candidato a bancada; oito, caso os testes
-passem, será experimental até qualificação progressiva. Não promover por build.
-Nenhum pino final inventado: perfil elétrico anterior preservado, gates desativados.
-Placa/porta/VBUS/straps/montagem e imagem instalada exigem confirmação atual.
-A API amy_start ainda contém alocações iniciais sem checagem; a admissão é
-conservadora, não prova formal contra OOM/fragmentação. Ver orçamento de memória.
+Não são medidas P4. Serviço8 atingiu4223 us no host com ambas filas cheias:
+não aprovar8 por render médio baixo. Amostras sob compilação concorrente chegaram
+a10558 us de render e estão preservadas; não atribuir redução à otimização.
+Render/compute deadlines, serviço/DMA/refill, write/timeouts, latência física,
+CPUload, MIDI físico e margem operacional P4: MANUAL. O máximo histórico0.4
+2113 us/zero deadlines em>30min não aprova estes perfis. Ver [matriz](polyphony_06_performance_matrix.md).
 
-Rollback de software: compilar perfil4 ou usar a branch0.5 preservada. Rollback
-físico: somente bundle/backup previamente validado, hash e layout confirmados e
-autorização para aquela imagem; não usar firmware.bin como backup integral.
-Próximo menor passo: concluir build/perfis e qualificar6 na Guition antes de8.
-Escopo físico permanece aberto; não se declara a missão inteira concluída.
+WAVs determinísticos comuns4 notas são byte-idênticos entre4/6/8, inclusive
+uma voz, sem normalização por polifonia. Picos comuns128/135:2850/1518 PCM;
+RMS176,535/153,018. WAVs de capacidade total também foram gerados (notas48+3*i):
+128 pico/RMS:4=2102/187,484;6=2733/209,487;8=3123/225,560.
+135:4=1633/157,938;6=2296/189,353;8=2672/210,870.
+Clipping bruto do runtime0 nos testes positivos; OOM de serviço0; heap do
+serviço0. SHA256 por WAV e dados por cena em build/polyphony_06_summary.json.
 
-## Falhas de infraestrutura preservadas
+## Validação executada
 
-FAIL: tentativas iniciais de build6/8 simultâneas. O gerenciador ESP-IDF operou
-no mesmo managed_components/lvgl__lvgl, gerando arquivo ausente e WinError32.
-Um teste de adapter6 também falhou na compilação por lvgl.h temporariamente
-ausente. Não houve falha musical nesses casos. Builds passaram a ser executados
-sequencialmente no projeto; logs iniciais não foram apagados. Retries pendentes.
+Toolchain: PlatformIO6.1.18, pioarduino55.03.36-1, IDF5.5.2, LVGL9.3.0,
+GCC14.2.0; PowerShell7.6.9 para testes S3 com stderr esperado. Sem upgrades.
+USB S3 preservado em1.4.1 via lock existente. Comandos a partir deste worktree:
 
-## Gate de pressão de eventos — falha e correção
+|Status|Comando/teste|
+|---|---|
+|PASS|pwsh -NoProfile -File smk-p4/tests/run_retrigger_probe.ps1|
+|PASS|powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_amy.ps1 -Voices 4 (também6/8)|
+|PASS|polyphony.exe4/6/8 recompilado após hasBootMemory; OOM, admissão e carga máxima|
+|PASS|polyphony.exe4/6/8 sem builds concorrentes; logs profileN_capacity_quiet.log|
+|PASS|python smk-p4/tests/summarize_polyphony.py --log-suffix tests_final --probe-suffix capacity_quiet|
+|PASS|powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_host.ps1 (23 Python + C++)|
+|PASS|powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_usb.ps1|
+|PASS|powershell -ExecutionPolicy Bypass -File tests/run_smk_safety.ps1|
+|PASS|powershell -ExecutionPolicy Bypass -File tests/run_smk_ui.ps1 e tests/run_smk_link.ps1|
+|PASS|powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_preview.ps1 (20 capturas,700 telas)|
+|PASS|pwsh -NoProfile -File smk-p4/tests/run_blueprint_adapter.ps1 -Voices 4 (também6/8;1400 telas/execução,sem crescimento na segunda janela)|
+|PASS|pwsh -NoProfile -File tests/run_smk_amy_boot.ps1 -Mutations|
+|PASS|pwsh -NoProfile -File tests/run_smk_amy_boot.ps1 -Legacy (diagnóstico negativo esperado)|
+|PASS|powershell -ExecutionPolicy Bypass -File tests/run_smk_amy_boot.ps1 -ResourcesOnly -BlockSize 128|
+|PASS|C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-standalone-blueprint -e guition-standalone-blueprint-6 -e guition-standalone-blueprint-8 -j 8|
+|PASS|python smk-p4/tests/check_blueprint_build.py --voices N (4/6/8), header/flags reais/gates desligados|
+|PASS|pio run -d smk-p4 -e guition-standalone -j 8; python smk-p4/tests/check_standalone_build.py (paths enabled compilados/linkados separadamente)|
+|PASS|pio run -d smk-s3 -e esp32-s3-link -j 8|
+|PASS|riscv32-esp-elf-size -A e nm -S: ABI/seções/símbolos dos ELFs reais|
+|NOT RUN|Demais ambientes S3/P4 híbridos e suíte Python AMY upstream completa|
+|MANUAL|Guition6/8, PCM5102A/SMK25 reais, audição e janela>=30min|
 
-FAIL:8 vozes com32 CC1 de um canal exigiam crescimento de pool durante o áudio,
-detectado pelo assert !realtime do heap_probe. PASS anterior cobria acordes,
-mas não essa combinação. Evidência negativa: build/profile8_capacity_final.log.
-A matriz foi ampliada com32 Touch retriggers e32 CC1 simultâneos, todas vozes
-no mesmo canal, velocity/master127, silêncio/uma/metade/total/sustain, caudas e
-16 acordes rápidos. A reserva de deltas foi calculada e materializada no boot:
-1944/2536/3128 deltas,1/2/2 blocos. Quatro preserva seu pool;6/8 reservam um bloco
-extra. Não houve coalescing de MIDI nem mudança de driver para mascarar carga.
+Logs finais: profileN_tests_final.log, profileN_capacity_admission.log,
+profileN_capacity_quiet.log, polyphony_final_uptodate.log,
+standalone_legacy_firmware.log, s3_link_firmware_final.log e adapters finais.
 
-PASS: suítes completas4/6/8 após reserva, logs profileN_tests_reserved.log;
-zero heap no serviço inclusive filas simultâneas. PASS: OOM injetado na expansão
-do boot6/8, sem engine ready/parcial ou leak e com retry seguro. PASS: PCM comum
-idêntico entre perfis após reserva. sizeof(delta) P4 foi medido por compilação
-nativa:20 bytes; o cálculo de admissão usa sizeof da plataforma. Ver orçamento.
-Host apresentou pico10558 us de render em compilação concorrente na tentativa
-anterior; isso permanece como observação, não deadline P4 nem aprovação de8.
+Falhas de infraestrutura preservadas: build6/8 simultâneos disputaram
+managed_components/LVGL (WinError32/arquivo ausente); retry sequencial PASS.
+Adapter6 falhou enquanto lvgl.h era reparado, depois PASS. Um cache PlatformIO
+ignorou alteração de CMake do componente: auditoria recusou flag ausente;
+reconfiguração forçada via timestamp do CMakeLists raiz e auditoria efetiva
+resolveram. PowerShell5 tratou stderr negativo esperado dos testes S3 como
+NativeCommandError; execução em pwsh, como no CI, PASS. Não foram falhas DSP
+ocultadas nem justificativa para promover testes físicos.
+
+## Candidato, limites e próximo passo
+
+O bundle local de revisão contém3 imagens seguras, SDKs/flags/layout nativos,
+WAVs A/B e4/6/8, logs, patch e manifesto SHA256. É criado por
+python smk-p4/tests/package_polyphony_review.py, sem sobrescrever bundles;
+confere cópias/hashes e integridade ZIP. **I²S e USB permanecem desligados.**
+Não é a imagem audível aprovada para bancada nem autorização de gravação.
+
+Recomendação: manter4 como default até qualificação; preparar imagem audível6
+após reconfirmação da mesma montagem, então identificar unidade/porta/imagem
+instalada, preservar backup, verificar hash/configuração concreta e obter
+autorização explícita para gravar. Qualificar6 antes de8; repetir piores cargas,
+audição e>=30min. Não reduzir reservas nem promover8 apenas por build/host.
+A pergunta sobre a montagem permanece pendente nesta execução.
+
+Riscos: margem DSP/filas e heap físico ainda desconhecidos; amy_start conserva
+alocações iniciais sem NULL check. A guarda é conservadora, não prova formal
+contra fragmentação/OOM. OOM injetado cobre a nova expansão checked, não todo o
+core legado. MIDI/display/USB físicos com estas imagens não foram exercitados.
+
+Rollback: perfil4 recompilável; branch/worktree0.5 intactos. Rollback físico
+somente bundle/backup anteriormente validado, hash e layout confirmados e
+autorização para aquela imagem. Firmware.bin não é backup integral. Não foi
+substituída nem identificada novamente a imagem atualmente instalada.
+
+## Commits de implementação
+
+Código funcional consolidado em94cfcae0; mudanças posteriores de relatório,
+harness/empacotamento não alteram o caminho musical. SHA HEAD completo consta
+no manifesto do bundle. Commits desde a base:
+
+- `d8cd25b3` fix(p4): independently verify retriggers and restore silent FM attacks
+- `3fa65331` fix(amy): restart frozen modulation phase with a silent owner
+- `25355c55` feat(p4): size static voice profiles and verify real engine capacity
+- `aad319ab` test(p4): qualify six-voice software admission and record memory evidence
+- `9bd8579c` feat(p4): add experimental eight-voice profile after six-voice host qualification
+- `99499aef` fix(p4): preallocate bounded event pressure before expanded audio service
+- `3067137e` fix(p4): show compiled capacity before the first UI snapshot
+- `581570c6` fix(amy): scope silent-owner phase restart to exclusive FM platforms
+- `7d7f5fa2` test(p4): pin final exclusive-FM A/B provenance and harness hashes
+- `94cfcae0` fix(p4): admit aggregate engine memory separately from contiguous reserve
