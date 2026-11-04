@@ -47,6 +47,11 @@ static void chord(Runtime& r) {
     service(r); assert(r.snapshot().active_notes==kVoices);
 }
 int main() {
+    // Aggregate demand must not be mistaken for a single allocation. This
+    // historical heap shape has more free total than its largest region.
+    assert(Runtime::hasBootMemory(411199,245760));
+    assert(!Runtime::hasBootMemory(Runtime::bootFreeInternalBytes()-1,196608));
+    assert(!Runtime::hasBootMemory(411199,196607));
     Runtime r;
     const auto live=probe_live(); const auto bytes=probe_bytes();
     if(kVoices>4) {

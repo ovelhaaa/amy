@@ -65,20 +65,28 @@ de bytes não mede fragmentação nem heap interno da placa.
 Probe C compilado usando o comando real de amy.c no compile_commands.json,
 inspecionado com riscv32-esp-elf-nm -S: sizeof(delta)=20, synthinfo=356,
 mod_synthinfo=52. Artefatos build/p4_abi_probe.c/.o. Portanto o bloco adicional
-P4 é40960 bytes, não os49152 do host. Runtime::bootLargestInternalBytes calcula
+P4 é40960 bytes, não os49152 do host. Runtime::bootFreeInternalBytes calcula
 a reserva extra com sizeof(delta) da plataforma; não fixa uma ABI do host.
 
-| Perfil | Maior bloco interno mínimo antes de AMY | Piso interno depois de AMY (expandido) |
+| Perfil | Total interno livre mínimo antes de AMY | Piso interno depois de AMY (expandido) |
 |---|---|---|
 |4|196608 B (mesma guarda anterior)|sem novo piso, preserva baseline|
 |6|286720 B|65536 B livres e maior bloco32768 B|
 |8|335872 B|65536 B livres e maior bloco32768 B|
 
+O maior bloco deve ser>=196608 em todos os perfis, preservando a guarda original.
+A demanda agregada não é uma alocação contígua. O histórico0.3A em diagnóstico
+sem AMY tinha411199 bytes livres e maior bloco245760: exigir todo o orçamento
+expandido em um único bloco poderia rejeitar memória utilizável. hasBootMemory
+verifica total e maior bloco separadamente; teste automatizado cobre essa forma
+de heap, total insuficiente e região contígua insuficiente. É evidência histórica,
+não medição do boot0.6 nem aprovação de hardware.
+
 A base196608 mais24576 por voz adicional é margem conservadora, não tamanho
 medido nem garantia formal. O incremento do pool usa o ABI real. Os pisos
 preservam margem para USB/LVGL/I²S/tarefas, mas não certificam que ela basta para
 a montagem. Ausência da reserva recusa a configuração, não reduz vozes sozinha.
-O P4 pode recusar8 mesmo com host aprovado: medir boot e maior bloco antes de
+O P4 pode recusar8 mesmo com host aprovado: medir boot, total e maior bloco antes de
 qualificar. Não diminuir o piso sem evidência comparável.
 
 amy_start ainda retorna void e contém alocações iniciais sem teste de NULL.

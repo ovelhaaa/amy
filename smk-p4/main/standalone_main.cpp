@@ -60,7 +60,9 @@ void runAudio() {
     // Boot admission before LVGL starts allocating. Upstream amy_start is void
     // and still contains unchecked boot allocations; fail before entering it
     // when the conservative internal reserve is absent.
-    if(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)<smk::p4::amy::Runtime::bootLargestInternalBytes() ||
+    if(!smk::p4::amy::Runtime::hasBootMemory(
+           heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT),
+           heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)) ||
        !runtime.begin()) state.error=ESP_ERR_NO_MEM;
     if(smk::p4::amy::kVoices>4 && state.error==ESP_OK &&
        (heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)<smk::p4::amy::kPostBootFreeInternalBytes ||
@@ -180,9 +182,9 @@ extern "C" void app_main() {
     ESP_LOGI(kTag, "Standalone local AMY; USB opt-in; no UART, ES8311 or NS4150");
     ESP_LOGI(kTag, "PCM=%" PRIu32 "Hz signed16 stereo Philips; block=%u DMA=%ux%u MCLK=unused",
              kSampleRateHz, unsigned(kBlockFrames), kDmaDescriptors, unsigned(kBlockFrames));
-    ESP_LOGI(kTag,"AMY capacity voices=%u oscs=%u amy_voices=%u synths=%u delta_reserve=%u admission_largest=%u post_free=%u post_largest=%u",
+    ESP_LOGI(kTag,"AMY capacity voices=%u oscs=%u amy_voices=%u synths=%u delta_reserve=%u admission_free=%u admission_largest=%u post_free=%u post_largest=%u",
              smk::p4::amy::kVoices,smk::p4::amy::kOscillators,smk::p4::amy::kAmyVoices,smk::p4::amy::kSynthCount,
-             smk::p4::amy::kDeltaReserve,unsigned(smk::p4::amy::Runtime::bootLargestInternalBytes()),unsigned(smk::p4::amy::kPostBootFreeInternalBytes),
+             smk::p4::amy::kDeltaReserve,unsigned(smk::p4::amy::Runtime::bootFreeInternalBytes()),unsigned(smk::p4::amy::kBootLargestInternalBytes),unsigned(smk::p4::amy::kPostBootFreeInternalBytes),
              unsigned(smk::p4::amy::kPostBootLargestInternalBytes));
     snapshots = xQueueCreateStatic(1, sizeof(Snapshot), snapshot_storage, &snapshot_control);
     ESP_LOGI(kTag, "Candidate I2S (driven only when wiring confirmed) BCLK=%d WS=%d DATA=%d test_sequence=%d frequency=%dHz peak=%.2f",

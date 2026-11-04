@@ -14,7 +14,8 @@ struct Snapshot {
 class Runtime {
 public:
     ~Runtime() { end(); }
-    static size_t bootLargestInternalBytes();
+    static size_t bootFreeInternalBytes();
+    static bool hasBootMemory(size_t free_internal_bytes,size_t largest_internal_bytes);
     bool begin(uint32_t sample_rate_hz=kSampleRateHz);
     void end();
     void apply(uint32_t now_ms);

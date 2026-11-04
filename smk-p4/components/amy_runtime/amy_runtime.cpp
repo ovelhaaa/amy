@@ -12,9 +12,12 @@ size_t amy_i2s_write(const uint8_t*,size_t bytes) { return bytes; }
 }
 namespace smk::p4::amy {
 static_assert(AMY_SAMPLE_RATE==kSampleRateHz && AMY_BLOCK_SIZE==kBlockFrames && AMY_NCHANS==2);
-size_t Runtime::bootLargestInternalBytes() {
+size_t Runtime::bootFreeInternalBytes() {
     constexpr unsigned blocks=(kDeltaReserve+kDeltaBlockSize-1)/kDeltaBlockSize;
-    return kBootBaseLargestInternalBytes+(blocks-1)*kDeltaBlockSize*sizeof(struct delta);
+    return kBootBaseFreeInternalBytes+(blocks-1)*kDeltaBlockSize*sizeof(struct delta);
+}
+bool Runtime::hasBootMemory(size_t free_internal_bytes,size_t largest_internal_bytes) {
+    return free_internal_bytes>=bootFreeInternalBytes() && largest_internal_bytes>=kBootLargestInternalBytes;
 }
 bool Runtime::begin(uint32_t sample_rate_hz) {
     if(started_ || sample_rate_hz!=kSampleRateHz) return false;
