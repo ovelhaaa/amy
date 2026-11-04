@@ -143,6 +143,7 @@ static void lifecycle() {
 }
 static void realRuntime() {
     amy::Runtime r;assert(r.begin());LocalAmyPerformanceBackend p(r.commands());UiBlueprintPerformanceAdapter a(p);
+    assert(a.model().diagnostics().max_voices==amy::kVoices); // Before the first snapshot.
     auto publish=[&](uint32_t t){p.publish(r.snapshot(),false,100,0);a.service(t);};publish(0);
     assert(a.model().diagnostics().max_voices==amy::kVoices);
     for(bool touch_first:{true,false}) {

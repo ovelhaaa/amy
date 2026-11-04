@@ -10,7 +10,7 @@ bool eq(const char* a,const char* b) { return a && std::strcmp(a,b)==0; }
 UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend& backend):backend_(backend) {
     meters_.is_simulated=false; // No amplitude measurement available: meters stay zero/N/A.
     auto& d=model_.diagnostics();
-    d={}; d.is_demo_mode=false; d.firmware_version="SMK-P4 INTEGRATION 0.4";
+    d={}; d.is_demo_mode=false; d.firmware_version="SMK-P4 POLYPHONY 0.6"; d.max_voices=backend_.voiceCapacity();
     d.amy_status="WAIT SNAPSHOT"; d.i2s_status="NOT LIVE"; d.usb_status="DISCONNECTED";
     model_.setBool("harmony.scale_enable",false);
     model_.setBool("harmony.chord_enable",false);
