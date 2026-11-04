@@ -5,7 +5,8 @@
 **Implementação e validação de software concluídas; qualificação física aberta.**
 Default4 preservado. Seis é o primeiro candidato de bancada; oito permanece
 experimental. Nenhuma gravação, consulta serial ou reset físico nesta execução.
-A montagem atual ainda não foi reconfirmada pelo operador.
+O operador reconfirmou a mesma montagem elétrica0.5 em resposta posterior;
+a gravação continua sem autorização.
 
 O pedido explícito P4/Guition/800×480 prevalece sobre specs.md/AGENTS gerais
 S3/284×76. Checkout principal, branches anteriores, backups, configurações físicas
@@ -183,7 +184,9 @@ após reconfirmação da mesma montagem, então identificar unidade/porta/imagem
 instalada, preservar backup, verificar hash/configuração concreta e obter
 autorização explícita para gravar. Qualificar6 antes de8; repetir piores cargas,
 audição e>=30min. Não reduzir reservas nem promover8 apenas por build/host.
-A pergunta sobre a montagem permanece pendente nesta execução.
+Montagem reconfirmada pelo operador: Guition JC-ESP32P4-M3, BCLK50/WS51/DATA52,
+USB HS controlador0, VBUS/proteções sem alterações. Preparação do candidato
+audível6 em ambiente separado; nenhuma autorização de gravação inferida.
 
 Riscos: margem DSP/filas e heap físico ainda desconhecidos; amy_start conserva
 alocações iniciais sem NULL check. A guarda é conservadora, não prova formal

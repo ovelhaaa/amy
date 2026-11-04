@@ -14,9 +14,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--musical", action="store_true")
     parser.add_argument("--voices", type=int, choices=(4, 6, 8), default=4)
+    parser.add_argument("--environment", help="Explicit build directory name")
     args = parser.parse_args()
     project = Path(__file__).resolve().parents[1]
     environment = "guition-standalone-blueprint" + (f"-{args.voices}" if args.voices != 4 else "")
+    if args.environment:
+        require(args.environment in {"guition-standalone-blueprint", "guition-standalone-blueprint-6", "guition-standalone-blueprint-8", "guition-standalone-blueprint-6-bench"}, "unknown environment")
+        environment = args.environment
     build = project / ".pio/build" / environment
     defines = dict(re.findall(r"^#define (CONFIG_\w+) ([^\r\n]+)", (build / "config/sdkconfig.h").read_text(), re.M))
     require(defines.get("CONFIG_SMKP4_AMY_VOICES") == str(args.voices), "compiled polyphony differs from selected profile")
@@ -26,6 +30,10 @@ def main():
         require(key not in defines, key + " must be disabled")
     for key in ("CONFIG_SMKP4_PCM_WIRING_CONFIRMED", "CONFIG_SMKP4_USB_WIRING_CONFIRMED"):
         require((defines.get(key) == "1") == args.musical, key + " gate")
+    if args.musical:
+        for key, value in {"CONFIG_SMKP4_PCM_BCLK": "50", "CONFIG_SMKP4_PCM_WS": "51", "CONFIG_SMKP4_PCM_DATA": "52", "CONFIG_SMKP4_USB_CONTROLLER": "0"}.items():
+            require(defines.get(key) == value, "reconfirmed bench profile: " + key)
+        require("CONFIG_SMKP4_AMY_RAM_SELF_TEST" not in defines, "RAM self-test must be disabled for musical use")
     require(defines.get("CONFIG_LV_MEM_SIZE_KILOBYTES") == "128", "LVGL pool changed")
     entries = json.loads((build / "compile_commands.json").read_text())
     files = [str(item["file"]).replace("\\", "/") for item in entries]

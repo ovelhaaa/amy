@@ -303,3 +303,14 @@ bundle sem gravação, com ELF/mapa/configuração, WAVs e hashes, use
 `python smk-p4/tests/package_polyphony_review.py` após gerar os logs finais
 indicados no relatório. O script recusa gates elétricos ligados e não sobrescreve
 bundles. O manifesto não constitui aprovação de hardware ou de gravação.
+
+Candidato audível6 para a montagem0.5 reconfirmada pelo operador em2026-11-04:
+
+```powershell
+C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-standalone-blueprint-6-bench
+python smk-p4/tests/check_blueprint_build.py --voices 6 --environment guition-standalone-blueprint-6-bench --musical
+```
+
+Este ambiente separado habilita I²S50/51/52 e USB HS0, preservando os ambientes
+seguros. Não autoriza upload. Identificar unidade/porta/imagem atual, preservar
+backup e conferir SHA/configuração antes de pedir autorização para a imagem concreta.
