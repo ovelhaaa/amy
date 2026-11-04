@@ -146,11 +146,14 @@ void note_on_mod(uint16_t osc, uint16_t algo_osc) {
     // Perform the vital parts of amy.c:1089 ff since these oscs aren't turned on elsewhere.
     synth[osc]->note_on_clock = amy_global.total_blocks * AMY_BLOCK_SIZE;
     synth[osc]->role = SYNTH_IS_ALGO_SOURCE; // to ensure it's rendered
-    // A stopped FM parent no longer renders its operators, so their last_amp
-    // can remain nonzero indefinitely. Restart its attack phase from silence;
-    // preserve operator continuity while the parent is still sounding.
+    // Exclusive FM owners may leave frozen operators after the parent stops.
+    // Opt in only where operators/modulation sources are private to that voice.
     if (AMY_IS_SET(synth[osc]->trigger_phase)
-        && (msynth[osc]->last_amp == 0 || msynth[algo_osc]->last_amp == 0))
+        && (msynth[osc]->last_amp == 0
+#if defined(AMY_EXCLUSIVE_FM_PHASE_RESTART)
+            || msynth[algo_osc]->last_amp == 0
+#endif
+        ))
         synth[osc]->phase = F2P(synth[osc]->trigger_phase);
     if(synth[osc]->wave==SINE) fm_sine_note_on(osc, algo_osc);
 }

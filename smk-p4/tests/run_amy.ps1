@@ -7,7 +7,7 @@ try {
     New-Item -ItemType Directory -Force $build | Out-Null
     $cmake=Get-Content smk-p4/components/amy_runtime/CMakeLists.txt -Raw
     $sources=[regex]::Matches($cmake,'\$\{AMY_SRC_DIR\}/([^"\r\n]+\.c)') | ForEach-Object { $_.Groups[1].Value }
-    $flags=@("-DSMKP4_VOICES=$Voices",'-O2','-DAMY_NO_MINIAUDIO','-DAMY_SAMPLE_RATE=48000','-DAMY_BLOCK_SIZE=256','-DBLOCK_SIZE_BITS=8','-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1','-Isrc','-Ismk-p4/components/amy_runtime')
+    $flags=@("-DSMKP4_VOICES=$Voices",'-O2','-DAMY_NO_MINIAUDIO','-DAMY_SAMPLE_RATE=48000','-DAMY_BLOCK_SIZE=256','-DBLOCK_SIZE_BITS=8','-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1','-DAMY_EXCLUSIVE_FM_PHASE_RESTART=1','-Isrc','-Ismk-p4/components/amy_runtime')
     $objects=@()
     foreach($source in $sources) {
         $obj="$build/$source.o"

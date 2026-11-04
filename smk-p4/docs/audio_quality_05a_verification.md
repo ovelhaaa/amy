@@ -46,3 +46,10 @@ Gate0 PASS em software; limites auditivos e físicos continuam MANUAL.
 Nenhuma gravação, reset ou consulta serial. Relatos físicos históricos da0.5
 foram anotados com errata sem apagar evidência; não identificam por si só a
 imagem atualmente instalada. Melhoria auditiva foi informada pelo operador.
+
+Compatibilidade: o reinício pelo pai silencioso requer operadores/fontes privados
+por voz, como nos dois bancos ROM P4 auditados. A modulação AMY genérica permite
+fontes compartilhadas; por isso a extensão está atrás de
+AMY_EXCLUSIVE_FM_PHASE_RESTART, ativada somente no componente P4 e nos harnesses
+correspondentes. Outras plataformas mantêm a política0.5. Não se presume ownership
+exclusivo no core genérico. A configuração P4 mantém o resultado verificado.

@@ -1739,9 +1739,13 @@ void play_delta(struct delta *d) {
                     // trigger the mod source, if we have one
                     uint16_t mod_osc = synth[osc]->mod_source;
                     if(AMY_IS_SET(mod_osc)) {
-                        // A silent owner can retain a frozen modulation source.
                         if (AMY_IS_SET(synth[mod_osc]->trigger_phase)
-                            && (msynth[mod_osc]->last_amp == 0 || msynth[osc]->last_amp == 0))
+                            && (msynth[mod_osc]->last_amp == 0
+#if defined(AMY_EXCLUSIVE_FM_PHASE_RESTART)
+                                // Safe only for a source private to this voice.
+                                || msynth[osc]->last_amp == 0
+#endif
+                            ))
                             synth[mod_osc]->phase = F2P(synth[mod_osc]->trigger_phase);
                         synth[mod_osc]->note_on_clock = amy_global.total_samples;  // Need a note_on_clock to have envelope work correctly.
                         switch(synth[mod_osc]->wave) {

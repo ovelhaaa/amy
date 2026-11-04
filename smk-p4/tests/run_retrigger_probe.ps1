@@ -15,7 +15,7 @@ try {
         $root="$output/$variant"
         Expand-Archive -LiteralPath "$output/$variant.zip" -DestinationPath $root
         $runtimeRoot="$root/smk-p4/components/amy_runtime"
-        $flags=@('-O2','-DAMY_NO_MINIAUDIO','-DAMY_SAMPLE_RATE=48000','-DAMY_BLOCK_SIZE=256','-DBLOCK_SIZE_BITS=8','-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1',"-I$root/src","-I$runtimeRoot")
+        $flags=@('-O2','-DAMY_NO_MINIAUDIO','-DAMY_SAMPLE_RATE=48000','-DAMY_BLOCK_SIZE=256','-DBLOCK_SIZE_BITS=8','-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1','-DAMY_EXCLUSIVE_FM_PHASE_RESTART=1',"-I$root/src","-I$runtimeRoot")
         $cmake=Get-Content "$runtimeRoot/CMakeLists.txt" -Raw
         $sources=[regex]::Matches($cmake,'\$\{AMY_SRC_DIR\}/([^"\r\n]+\.c)') | ForEach-Object { $_.Groups[1].Value }
         if(!$sources.Count) { throw 'No AMY sources found' }

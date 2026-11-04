@@ -35,7 +35,7 @@ def main():
     lvgl_roots = {path.split("/src/")[0] for path in files if "/lvgl__lvgl/src/" in path}
     require(len(lvgl_roots) == 1, "missing or duplicated LVGL source tree")
     amy = next(item for item in entries if str(item["file"]).replace("\\", "/").endswith("/src/amy.c"))
-    for flag in ("AMY_SAMPLE_RATE=48000", "AMY_BLOCK_SIZE=256", "AMY_PATCH_CHECKED_RESOURCE_ADMISSION=1"):
+    for flag in ("AMY_SAMPLE_RATE=48000", "AMY_BLOCK_SIZE=256", "AMY_PATCH_CHECKED_RESOURCE_ADMISSION=1", "AMY_EXCLUSIVE_FM_PHASE_RESTART=1"):
         require(flag in amy["command"], flag)
     require((build / "firmware.bin").stat().st_size > 0, "missing firmware")
     print("PASS: effective Blueprint target, electrical gates, live adapter, single LVGL, pool128KB, AMY48000/256")
