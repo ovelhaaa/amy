@@ -47,6 +47,18 @@ int main() {
     Runtime r;
     const auto live=probe_live(); const auto bytes=probe_bytes();
     assert(r.begin());
+    bool boot_voices[kAmyVoices]{};
+    unsigned boot_oscs=0;
+    for(unsigned i=1;i<kSynthCount;++i) {
+        uint16_t voice; assert(instrument_get_num_voices(i,&voice)==1);
+        assert(voice<kAmyVoices && !boot_voices[voice]); boot_voices[voice]=true;
+        unsigned count=0;
+        for(unsigned o=0;o<kOscillators;++o) if(osc_to_voice[o]==voice) {
+            assert(synth[o] && msynth[o]); ++count;
+        }
+        assert(count==kOscillatorsPerVoice); boot_oscs+=count;
+    }
+    assert(boot_oscs==kOscillators);
     std::printf("MEM voices=%u oscs=%u runtime_size=%zu live_bytes=%zu peak_bytes=%zu live_allocs=%u\n",kVoices,kOscillators,sizeof(r),probe_bytes()-bytes,probe_peak_bytes(),probe_live()-live);
     probe_realtime(true);
     service(r,128); // idle

@@ -29,7 +29,7 @@ O primeiro ajuste somente em note_on_mod restaurou pico536/delta180 no135,
 mas FAIL no128 (delta391 vs386 e diferença na fronteira de Off). A fonte auxiliar
 mod_osc também retém last_amp; a mesma condição do dono silencioso foi aplicada
 no disparo dessa fonte em play_delta. Logs das tentativas estão preservados.
-A matriz completa do ajuste final ainda está em execução. Cada cenário possui runtime próprio;
+A matriz completa do ajuste final passou na execução registrada abaixo. Cada cenário possui runtime próprio;
 B verifica PCM zero e existência de operador residual. O runner independente
 registra commits completos, compilador e SHA256 de cada WAV em manifest.json.
 A aceitação compara ataques/releases, clipping e limites de transientes; não
