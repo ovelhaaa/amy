@@ -12,6 +12,10 @@ size_t amy_i2s_write(const uint8_t*,size_t bytes) { return bytes; }
 }
 namespace smk::p4::amy {
 static_assert(AMY_SAMPLE_RATE==kSampleRateHz && AMY_BLOCK_SIZE==kBlockFrames && AMY_NCHANS==2);
+size_t Runtime::bootLargestInternalBytes() {
+    constexpr unsigned blocks=(kDeltaReserve+kDeltaBlockSize-1)/kDeltaBlockSize;
+    return kBootBaseLargestInternalBytes+(blocks-1)*kDeltaBlockSize*sizeof(struct delta);
+}
 bool Runtime::begin(uint32_t sample_rate_hz) {
     if(started_ || sample_rate_hz!=kSampleRateHz) return false;
     state_=Snapshot{}; bank_=0; gain_q16_=0;
@@ -47,6 +51,18 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
     // Materialize all patch deltas and warm DSP before the timed audio service.
     for(unsigned i=0;i<2;++i) amy_simple_fill_buffer();
     silence(); amy_execute_deltas();
+    // Exercise checked pool growth only at boot. Hold the entire bounded
+    // service demand simultaneously, then return it without changing DSP state.
+    struct delta* reserved=nullptr;
+    for(unsigned i=0;i<kDeltaReserve;++i) {
+        struct delta* d=nullptr;
+        if(delta_get_checked(nullptr,&d)!=AMY_RESOURCE_OK) {
+            delta_release_list(reserved); state_.oom_count=amy_get_oom_count();
+            end(); return false;
+        }
+        d->next=reserved; reserved=d;
+    }
+    delta_release_list(reserved);
     state_.oom_count=amy_get_oom_count();
     if(state_.oom_count) { end(); return false; }
     state_.ready=true; return true;

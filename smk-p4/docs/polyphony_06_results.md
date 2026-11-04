@@ -27,8 +27,8 @@ A admissão ampliada é conservadora e fail-closed; não reduz capacidade sozinh
 | Etapa | Software host | Memória rastreada host | Situação física |
 |---|---|---|---|
 | 4 | PASS suíte e PCM comum idêntico à0.5A |116618 B vivos/116749 B pico;161 alocações | MANUAL para0.5A |
-| 6 | PASS suíte completa e PCM comum idêntico ao4 |136738 B vivos/136871 B pico;205 alocações | MANUAL |
-| 8 | PASS suíte completa e PCM comum idêntico ao4/6 |156858 B vivos/156991 B pico;249 alocações | MANUAL |
+| 6 | PASS suíte completa e PCM comum idêntico ao4 |185890 B vivos/186023 B pico;206 alocações | MANUAL |
+| 8 | PASS suíte completa e PCM comum idêntico ao4/6 |206010 B vivos/206143 B pico;250 alocações | MANUAL |
 
 Seis e oito notas reais foram admitidas com velocidades distintas e instrumentos DSP
 independentes. A sétima/nona foram rejeitadas sem alterar gates existentes. Release,
@@ -82,3 +82,22 @@ no mesmo managed_components/lvgl__lvgl, gerando arquivo ausente e WinError32.
 Um teste de adapter6 também falhou na compilação por lvgl.h temporariamente
 ausente. Não houve falha musical nesses casos. Builds passaram a ser executados
 sequencialmente no projeto; logs iniciais não foram apagados. Retries pendentes.
+
+## Gate de pressão de eventos — falha e correção
+
+FAIL:8 vozes com32 CC1 de um canal exigiam crescimento de pool durante o áudio,
+detectado pelo assert !realtime do heap_probe. PASS anterior cobria acordes,
+mas não essa combinação. Evidência negativa: build/profile8_capacity_final.log.
+A matriz foi ampliada com32 Touch retriggers e32 CC1 simultâneos, todas vozes
+no mesmo canal, velocity/master127, silêncio/uma/metade/total/sustain, caudas e
+16 acordes rápidos. A reserva de deltas foi calculada e materializada no boot:
+1944/2536/3128 deltas,1/2/2 blocos. Quatro preserva seu pool;6/8 reservam um bloco
+extra. Não houve coalescing de MIDI nem mudança de driver para mascarar carga.
+
+PASS: suítes completas4/6/8 após reserva, logs profileN_tests_reserved.log;
+zero heap no serviço inclusive filas simultâneas. PASS: OOM injetado na expansão
+do boot6/8, sem engine ready/parcial ou leak e com retry seguro. PASS: PCM comum
+idêntico entre perfis após reserva. sizeof(delta) P4 foi medido por compilação
+nativa:20 bytes; o cálculo de admissão usa sizeof da plataforma. Ver orçamento.
+Host apresentou pico10558 us de render em compilação concorrente na tentativa
+anterior; isso permanece como observação, não deadline P4 nem aprovação de8.

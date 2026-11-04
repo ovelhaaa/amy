@@ -13,6 +13,13 @@ static void* callers[4096]{};
 static uint32_t live=0,calls=0;
 static size_t live_bytes=0,peak_bytes=0;
 static bool realtime=false;
+static size_t fail_bytes=0;
+static unsigned fail_remaining=0;
+static bool fail_allocation(size_t bytes) {
+    if(bytes!=fail_bytes || !fail_remaining) return false;
+    assert(!realtime);
+    return --fail_remaining==0;
+}
 static void remember(void* p,size_t bytes,void* caller) {
     if(!p) return;
     assert(!realtime); ++calls;
@@ -24,7 +31,7 @@ static void forget(void* p) {
     assert(!realtime);
     for(unsigned i=0;i<4096;++i) if(allocations[i]==p) { allocations[i]=nullptr; --live; live_bytes-=sizes[i]; return; }
 }
-void* __wrap_malloc(size_t n) { void* p=__real_malloc(n); remember(p,n,__builtin_return_address(0)); return p; }
+void* __wrap_malloc(size_t n) { if(fail_allocation(n)) return nullptr; void* p=__real_malloc(n); remember(p,n,__builtin_return_address(0)); return p; }
 void* __wrap_calloc(size_t n,size_t bytes) { void* p=__real_calloc(n,bytes); remember(p,n*bytes,__builtin_return_address(0)); return p; }
 void* __wrap_realloc(void* old,size_t bytes) {
     void* p=__real_realloc(old,bytes);
@@ -37,5 +44,7 @@ uint32_t probe_live() { return live; }
 void probe_dump() { for(unsigned i=0;i<4096;++i) if(allocations[i]) std::fprintf(stderr,"LIVE size=%zu caller=%p\n",sizes[i],callers[i]); }
 size_t probe_bytes() { return live_bytes; }
 size_t probe_peak_bytes() { return peak_bytes; }
+void probe_fail_nth(size_t bytes,unsigned occurrence) { fail_bytes=bytes; fail_remaining=occurrence; }
+bool probe_failure_consumed() { return fail_bytes && !fail_remaining; }
 uint32_t probe_calls() { return calls; }
 }

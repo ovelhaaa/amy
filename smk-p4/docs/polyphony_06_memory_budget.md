@@ -27,22 +27,63 @@ acordes, sustain, retrigger, patch e fila cheia. Nenhum crescimento nesse caminh
 é permitido pelo teste. Scratch FM, buffers de mix/I/O e tabelas são compartilhados
 por bloco; não se multiplicam por voz. DMA permanece inalterado.
 
-## Evidência inicial de host
+## Pré-alocação do serviço
 
-Quatro vozes (antes da configuração nova): Runtime3212 bytes, alocações AMY
-vivas116618 bytes, pico rastreado116749 bytes,161 alocações. ABI x86-64 Windows:
-esses números não são RAM interna do P4. Medição via heap_probe, sem estimar
-fragmentação física a partir da soma de bytes.
+FAIL antes da reserva:32 CC1 no mesmo canal com8 vozes fizeram delta_get
+crescer o pool no serviço (assert do heap_probe). Acordes comuns não revelavam
+essa pressão. Com Touch e USB simultâneos,6 também requer margem além do pool
+inicial. O limite conservador em runtime_config.h é:
 
-Medições finais dos perfis e símbolos do firmware serão registradas no relatório.
-Heap interno, maior bloco, PSRAM livre e stacks requerem boot físico; MANUAL.
+`8 * (4*32 + 33*(N-1) + 2*(2*N))`
 
-## Admissão e risco herdado
+Touch retrigger emite Off+On, quatro campos por oscilador. Se há Touch, no máximo
+N-1 slots são USB; cada CC/bend pode atualizar todos, seguido por vibrato. Soma-se
+reserva para comando de segurança nos bancos. Sem Touch, o limite também cobre
+33*N atualizações por oscilador. Valores1944/2536/3128 para4/6/8.
 
-amy_start retorna void e contém alocações iniciais sem teste de NULL. A guarda
-conservadora anterior exige maior bloco interno>=196608 antes de inicializar.
-Apenas verificar oom_count depois não torna essa API segura contra OOM inicial.
-Qualquer expansão precisa aumentar a admissão, preservar reservas para USB,
-LVGL/display e tarefas e recusar inicialização sem reduzir vozes silenciosamente.
-A guarda não é uma prova formal contra fragmentação/OOM ou alocadores concorrentes.
-Não mudar os bancos para contornar um orçamento sem medições comparáveis.
+Runtime::begin segura esse número de deltas via delta_get_checked e devolve a
+lista antes de ready. É um laço limitado de boot, sem lista extra no heap. O pool
+retém1/2/2 blocos de2048 deltas. Quatro mantém a alocação anterior. Não se mexeu
+na arquitetura de bancos nem se alocam deltas no serviço dos casos medidos.
+Falha da expansão é injetada nos perfis6/8: begin retornafalse, ready permanece
+false, render retornaNULL, teardown sem leak e reinício bem-sucedido (PASS).
+
+## Memória rastreada final — host x86-64 UCRT
+
+| Vozes | Runtime estático | Bytes vivos AMY | Pico rastreado | Alocações vivas | Blocos delta |
+|---|---|---|---|---|---|
+|4|3212|116618|116749|161|1|
+|6|3244|185890|186023|206|2|
+|8|3276|206010|206143|250|2|
+
+Antes da reserva,6/8 tinham136738/156858 bytes e205/249 alocações. A diferença
+final49152 bytes é o bloco adicional de2048 deltas de24 bytes nesta ABI. Soma
+de bytes não mede fragmentação nem heap interno da placa.
+
+## ABI e admissão P4
+
+Probe C compilado usando o comando real de amy.c no compile_commands.json,
+inspecionado com riscv32-esp-elf-nm -S: sizeof(delta)=20, synthinfo=356,
+mod_synthinfo=52. Artefatos build/p4_abi_probe.c/.o. Portanto o bloco adicional
+P4 é40960 bytes, não os49152 do host. Runtime::bootLargestInternalBytes calcula
+a reserva extra com sizeof(delta) da plataforma; não fixa uma ABI do host.
+
+| Perfil | Maior bloco interno mínimo antes de AMY | Piso interno depois de AMY (expandido) |
+|---|---|---|
+|4|196608 B (mesma guarda anterior)|sem novo piso, preserva baseline|
+|6|286720 B|65536 B livres e maior bloco32768 B|
+|8|335872 B|65536 B livres e maior bloco32768 B|
+
+A base196608 mais24576 por voz adicional é margem conservadora, não tamanho
+medido nem garantia formal. O incremento do pool usa o ABI real. Os pisos
+preservam margem para USB/LVGL/I²S/tarefas, mas não certificam que ela basta para
+a montagem. Ausência da reserva recusa a configuração, não reduz vozes sozinha.
+O P4 pode recusar8 mesmo com host aprovado: medir boot e maior bloco antes de
+qualificar. Não diminuir o piso sem evidência comparável.
+
+amy_start ainda retorna void e contém alocações iniciais sem teste de NULL.
+A guarda anterior a ele reduz exposição; o teste de OOM cobre a nova expansão
+checked, não todas as falhas possíveis do core legado. Não afirmar segurança
+formal contra fragmentação/OOM ou alocação concorrente. Heap interno real,
+maior bloco, PSRAM e stacks: MANUAL. Estática/Flash dos builds finais constam
+no relatório. Nenhum consumo PSRAM adicional por voz foi solicitado pelo adapter.
