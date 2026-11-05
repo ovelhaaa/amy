@@ -72,3 +72,13 @@ Heap interno169075B, maior bloco94208B; PSRAM31176952B, maior bloco30932992B.
 São medições iniciais de repouso, não aprovação de oito notas nem estabilidade
 prolongada. MANUAL pendente: VX0/8, oito notas, nona rejeitada, soltura/Panic
 sem regressão auditiva. Aguardar smoke antes da janela longa.
+
+
+## Smoke musical8 — MANUAL/PASS
+
+Operador confirmou: "Oito notas, rejeição da nona e Panic corretos", em resposta
+à verificação VX0/8, oito notas simultâneas, nona sem cortar as oito, soltura,
+Panic e ausência de novos estalos/distorção com volume baixo. Após a confirmação,
+iniciada captura sem reset `eight_voice_qualification_window.log` por1880s.
+Qualificação prolongada permanece pendente até processo concluído e análise
+serial/ações físicas cruzadas; os máximos iniciais são acumulados desde o boot.
