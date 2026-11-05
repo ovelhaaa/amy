@@ -159,7 +159,7 @@ int main() {
         for(unsigned n=0;n<kCommandCapacity;++n) midi(r,0xb0,1,n);
         midi(r,0x80,60,0); service(r); assert(!r.snapshot().active_notes);
         chord(r);
-        assert(r.commands().push({CommandType::Patch,kPatches[1-bank].id,0,0,0,now_ms})); service(r);
+        assert(r.commands().push({CommandType::Patch,kPatches[(bank+1)%kPatchCount].id,0,0,0,now_ms})); service(r);
         assert(!r.snapshot().active_notes); panic(r);
         assert(r.commands().push({CommandType::Master,0,64,0,0,now_ms})); service(r);
     }

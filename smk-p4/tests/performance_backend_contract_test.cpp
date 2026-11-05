@@ -11,9 +11,9 @@ static void readModel() {
     assert(!backend.connected() && !backend.busy() && backend.local());
     assert(!backend.takeNotice() && !backend.midiError());
     PatchInfo info;
-    assert(backend.patchCount()==2 && backend.patchAt(0)==128 && backend.patchAt(1)==135);
-    assert(backend.patchAt(2)==UINT16_MAX && !backend.patchInfo(2,info,0));
-    assert(backend.patchInfo(1,info,0) && info.id==135 && info.available);
+    assert(backend.patchCount()==amy::kPatchCount && backend.patchAt(0)==128 && backend.patchAt(1)==135);
+    assert(backend.patchAt(amy::kPatchCount)==UINT16_MAX && !backend.patchInfo(amy::kPatchCount,info,0));
+    assert(backend.patchInfo(1,info,0) && info.id==135 && !info.available);
     assert(!backend.setPatch(128,0) && !backend.setMaster(10,0));
     amy::Snapshot owner;
     owner.ready=true; owner.patch_id=135; owner.master=71; owner.active_notes=3;
@@ -21,6 +21,7 @@ static void readModel() {
     const auto revision=backend.stateRevision();
     backend.publish(owner,false,321,4);
     assert(backend.connected() && backend.stateRevision()==revision+1);
+    assert(backend.patchInfo(1,info,0) && info.available);
     const auto& state=backend.state();
     assert(state.patch_id==135 && state.engine_patch==135 && state.master==71 && state.active_notes==3);
     assert(std::strcmp(state.patch_name,amy::kPatches[1].name)==0);

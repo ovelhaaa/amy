@@ -14,7 +14,10 @@ namespace smk::p4::amy {
 static_assert(AMY_SAMPLE_RATE==kSampleRateHz && AMY_BLOCK_SIZE==kBlockFrames && AMY_NCHANS==2);
 size_t Runtime::bootFreeInternalBytes() {
     constexpr unsigned blocks=(kDeltaReserve+kDeltaBlockSize-1)/kDeltaBlockSize;
-    return kBootBaseFreeInternalBytes+(blocks-1)*kDeltaBlockSize*sizeof(struct delta);
+    // Extra banks retain the historical reserve. 512 B/osc is a conservative
+    // admission allowance (P4 synthinfo+mod state 408 B, plus maps/FIFOs).
+    constexpr size_t extra_bank_bytes=(kPatchCount-2)*kVoices*kOscillatorsPerVoice*512;
+    return kBootBaseFreeInternalBytes+(blocks-1)*kDeltaBlockSize*sizeof(struct delta)+extra_bank_bytes;
 }
 bool Runtime::hasBootMemory(size_t free_internal_bytes,size_t largest_internal_bytes) {
     return free_internal_bytes>=bootFreeInternalBytes() && largest_internal_bytes>=kBootLargestInternalBytes;
@@ -39,11 +42,13 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
 #endif
     amy_start(config); started_=true;
     for(size_t i=0;i<kAmyVoices;++i) {
-        auto e=amy_default_event(); e.synth=static_cast<uint8_t>(i+1);
-        e.patch_number=kPatches[i/kVoices].id; e.num_voices=1; e.bus=0; e.synth_delay_ms=0;
+        const auto synth_id=static_cast<uint8_t>(i+1);
+        const auto patch_id=kPatches[i/kVoices].id;
+        auto e=amy_default_event(); e.synth=synth_id;
+        e.patch_number=patch_id; e.num_voices=1; e.bus=0; e.synth_delay_ms=0;
         amy_add_event(&e);
         uint16_t voice;
-        if(instrument_get_num_voices(e.synth,&voice)!=1) { end(); return false; }
+        if(instrument_get_patch_number(synth_id)!=patch_id || instrument_get_num_voices(synth_id,&voice)!=1) { end(); return false; }
         const int oscs=instrument_get_oscs_per_voice(e.synth);
         unsigned count=0;
         for(unsigned o=0;o<kOscillators;++o) if(osc_to_voice[o]==voice) ++count;

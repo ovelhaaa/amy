@@ -1,9 +1,13 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include "patch_library.h"
 #ifdef ESP_PLATFORM
 #include "sdkconfig.h"
 #define SMKP4_VOICES CONFIG_SMKP4_AMY_VOICES
+#ifdef CONFIG_SMKP4_SOUND_LIBRARY
+#define SMKP4_SOUND_LIBRARY 1
+#endif
 #elif !defined(SMKP4_VOICES)
 #define SMKP4_VOICES 4
 #endif
@@ -21,12 +25,22 @@ constexpr size_t kPostBootFreeInternalBytes = 65536;
 constexpr size_t kPostBootLargestInternalBytes = 32768;
 constexpr uint32_t kSampleRateHz = 48000, kBlockFrames = 256;
 constexpr uint32_t kLeaseMs = 10000;
-struct Patch { uint16_t id; const char* name; };
-// src/patches.h: eight oscillators per FM voice. Both banks allocated at boot;
-// only one is playable at a time. Switching never materializes a patch in render.
-constexpr Patch kPatches[] = {{128, "DX7 BRASS   1"}, {135, "DX7 PIANO   1"}};
+using Patch = library::Patch;
+// Fixed boot-resident FM banks. Candidate profile is opt-in; no parsing/reload
+// in service, no shared-core changes, no reduction of musical capacity.
+constexpr Patch kPatches[] = {library::kCandidates[0], library::kCandidates[1]
+#ifdef SMKP4_SOUND_LIBRARY
+    , library::kCandidates[2], library::kCandidates[3]
+#endif
+};
 constexpr size_t kPatchCount = sizeof(kPatches) / sizeof(kPatches[0]);
 constexpr unsigned kOscillatorsPerVoice = 8;
+constexpr bool residentCostsMatch() {
+    for(const auto& patch:kPatches)
+        if(patch.oscillators!=kOscillatorsPerVoice || patch.family!=library::SynthFamily::FM) return false;
+    return true;
+}
+static_assert(residentCostsMatch(), "Resident library must match the exclusive FM adapter");
 constexpr unsigned kAmyVoices = kVoices * kPatchCount;
 constexpr unsigned kSynthCount = kAmyVoices + 1; // Instrument ID zero is reserved.
 constexpr unsigned kOscillators = kAmyVoices * kOscillatorsPerVoice;

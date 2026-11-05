@@ -49,7 +49,7 @@ int main() {
     mock_event(at(644,50),LV_EVENT_CLICKED);
     for(unsigned i=0;i<12;++i) service(1200+i);
     assert(!lv_obj_has_state(at(20,82),LV_STATE_DISABLED));
-    assert(lv_obj_has_state(at(20,164),LV_STATE_DISABLED));
+    assert(lv_obj_has_state(at(20,82+41*amy::kPatchCount),LV_STATE_DISABLED));
     backend.panic(); runtime.apply(1300);
     // Recreating widgets sends no musical commands or reset to the owner.
     mock_count=1; for(auto& o:mock_objects) o={};

@@ -11,7 +11,7 @@ int main() {
     assert(!backend.connected() && !backend.noteOn(60,100,0));
     assert(runtime.begin());
     const auto publish=[&] { backend.publish(runtime.snapshot(),true,100,0); };
-    publish(); assert(backend.connected() && backend.patchCount()==2);
+    publish(); assert(backend.connected() && backend.patchCount()==amy::kPatchCount);
     assert(!backend.setPatch(999,0) && !backend.setMaster(128,0));
     assert(!backend.noteOn(128,100,0) && !backend.noteOn(60,128,0));
     assert(!backend.setMacro(0,100,0));
