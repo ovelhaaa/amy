@@ -82,3 +82,12 @@ Panic e ausência de novos estalos/distorção com volume baixo. Após a confirm
 iniciada captura sem reset `eight_voice_qualification_window.log` por1880s.
 Qualificação prolongada permanece pendente até processo concluído e análise
 serial/ações físicas cruzadas; os máximos iniciais são acumulados desde o boot.
+
+
+## Qualificação8 concluída — 2026-11-05
+
+PASS: captura contínua>=30min, oito notas nos dois patches, quatro hot-plugs,
+Touch/USB,39 transições, reataques com release e audição aprovada pelo operador.
+Render máximo4234us, deadlines/clipping/OOM/drops0, heap mínimo169075B.
+[Resultados, limites e recomendação](polyphony_06_eight_hardware_qualification.md).
+Os estados pendentes acima são checkpoints históricos. Nenhuma nova gravação.

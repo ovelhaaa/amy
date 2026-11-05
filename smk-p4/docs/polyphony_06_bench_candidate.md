@@ -128,3 +128,12 @@ Touch/USB, 30 mudanças de tela e audição aprovada pelo operador. Render máxi
 2736us, deadlines/clipping/OOM/drops0, heap interno mínimo188415B.
 Detalhes e limites: [qualificação física](polyphony_06_hardware_qualification.md).
 O checkpoint pré-autorização acima é histórico. Oito ainda não foi gravado.
+
+
+## Qualificação8 concluída — 2026-11-05
+
+PASS: captura contínua>=30min, oito notas nos dois patches, quatro hot-plugs,
+Touch/USB,39 transições, reataques com release e audição aprovada pelo operador.
+Render máximo4234us, deadlines/clipping/OOM/drops0, heap mínimo169075B.
+[Resultados, limites e recomendação](polyphony_06_eight_hardware_qualification.md).
+Os estados pendentes acima são checkpoints históricos. Nenhuma nova gravação.

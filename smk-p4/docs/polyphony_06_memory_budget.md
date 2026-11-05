@@ -110,3 +110,22 @@ work_mem_int.0 de131072 B está em DRAM1. Variações de alinhamento explicam
 pequenas diferenças não lineares; não são otimização de memória. IRAM e
 RTC/TCM não são heap. ELFs/mapas/seções congelados acompanham o bundle;
 heap interno e PSRAM livres continuam dependentes da execução física.
+
+
+## Medição física posterior — 2026-11-05
+
+|Métrica mínima observada|Audível6|Audível8|
+|---|---:|---:|
+|Interno livre|188415B|169075B|
+|Maior bloco interno|110592B|94208B|
+|PSRAM livre|31176952B|31176952B|
+|Maior bloco PSRAM|30932992B|30932992B|
+|Stack livre áudio/USB/UI|7440/4144/3332B|7440/4144/3332B|
+|DRAM0+DRAM1 estática|169880B|169904B|
+|IRAM|101888B|101888B|
+
+Ambos inicializaram e completaram janelas>=30min com carga musical, USB e UI,
+sem OOM ou queda progressiva observada. São as imagens audíveis congeladas,
+diferentes das imagens de gates desligados na tabela anterior. Valores de heap
+variam com conexão/tela; não são garantia formal contra fragmentação ou falhas
+das alocações legadas. Detalhes em relatórios físicos6/8.

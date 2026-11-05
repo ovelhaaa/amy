@@ -64,3 +64,20 @@ logs preservados. Diferenças de ambiente não são otimização nem regressão 
 comprovada. A reserva mudou alocação no boot, não o algoritmo de ordenação de
 eventos nem o trabalho por controle. JSON final contém cada cena/patch, memória,
 RMS/pico/hashes e a comparação PCM. Deadlines/CPUload/latência P4: MANUAL.
+
+
+## Bancada real concluída — 2026-11-05
+
+|Perfil audível|Janela contínua mínima|Render máximo observado|Compute/render deadlines|Notas reais|USB/UI|
+|---|---:|---:|---:|---|---|
+|6|1872,44s|2736us|0/0|seis em128/135|quatro ciclos/30 transições|
+|8|1874.48s|4234us|0/0|oito em128/135|quatro ciclos/39 transições|
+
+Ambos MANUAL/PASS auditivo, sustain, bend/modulação, retrigger com caudas,
+Panic, rejeiçãoN+1, Touch/USB. Memória estável observada. São estímulos manuais
+em sessões distintas, não benchmark determinístico de escalabilidade nem
+comparação causal de CPU. A margem do render8 é20,6%, menor que6; máximos
+separados de comando/DSP não representam máximo combinado. CPU total, underrun
+físico, latência tecla→saída e máximo combinado: NOT RUN/não medidos.
+Referências completas: [oito](polyphony_06_eight_hardware_qualification.md) e
+[seis](polyphony_06_hardware_qualification.md). Perfis congelados, sem FX extra.

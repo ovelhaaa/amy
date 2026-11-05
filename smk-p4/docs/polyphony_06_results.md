@@ -1,14 +1,19 @@
-# SMK-P4 0.6 — resultados finais de software
+# SMK-P4 0.6 — resultados finais de software e bancada
 
-2026-11-04. Branch `feature/smk-p4-polyphony-06`, worktree separado
-`build/worktrees/smk-p4-polyphony-06`, base0.5 `dd4753af`.
-**Implementação e validação de software concluídas; qualificação física aberta.**
-Default4 preservado. Seis é o primeiro candidato de bancada; oito permanece
-experimental. Nenhuma gravação de firmware. A etapa inicial de software não acessou a placa;
-o checkpoint posterior de preparação leu a Flash com reinício temporário e
-preservou a aplicação0.5, conforme polyphony_06_bench_candidate.md.
-O operador reconfirmou a mesma montagem elétrica0.5 em resposta posterior;
-a gravação continua sem autorização.
+2026-11-05. Branch `feature/smk-p4-polyphony-06`, base0.5 `dd4753af`,
+worktree separado. **PASS software 4/6/8; bancada 6→8 após baseline0.5/quatro já qualificado.**
+Oito vozes estão instaladas na Guition, com autorização própria e hash verificado.
+Qualificação8: pelo menos 1874,48 s contínuos,
+oito notas nos patches128/135, quatro hot-plugs,39 transições, audição aprovada,
+zero deadlines/clipping/OOM/drops. Render máximo de 4234 us (79,4% do período);
+heap interno mínimo de 169075 B. Seis também foi qualificado e permanece como rollback.
+Recomendação musical nesta montagem/configuração congelada: oito; seis oferece
+maior margem observada. Default genérico seguro4 preservado.
+[Relatório físico8 e limites](polyphony_06_eight_hardware_qualification.md),
+[relatório físico6](polyphony_06_hardware_qualification.md),
+[candidato/hash/autorizações8](polyphony_06_eight_bench_candidate.md).
+Os checkpoints datados ao final registram estados anteriores e não substituem
+esta conclusão atual. Rollback6/0.5 e backup integral foram preservados.
 
 O pedido explícito P4/Guition/800×480 prevalece sobre specs.md/AGENTS gerais
 S3/284×76. Checkout principal, branches anteriores, backups, configurações físicas
@@ -42,12 +47,12 @@ e bundles validados não foram alterados. Sem reset Git, rebase ou force-push.
 
 |Gate|Resultado|
 |---|---|
-|0 — Audio0.5A|PASS software A/B independente e matriz A–H; audição nova MANUAL|
+|0 — Audio0.5A|PASS software A/B independente/matriz A–H; audição atual MANUAL/PASS (não A/B físico controlado)|
 |A — quatro|PASS host e build; PCM comum idêntico à0.5A|
-|B — seis|PASS software/build; memória/deadlines/qualidade física MANUAL|
-|C — oito|PASS software/build; NÃO aprovado para uso físico/padrão|
-|D — interface|PASS host/adaptadores; operacionalidade/memória na Guition MANUAL|
-|E — hardware|MANUAL/NOT RUN; janela>=30min e audição pendentes|
+|B — seis|PASS software/build e bancada>=30min, seis notas e audição|
+|C — oito|PASS software/build e bancada>=30min, oito notas e audição; escopo congelado|
+|D — interface|PASS host/adaptadores e Guition; VX8/8,39 transições e memória estável observada|
+|E — hardware|PASS seis e oito na Guition; audição MANUAL/PASS, limites no relatório físico|
 
 Seis/oito notas reais foram admitidas em instrumentos DSP distintos, com alturas
 verificadas no engine. A sétima/nona foi rejeitada sem alterar gates existentes.
@@ -158,7 +163,7 @@ USB S3 preservado em1.4.1 via lock existente. Comandos a partir deste worktree:
 |PASS|pio run -d smk-s3 -e esp32-s3-link -j 8|
 |PASS|riscv32-esp-elf-size -A e nm -S: ABI/seções/símbolos dos ELFs reais|
 |NOT RUN|Demais ambientes S3/P4 híbridos e suíte Python AMY upstream completa|
-|MANUAL|Guition6/8, PCM5102A/SMK25 reais, audição e janela>=30min|
+|PASS + MANUAL/PASS|Guition6/8, PCM5102A/SMK25 reais, audição e janela>=30min em cada perfil|
 
 Logs finais: profileN_tests_final.log, profileN_capacity_admission.log,
 profileN_capacity_quiet.log, polyphony_final_uptodate.log,
@@ -173,7 +178,7 @@ resolveram. PowerShell5 tratou stderr negativo esperado dos testes S3 como
 NativeCommandError; execução em pwsh, como no CI, PASS. Não foram falhas DSP
 ocultadas nem justificativa para promover testes físicos.
 
-## Candidato, limites e próximo passo
+## Checkpoint do pacote seguro (anterior à bancada)
 
 O bundle local de revisão contém3 imagens seguras, SDKs/flags/layout nativos,
 WAVs A/B e4/6/8, logs, patch e manifesto SHA256. É criado por
