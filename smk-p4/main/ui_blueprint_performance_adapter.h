@@ -21,6 +21,7 @@ public:
     ui::FeatureStatus parameterStatus(const char* id) const override;
     bool isParameterEditable(const char* id) const override;
     bool isPatchSelectable(uint16_t id) const override;
+    ui::FeatureStatus patchStatus(uint16_t id) const override;
     ui::UiCommandState lastCommandState() const override { return last_state_; }
     const char* lastCommandParameterId() const override { return last_id_; }
     ui::UiCommandResult requestParameterValue(const char*, const ui::ParameterValue&) override;
@@ -38,7 +39,7 @@ public:
     bool isNoteHeld(uint8_t note) const override;
 private:
     struct Gesture { uint32_t token=0, start_ms=0; uint8_t note=0; };
-    struct Pending { bool active=false; uint16_t value=0; uint32_t revision=0; };
+    struct Pending { bool active=false; uint16_t value=0; uint32_t revision=0, requested_ms=0; };
     ui::UiCommandResult result(ui::UiCommandState, const char*, const char*, uint32_t token=0);
     bool usable() const { return backend_.connected() && !backend_.busy() && have_snapshot_; }
     PerformanceBackend& backend_;

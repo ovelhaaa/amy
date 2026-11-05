@@ -1,4 +1,5 @@
 #include "ui_model.h"
+#include "../../amy_runtime/patch_library.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -10,35 +11,35 @@ namespace {
 
 const BlueprintPatchEntry kPatchCatalog[UiModel::kCatalogSize] = {
     // Real P4 standalone ROM patches (Available in smk-p4/components/amy_runtime/runtime_config.h)
-    {128, "DX7 BRASS 1",     "ROM P4",   PatchCategory::Brass,         SynthFamily::FM,            FeatureStatus::Available, true,
+    {library::kCandidates[0].id, library::kCandidates[0].name,     "ROM P4",   static_cast<PatchCategory>(library::kCandidates[0].category), static_cast<SynthFamily>(library::kCandidates[0].family),            FeatureStatus::Available, true,
      {"CHAR", "BRIGHT", "MOTION", "FDBK", "RATIO", "DTUNE", "SPACE", "EDGE"}},
-    {135, "DX7 PIANO 1",     "ROM P4",   PatchCategory::Piano,         SynthFamily::FM,            FeatureStatus::Available, true,
+    {library::kCandidates[1].id, library::kCandidates[1].name,     "ROM P4",   static_cast<PatchCategory>(library::kCandidates[1].category), static_cast<SynthFamily>(library::kCandidates[1].family),            FeatureStatus::Available, true,
      {"CHAR", "BRIGHT", "MOTION", "FDBK", "RATIO", "DTUNE", "SPACE", "EDGE"}},
 
     // Existing S3 / AMY ROM Factory Patches (Planned for P4 standalone expansion)
-    {  0, "JUNO BRASS SET 1","ROM JUNO", PatchCategory::Brass,         SynthFamily::Subtractive,   FeatureStatus::Planned,   true,
+    {library::kCandidates[8].id, library::kCandidates[8].name,"ROM JUNO", static_cast<PatchCategory>(library::kCandidates[8].category), static_cast<SynthFamily>(library::kCandidates[8].family),   FeatureStatus::Planned,   true,
      {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
-    {  1, "JUNO BRASS SWELL","ROM JUNO", PatchCategory::Pads,          SynthFamily::Subtractive,   FeatureStatus::Planned,   false,
+    {library::kCandidates[9].id, library::kCandidates[9].name,"ROM JUNO", static_cast<PatchCategory>(library::kCandidates[9].category), static_cast<SynthFamily>(library::kCandidates[9].family),   FeatureStatus::Planned,   false,
      {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
-    {  4, "MOVING STRINGS",  "ROM JUNO", PatchCategory::Strings,       SynthFamily::Subtractive,   FeatureStatus::Planned,   true,
+    {library::kCandidates[4].id, library::kCandidates[4].name,  "ROM JUNO", static_cast<PatchCategory>(library::kCandidates[4].category), static_cast<SynthFamily>(library::kCandidates[4].family),   FeatureStatus::Planned,   true,
      {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
-    {  8, "JUNO ORGAN I",    "ROM JUNO", PatchCategory::Organ,         SynthFamily::Subtractive,   FeatureStatus::Planned,   false,
+    {library::kCandidates[7].id, library::kCandidates[7].name,    "ROM JUNO", static_cast<PatchCategory>(library::kCandidates[7].category), static_cast<SynthFamily>(library::kCandidates[7].family),   FeatureStatus::Planned,   false,
      {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
-    { 12, "DONALD PLUCK",    "ROM JUNO", PatchCategory::Plucks,        SynthFamily::Subtractive,   FeatureStatus::Planned,   false,
+    {library::kCandidates[10].id, library::kCandidates[10].name,    "ROM JUNO", static_cast<PatchCategory>(library::kCandidates[10].category), static_cast<SynthFamily>(library::kCandidates[10].family),   FeatureStatus::Planned,   false,
      {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
-    { 14, "ELECT. PIANO I",  "ROM JUNO", PatchCategory::ElectricPiano, SynthFamily::Subtractive,   FeatureStatus::Planned,   true,
+    {library::kCandidates[11].id, library::kCandidates[11].name,  "ROM JUNO", static_cast<PatchCategory>(library::kCandidates[11].category), static_cast<SynthFamily>(library::kCandidates[11].family),   FeatureStatus::Planned,   true,
      {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
-    { 17, "STEEL DRUMS PCM", "ROM JUNO", PatchCategory::Percussion,    SynthFamily::PCM,           FeatureStatus::Planned,   false,
+    { 17, "STEEL DRUMS", "ROM JUNO", PatchCategory::Percussion,    SynthFamily::Subtractive,           FeatureStatus::Planned,   false,
      {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
-    { 31, "SYNTH BASS I",    "ROM JUNO", PatchCategory::Bass,          SynthFamily::Subtractive,   FeatureStatus::Planned,   true,
+    {library::kCandidates[5].id, library::kCandidates[5].name,    "ROM JUNO", static_cast<PatchCategory>(library::kCandidates[5].category), static_cast<SynthFamily>(library::kCandidates[5].family),   FeatureStatus::Planned,   true,
      {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
-    { 32, "JUNO LEAD I",     "ROM JUNO", PatchCategory::Leads,         SynthFamily::Subtractive,   FeatureStatus::Planned,   false,
+    {library::kCandidates[6].id, library::kCandidates[6].name,     "ROM JUNO", static_cast<PatchCategory>(library::kCandidates[6].category), static_cast<SynthFamily>(library::kCandidates[6].family),   FeatureStatus::Planned,   false,
      {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
     { 38, "THUD WAH FX",     "ROM JUNO", PatchCategory::FX,            SynthFamily::Subtractive,   FeatureStatus::Planned,   false,
      {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
-    {138, "DX7 E.PIANO 1",   "ROM DX7",  PatchCategory::ElectricPiano, SynthFamily::FM,            FeatureStatus::Planned,   true,
+    {library::kCandidates[2].id, library::kCandidates[2].name,   "ROM DX7",  static_cast<PatchCategory>(library::kCandidates[2].category), static_cast<SynthFamily>(library::kCandidates[2].family),            FeatureStatus::Planned,   true,
      {"CHAR", "BRIGHT", "MOTION", "FDBK", "RATIO", "DTUNE", "SPACE", "EDGE"}},
-    {142, "DX7 BASS 1",      "ROM DX7",  PatchCategory::Bass,          SynthFamily::FM,            FeatureStatus::Planned,   true,
+    {library::kCandidates[3].id, library::kCandidates[3].name,      "ROM DX7",  static_cast<PatchCategory>(library::kCandidates[3].category), static_cast<SynthFamily>(library::kCandidates[3].family),            FeatureStatus::Planned,   true,
      {"CHAR", "BRIGHT", "MOTION", "FDBK", "RATIO", "DTUNE", "SPACE", "EDGE"}},
 
     // User Bank Demo Slots (Explicitly marked DEMO)

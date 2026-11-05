@@ -29,6 +29,8 @@ jobs:
           ./smk-p4/tests/run_amy.ps1 -Voices 4 | Tee-Object build/profile4_tests.log
           ./smk-p4/tests/run_amy.ps1 -Voices 6 | Tee-Object build/profile6_tests.log
           ./smk-p4/tests/run_amy.ps1 -Voices 8 | Tee-Object build/profile8_tests.log
+          ./smk-p4/tests/run_amy.ps1 -Voices 8 -SoundLibrary
+          python smk-p4/tests/audit_patch_library.py --check
           python smk-p4/tests/summarize_polyphony.py
   build:
     runs-on: ubuntu-latest
@@ -51,6 +53,10 @@ jobs:
           - project: smk-p4
             environment: guition-standalone-blueprint-8
             voices: 8
+          - project: smk-p4
+            environment: guition-sound-library-8
+            voices: 8
+            audit_flags: --sound-library --environment guition-sound-library-8
           - project: smk-s3
             environment: esp32-s3-link
     steps:
@@ -66,8 +72,8 @@ jobs:
         if: matrix.project == 'smk-s3'
         run: python -c "from pathlib import Path; assert '#define CONFIG_SMKS3_P4_HEADLESS 1' in Path('smk-s3/.pio/build/esp32-s3-link/config/sdkconfig.h').read_text()"
       - name: Verify Blueprint target and safe hardware defaults
-        if: startsWith(matrix.environment, 'guition-standalone-blueprint')
-        run: python smk-p4/tests/check_blueprint_build.py --voices ${{ matrix.voices }}
+        if: startsWith(matrix.environment, 'guition-standalone-blueprint') || matrix.environment == 'guition-sound-library-8'
+        run: python smk-p4/tests/check_blueprint_build.py --voices ${{ matrix.voices }} ${{ matrix.audit_flags }}
       - name: Verify standalone target and safe hardware defaults
         if: matrix.environment == 'guition-standalone'
         run: python smk-p4/tests/check_standalone_build.py
@@ -92,3 +98,5 @@ jobs:
             ./smk-p4/tests/run_blueprint_adapter.ps1 -Voices $voices
             if ($LASTEXITCODE) { throw "UI profile $voices failed" }
           }
+          ./smk-p4/tests/run_amy.ps1 -Voices 8 -SoundLibrary
+          ./smk-p4/tests/run_blueprint_adapter.ps1 -Voices 8 -SoundLibrary

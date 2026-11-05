@@ -10,7 +10,7 @@ bool eq(const char* a,const char* b) { return a && std::strcmp(a,b)==0; }
 UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend& backend):backend_(backend) {
     meters_.is_simulated=false; // No amplitude measurement available: meters stay zero/N/A.
     auto& d=model_.diagnostics();
-    d={}; d.is_demo_mode=false; d.firmware_version="SMK-P4 POLYPHONY 0.6"; d.max_voices=backend_.voiceCapacity();
+    d={}; d.is_demo_mode=false; d.firmware_version="SMK-P4 LIBRARY 0.7"; d.max_voices=backend_.voiceCapacity();
     d.amy_status="WAIT SNAPSHOT"; d.i2s_status="NOT LIVE"; d.usb_status="DISCONNECTED";
     model_.setBool("harmony.scale_enable",false);
     model_.setBool("harmony.chord_enable",false);
@@ -32,9 +32,18 @@ bool UiBlueprintPerformanceAdapter::isParameterEditable(const char* id) const {
     return parameterStatus(id)==FeatureStatus::Available && usable();
 }
 bool UiBlueprintPerformanceAdapter::isPatchSelectable(uint16_t id) const {
-    if(id!=128 && id!=135) return false;
-    for(uint16_t i=0;i<backend_.patchCount();++i) if(backend_.patchAt(i)==id) return true;
+    size_t count=0; const auto* entries=UiModel::catalog(count);
+    bool represented=false;
+    for(size_t i=0;i<count;++i) if(entries[i].id==id) represented=true;
+    if(!represented) return false;
+    for(uint16_t i=0;i<backend_.patchCount();++i) if(backend_.patchAt(i)==id) {
+        PatchInfo info;
+        return backend_.patchInfo(i,info,now_ms_) && info.id==id && info.available;
+    }
     return false;
+}
+FeatureStatus UiBlueprintPerformanceAdapter::patchStatus(uint16_t id) const {
+    return isPatchSelectable(id)?FeatureStatus::Available:FeatureStatus::Planned;
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestParameterValue(const char* id,const ParameterValue& v) {
     if(v.type==ParameterValueType::String) return result(UiCommandState::Rejected,id,"INVALID VALUE TYPE");
@@ -62,7 +71,7 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterInt(const char* i
     }
     if(v<0 || v>127) return result(UiCommandState::Rejected,id,"MASTER OUT OF RANGE");
     if(!backend_.setMaster(static_cast<uint8_t>(v),now_ms_)) return result(UiCommandState::Rejected,id,"MASTER REJECTED");
-    master_={true,static_cast<uint16_t>(v),backend_.stateRevision()};
+    master_={true,static_cast<uint16_t>(v),backend_.stateRevision(),now_ms_};
     return result(UiCommandState::Requested,id,"MASTER REQUESTED; WAIT SNAPSHOT");
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestSelectPatch(uint16_t id,uint8_t layer) {
@@ -70,7 +79,7 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestSelectPatch(uint16_t id,ui
     if(!usable()) return result(UiCommandState::Rejected,"perf.patch_id","ENGINE/SNAPSHOT UNAVAILABLE");
     releaseAllUiNotes();
     if(!backend_.setPatch(id,now_ms_)) return result(UiCommandState::Rejected,"perf.patch_id","PATCH REJECTED; NOTES CANCELED");
-    patch_={true,id,backend_.stateRevision()};
+    patch_={true,id,backend_.stateRevision(),now_ms_};
     return result(UiCommandState::Requested,"perf.patch_id","PATCH REQUESTED; WAIT SNAPSHOT");
 }
 bool UiBlueprintPerformanceAdapter::isNoteHeld(uint8_t note) const {
@@ -142,6 +151,10 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
         auto& d=model_.diagnostics();
         if(d.active_voices!=s.active_notes || d.render_max_us!=s.max_render_us || d.deadline_misses!=s.deadline_misses) model_.bumpRevision();
         d.active_voices=static_cast<uint8_t>(s.active_notes); d.render_max_us=s.max_render_us; d.deadline_misses=s.deadline_misses;
+    }
+    if(patch_.active && uint32_t(now_ms-patch_.requested_ms)>=2000) {
+        patch_.active=false;
+        result(UiCommandState::Rejected,"perf.patch_id","PATCH NOT CONFIRMED; OWNER STATE RETAINED");
     }
     // MIDI publication does not advance stateRevision. Inspect flags every tick.
     auto& d=model_.diagnostics();

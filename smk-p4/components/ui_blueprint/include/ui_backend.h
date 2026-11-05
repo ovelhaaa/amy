@@ -74,6 +74,11 @@ public:
     virtual FeatureStatus parameterStatus(const char* id) const = 0;
     virtual bool isParameterEditable(const char* id) const = 0;
     virtual bool isPatchSelectable(uint16_t patch_id) const = 0;
+    virtual FeatureStatus patchStatus(uint16_t id) const {
+        size_t count=0; const auto* entries=UiModel::catalog(count);
+        for(size_t i=0;i<count;++i) if(entries[i].id==id) return entries[i].status;
+        return FeatureStatus::Unavailable;
+    }
     virtual UiCommandState lastCommandState() const = 0;
     virtual const char* lastCommandParameterId() const = 0;
 

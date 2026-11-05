@@ -11,6 +11,7 @@ using namespace smk::p4::ui;
 struct Mock final : PerformanceBackend {
     PerformanceState s{}; bool ready=true,accept=true,error=false; uint32_t rev=1;
     unsigned ons=0,offs=0,panics=0,patches=0,masters=0;
+    bool expanded=false,patch_available=true;
     uint16_t requested_patch=0; uint8_t requested_master=0;
     void service(uint32_t) override {}
     bool connected() const override { return ready; }
@@ -19,9 +20,9 @@ struct Mock final : PerformanceBackend {
     uint32_t stateRevision() const override { return rev; }
     const char* status() const override { return ready?"READY":"OFFLINE"; }
     bool midiError() const override { return error; }
-    uint16_t patchCount() const override { return 2; }
-    uint16_t patchAt(uint16_t i) const override { return i==0?128:i==1?135:UINT16_MAX; }
-    bool patchInfo(uint16_t i,PatchInfo& p,uint32_t) override { p.id=patchAt(i);p.available=i<2;return i<2; }
+    uint16_t patchCount() const override { return expanded?3:2; }
+    uint16_t patchAt(uint16_t i) const override { return i==0?128:i==1?135:expanded && i==2?138:UINT16_MAX; }
+    bool patchInfo(uint16_t i,PatchInfo& p,uint32_t) override { p.id=patchAt(i);p.available=i<patchCount() && patch_available;return i<patchCount(); }
     bool setPatch(uint16_t id,uint32_t) override { ++patches;requested_patch=id;return accept; }
     bool setMaster(uint8_t v,uint32_t) override { ++masters;requested_master=v;return accept; }
     bool setMacro(uint8_t,uint8_t,uint32_t) override { assert(false); return false; }
@@ -160,7 +161,27 @@ static void realRuntime() {
     assert(r.usbInput().transfer(usb_off,4,3));r.apply(3);
     auto touch=a.requestNoteOn(60,100);assert(touch.accepted());r.apply(3);assert(r.snapshot().active_notes==2);
     a.requestPanic();r.apply(3);assert(!r.snapshot().active_notes);
+    size_t count=0;const auto* entries=UiModel::catalog(count);
+    for(const auto& p:amy::kPatches) {
+        bool found=false;
+        for(size_t i=0;i<count;++i) if(entries[i].id==p.id) {
+            found=true;assert(std::strcmp(entries[i].name,p.name)==0);
+            assert(entries[i].family==p.family && entries[i].category==p.category);
+        }
+        assert(found && a.isPatchSelectable(p.id) && a.patchStatus(p.id)==FeatureStatus::Available);
+    }
+    assert(!a.isPatchSelectable(4) && a.patchStatus(4)==FeatureStatus::Planned);
     a.requestSelectPatch(135);assert(a.model().activePatch().id==128);r.apply(3);publish(4);assert(a.model().activePatch().id==135);
+#ifdef SMKP4_SOUND_LIBRARY
+    for(uint16_t id:{uint16_t(138),uint16_t(142)}) {
+        const auto old=a.model().activePatch().id;
+        assert(a.requestSelectPatch(id).state==UiCommandState::Requested);
+        assert(a.model().activePatch().id==old);
+        r.apply(4);publish(4);
+        assert(a.model().activePatch().id==id && a.lastCommandState()==UiCommandState::Confirmed);
+    }
+    a.requestSelectPatch(135);r.apply(4);publish(4);
+#endif
     auto old=a.requestNoteOn(60,100);r.apply(4);a.requestPanic();r.apply(5);publish(6);
     auto fresh=a.requestNoteOn(60,100);assert(!a.requestNoteOff(60,old.token).accepted());r.apply(6);assert(r.snapshot().active_notes==1);
     // Old mailbox publication does not invalidate adapter gesture tokens.
@@ -191,4 +212,14 @@ static void realRuntime() {
     assert(!a.requestNoteOff(65,fresh.token).accepted());
     r.end();std::puts("PASS real AMY + production adapter: USB/Touch same pitch both release orders, patch, panic generations, stale mailbox, lease/rearm and USB disconnect");
 }
-int main() { contract();preview::initHostLvgl();lifecycle();realRuntime(); }
+static void discovery() {
+    Mock m;m.expanded=true;UiBlueprintPerformanceAdapter a(m);a.service(1);
+    assert(a.isPatchSelectable(138) && !a.isPatchSelectable(142));
+    m.patch_available=false;assert(!a.isPatchSelectable(138));
+    assert(a.requestSelectPatch(138).state==UiCommandState::Unsupported);
+    m.patch_available=true;assert(a.requestSelectPatch(138).state==UiCommandState::Requested);
+    assert(a.model().activePatch().id==128);
+    a.service(2002);assert(a.lastCommandState()==UiCommandState::Rejected);
+    assert(a.model().activePatch().id==128);
+}
+int main() { discovery();contract();preview::initHostLvgl();lifecycle();realRuntime(); }

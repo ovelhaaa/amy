@@ -38,7 +38,7 @@ public:
     uint16_t patchAt(uint16_t index) const override { return index<amy::kPatchCount?amy::kPatches[index].id:UINT16_MAX; }
     bool patchInfo(uint16_t index,PatchInfo& info,uint32_t) override {
         if(index>=amy::kPatchCount) return false;
-        info.id=patchAt(index); info.available=true;
+        info.id=patchAt(index); info.available=ready_;
         std::snprintf(info.name,sizeof(info.name),"%s",amy::kPatches[index].name); return true;
     }
     bool setPatch(uint16_t id,uint32_t now_ms) override {

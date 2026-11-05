@@ -1,35 +1,14 @@
 #pragma once
 #include "ui_parameters.h"
+#include "../../amy_runtime/patch_library.h"
 #include <cstddef>
 #include <cstdint>
 
 namespace smk::p4::ui {
 
-enum class SynthFamily : uint8_t {
-    FM            = 0,
-    Subtractive   = 1,
-    PCM           = 2,
-    KarplusStrong = 3
-};
-
+using SynthFamily = library::SynthFamily;
+using PatchCategory = library::PatchCategory;
 const char* synthFamilyName(SynthFamily family);
-
-enum class PatchCategory : uint8_t {
-    All           = 0,
-    Piano         = 1,
-    ElectricPiano = 2,
-    Organ         = 3,
-    Bass          = 4,
-    Brass         = 5,
-    Strings       = 6,
-    Pads          = 7,
-    Leads         = 8,
-    Plucks        = 9,
-    Percussion    = 10,
-    FX            = 11,
-    Count         = 12
-};
-
 const char* patchCategoryName(PatchCategory cat);
 
 struct BlueprintPatchEntry {

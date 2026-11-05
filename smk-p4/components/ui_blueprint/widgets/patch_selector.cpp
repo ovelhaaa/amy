@@ -26,21 +26,33 @@ lv_obj_t* createPatchSelectorCard(lv_obj_t* parent, IUiBackend& backend, UiNavig
     std::snprintf(title_buf, sizeof(title_buf), "%03u  %s", patch.id, patch.name);
     lv_obj_t* title_lbl=createLabel(card, title_buf, 8, 2, 338, &lv_font_montserrat_20, palette::kTextPrimary);
 
+    lv_obj_t* subtitle=nullptr;
     char sub_buf[80];
     if (level == PresentationLevel::StageMinimal) {
         std::snprintf(sub_buf, sizeof(sub_buf), "%s  |  %s  |  %s",
                       patchCategoryName(patch.category),
                       synthFamilyName(patch.family),
                       patch.bank_name);
-        createLabel(card, sub_buf, 8, 30, 334, &lv_font_montserrat_14, palette::kAccentPrimary);
+        subtitle=createLabel(card, sub_buf, 8, 30, 334, &lv_font_montserrat_14, palette::kAccentPrimary);
     } else {
         std::snprintf(sub_buf, sizeof(sub_buf), "%s | %s | %s",
                       patch.bank_name,
                       patchCategoryName(patch.category),
                       synthFamilyName(patch.family));
-        createLabel(card, sub_buf, 8, 30, 270, &lv_font_montserrat_14, palette::kAccentPrimary);
-        createStatusBadge(card, patch.status, 284, 30);
+        subtitle=createLabel(card, sub_buf, 8, 30, 270, &lv_font_montserrat_14, palette::kAccentPrimary);
+        createStatusBadge(card, backend.patchStatus(patch.id), 284, 30);
     }
+
+    struct SubtitleCtx { IUiBackend* backend; PresentationLevel level; };
+    attachLvContext<SubtitleCtx>(subtitle, SubtitleCtx{&backend,level}, [](lv_event_t* e) {
+        auto* ctx=static_cast<SubtitleCtx*>(lv_event_get_user_data(e));
+        const auto& p=ctx->backend->model().activePatch();
+        char text[80];
+        if(ctx->level==PresentationLevel::StageMinimal)
+            std::snprintf(text,sizeof(text),"%s  |  %s  |  %s",patchCategoryName(p.category),synthFamilyName(p.family),p.bank_name);
+        else std::snprintf(text,sizeof(text),"%s | %s | %s",p.bank_name,patchCategoryName(p.category),synthFamilyName(p.family));
+        lv_label_set_text(static_cast<lv_obj_t*>(lv_event_get_target(e)),text);
+    }, LV_EVENT_REFRESH);
 
     auto handler = [](lv_event_t* e) {
         if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;

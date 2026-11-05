@@ -23,11 +23,11 @@ struct BrowserActionCtx {
     uint16_t             value   = 0;
 };
 
-bool matchesFilter(const UiModel& model, const BlueprintPatchEntry& p) {
-    if (g_browser.bank_filter == 1 && p.status != FeatureStatus::Available) return false;
-    if (g_browser.bank_filter == 2 && p.status != FeatureStatus::Planned) return false;
-    if (g_browser.bank_filter == 3 && p.status != FeatureStatus::Demo) return false;
-    if (g_browser.bank_filter == 4 && !model.isFavorite(p.id)) return false;
+bool matchesFilter(const IUiBackend& backend, const BlueprintPatchEntry& p) {
+    if (g_browser.bank_filter == 1 && backend.patchStatus(p.id) != FeatureStatus::Available) return false;
+    if (g_browser.bank_filter == 2 && backend.patchStatus(p.id) != FeatureStatus::Planned) return false;
+    if (g_browser.bank_filter == 3 && backend.patchStatus(p.id) != FeatureStatus::Demo) return false;
+    if (g_browser.bank_filter == 4 && !backend.model().isFavorite(p.id)) return false;
     if (g_browser.cat_filter != PatchCategory::All && p.category != g_browser.cat_filter) return false;
     return true;
 }
@@ -103,7 +103,7 @@ public:
         const BlueprintPatchEntry* filtered[UiModel::kCatalogSize]{};
         size_t match_count = 0;
         for (size_t i = 0; i < total_count; ++i) {
-            if (matchesFilter(backend.model(), catalog[i])) {
+            if (matchesFilter(backend, catalog[i])) {
                 filtered[match_count++] = &catalog[i];
             }
         }
@@ -137,11 +137,11 @@ public:
             std::snprintf(row_txt, sizeof(row_txt), "%03u  %-18s  [%s] %s",
                           entry->id, entry->name, entry->bank_name, is_fav ? "*" : "");
             lv_obj_t* rbtn = createActionButton(list_panel, row_txt, 4, ry, 416, 38,
-                                                nullptr, nullptr, is_sel, false);
+                                                nullptr, nullptr, is_sel, !backend.isDemoMode() && (!backend.isPatchSelectable(entry->id) || g_browser.target_layer!=0));
             if (rbtn) {
                 attachLvContext<BrowserActionCtx>(rbtn, BrowserActionCtx{&backend, &nav, 2, entry->id}, cb, LV_EVENT_CLICKED);
             }
-            createStatusBadge(list_panel, entry->status, 426, ry + 10);
+            createStatusBadge(list_panel, backend.patchStatus(entry->id), 426, ry + 10);
         }
 
         // Pagination footer inside list panel
@@ -164,7 +164,7 @@ public:
 
         const auto& cur = backend.model().layerPatch(g_browser.target_layer);
         createLabel(insp, "PATCH INSPECTOR", 8, 4, 180, &lv_font_montserrat_14, palette::kAccentPrimary);
-        createStatusBadge(insp, cur.status, 190, 4);
+        createStatusBadge(insp, backend.patchStatus(cur.id), 190, 4);
 
         char name_line[48];
         std::snprintf(name_line, sizeof(name_line), "%03u %s", cur.id, cur.name);
@@ -185,8 +185,8 @@ public:
 
         const char* status_note =
             (!backend.isDemoMode() && g_browser.target_layer != 0) ? "LAYER B PLANNED; NO DSP" :
-            (cur.status == FeatureStatus::Available) ? "P4 RUNTIME: AMY ROM READY"
-          : (cur.status == FeatureStatus::Planned)   ? "S3/AMY ROM: PLANNED FOR P4"
+            (backend.patchStatus(cur.id) == FeatureStatus::Available) ? "P4 RUNTIME: AMY ROM READY"
+          : (backend.patchStatus(cur.id) == FeatureStatus::Planned)   ? "S3/AMY ROM: PLANNED FOR P4"
                                                      : "DEMO SLOT: UI RAM PROTOTYPE";
         createLabel(insp, status_note, 8, 128, 246, &lv_font_montserrat_14, palette::kWarning);
 
