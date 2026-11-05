@@ -14,10 +14,9 @@ namespace smk::p4::amy {
 static_assert(AMY_SAMPLE_RATE==kSampleRateHz && AMY_BLOCK_SIZE==kBlockFrames && AMY_NCHANS==2);
 size_t Runtime::bootFreeInternalBytes() {
     constexpr unsigned blocks=(kDeltaReserve+kDeltaBlockSize-1)/kDeltaBlockSize;
-    // Extra banks retain the historical reserve. 512 B/osc is a conservative
-    // admission allowance (P4 synthinfo+mod state 408 B, plus maps/FIFOs).
-    constexpr size_t extra_bank_bytes=(kPatchCount-2)*kVoices*kOscillatorsPerVoice*kAdditionalOscillatorAdmissionBytes;
-    return kBootBaseFreeInternalBytes+(blocks-1)*kDeltaBlockSize*sizeof(struct delta)+extra_bank_bytes;
+    const size_t historical=kBootBaseFreeInternalBytes+(blocks-1)*kDeltaBlockSize*sizeof(struct delta);
+    const size_t full_engine=kLibraryEngineHeapBudgetBytes+kPostBootFreeInternalBytes;
+    return kPatchCount>2 && full_engine>historical?full_engine:historical;
 }
 bool Runtime::hasBootMemory(size_t free_internal_bytes,size_t largest_internal_bytes) {
     return free_internal_bytes>=bootFreeInternalBytes() && largest_internal_bytes>=kBootLargestInternalBytes;

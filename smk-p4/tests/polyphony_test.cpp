@@ -79,6 +79,7 @@ int main() {
     assert(boot_oscs==kOscillators);
     assert(delta_num_free()>=static_cast<int>(kDeltaReserve));
     std::printf("MEM voices=%u oscs=%u runtime_size=%zu live_bytes=%zu peak_bytes=%zu live_allocs=%u delta_blocks=%d delta_size=%zu\n",kVoices,kOscillators,sizeof(r),probe_bytes()-bytes,probe_peak_bytes(),probe_live()-live,next_delta_block,sizeof(struct delta));
+    if(kPatchCount>2) assert(probe_peak_bytes()-bytes<=kLibraryEngineHeapBudgetBytes);
     probe_realtime(true);
     service(r,128,"idle"); // idle
     for(unsigned bank=0;bank<kPatchCount;++bank) {

@@ -19,6 +19,23 @@ def fixture():
 
 
 class CaptureReportTest(unittest.TestCase):
+    def test_library_requires_actual_capacity_in_every_selected_patch(self):
+        text=fixture()
+        import re
+        text=re.sub(r'patch=128 notes=0',lambda m:'patch=138 notes=8',text)
+        self.assertFalse(report(text,voices=8)['serial_checks_pass'])
+        missing=report(text,voices=8,patches=(128,135,138,142),require_full_patches=True)
+        self.assertFalse(missing['checks']['full_capacity_each_patch'])
+        lines=text.splitlines(keepends=True)
+        for index,patch in enumerate((128,135,142)):
+            pos=next(i for i,line in enumerate(lines) if f'I ({index*5000}) P4_AMY: ENGINE' in line)
+            lines[pos]=lines[pos].replace('patch=138',f'patch={patch}')
+        pos=max(i for i,line in enumerate(lines) if 'P4_AMY: ENGINE' in line)
+        lines[pos]=lines[pos].replace('notes=8','notes=0')
+        result=report(''.join(lines),voices=8,patches=(128,135,138,142),require_full_patches=True)
+        self.assertTrue(result['serial_checks_pass'])
+        self.assertTrue(all(result['patch_capacity_samples'].values()))
+
     def test_complete_window(self):
         result=report(fixture())
         self.assertTrue(result['serial_checks_pass'])

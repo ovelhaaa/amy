@@ -21,8 +21,9 @@ constexpr unsigned kOwnerStackBytes = 12288, kOwnerPriority = 5;
 constexpr size_t kBootBaseFreeInternalBytes = 196608 + (kVoices - 4) * 24576;
 constexpr unsigned kDeltaBlockSize = 2048; // Pinned AMY DELTA_BLOCK_SIZE.
 constexpr size_t kBootLargestInternalBytes = 196608; // Preserve the baseline contiguous reserve.
-// Admission allowance per extra resident oscillator; includes map/FIFO margin.
-constexpr size_t kAdditionalOscillatorAdmissionBytes = 512;
+// Whole-engine budget: measured x86-64 peak <286650 B (larger ABI), plus
+// >20 KiB for allocator bookkeeping/margin. Keep historical guards as floors.
+constexpr size_t kLibraryEngineHeapBudgetBytes = 300 * 1024;
 constexpr size_t kPostBootFreeInternalBytes = 65536;
 constexpr size_t kPostBootLargestInternalBytes = 32768;
 constexpr uint32_t kSampleRateHz = 48000, kBlockFrames = 256;

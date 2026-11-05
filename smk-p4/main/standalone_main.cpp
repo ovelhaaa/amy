@@ -42,7 +42,8 @@ struct Snapshot {
     unsigned stack_free_bytes = 0;
     esp_err_t error = ESP_OK;
     bool running = false;
-    bool owner_initialized = false;
+    bool owner_initialized = false, boot_admitted = false;
+    uint32_t boot_free = 0, boot_largest = 0, engine_free = 0, engine_largest = 0;
 };
 StaticQueue_t snapshot_control;
 uint8_t snapshot_storage[sizeof(Snapshot)];
@@ -60,10 +61,12 @@ void runAudio() {
     // Boot admission before LVGL starts allocating. Upstream amy_start is void
     // and still contains unchecked boot allocations; fail before entering it
     // when the conservative internal reserve is absent.
-    if(!smk::p4::amy::Runtime::hasBootMemory(
-           heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT),
-           heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)) ||
-       !runtime.begin()) state.error=ESP_ERR_NO_MEM;
+    state.boot_free=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+    state.boot_largest=heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+    state.boot_admitted=smk::p4::amy::Runtime::hasBootMemory(state.boot_free,state.boot_largest);
+    if(!state.boot_admitted || !runtime.begin()) state.error=ESP_ERR_NO_MEM;
+    state.engine_free=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+    state.engine_largest=heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
     if(smk::p4::amy::kVoices>4 && state.error==ESP_OK &&
        (heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)<smk::p4::amy::kPostBootFreeInternalBytes ||
         heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)<smk::p4::amy::kPostBootLargestInternalBytes)) {
@@ -263,6 +266,12 @@ extern "C" void app_main() {
             last_report = xTaskGetTickCount();
             Snapshot state{};
             if (snapshots && xQueuePeek(snapshots, &state, 0) == pdTRUE) {
+#if !defined(CONFIG_SMKP4_PCM_DIAGNOSTIC)
+                ESP_LOGI(kTag,"ADMISSION free=%lu largest=%lu required=%u admitted=%d engine_free=%lu engine_largest=%lu",
+                    (unsigned long)state.boot_free,(unsigned long)state.boot_largest,
+                    unsigned(smk::p4::amy::Runtime::bootFreeInternalBytes()),state.boot_admitted,
+                    (unsigned long)state.engine_free,(unsigned long)state.engine_largest);
+#endif
                 ESP_LOGI(kTag, "AUDIO %s frames_written=%" PRIu64 " blocks_rendered=%" PRIu32
                          " render_avg_us=%" PRIu64 " render_max_us=%" PRIu32
                          " render_deadlines=%" PRIu32 " service_max_us=%" PRIu32

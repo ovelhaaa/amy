@@ -22,9 +22,11 @@ ZERO = {"AUDIO": "render_deadlines refill_risks write_errors timeouts".split(),
         "DISPLAY": ["touch_errors", "flush_errors"]}
 
 
-def report(text, min_seconds=1800, hotplugs=4, blueprint=True, voices=4):
+def report(text, min_seconds=1800, hotplugs=4, blueprint=True, voices=4, patches=(128,135), require_full_patches=False):
     if voices not in (4,6,8):
         raise ValueError("voice profile must be 4, 6 or 8")
+    if not patches or len(set(patches))!=len(patches) or any(not 0<=p<=65535 for p in patches):
+        raise ValueError("patch IDs must be unique uint16 values")
     rows = {k: [] for k in (*REQUIRED, "LVGL", "HEAP", "DISPLAY")}
     malformed = boots_after_start = 0
     for line in text.splitlines(keepends=True):
@@ -88,7 +90,11 @@ def report(text, min_seconds=1800, hotplugs=4, blueprint=True, voices=4):
     delta = lambda kind, key: rows[kind][-1][key]-rows[kind][0][key] if len(rows[kind]) >= 2 else 0
     checks["physical_audio"] = bool(rows["AUDIO"]) and all(r["mode"] == "I2S_PRODUCING" and r["error"] == "ESP_OK" for r in rows["AUDIO"])
     capacity_check = "engine_ready_four_voices" if voices == 4 else "engine_ready_within_capacity"
-    checks[capacity_check] = bool(rows["ENGINE"]) and all(r["ready"] == 1 and r["notes"] <= voices and r["patch"] in (128,135) for r in rows["ENGINE"])
+    checks[capacity_check] = bool(rows["ENGINE"]) and all(r["ready"] == 1 and r["notes"] <= voices and r["patch"] in patches for r in rows["ENGINE"])
+    patch_capacity_samples={str(p):sum(r["patch"]==p and r["notes"]==voices for r in rows["ENGINE"]) for p in patches}
+    if require_full_patches:
+        checks["full_capacity_each_patch"]=all(patch_capacity_samples.values())
+        checks["no_notes_at_end"]=bool(rows["ENGINE"]) and rows["ENGINE"][-1]["notes"]==0
     checks["new_midi_events"] = delta("USB", "events") > 0
     checks["hotplugs_in_window"] = delta("USB", "disconnects") >= hotplugs and delta("USB", "connects") >= hotplugs
     # Host::State::Connected == 2 in usb_midi_host.h; engine readiness is separate.
@@ -106,7 +112,7 @@ def report(text, min_seconds=1800, hotplugs=4, blueprint=True, voices=4):
             values = [r[key] for r in records if isinstance(r.get(key), int)]
             result[key] = {"min": min(values), "max": max(values), "last": values[-1]}
         return result
-    return {"configured_voice_capacity": voices, "samples": {k: len(v) for k,v in rows.items()}, "span_seconds": spans, "max_gap_seconds": gaps,
+    return {"configured_voice_capacity": voices, "allowed_patch_ids":list(patches), "patch_capacity_samples":patch_capacity_samples, "samples": {k: len(v) for k,v in rows.items()}, "span_seconds": spans, "max_gap_seconds": gaps,
             "last": {k: v[-1] if v else None for k,v in rows.items()}, "ranges": {k:ranges(v) for k,v in rows.items()},
             "midi_event_delta": delta("USB","events"), "disconnect_delta": delta("USB","disconnects"),
             "ui_transitions_delta": delta("UI_BLUEPRINT","screen_switches"), "frames_per_second_by_count":rate,
@@ -124,10 +130,12 @@ def main():
     parser.add_argument("--hotplugs",type=int,default=4)
     parser.add_argument("--legacy",action="store_true")
     parser.add_argument("--voices",type=int,choices=(4,6,8),default=4)
+    parser.add_argument("--patches",type=int,nargs="+",default=[128,135])
+    parser.add_argument("--require-full-patches",action="store_true")
     args=parser.parse_args()
     if args.min_seconds < 0 or args.hotplugs < 0:
         parser.error("thresholds must be nonnegative")
-    result=report(args.log.read_text(encoding="utf-8",errors="replace"),args.min_seconds,args.hotplugs,not args.legacy,args.voices)
+    result=report(args.log.read_text(encoding="utf-8",errors="replace"),args.min_seconds,args.hotplugs,not args.legacy,args.voices,tuple(args.patches),args.require_full_patches)
     args.output.write_text(json.dumps(result,indent=2)+"\n",encoding="utf-8")
     print("PASS" if result["serial_checks_pass"] else "FAIL", "serial checks; physical/operator approval is separate")
     if not result["serial_checks_pass"]:
