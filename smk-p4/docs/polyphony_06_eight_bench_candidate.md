@@ -53,3 +53,22 @@ Após autorização própria: conferir hashes/unidade, gravar somente0x10000,
 smoke com volume baixo/VX0/8, oito notas, rejeição da nona, Panic, ambos patches,
 sustain/bend/modulação/retrigger, Touch/USB, hot-plug, UI e janela>=30min.
 Se houver falha ou margem insuficiente, retornar ao seis já qualificado.
+
+
+## Gravação autorizada e boot — 2026-11-05
+
+Depois do congelamento, o operador respondeu "Autorizar gravação de oito vozes"
+para o SHA completo acima. PASS: todos os hashes do manifesto, rollback6,
+backup integral e identidade COM13/serial foram reconferidos. PASS: esptool
+write-flash somente0x10000,1202400bytes, "Hash of data verified", reset normal.
+Registro: `build/polyphony06_flash8_94617e5a297a/` (authorization.json,
+write_flash.log,write_success.json). Nenhuma outra região foi gravada.
+O manifesto congelado conserva o estado histórico flash_authorized=false.
+
+PASS: captura real `boot8.log`,40s/8410bytes, áudio I2S_PRODUCING/ESP_OK,
+engine ready1, USB state2, render máximo292us em repouso, compute/render
+ deadlines0, clipping/OOM/parse/dropped/overflow/refill/write/timeouts0.
+Heap interno169075B, maior bloco94208B; PSRAM31176952B, maior bloco30932992B.
+São medições iniciais de repouso, não aprovação de oito notas nem estabilidade
+prolongada. MANUAL pendente: VX0/8, oito notas, nona rejeitada, soltura/Panic
+sem regressão auditiva. Aguardar smoke antes da janela longa.
