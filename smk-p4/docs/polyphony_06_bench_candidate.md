@@ -91,3 +91,31 @@ preflight, sem ser duplicado no ZIP. DRAM data+BSS do ELF candidato169880bytes;
 o resumoPIO30956bytes omite DRAM1, como documentado no orçamento.
 Manifesto registra fonte do builda670c383, congelamentoada6085e e autorização
 de gravação=false naquele instante. Nenhum comando write-flash foi executado.
+
+## Atualização de bancada — 2026-11-05
+
+Após o congelamento acima, o operador autorizou explicitamente a gravação
+("pode gravar"). PASS: aplicação SHA256
+`41c12553a95136e7f9dbf45bbc1dbf199d119c23489294cd2aad435c62a5b3b8`
+gravada somente em `0x10000`, com verificação de hash pelo esptool. Bootloader,
+tabela de partições e NVS foram preservados. Evidências locais:
+`build/polyphony06_flash6_42c95326976f/{authorization.json,write_flash.log,write_success.json}`.
+O manifesto congelado continua registrando corretamente o estado anterior à autorização.
+
+MANUAL/PASS informado pelo operador: VX 0/6, seis notas simultâneas, soltura,
+Panic e som corretos; patches 128/135 com sustain, retrigger/acordes rápidos,
+bend, modulação, troca com notas ativas e rejeição da sétima nota sem cortar
+as seis existentes. Essas confirmações não substituem a janela instrumentada.
+
+A primeira captura prolongada (`six_voice_musical_window.log`) foi interrompida
+por perda da COM13. O operador confirmou ter removido também o cabo do PC ou a
+alimentação. A recuperação mostrou novo uptime; essa tentativa NÃO conta como
+30 minutos contínuos e não foi classificada como falha espontânea do firmware.
+A primeira captura de boot vazia também foi preservada: o reset RTS simples não
+saiu do bootloader; o reset USB JTAG do esptool iniciou a aplicação corretamente.
+
+NOT RUN/conclusão pendente: janela contínua reiniciada em
+`six_voice_window_restarted.log`, quatro ciclos de hot-plug somente do SMK25,
+coexistência Touch/USB e navegação sob carga. Até concluir a captura e analisar
+os critérios, seis vozes permanecem candidato em validação física; oito não
+foi gravado nem autorizado por esta aprovação de seis vozes.

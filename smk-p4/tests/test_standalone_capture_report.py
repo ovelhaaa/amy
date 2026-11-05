@@ -66,6 +66,17 @@ class CaptureReportTest(unittest.TestCase):
         text=text.replace('I (0) P4_AMY: AUDIO','I (172) esp_image: partial I (0) P4_AMY: AUDIO',1)
         self.assertTrue(report(text)['serial_checks_pass'])
 
+    def test_capacity_is_selected_without_accepting_extra_notes(self):
+        six=fixture().replace('notes=0','notes=6')
+        self.assertFalse(report(six)['serial_checks_pass'])
+        self.assertTrue(report(six,voices=6)['serial_checks_pass'])
+        self.assertFalse(report(six.replace('notes=6','notes=7'),voices=6)['serial_checks_pass'])
+        eight=six.replace('notes=6','notes=8')
+        self.assertTrue(report(eight,voices=8)['serial_checks_pass'])
+        self.assertFalse(report(eight.replace('notes=8','notes=9'),voices=8)['serial_checks_pass'])
+        with self.assertRaises(ValueError):
+            report(six,voices=7)
+
     def test_legacy_has_no_blueprint_stack_requirement(self):
         text=''.join(line for line in fixture().splitlines(keepends=True) if 'UI_BLUEPRINT' not in line)
         self.assertFalse(report(text)['serial_checks_pass'])
