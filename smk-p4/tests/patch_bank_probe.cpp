@@ -14,7 +14,7 @@ uint32_t probe_live();
 void probe_realtime(bool);
 }
 using Clock=std::chrono::steady_clock;
-static const unsigned candidates[]={128,135,138,142,4,31,32,8,0,1,12,14};
+static constexpr auto& candidates=smk::p4::library::kCandidates;
 static long long elapsed(Clock::time_point start) {
     return std::chrono::duration_cast<std::chrono::microseconds>(Clock::now()-start).count();
 }
@@ -40,9 +40,9 @@ int main() {
         start(banks,banks==6?352:banks*64);
         for(unsigned b=0;b<banks;++b) {
             const auto bytes=probe_bytes(); const auto calls=probe_calls(); const auto t=Clock::now();
-            for(unsigned v=0;v<8;++v) load(b*8+v+1,candidates[b==5?7:b]);
+            for(unsigned v=0;v<8;++v) load(b*8+v+1,candidates[b==5?7:b].id);
             amy_simple_fill_buffer(); amy_simple_fill_buffer();
-            std::printf("BANK architecture=A banks=%u patch=%u load_us=%lld heap_delta=%zu alloc_calls=%u total_bytes=%zu\n",banks,candidates[b==5?7:b],elapsed(t),probe_bytes()-bytes,probe_calls()-calls,probe_bytes()-base);
+            std::printf("BANK architecture=A banks=%u patch=%u load_us=%lld heap_delta=%zu alloc_calls=%u total_bytes=%zu\n",banks,candidates[b==5?7:b].id,elapsed(t),probe_bytes()-bytes,probe_calls()-calls,probe_bytes()-base);
         }
         const auto calls=probe_calls();const auto t=Clock::now();
         for(unsigned v=0;v<8;++v) load(v+1,142);
@@ -51,7 +51,8 @@ int main() {
         assert(probe_calls()>calls); // Not allocation-free, even with equal oscillator cost.
         amy_stop(); assert(probe_bytes()==base && probe_live()==live);
     }
-    for(unsigned patch:candidates) {
+    for(const auto& candidate:candidates) {
+        const unsigned patch=candidate.id;
         start(1,64);
         for(unsigned v=0;v<8;++v) load(v+1,patch);
         amy_simple_fill_buffer();amy_simple_fill_buffer();

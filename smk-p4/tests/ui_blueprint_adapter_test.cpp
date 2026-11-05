@@ -12,6 +12,7 @@ struct Mock final : PerformanceBackend {
     PerformanceState s{}; bool ready=true,accept=true,error=false; uint32_t rev=1;
     unsigned ons=0,offs=0,panics=0,patches=0,masters=0;
     bool expanded=false,patch_available=true;
+    uint16_t third_patch=138;
     uint16_t requested_patch=0; uint8_t requested_master=0;
     void service(uint32_t) override {}
     bool connected() const override { return ready; }
@@ -21,7 +22,7 @@ struct Mock final : PerformanceBackend {
     const char* status() const override { return ready?"READY":"OFFLINE"; }
     bool midiError() const override { return error; }
     uint16_t patchCount() const override { return expanded?3:2; }
-    uint16_t patchAt(uint16_t i) const override { return i==0?128:i==1?135:expanded && i==2?138:UINT16_MAX; }
+    uint16_t patchAt(uint16_t i) const override { return i==0?128:i==1?135:expanded && i==2?third_patch:UINT16_MAX; }
     bool patchInfo(uint16_t i,PatchInfo& p,uint32_t) override { p.id=patchAt(i);p.available=i<patchCount() && patch_available;return i<patchCount(); }
     bool setPatch(uint16_t id,uint32_t) override { ++patches;requested_patch=id;return accept; }
     bool setMaster(uint8_t v,uint32_t) override { ++masters;requested_master=v;return accept; }
@@ -236,6 +237,9 @@ static void realRuntime() {
 static void discovery() {
     Mock m;m.expanded=true;UiBlueprintPerformanceAdapter a(m);a.service(1);
     assert(a.isPatchSelectable(138) && !a.isPatchSelectable(142));
+    m.third_patch=240;assert(!a.isPatchSelectable(240)); // Demo ID is not a ROM mapping.
+    m.third_patch=391;assert(!a.isPatchSelectable(391));
+    m.third_patch=138;
     m.patch_available=false;assert(!a.isPatchSelectable(138));
     assert(a.requestSelectPatch(138).state==UiCommandState::Unsupported);
     m.patch_available=true;assert(a.requestSelectPatch(138).state==UiCommandState::Requested);

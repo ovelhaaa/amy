@@ -34,7 +34,7 @@ bool UiBlueprintPerformanceAdapter::isParameterEditable(const char* id) const {
 bool UiBlueprintPerformanceAdapter::isPatchSelectable(uint16_t id) const {
     size_t count=0; const auto* entries=UiModel::catalog(count);
     bool represented=false;
-    for(size_t i=0;i<count;++i) if(entries[i].id==id) represented=true;
+    for(size_t i=0;i<count;++i) if(entries[i].id==id && entries[i].status!=FeatureStatus::Demo) represented=true;
     if(!represented) return false;
     for(uint16_t i=0;i<backend_.patchCount();++i) if(backend_.patchAt(i)==id) {
         PatchInfo info;
@@ -152,7 +152,7 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
         if(d.active_voices!=s.active_notes || d.render_max_us!=s.max_render_us || d.deadline_misses!=s.deadline_misses) model_.bumpRevision();
         d.active_voices=static_cast<uint8_t>(s.active_notes); d.render_max_us=s.max_render_us; d.deadline_misses=s.deadline_misses;
     }
-    if(patch_.active && uint32_t(now_ms-patch_.requested_ms)>=2000) {
+    if(patch_.active && uint32_t(now_ms-patch_.requested_ms)>=kPatchConfirmationTimeoutMs) {
         patch_.active=false;
         result(UiCommandState::Rejected,"perf.patch_id","PATCH NOT CONFIRMED; OWNER STATE RETAINED");
     }

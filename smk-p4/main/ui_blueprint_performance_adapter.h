@@ -8,6 +8,7 @@ class UiBlueprintPerformanceAdapter final : public ui::IUiBackend {
 public:
     static constexpr unsigned kGestureCapacity = 32;
     static constexpr uint32_t kTouchLeaseMs = 10000;
+    static constexpr uint32_t kPatchConfirmationTimeoutMs = 2000;
     explicit UiBlueprintPerformanceAdapter(PerformanceBackend& backend);
     ui::UiModel& model() override { return model_; }
     const ui::UiModel& model() const override { return model_; }

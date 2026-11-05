@@ -16,7 +16,7 @@ size_t Runtime::bootFreeInternalBytes() {
     constexpr unsigned blocks=(kDeltaReserve+kDeltaBlockSize-1)/kDeltaBlockSize;
     // Extra banks retain the historical reserve. 512 B/osc is a conservative
     // admission allowance (P4 synthinfo+mod state 408 B, plus maps/FIFOs).
-    constexpr size_t extra_bank_bytes=(kPatchCount-2)*kVoices*kOscillatorsPerVoice*512;
+    constexpr size_t extra_bank_bytes=(kPatchCount-2)*kVoices*kOscillatorsPerVoice*kAdditionalOscillatorAdmissionBytes;
     return kBootBaseFreeInternalBytes+(blocks-1)*kDeltaBlockSize*sizeof(struct delta)+extra_bank_bytes;
 }
 bool Runtime::hasBootMemory(size_t free_internal_bytes,size_t largest_internal_bytes) {
