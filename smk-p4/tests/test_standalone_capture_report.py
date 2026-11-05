@@ -66,6 +66,19 @@ class CaptureReportTest(unittest.TestCase):
         text=text.replace('I (0) P4_AMY: AUDIO','I (172) esp_image: partial I (0) P4_AMY: AUDIO',1)
         self.assertTrue(report(text)['serial_checks_pass'])
 
+    def test_same_tag_fragment_cannot_supply_later_display_timestamp(self):
+        for payload in ('LVGL free=40000', 'diag_buttons=0 touch_errors=0 flush_err'):
+            text=fixture().replace('I (0) DISPLAY_TEST:',
+                'I (999999) DISPLAY_TEST: '+payload+'I (0) DISPLAY_TEST:',1)
+            result=report(text)
+            self.assertTrue(result['serial_checks_pass'])
+            self.assertEqual(result['span_seconds']['LVGL'],1800)
+            self.assertEqual(result['max_gap_seconds']['DISPLAY'],5)
+        # Keep a complete error record even when another record follows it.
+        text=fixture().replace('I (0) DISPLAY_TEST:',
+            'I (0) DISPLAY_TEST: diag_buttons=0 touch_errors=0 flush_errors=1 refresh=0 I (0) DISPLAY_TEST:',1)
+        self.assertFalse(report(text)['checks']['DISPLAY_errors_zero'])
+
     def test_capacity_is_selected_without_accepting_extra_notes(self):
         six=fixture().replace('notes=0','notes=6')
         self.assertFalse(report(six)['serial_checks_pass'])

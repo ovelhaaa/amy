@@ -53,18 +53,20 @@ def report(text, min_seconds=1800, hotplugs=4, blueprint=True, voices=4):
             if kind == "AUDIO":
                 fields["mode"] = rest.split()[0]
             rows[kind].append(fields)
-        display_record = re.search(r"I \((\d+)\) DISPLAY_TEST: (.*)", line)
-        display_text = display_record[2] if display_record else ""
-        display_time = int(display_record[1]) if display_record else 0
-        lvgl = re.search(r"LVGL free=(\d+) largest=(\d+) peak_used=(\d+) fragmentation=(\d+)%", display_text)
-        if lvgl:
-            rows["LVGL"].append(dict(zip(("free", "largest", "peak_used", "fragmentation"), map(int, lvgl.groups())), t_ms=display_time))
+        # Native USB may retain a truncated record across capture sessions.
+        # Bound each payload at the next logger prefix, keeping every complete
+        # record so an earlier error cannot be hidden by a later clean record.
+        for display_record in re.finditer(r"I \((\d+)\) DISPLAY_TEST: (.*?)(?=I \(\d+\) |$)", line.rstrip("\r\n")):
+            display_text, display_time = display_record[2], int(display_record[1])
+            lvgl = re.search(r"LVGL free=(\d+) largest=(\d+) peak_used=(\d+) fragmentation=(\d+)%", display_text)
+            if lvgl:
+                rows["LVGL"].append(dict(zip(("free", "largest", "peak_used", "fragmentation"), map(int, lvgl.groups())), t_ms=display_time))
+            display = re.search(r"diag_buttons=\d+ touch_errors=(\d+) flush_errors=(\d+) refresh=(\d+)", display_text)
+            if display:
+                rows["DISPLAY"].append(dict(zip(("touch_errors", "flush_errors", "refresh"), map(int, display.groups())), t_ms=display_time))
         heap = re.search(r"I \((\d+)\) SMK_P4_GATE0: heap internal free=(\d+) min=(\d+) largest=(\d+); PSRAM total=(\d+) free=(\d+) min=(\d+) largest=(\d+)", line)
         if heap:
             rows["HEAP"].append(dict(zip(("internal_free", "internal_min", "internal_largest", "psram_total", "psram_free", "psram_min", "psram_largest"), map(int, heap.groups()[1:])), t_ms=int(heap[1])))
-        display = re.search(r"diag_buttons=\d+ touch_errors=(\d+) flush_errors=(\d+) refresh=(\d+)", display_text)
-        if display:
-            rows["DISPLAY"].append(dict(zip(("touch_errors", "flush_errors", "refresh"), map(int, display.groups())), t_ms=display_time))
 
     needed = ["AUDIO", "ENGINE", "USB", "LVGL", "HEAP", "DISPLAY"] + (["UI_BLUEPRINT"] if blueprint else [])
     checks = {"complete_telemetry": all(len(rows[k]) >= 2 for k in needed),
