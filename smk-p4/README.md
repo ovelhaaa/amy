@@ -1,3 +1,31 @@
+# Sound Library 0.7 — candidato isolado
+
+Perfil opt-in de oito vozes e quatro bancos FM residentes:128 Brass,135 Piano,
+138 Electric Piano,142 Bass. O padrão e os bundles físicos0.6 foram preservados.
+Nenhuma troca dinâmica/alocação de patches no serviço; sem novos efeitos/drivers.
+Juno permanece planejado: memória/margem física não qualificada e Lead32 clipou
+no teste host. Metadados canônicos e descoberta via PerformanceBackend alimentam
+Browser/Prev/Next; nome ativo só muda após snapshot do owner.
+
+```powershell
+pwsh -NoProfile -File smk-p4/tests/run_amy.ps1 -Voices 8 -SoundLibrary
+pwsh -NoProfile -File smk-p4/ui-preview/run_preview.ps1
+pwsh -NoProfile -File smk-p4/tests/run_blueprint_adapter.ps1 -Voices 8 -SoundLibrary
+python smk-p4/tests/audit_patch_library.py --check
+C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-sound-library-8 -j 8
+python smk-p4/tests/check_blueprint_build.py --voices 8 --sound-library --environment guition-sound-library-8
+```
+
+Esse build seguro deixa I²S/USB desligados. O ambiente separado
+`guition-sound-library-8-bench` usa a montagem histórica0.6; build não autoriza
+upload. Operador autorizou a gravação; startup físico da revisão corrigida PASS.
+Smoke/audição e janela prolongada: **MANUAL / PENDENTES**. Não herda o PASS físico0.6.
+[Registro da gravação/rollback/memória](docs/sound_library_07_hardware_qualification.md).
+[Inventário](docs/patch_library_inventory_07.md), [resultados/limites](docs/sound_library_07_results.md),
+[procedimento físico](docs/sound_library_07_hardware_test.md).
+Após commits/builds/testes, `python smk-p4/tests/package_sound_library.py` congela
+fontes, imagens, configuração, WAVs, logs e manifesto SHA256 sem sobrescrever bundles.
+
 # Integration0.4 — candidato Blueprint1.1
 
 UI antiga preservada como padrão em `guition-standalone`. Candidato de14 telas,
