@@ -194,10 +194,31 @@ static void realRuntime() {
     publish(10011);
     UiBlueprint app(a);assert(app.begin());preview::pumpFrame(app);
     assert(preview::saveFramebufferPpm("build/p404/real_amy_host_stage.ppm"));
+#ifdef SMKP4_SOUND_LIBRARY
+    for(uint16_t id:{uint16_t(138),uint16_t(142),uint16_t(128),uint16_t(135)}) {
+        auto* next=button(app.contentObject(),"NEXT >");assert(next);
+        const auto old=a.model().activePatch().id;
+        lv_obj_send_event(next,LV_EVENT_CLICKED,nullptr);
+        assert(a.model().activePatch().id==old);
+        r.apply(10011);publish(10011);preview::pumpFrame(app);
+        assert(a.model().activePatch().id==id);
+    }
+    auto* prev=button(app.contentObject(),"< PREV");assert(prev);
+    lv_obj_send_event(prev,LV_EVENT_CLICKED,nullptr);r.apply(10011);publish(10011);preview::pumpFrame(app);
+    assert(a.model().activePatch().id==128);
+    a.requestSelectPatch(138);r.apply(10011);publish(10011);preview::pumpFrame(app);
+    assert(button(app.contentObject(),"E.PIANO  |  FM 6-OP  |  ROM DX7"));
+    assert(preview::saveFramebufferPpm("build/p404/library07_stage.ppm"));
+#endif
     assert(app.navigation().navigateTo(ScreenId::Performance,1));preview::pumpFrame(app);
     assert(preview::saveFramebufferPpm("build/p404/real_amy_host_keys.ppm"));
     assert(app.navigation().navigateTo(ScreenId::PatchBrowser));preview::pumpFrame(app);
     assert(preview::saveFramebufferPpm("build/p404/real_amy_host_browser.ppm"));
+#ifdef SMKP4_SOUND_LIBRARY
+    auto* avail=button(app.contentObject(),"P4 ROM (AVAIL)");assert(avail);
+    lv_obj_send_event(avail,LV_EVENT_CLICKED,nullptr);preview::pumpFrame(app);
+    assert(preview::saveFramebufferPpm("build/p404/library07_browser.ppm"));
+#endif
     assert(app.navigation().navigateTo(ScreenId::Diagnostics));preview::pumpFrame(app);
     assert(preview::saveFramebufferPpm("build/p404/real_amy_host_diagnostics.ppm"));app.shutdown();
     // Saturated production queue: rejects On; Off/Panic still reach owner.

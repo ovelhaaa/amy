@@ -40,6 +40,7 @@ static void readModel() {
     backend.publishMidi(false,true,18);
     assert(backend.midiError() && backend.connected() && state.flags==smk::link::kAudioLive);
     owner.ready=false; backend.publish(owner,false,322,5);
+    assert(backend.patchInfo(1,info,0) && !info.available);
     assert(!backend.connected() && std::strcmp(backend.status(),"AMY INIT/ERROR")==0);
 }
 
