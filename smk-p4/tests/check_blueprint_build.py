@@ -19,7 +19,7 @@ def main():
     project = Path(__file__).resolve().parents[1]
     environment = "guition-standalone-blueprint" + (f"-{args.voices}" if args.voices != 4 else "")
     if args.environment:
-        require(args.environment in {"guition-standalone-blueprint", "guition-standalone-blueprint-6", "guition-standalone-blueprint-8", "guition-standalone-blueprint-6-bench"}, "unknown environment")
+        require(args.environment in {"guition-standalone-blueprint", "guition-standalone-blueprint-6", "guition-standalone-blueprint-8", "guition-standalone-blueprint-6-bench", "guition-standalone-blueprint-8-bench"}, "unknown environment")
         environment = args.environment
     build = project / ".pio/build" / environment
     defines = dict(re.findall(r"^#define (CONFIG_\w+) ([^\r\n]+)", (build / "config/sdkconfig.h").read_text(), re.M))

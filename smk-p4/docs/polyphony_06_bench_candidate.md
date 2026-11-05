@@ -119,3 +119,12 @@ NOT RUN/conclusão pendente: janela contínua reiniciada em
 coexistência Touch/USB e navegação sob carga. Até concluir a captura e analisar
 os critérios, seis vozes permanecem candidato em validação física; oito não
 foi gravado nem autorizado por esta aprovação de seis vozes.
+
+
+## Qualificação física6 concluída — 2026-11-05
+
+PASS: janela contínua >30min, seis notas nos dois patches, quatro hot-plugs,
+Touch/USB, 30 mudanças de tela e audição aprovada pelo operador. Render máximo
+2736us, deadlines/clipping/OOM/drops0, heap interno mínimo188415B.
+Detalhes e limites: [qualificação física](polyphony_06_hardware_qualification.md).
+O checkpoint pré-autorização acima é histórico. Oito ainda não foi gravado.

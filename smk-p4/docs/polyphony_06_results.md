@@ -229,3 +229,12 @@ Os bundles seguros anteriores permanecem congelados; os diretórios .pio
 anteriores foram invalidados pelo PlatformIO ao mudar platformio.ini. A tentativa
 de repetir o checker nesses caches ausentes foi BLOCKED por sdkconfig.h ausente;
 não altera os PASS nem hashes dos artefatos seguros preservados.
+
+
+## Qualificação física6 concluída — 2026-11-05
+
+PASS: janela contínua >30min, seis notas nos dois patches, quatro hot-plugs,
+Touch/USB, 30 mudanças de tela e audição aprovada pelo operador. Render máximo
+2736us, deadlines/clipping/OOM/drops0, heap interno mínimo188415B.
+Detalhes e limites: [qualificação física](polyphony_06_hardware_qualification.md).
+O checkpoint pré-autorização acima é histórico. Oito ainda não foi gravado.
