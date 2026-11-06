@@ -27,12 +27,20 @@ def main():
     target = ROOT / "build" / f"unified_engine_08_review_{commit[:8]}_{uuid.uuid4().hex[:8]}"
     target.mkdir(parents=True, exist_ok=False)
     metrics = json.loads((ROOT / "smk-p4/docs/unified_engine_08_host_metrics.json").read_text())
+    preflight = json.loads((ROOT / "build/unified08/preflight.json").read_text())
+    assert preflight.get("independent_reads_match") is True
+    assert preflight.get("installed_matches_07_usb64") is True
+    assert preflight.get("candidate_partition_matches_installed") is True
+    assert sha(ROOT / "build/unified08/preflash_full_16m.bin") == preflight["backup_sha256"]
+    assert sha(ROOT / "build/unified08/preflash_verify_16m.bin") == preflight["backup_sha256"]
+    rollback = ROOT / "build/unified08/rollback_07_usb64_full.zip"
+    assert sha(rollback) == preflight["rollback_bundle_sha256"]
     assert len(metrics["patches"]) == 16 and sum(p["software_candidate"] for p in metrics["patches"]) == 15
     for path, expected in metrics["evidence_sha256"].items():
         assert sha(ROOT / path) == expected, "Evidence changed: regenerate matrix"
     manifest = {"schema_version": 1, "source_commit": commit, "branch": git("branch", "--show-current"),
                 "baseline_commit": git("rev-parse", "bd564872"), "hardware_qualified": False,
-                "flash_authorized": False, "device_backup_verified_in_this_task": False,
+                "flash_authorized": False, "device_backup_verified_in_this_task": True,
                 "voices": 8, "resident_instruments": 8, "oscillator_capacity": 64,
                 "software_patch_ids": [p["id"] for p in metrics["patches"] if p["software_candidate"]],
                 "profiles": {}, "files": {}}
@@ -79,6 +87,8 @@ def main():
             "static_dram_bytes": sum(sections.get(n, 0) for n in (".dram0.data", ".dram1.data", ".dram0.bss", ".dram1.bss")),
             "iram_bytes": sum(size for name, size in sections.items() if name.startswith(".iram")),
             "sections_bytes": {name: size for name, size in sections.items() if name.startswith((".dram", ".iram", ".rtc", ".tcm"))}}
+        if audible:
+            assert manifest["profiles"][environment]["firmware_sha256"] == preflight["candidate_app_sha256"]
     for file in (ROOT / "build/unified08").glob("*.wav"):
         copy(file, "audio/" + file.name)
     for file in (ROOT / "build/unified08").glob("*.log"):
@@ -91,7 +101,16 @@ def main():
     for pattern in ("regression08*.log", "unified08*.log", "ui08*.log"):
         for file in (ROOT / "build").glob(pattern):
             copy(file, "logs/" + file.name)
+    retrigger_root = ROOT / "build/retrigger_ab"
+    if retrigger_root.exists():
+        for run in retrigger_root.iterdir():
+            if not run.is_dir():
+                continue
+            for pattern in ("manifest.json", "*.wav", "*test_retrigger_scenarios.log"):
+                for file in run.glob(pattern):
+                    copy(file, f"retrigger_ab/{run.name}/{file.name}")
     copy(ROOT / "smk-p4/docs/unified_engine_08_host_metrics.json", "host_metrics.json")
+    copy(rollback, "rollback/rollback_07_usb64_full.zip")
     subprocess.check_call(["git", "archive", "--format=zip", "--output=" + str(target / "source.zip"), commit], cwd=ROOT)
     (target / "change.patch").write_bytes(subprocess.check_output(["git", "diff", "bd564872", commit], cwd=ROOT))
     for file in target.rglob("*"):

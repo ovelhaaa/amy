@@ -97,10 +97,10 @@ full SHA256 values and section sizes. No device read/reset was involved.
 |Image|App bin bytes|DRAM0+DRAM1 data/BSS|IRAM text|
 |---|---:|---:|---:|
 |0.7 USB64 audible baseline|1204704|170696|101780|
-|0.8 safe, wiring gates OFF|1110656|171432|96542|
-|0.8 audible review candidate|1211344|171864|101780|
+|0.8 safe, wiring gates OFF|1110704|171432|96542|
+|0.8 audible review candidate|1211392|171864|101780|
 
-Like-for-like audible image: +6640 app bytes and +1168 static DRAM bytes;
+Like-for-like audible image: +6688 app bytes and +1168 static DRAM bytes;
 IRAM text unchanged. The fixed output worker additionally requests4096 stack
 bytes dynamically; its handoff is in the existing12288-byte synthesis task
 stack. These are separate from AMY heap savings and need target stack minima.

@@ -11,7 +11,7 @@ UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend&
     meters_.is_simulated=false; // No amplitude measurement available: meters stay zero/N/A.
     auto& d=model_.diagnostics();
     d={}; d.is_demo_mode=false; d.firmware_version="SMK-P4 LIBRARY 0.7"; d.max_voices=backend_.voiceCapacity();
-#ifdef SMKP4_UNIFIED_ENGINE
+#if defined(SMKP4_UNIFIED_ENGINE) || defined(CONFIG_SMKP4_UNIFIED_ENGINE)
     d.firmware_version="SMK-P4 UNIFIED 0.8 CANDIDATE";
 #endif
     d.amy_status="WAIT SNAPSHOT"; d.i2s_status="NOT LIVE"; d.usb_status="DISCONNECTED";

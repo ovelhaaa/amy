@@ -50,6 +50,8 @@ def main():
     for flag in ("AMY_SAMPLE_RATE=48000", "AMY_BLOCK_SIZE=256", "AMY_PATCH_CHECKED_RESOURCE_ADMISSION=1", "AMY_EXCLUSIVE_FM_PHASE_RESTART=1"):
         require(flag in amy["command"], flag)
     require((build / "firmware.bin").stat().st_size > 0, "missing firmware")
+    if args.unified_engine:
+        require(b"SMK-P4 UNIFIED 0.8 CANDIDATE" in (build / "firmware.bin").read_bytes(), "missing0.8 firmware UI identity")
     print("PASS: effective Blueprint target, electrical gates, live adapter, single LVGL, pool128KB, AMY48000/256")
     print("MANUAL: compilation does not qualify physical audio, USB, touch, memory or deadlines")
 

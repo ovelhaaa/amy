@@ -1,9 +1,39 @@
 # Physical qualification0.8 — MANUAL / NOT RUN
 
-No serial port, reset, backup read, flash write or device state change was
-performed in this task. Existing installed firmware, full backups and rollback
+Preflight identified COM13 (USB serial80:F1:B2:D3:CC:86), captured the running
+0.7 diagnostics, and reset the device for read-only flash backup. No flash write
+has been performed. Existing installed firmware, full backups and rollback
 bundles are preserved. Historical0.7 USB64 smoke is not0.8 approval; corrected
 0.7 did not undergo a replacement prolonged window.
+
+The ROM identified ESP32-P4 revision1.3. Two independent complete16MiB reads
+matched SHA256 `5f131de44b8884e20f260587a6c0ff17508d9779d253ffba6005bb1583a44912`.
+The installed application at0x10000 matches the documented0.7 USB64 SHA256
+`2038bb68159ecc88aa256cf286a434b32914fc5e461b320f28216691b17b26f1`.
+The installed3072-byte partition table matches the candidate table. The verified
+full-flash/app-only rollback bundle is `build/unified08/rollback_07_usb64_full.zip`,
+SHA256 `97fa77f6d6f43388f9d9dc54ddac57f3825b6a7e961808b74ef849e1b20bce14`.
+The post-backup0.7 serial capture shows AMY ready, zero notes and zero recorded
+I2S errors/compute deadlines/OOM/dropped USB events over the short observation.
+This is not a new 0.8 audio or stability test.
+
+The audible candidate is1211392 bytes at0x10000, SHA256
+`a5b410c29b677fcdc894ee78b1f2a22c64d98594143f460edd7800a4965e8617`.
+Image inspection identifies ESP32-P4,16MB, DIO/80MHz; the previous application
+has the same image-header settings. Effective sdkconfig selects eight voices,
+PCM5102 GPIO50/51/52 and USB HS0. The prior bench wiring confirmation is historical;
+reconfirm the physical setup before any flash. Generic permission was given to
+prepare recording, but this task's instruction requires explicit confirmation of
+this exact candidate SHA before writing it.
+
+The reviewed write scope is the application at0x10000 only, within the existing
+0x300000-byte factory partition. Bootloader, partition table, NVS and the rest
+of flash are outside that requested write. Use esptool's `keep` flash header
+settings and verify a post-write application readback against the candidate SHA.
+The generated `flasher_args.json` lists DIO/40MHz, while `image-info` reports
+DIO/80MHz in both the installed and candidate application headers. Treat these
+as distinct configuration artifacts, not a measurement of the live flash clock;
+do not overwrite the existing bootloader to resolve this discrepancy.
 
 ## Candidate review before any upload
 
