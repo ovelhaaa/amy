@@ -71,10 +71,18 @@ lv_obj_t* createPatchSelectorCard(lv_obj_t* parent, IUiBackend& backend, UiNavig
             size_t next_idx = cur_idx;
             for (size_t step = 0; step < count; ++step) {
                 next_idx = (next_idx + count + (ctx->action > 0 ? 1 : count - 1)) % count;
-                if (ctx->backend->isPatchSelectable(cat[next_idx].id)) {
+                if (ctx->backend->isPatchSelectable(cat[next_idx].id)
+#if defined(SMKP4_FULL_FACTORY_LIBRARY) || defined(CONFIG_SMKP4_FULL_FACTORY_LIBRARY)
+                    && ctx->backend->model().matchesBrowser(cat[next_idx])
+#endif
+                   ) {
                     break;
                 }
             }
+            if(next_idx==cur_idx || !ctx->backend->isPatchSelectable(cat[next_idx].id)) return;
+#if defined(SMKP4_FULL_FACTORY_LIBRARY) || defined(CONFIG_SMKP4_FULL_FACTORY_LIBRARY)
+            if(!ctx->backend->model().matchesBrowser(cat[next_idx]))return;
+#endif
             ctx->backend->requestSelectPatch(cat[next_idx].id, 0);
             ctx->nav->navigateTo(ctx->nav->currentScreen(), ctx->nav->subTab(ctx->nav->currentScreen()));
         } else if (ctx->action == 2) {

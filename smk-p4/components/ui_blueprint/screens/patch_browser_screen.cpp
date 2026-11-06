@@ -24,12 +24,16 @@ struct BrowserActionCtx {
 };
 
 bool matchesFilter(const IUiBackend& backend, const BlueprintPatchEntry& p) {
+#if defined(SMKP4_FULL_FACTORY_LIBRARY) || defined(CONFIG_SMKP4_FULL_FACTORY_LIBRARY)
+    return backend.model().matchesBrowser(p);
+#else
     if (g_browser.bank_filter == 1 && backend.patchStatus(p.id) != FeatureStatus::Available) return false;
     if (g_browser.bank_filter == 2 && backend.patchStatus(p.id) != FeatureStatus::Planned) return false;
     if (g_browser.bank_filter == 3 && backend.patchStatus(p.id) != FeatureStatus::Demo) return false;
     if (g_browser.bank_filter == 4 && !backend.model().isFavorite(p.id)) return false;
     if (g_browser.cat_filter != PatchCategory::All && p.category != g_browser.cat_filter) return false;
     return true;
+#endif
 }
 
 class PatchBrowserScreen final : public ScreenView {
@@ -37,6 +41,8 @@ public:
     ScreenId id() const override { return ScreenId::PatchBrowser; }
 
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
+        backend.model().browser_bank=g_browser.bank_filter;
+        backend.model().browser_category=g_browser.cat_filter;
         nav_=&nav; shown_patch_=backend.model().activePatch().id;
         auto cb = [](lv_event_t* e) {
             if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
@@ -80,7 +86,11 @@ public:
 
         // 1. Bank Filter Row (y = 4..40)
         static constexpr const char* kBankLabels[5] = {
+#if defined(SMKP4_FULL_FACTORY_LIBRARY) || defined(CONFIG_SMKP4_FULL_FACTORY_LIBRARY)
+            "ALL BANKS", "JUNO A", "JUNO B", "AMY DX7", "FAVORITES *"
+#else
             "ALL BANKS", "P4 ROM (AVAIL)", "S3/AMY ROM (PLAN)", "USER (DEMO)", "FAVORITES *"
+#endif
         };
         for (uint8_t b = 0; b < 5; ++b) {
             lv_obj_t* btn = createActionButton(parent, kBankLabels[b], 8 + b * 158, 4, 152, 34,
@@ -134,8 +144,8 @@ public:
             const bool is_fav = backend.model().isFavorite(entry->id);
 
             char row_txt[64];
-            std::snprintf(row_txt, sizeof(row_txt), "%03u  %-18s  [%s] %s",
-                          entry->id, entry->name, entry->bank_name, is_fav ? "*" : "");
+            std::snprintf(row_txt, sizeof(row_txt), "%03u  %.28s %s%s",
+                          entry->id, entry->name, backend.isPatchSelectable(entry->id)?"":"[UNAVAIL] ", is_fav ? "*" : "");
             lv_obj_t* rbtn = createActionButton(list_panel, row_txt, 4, ry, 416, 38,
                                                 nullptr, nullptr, is_sel, !backend.isDemoMode() && (!backend.isPatchSelectable(entry->id) || g_browser.target_layer!=0));
             if (rbtn) {
@@ -186,7 +196,7 @@ public:
         const char* status_note =
             (!backend.isDemoMode() && g_browser.target_layer != 0) ? "LAYER B PLANNED; NO DSP" :
             (backend.patchStatus(cur.id) == FeatureStatus::Available) ? "P4 RUNTIME: AMY ROM READY"
-          : (backend.patchStatus(cur.id) == FeatureStatus::Planned)   ? "S3/AMY ROM: PLANNED FOR P4"
+          : (backend.patchStatus(cur.id) == FeatureStatus::Planned)   ? "UNAVAILABLE: NOT HOST APPROVED"
                                                      : "DEMO SLOT: UI RAM PROTOTYPE";
         createLabel(insp, status_note, 8, 128, 246, &lv_font_montserrat_14, palette::kWarning);
 

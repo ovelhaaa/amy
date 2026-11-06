@@ -95,7 +95,9 @@ public:
     static constexpr size_t kModSlots      = 8;
     static constexpr size_t kMidiMappings  = 8;
     static constexpr size_t kCatalogSize   =
-#if defined(SMKP4_UNIFIED_ENGINE) || defined(CONFIG_SMKP4_UNIFIED_ENGINE)
+#if defined(SMKP4_FULL_FACTORY_LIBRARY) || defined(CONFIG_SMKP4_FULL_FACTORY_LIBRARY)
+        256;
+#elif defined(SMKP4_UNIFIED_ENGINE) || defined(CONFIG_SMKP4_UNIFIED_ENGINE)
         20;
 #else
         16;
@@ -127,6 +129,9 @@ public:
     const BlueprintPatchEntry& layerPatch(uint8_t layer_idx) const;
     bool selectPatchById(uint16_t patch_id, uint8_t target_layer = 0);
     bool isFavorite(uint16_t patch_id) const;
+    uint8_t browser_bank=0;
+    PatchCategory browser_category=PatchCategory::All;
+    bool matchesBrowser(const BlueprintPatchEntry& patch) const;
     void toggleFavorite(uint16_t patch_id);
 
     uint8_t activeEditLayer() const { return active_edit_layer_; }

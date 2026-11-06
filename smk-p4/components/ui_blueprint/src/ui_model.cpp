@@ -10,7 +10,10 @@ namespace smk::p4::ui {
 
 namespace {
 
-const BlueprintPatchEntry kPatchCatalog[UiModel::kCatalogSize] = {
+constexpr BlueprintPatchEntry kPatchCatalog[UiModel::kCatalogSize] = {
+#if defined(SMKP4_FULL_FACTORY_LIBRARY) || defined(CONFIG_SMKP4_FULL_FACTORY_LIBRARY)
+#include "../../amy_runtime/factory_ui.inc"
+#else
     // Real P4 standalone ROM patches (Available in smk-p4/components/amy_runtime/runtime_config.h)
     {library::kCandidates[0].id, library::kCandidates[0].name,     "ROM P4",   static_cast<PatchCategory>(library::kCandidates[0].category), static_cast<SynthFamily>(library::kCandidates[0].family),            FeatureStatus::Available, true,
      {"CHAR", "BRIGHT", "MOTION", "FDBK", "RATIO", "DTUNE", "SPACE", "EDGE"}},
@@ -58,6 +61,7 @@ const BlueprintPatchEntry kPatchCatalog[UiModel::kCatalogSize] = {
      {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},
     {241, "USER KARPLUS PLK","USER DEMO",PatchCategory::Plucks,        SynthFamily::KarplusStrong, FeatureStatus::Demo,      false,
      {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}}
+#endif
 };
 
 } // namespace
@@ -390,6 +394,15 @@ bool UiModel::selectPatchById(uint16_t patch_id, uint8_t target_layer) {
     std::snprintf(buf, sizeof(buf), "DEMO PATCH %03u: %s [%s]",
                   found->id, found->name, featureStatusLabel(found->status));
     setNotice(buf);
+    return true;
+}
+
+bool UiModel::matchesBrowser(const BlueprintPatchEntry& p) const {
+    if(browser_category!=PatchCategory::All && p.category!=browser_category) return false;
+    if(browser_bank==1 && std::strcmp(p.bank_name,"JUNO A"))return false;
+    if(browser_bank==2 && std::strcmp(p.bank_name,"JUNO B"))return false;
+    if(browser_bank==3 && p.family!=SynthFamily::FM)return false;
+    if(browser_bank==4 && !isFavorite(p.id))return false;
     return true;
 }
 
