@@ -72,7 +72,7 @@ public:
         std::snprintf(info.name,sizeof(info.name),"%s",amy::kPatches[index].name); return true;
     }
     bool setPatch(uint16_t id,uint32_t now_ms) override {
-        if(!ready_ || amy::patchIndex(id)<0) return false;
+        if(!ready_ || busy() || amy::patchIndex(id)<0) return false;
         panic(); const bool accepted=commands_.push({amy::CommandType::Patch,id,0,0,0,now_ms});
 #ifdef SMKP4_UNIFIED_ENGINE
         pending_=accepted;

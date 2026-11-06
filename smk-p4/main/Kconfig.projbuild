@@ -17,3 +17,8 @@ config SMKP4_SOUND_LIBRARY
         Four boot-resident banks; fixed musical polyphony. Requires independent
         memory/audio qualification. No dynamic patch loading or new effects.
 endmenu
+
+config SMKP4_FULL_FACTORY_LIBRARY
+    bool "Qualified full Juno/DX7 factory catalog"
+    depends on SMKP4_UNIFIED_ENGINE && SMKP4_HARMONY
+    default n

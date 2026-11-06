@@ -5,6 +5,9 @@
 #ifdef ESP_PLATFORM
 #include "sdkconfig.h"
 #define SMKP4_VOICES CONFIG_SMKP4_AMY_VOICES
+#ifdef CONFIG_SMKP4_FULL_FACTORY_LIBRARY
+#define SMKP4_FULL_FACTORY_LIBRARY 1
+#endif
 #ifdef CONFIG_SMKP4_HARMONY
 #define SMKP4_HARMONY 1
 #endif
@@ -50,6 +53,15 @@ constexpr uint32_t kLeaseMs = 10000;
 using Patch = library::Patch;
 // Fixed boot-resident FM banks. Candidate profile is opt-in; no parsing/reload
 // in service, no shared-core changes, no reduction of musical capacity.
+#ifdef SMKP4_FULL_FACTORY_LIBRARY
+constexpr Patch kPatches[] = {
+#include "factory_supported.inc"
+};
+static_assert(kVoices==8, "Factory qualification requires eight musical voices");
+#ifndef SMKP4_UNIFIED_ENGINE
+#error Full factory library requires the reusable engine
+#endif
+#else
 constexpr Patch kPatches[] = {library::kCandidates[0], library::kCandidates[1]
 #if defined(SMKP4_SOUND_LIBRARY) || defined(SMKP4_UNIFIED_ENGINE)
     , library::kCandidates[2], library::kCandidates[3]
@@ -61,6 +73,7 @@ constexpr Patch kPatches[] = {library::kCandidates[0], library::kCandidates[1]
     library::kCandidates[14], library::kCandidates[15]
 #endif
 };
+#endif
 constexpr size_t kPatchCount = sizeof(kPatches) / sizeof(kPatches[0]);
 constexpr unsigned kOscillatorsPerVoice = 8;
 constexpr bool residentCostsMatch() {
