@@ -1,5 +1,6 @@
 #pragma once
 #include "runtime_config.h"
+#include "output_context.h"
 #include <atomic>
 namespace smk::p4::amy {
 enum class CommandType : uint8_t { NoteOn, Patch, Master, NoteOff, Control, Bend, Harmony };
@@ -34,7 +35,11 @@ public:
     uint32_t released(uint8_t note) const { return released_[note].load(std::memory_order_acquire); }
     // Owner publishes reason + generation in one lock-free word. Mismatch is unknown.
     std::atomic<uint32_t> output_context{0};
-    void panic() { generation_.fetch_add(1,std::memory_order_acq_rel); }
+    std::atomic<uint32_t> transition_context{0};
+    void panic(OutputReason reason=OutputReason::Panic) {
+        const auto generation=generation_.fetch_add(1,std::memory_order_acq_rel)+1;
+        transition_context.store(outputContext(generation,reason),std::memory_order_release);
+    }
     uint32_t generation() const { return generation_.load(std::memory_order_acquire); }
     uint32_t overflows() const { return overflows_.load(std::memory_order_relaxed); }
     uint32_t depth() const {

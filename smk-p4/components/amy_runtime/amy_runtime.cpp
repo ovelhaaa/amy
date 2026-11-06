@@ -1,6 +1,13 @@
 #include "amy_runtime.h"
 #include <cstring>
 #include <cmath>
+#ifdef SMKP4_HARMONY
+#ifdef ESP_PLATFORM
+#include "esp_timer.h"
+#else
+#include <chrono>
+#endif
+#endif
 extern "C" {
 #include "amy.h"
 void amy_platform_init() {}
@@ -11,6 +18,20 @@ int16_t* amy_render_audio() { return amy_simple_fill_buffer(); }
 size_t amy_i2s_write(const uint8_t*,size_t bytes) { return bytes; }
 }
 namespace smk::p4::amy {
+#ifdef SMKP4_HARMONY
+static uint32_t musicalTimeUs() {
+#ifdef ESP_PLATFORM
+    return uint32_t(esp_timer_get_time());
+#else
+    return uint32_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+#endif
+}
+struct AdmissionTimer {
+    uint32_t start=musicalTimeUs();uint32_t& maximum;
+    explicit AdmissionTimer(uint32_t& value):maximum(value){}
+    ~AdmissionTimer(){const uint32_t elapsed=musicalTimeUs()-start;if(elapsed>maximum)maximum=elapsed;}
+};
+#endif
 static_assert(AMY_SAMPLE_RATE==kSampleRateHz && AMY_BLOCK_SIZE==kBlockFrames && AMY_NCHANS==2);
 size_t Runtime::bootFreeInternalBytes() {
     constexpr unsigned blocks=(kDeltaReserve+kDeltaBlockSize-1)/kDeltaBlockSize;
@@ -26,7 +47,7 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
     state_=Snapshot{}; bank_=0; gain_q16_=0;
     for(auto& v:voices_) v=Voice{};
     for(auto& g:groups_) g=Group{};
-    commands_.panic(); state_.generation=commands_.generation();
+    commands_.panic(OutputReason::Boot); state_.generation=commands_.generation();
     publishOutput(OutputReason::Boot);
     auto config=amy_default_config();
     config.features.default_synths=config.features.startup_bleep=0;
@@ -97,7 +118,7 @@ void Runtime::silence() {
     std::memset(bend_,0,sizeof(bend_)); std::memset(modulation_,0,sizeof(modulation_));
     for(auto& v:voices_) v=Voice{};
     for(auto& g:groups_) g=Group{};
-    state_.active_notes=0;state_.last_count=0;state_.last_admitted=false;
+    state_.active_notes=0;state_.last_count=0;state_.last_admitted=false;state_.last_result=0;
 }
 void Runtime::note(unsigned slot,uint8_t velocity) {
     const auto& v=voices_[slot];
@@ -131,15 +152,24 @@ void Runtime::releaseGroup(unsigned group) {
     for(unsigned i=0;i<kVoices;++i)if(voices_[i].used && voices_[i].group==group)release(i);
 }
 void Runtime::startGroup(bool usb,const Command& c,uint32_t now_ms) {
+#ifdef SMKP4_HARMONY
+    AdmissionTimer admission(state_.admission_max_us);
+    const uint32_t transform_start=musicalTimeUs();
+#endif
     auto config=state_.harmony;
     const bool eligible=usb?c.channel==config.channel:config.touch;
     if(!eligible)config.scale_on=config.chord_on=false;
     const auto notes=harmony::transform(uint8_t(c.id),config);
+#ifdef SMKP4_HARMONY
+    const uint32_t transform_us=musicalTimeUs()-transform_start;
+    if(transform_us>state_.transform_max_us)state_.transform_max_us=transform_us;
+#endif
     state_.last_input=uint8_t(c.id);state_.last_admitted=false;state_.last_count=0;
-    if(notes.error!=harmony::Error::None){++state_.harmony_errors;return;}
+    if(notes.error!=harmony::Error::None){state_.last_result=notes.error==harmony::Error::Filtered?2:4;if(state_.last_result==4)++state_.harmony_errors;return;}
     unsigned group=kVoices,free=0;
     for(unsigned i=0;i<kVoices;++i){if(!voices_[i].used)++free;if(!groups_[i].used && group==kVoices)group=i;}
     if(free<notes.count || group==kVoices || next_group_==UINT32_MAX) {
+        state_.last_result=3;
         if(notes.count>1)++state_.groups_rejected;else ++state_.polyphony_rejected;
         return;
     }
@@ -156,7 +186,7 @@ void Runtime::startGroup(bool usb,const Command& c,uint32_t now_ms) {
     }
     state_.active_notes+=notes.count;
     for(unsigned i=0;i<notes.count;++i){note(g.slots[i],c.value);state_.last_notes[i]=notes.notes[i];}
-    state_.last_group=g.identity;state_.last_count=notes.count;state_.last_admitted=true;++state_.groups_admitted;
+    state_.last_result=1;state_.last_group=g.identity;state_.last_count=notes.count;state_.last_admitted=true;++state_.groups_admitted;
 }
 void Runtime::cancelUsb() {
     for(unsigned i=0;i<kVoices;++i) if(voices_[i].used && voices_[i].usb) release(i);
@@ -266,7 +296,7 @@ void Runtime::apply(uint32_t now_ms) {
 #ifdef SMKP4_UNIFIED_ENGINE
             silence(); amy_execute_deltas(); gain_q16_=0;
             // Barrier discards all events admitted before this request was applied.
-            commands_.panic(); state_.generation=commands_.generation();
+            commands_.panic(OutputReason::Patch); state_.generation=commands_.generation();
             usb_.commands.panic(); usb_generation_=usb_.commands.generation();
             state_.requested_patch_id=c.id; state_.patch_error=0;
             state_.patch_state=PatchState::Requested;
@@ -398,7 +428,7 @@ void Runtime::loadPendingPatch() {
     const bool cancelled=commands_.generation()!=state_.generation ||
         usb_.commands.generation()!=usb_generation_;
     // Invalidate all traffic admitted DURING loading, not only before it.
-    commands_.panic();state_.generation=commands_.generation();
+    commands_.panic(OutputReason::Patch);state_.generation=commands_.generation();
     usb_.commands.panic();usb_generation_=usb_.commands.generation();
     silence();amy_execute_deltas();gain_q16_=0;
     if(!loaded || cancelled || amy_get_oom_count()!=load_oom_baseline_) {

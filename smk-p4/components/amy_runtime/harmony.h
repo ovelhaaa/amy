@@ -11,7 +11,7 @@ struct Config {
 struct State {
     Config configuration;
     uint32_t revision=0,errors=0,rejected=0,admitted=0,identity=0;
-    uint8_t notes[4]{},count=0,input=0,voices=0,capacity=8;
+    uint8_t notes[4]{},count=0,input=0,voices=0,capacity=8,result=0;
     bool last_admitted=false,available=false,pending=false;
 };
 constexpr uint32_t pack(Config c) {

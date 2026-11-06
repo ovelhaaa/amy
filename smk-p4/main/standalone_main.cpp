@@ -343,6 +343,12 @@ extern "C" void app_main() {
                 ESP_LOGI(kTag,"PATCH08 state=%u requested=%u confirmed=%u error=%ld changes=%lu failures=%lu; worker dma_* above=enqueue pacing, not physical I2S",
                     unsigned(state.engine.patch_state),state.engine.requested_patch_id,state.engine.patch_id,
                     long(state.engine.patch_error),(unsigned long)state.engine.patch_changes,(unsigned long)state.engine.patch_failures);
+#ifdef SMKP4_HARMONY
+                ESP_LOGI(kTag,"HARMONY09 revision=%lu groups=%lu rejected=%lu errors=%lu transform_max_us=%lu admission_max_us=%lu",
+                    (unsigned long)state.engine.harmony_revision,(unsigned long)state.engine.groups_admitted,
+                    (unsigned long)state.engine.groups_rejected,(unsigned long)state.engine.harmony_errors,
+                    (unsigned long)state.engine.transform_max_us,(unsigned long)state.engine.admission_max_us);
+#endif
                 ESP_LOGI(kTag,"GAP09 boot=%lu patch=%lu panic=%lu stale=%lu unexpected_active=%lu other=%lu stale_discarded=%lu",
                     (unsigned long)state.output.gaps.boot,(unsigned long)state.output.gaps.patch,
                     (unsigned long)state.output.gaps.panic,(unsigned long)state.output.gaps.stale,

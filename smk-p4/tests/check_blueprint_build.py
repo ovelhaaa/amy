@@ -14,6 +14,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sound-library", action="store_true")
     parser.add_argument("--unified-engine", action="store_true")
+    parser.add_argument("--harmony", action="store_true")
     parser.add_argument("--musical", action="store_true")
     parser.add_argument("--voices", type=int, choices=(4, 6, 8), default=4)
     parser.add_argument("--environment", help="Explicit build directory name")
@@ -21,10 +22,11 @@ def main():
     project = Path(__file__).resolve().parents[1]
     environment = "guition-standalone-blueprint" + (f"-{args.voices}" if args.voices != 4 else "")
     if args.environment:
-        require(args.environment in {"guition-unified-engine-8-bench", "guition-unified-engine-8", "guition-sound-library-8-bench", "guition-sound-library-8", "guition-standalone-blueprint", "guition-standalone-blueprint-6", "guition-standalone-blueprint-8", "guition-standalone-blueprint-6-bench", "guition-standalone-blueprint-8-bench"}, "unknown environment")
+        require(args.environment in {"guition-harmony-8", "guition-harmony-8-bench", "guition-unified-engine-8-bench", "guition-unified-engine-8", "guition-sound-library-8-bench", "guition-sound-library-8", "guition-standalone-blueprint", "guition-standalone-blueprint-6", "guition-standalone-blueprint-8", "guition-standalone-blueprint-6-bench", "guition-standalone-blueprint-8-bench"}, "unknown environment")
         environment = args.environment
     build = project / ".pio/build" / environment
     defines = dict(re.findall(r"^#define (CONFIG_\w+) ([^\r\n]+)", (build / "config/sdkconfig.h").read_text(), re.M))
+    require((defines.get("CONFIG_SMKP4_HARMONY")=="1")==args.harmony, "effective harmony profile")
     require((defines.get("CONFIG_SMKP4_SOUND_LIBRARY")=="1")==args.sound_library, "effective resident library profile")
     require((defines.get("CONFIG_SMKP4_UNIFIED_ENGINE")=="1")==args.unified_engine, "effective unified engine profile")
     require(defines.get("CONFIG_SMKP4_AMY_VOICES") == str(args.voices), "compiled polyphony differs from selected profile")
@@ -50,7 +52,10 @@ def main():
     for flag in ("AMY_SAMPLE_RATE=48000", "AMY_BLOCK_SIZE=256", "AMY_PATCH_CHECKED_RESOURCE_ADMISSION=1", "AMY_EXCLUSIVE_FM_PHASE_RESTART=1"):
         require(flag in amy["command"], flag)
     require((build / "firmware.bin").stat().st_size > 0, "missing firmware")
-    if args.unified_engine:
+    if args.harmony:
+        require(args.unified_engine and args.voices==8, "harmony requires unified eight voices")
+        require(b"SMK-P4 HARMONY 0.9 EXPERIMENTAL" in (build / "firmware.bin").read_bytes(), "missing0.9 identity")
+    elif args.unified_engine:
         require(b"SMK-P4 UNIFIED 0.8 CANDIDATE" in (build / "firmware.bin").read_bytes(), "missing0.8 firmware UI identity")
     print("PASS: effective Blueprint target, electrical gates, live adapter, single LVGL, pool128KB, AMY48000/256")
     print("MANUAL: compilation does not qualify physical audio, USB, touch, memory or deadlines")

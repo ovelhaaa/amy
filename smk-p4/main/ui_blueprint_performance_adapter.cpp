@@ -104,6 +104,7 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterInt(const char* i
         return result(UiCommandState::Rejected,id,"HARMONY VALUE PLANNED/INVALID");
 submit:
         if(!harmony::valid(c) || !backend_.setHarmony(c,now_ms_))return result(UiCommandState::Rejected,id,"HARMONY INCOMPATIBLE/REJECTED");
+        harmony_id_=kHarmonyIds[hi];
         if(hi==11)harmony_preset_=v;
         requested_harmony_=c;harmony_pending_=true;harmony_requested_ms_=now_ms_;
         harmony_revision_=backend_.harmonyState()->revision;
@@ -213,10 +214,10 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
         model_.live_harmony=*h;model_.live_harmony.pending=harmony_pending_;
         if(harmony_pending_ && h->revision!=harmony_revision_ && harmony::pack(h->configuration)==harmony::pack(requested_harmony_)) {
             harmony_pending_=false;model_.live_harmony.pending=false;
-            syncHarmony(h->configuration);model_.setInt("harmony.preset",harmony_preset_);result(UiCommandState::Confirmed,last_id_,"HARMONY APPLIED; EXISTING GROUPS FROZEN");
+            syncHarmony(h->configuration);model_.setInt("harmony.preset",harmony_preset_);result(UiCommandState::Confirmed,harmony_id_,"HARMONY APPLIED; EXISTING GROUPS FROZEN");
         } else if(harmony_pending_ && uint32_t(now_ms-harmony_requested_ms_)>=kPatchConfirmationTimeoutMs) {
             harmony_pending_=false;model_.live_harmony.pending=false;
-            result(UiCommandState::Rejected,last_id_,"HARMONY NOT CONFIRMED; OWNER RETAINED");
+            result(UiCommandState::Rejected,harmony_id_,"HARMONY NOT CONFIRMED; OWNER RETAINED");
         } else if(!harmony_pending_)syncHarmony(h->configuration);
         model_.bumpRevision();
     }

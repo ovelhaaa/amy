@@ -7,8 +7,8 @@ enum class PatchState : uint8_t { Ready, Requested, Loading, Verifying, Failed }
 struct Snapshot {
     harmony::Config harmony;
     uint32_t harmony_revision=0,harmony_errors=0,groups_admitted=0,groups_rejected=0;
-    uint32_t last_group=0;
-    uint8_t last_notes[4]{},last_count=0,last_input=0;
+    uint32_t last_group=0,transform_max_us=0,admission_max_us=0;
+    uint8_t last_notes[4]{},last_count=0,last_input=0,last_result=0;
     bool last_admitted=false;
     bool ready=false;
     uint16_t patch_id=kPatches[0].id;

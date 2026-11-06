@@ -51,6 +51,7 @@ private:
     Pending patch_, master_;
     harmony::Config requested_harmony_;
     bool harmony_pending_=false;
+    const char* harmony_id_="harmony.preset";
     int32_t harmony_preset_=0;
     uint32_t harmony_requested_ms_=0,harmony_revision_=0;
     void syncHarmony(harmony::Config config);

@@ -18,7 +18,7 @@ public:
         harmony_.configuration=snapshot.harmony;harmony_.revision=snapshot.harmony_revision;
         harmony_.errors=snapshot.harmony_errors;harmony_.rejected=snapshot.groups_rejected;
         harmony_.admitted=snapshot.groups_admitted;harmony_.identity=snapshot.last_group;
-        harmony_.count=snapshot.last_count;harmony_.input=snapshot.last_input;harmony_.last_admitted=snapshot.last_admitted;
+        harmony_.result=snapshot.last_result;harmony_.count=snapshot.last_count;harmony_.input=snapshot.last_input;harmony_.last_admitted=snapshot.last_admitted;
         for(unsigned i=0;i<4;++i)harmony_.notes[i]=snapshot.last_notes[i];
         harmony_.voices=snapshot.active_notes;harmony_.capacity=amy::kVoices;harmony_.available=true;
 #endif

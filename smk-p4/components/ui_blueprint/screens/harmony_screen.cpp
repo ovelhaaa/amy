@@ -83,8 +83,8 @@ public:
         for(unsigned i=0;i<card_count_;++i)if(cards_[i])lv_obj_send_event(cards_[i],LV_EVENT_REFRESH,nullptr);
         const auto& live=backend.model().live_harmony;
         if(badge_ && live.available){
-            char status[80];std::snprintf(status,sizeof(status),"%s | %u/%u VOICES | %lu REJECT",
-                live.pending?"REQUESTED":"APPLIED",live.voices,live.capacity,(unsigned long)live.rejected);
+            char status[80];std::snprintf(status,sizeof(status),"%s | %u/%u | R%lu E%lu",
+                live.pending?"REQUESTED":"APPLIED",live.voices,live.capacity,(unsigned long)live.rejected,(unsigned long)live.errors);
             lv_label_set_text(badge_,status);
         }
         if (summary_lbl_) {
@@ -113,8 +113,8 @@ public:
                     const int len=std::snprintf(actual+off,sizeof(actual)-off,"%s%u",i?"+":"",live.notes[i]);
                     if(len>0)off+=size_t(len);
                 }
-                std::snprintf(summary,sizeof(summary),"PREDICT %s | LAST %s #%lu IN %u: %s | %s",
-                    chord_s,live.last_admitted?"ADMITTED":"REJECT/NONE",(unsigned long)live.identity,
+                std::snprintf(summary,sizeof(summary),"PREDICT %.36s | LAST %s #%lu IN %u: %.20s | %.46s",
+                    chord_s,live.result==1?"ADMITTED":live.result==2?"FILTERED":live.result==3?"POLYPHONY":live.result==4?"INVALID":"NONE",(unsigned long)live.identity,
                     live.input,actual,backend.model().lastNotice());
             }
             lv_label_set_text(summary_lbl_, summary);

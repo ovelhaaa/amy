@@ -67,7 +67,7 @@ private:
         int16_t pcm[amy::kBlockFrames*2]{};
         int16_t last[2]{};
         uint32_t output_generation=commands_.generation();
-        Metrics m{};int64_t previous_start=0;
+        Metrics m{};int64_t previous_start=0;bool primed=false;
         while(error==ESP_OK && running_.load(std::memory_order_acquire)) {
             const auto start=esp_timer_get_time();
             if(previous_start && start-previous_start>int64_t(kDmaDescriptors*amy::kBlockFrames*1000000ULL/amy::kSampleRateHz))++m.refill_risks;
@@ -80,7 +80,10 @@ private:
             const bool copied=!barrier && handoff_.take(pcm,generation,&stale);
             m.stale_discarded+=stale;
             if(!copied) {
-                m.gaps.add(commands_.output_context.load(std::memory_order_acquire),generation,stale!=0);
+                auto context=(barrier?commands_.transition_context:commands_.output_context).load(std::memory_order_acquire);
+                if(!primed && !barrier && (context&7)==uint32_t(amy::OutputReason::Ready))
+                    context=amy::outputContext(generation,amy::OutputReason::Boot);
+                m.gaps.add(context,generation,stale!=0);
                 ++silence_blocks_;
                 ++m.silence_blocks;
                 // One bounded block ramps the last sample to zero on a gap.
@@ -89,6 +92,7 @@ private:
                         pcm[f*2+ch]=static_cast<int16_t>(int32_t(last[ch])*
                             (amy::kBlockFrames-1-f)/amy::kBlockFrames);
             }
+            if(copied)primed=true;
             last[0]=pcm[(amy::kBlockFrames-1)*2];last[1]=pcm[(amy::kBlockFrames-1)*2+1];
             const auto write_start=esp_timer_get_time();
             error=output.write(pcm,amy::kBlockFrames);
