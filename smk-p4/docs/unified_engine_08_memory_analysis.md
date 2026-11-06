@@ -57,7 +57,7 @@ avoids tight-pool six/eight-osc map fragmentation. Oscillator storage remains
 at its FM high-water even on Juno;48 assigned oscs does not imply48 allocated
 objects. Replacement after warmup makes3/24 allocations respectively.
 
-Observed host maximum load+materialization:1362/1413 microseconds respectively;
+Host maximum load+materialization is recorded per run in `probe.log`;
 these are scheduler-sensitive host observations, not target deadlines. Chord
 PCM was nonzero and unclipped for this fixed five-patch scenario; Panic output
 was exactly zero. Guarded steady render made no heap calls. Host allocator
@@ -67,3 +67,43 @@ Choose eight reusable instruments:2576 bytes extra versus one, preserving P4
 control semantics. Configured capacity becomes64 oscillators/eight AMY voices,
 independent of catalog count. Do not compare isolated116618 bytes directly
 with full-runtime286490 or target277232: delta reservations differ.
+
+## Full reusable Runtime (PASS, host)
+
+The production adapter at eight voices reserves3000 service deltas at boot
+(two2048-delta blocks). `RUNTIME_HEAP_BOOT` and `RUNTIME_HEAP_END` both report
+165770 live bytes /162 tracked allocations; `sizeof(Runtime)` is5088 bytes on
+this host ABI (includes its silent PCM block). Shutdown returns to the pre-engine
+baseline. The0.7 full eight-voice/four-bank baseline is286490 live bytes: saving
+120720 requested host heap bytes (42.1%), with the same service-reserve policy
+formula recalculated for the smaller resident set. This is not a measured P4
+heap saving and excludes output task/stack/handoff, UI and driver resources.
+
+The production runtime additionally passes1000 FM/FM and1000 alternating
+FM/Juno selections with eight gates before every barrier, identical warmed live
+bytes after each selection, instrument/FIFO allocation failure injection,
+cancel/disconnect during load, partial-object detection and full engine restart,
+and service OOM fail-closed behavior. Allocation counts for eight replacement
+instruments remain24 after warmup; retained oscillator storage remains at64
+capacity even when Juno assigns48. No general-heap fragmentation percentage or
+largest block is inferred from these host requested-byte checks.
+
+## Actual linked artifacts (PASS, offline)
+
+Read the preserved0.7 USB64 map/bin (SHA2038bb68…; matches the documented
+baseline) and both new maps. `build/unified08/firmware_comparison.json` freezes
+full SHA256 values and section sizes. No device read/reset was involved.
+
+|Image|App bin bytes|DRAM0+DRAM1 data/BSS|IRAM text|
+|---|---:|---:|---:|
+|0.7 USB64 audible baseline|1204704|170696|101780|
+|0.8 safe, wiring gates OFF|1110656|171432|96542|
+|0.8 audible review candidate|1211344|171864|101780|
+
+Like-for-like audible image: +6640 app bytes and +1168 static DRAM bytes;
+IRAM text unchanged. The fixed output worker additionally requests4096 stack
+bytes dynamically; its handoff is in the existing12288-byte synthesis task
+stack. These are separate from AMY heap savings and need target stack minima.
+The128KiB LVGL pool remains in static DRAM1. The PIO RAM summary omits DRAM1;
+it must not be used as total RAM accounting. New P4 free/largest heap readings
+remain MANUAL; offline sections are not a runtime allocation measurement.

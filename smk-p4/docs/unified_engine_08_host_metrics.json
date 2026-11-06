@@ -1,0 +1,1004 @@
+{
+  "schema_version": 1,
+  "host_only": true,
+  "voices": 8,
+  "oscillator_capacity": 64,
+  "resident_instruments": 8,
+  "evidence_sha256": {
+    "build\\unified08\\probe.log": "b5eeeb2440eae79a64e61c52efb88960a50b8db224bf258dda175f2aac7e8bde",
+    "build\\unified08\\runtime.log": "3b25b5e66f0948907ab5b8c4441a42c1726d0f072437c12b154e49e4715bd7c6",
+    "build\\unified08\\candidates.log": "32b769b2b47c8b301bece88097744449ff586e89b88267f4d686f80318c0ec92",
+    "build\\unified08\\ui.log": "5807792af2a67f6d1107854678b2dcabdfb56aad0cef64b3555694622b2afd47"
+  },
+  "patches": [
+    {
+      "id": 128,
+      "rom_name": "DX7 BRASS   1",
+      "oscillators_per_voice": 8,
+      "family": "FM",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "3186",
+          "rms": "1053.176",
+          "clipped": "0",
+          "avg_us": "8",
+          "max_us": "27"
+        },
+        {
+          "notes": "4",
+          "peak": "7912",
+          "rms": "1951.959",
+          "clipped": "0",
+          "avg_us": "30",
+          "max_us": "160"
+        },
+        {
+          "notes": "6",
+          "peak": "10417",
+          "rms": "2667.043",
+          "clipped": "0",
+          "avg_us": "44",
+          "max_us": "54"
+        },
+        {
+          "notes": "8",
+          "peak": "13198",
+          "rms": "3049.062",
+          "clipped": "0",
+          "avg_us": "63",
+          "max_us": "708"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 796,
+          "avg_us": 8,
+          "max_us": 13
+        },
+        {
+          "notes": 4,
+          "peak": 2102,
+          "avg_us": 30,
+          "max_us": 44
+        },
+        {
+          "notes": 8,
+          "peak": 2906,
+          "avg_us": 60,
+          "max_us": 86
+        }
+      ],
+      "release_tail_peak": 0,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 135,
+      "rom_name": "DX7 PIANO   1",
+      "oscillators_per_voice": 8,
+      "family": "FM",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "2054",
+          "rms": "622.600",
+          "clipped": "0",
+          "avg_us": "8",
+          "max_us": "67"
+        },
+        {
+          "notes": "4",
+          "peak": "5983",
+          "rms": "1307.264",
+          "clipped": "0",
+          "avg_us": "30",
+          "max_us": "157"
+        },
+        {
+          "notes": "6",
+          "peak": "7345",
+          "rms": "1437.543",
+          "clipped": "0",
+          "avg_us": "49",
+          "max_us": "696"
+        },
+        {
+          "notes": "8",
+          "peak": "8064",
+          "rms": "1625.004",
+          "clipped": "0",
+          "avg_us": "61",
+          "max_us": "197"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 513,
+          "avg_us": 8,
+          "max_us": 13
+        },
+        {
+          "notes": 4,
+          "peak": 1657,
+          "avg_us": 32,
+          "max_us": 70
+        },
+        {
+          "notes": 8,
+          "peak": 2743,
+          "avg_us": 61,
+          "max_us": 76
+        }
+      ],
+      "release_tail_peak": 0,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 138,
+      "rom_name": "DX7 E.PIANO 1",
+      "oscillators_per_voice": 8,
+      "family": "FM",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "2450",
+          "rms": "903.827",
+          "clipped": "0",
+          "avg_us": "7",
+          "max_us": "11"
+        },
+        {
+          "notes": "4",
+          "peak": "7712",
+          "rms": "1858.281",
+          "clipped": "0",
+          "avg_us": "29",
+          "max_us": "40"
+        },
+        {
+          "notes": "6",
+          "peak": "8755",
+          "rms": "2068.902",
+          "clipped": "0",
+          "avg_us": "44",
+          "max_us": "89"
+        },
+        {
+          "notes": "8",
+          "peak": "10110",
+          "rms": "2352.953",
+          "clipped": "0",
+          "avg_us": "62",
+          "max_us": "702"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 612,
+          "avg_us": 8,
+          "max_us": 15
+        },
+        {
+          "notes": 4,
+          "peak": 1871,
+          "avg_us": 30,
+          "max_us": 44
+        },
+        {
+          "notes": 8,
+          "peak": 2803,
+          "avg_us": 60,
+          "max_us": 90
+        }
+      ],
+      "release_tail_peak": 0,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 142,
+      "rom_name": "DX7 BASS    1",
+      "oscillators_per_voice": 8,
+      "family": "FM",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "932",
+          "rms": "373.116",
+          "clipped": "0",
+          "avg_us": "8",
+          "max_us": "11"
+        },
+        {
+          "notes": "4",
+          "peak": "3121",
+          "rms": "746.903",
+          "clipped": "0",
+          "avg_us": "33",
+          "max_us": "66"
+        },
+        {
+          "notes": "6",
+          "peak": "3847",
+          "rms": "905.955",
+          "clipped": "0",
+          "avg_us": "47",
+          "max_us": "681"
+        },
+        {
+          "notes": "8",
+          "peak": "4664",
+          "rms": "1075.493",
+          "clipped": "0",
+          "avg_us": "60",
+          "max_us": "84"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 233,
+          "avg_us": 8,
+          "max_us": 14
+        },
+        {
+          "notes": 4,
+          "peak": 700,
+          "avg_us": 30,
+          "max_us": 44
+        },
+        {
+          "notes": 8,
+          "peak": 1079,
+          "avg_us": 61,
+          "max_us": 82
+        }
+      ],
+      "release_tail_peak": 0,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 131,
+      "rom_name": "DX7 STRINGS 1",
+      "oscillators_per_voice": 8,
+      "family": "FM",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "914",
+          "rms": "375.668",
+          "clipped": "0",
+          "avg_us": "8",
+          "max_us": "14"
+        },
+        {
+          "notes": "4",
+          "peak": "3249",
+          "rms": "759.797",
+          "clipped": "0",
+          "avg_us": "33",
+          "max_us": "46"
+        },
+        {
+          "notes": "6",
+          "peak": "4469",
+          "rms": "1003.361",
+          "clipped": "0",
+          "avg_us": "52",
+          "max_us": "82"
+        },
+        {
+          "notes": "8",
+          "peak": "5208",
+          "rms": "1181.699",
+          "clipped": "0",
+          "avg_us": "65",
+          "max_us": "95"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 228,
+          "avg_us": 8,
+          "max_us": 12
+        },
+        {
+          "notes": 4,
+          "peak": 777,
+          "avg_us": 30,
+          "max_us": 48
+        },
+        {
+          "notes": 8,
+          "peak": 1191,
+          "avg_us": 60,
+          "max_us": 70
+        }
+      ],
+      "release_tail_peak": 0,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 141,
+      "rom_name": "DX7 SYN-LEAD 1",
+      "oscillators_per_voice": 8,
+      "family": "FM",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "943",
+          "rms": "600.889",
+          "clipped": "0",
+          "avg_us": "7",
+          "max_us": "10"
+        },
+        {
+          "notes": "4",
+          "peak": "3633",
+          "rms": "1475.174",
+          "clipped": "0",
+          "avg_us": "29",
+          "max_us": "36"
+        },
+        {
+          "notes": "6",
+          "peak": "4868",
+          "rms": "1302.934",
+          "clipped": "0",
+          "avg_us": "46",
+          "max_us": "68"
+        },
+        {
+          "notes": "8",
+          "peak": "6256",
+          "rms": "1893.240",
+          "clipped": "0",
+          "avg_us": "62",
+          "max_us": "71"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 235,
+          "avg_us": 8,
+          "max_us": 13
+        },
+        {
+          "notes": 4,
+          "peak": 912,
+          "avg_us": 30,
+          "max_us": 40
+        },
+        {
+          "notes": 8,
+          "peak": 1724,
+          "avg_us": 58,
+          "max_us": 80
+        }
+      ],
+      "release_tail_peak": 0,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 144,
+      "rom_name": "DX7 E.ORGAN 1",
+      "oscillators_per_voice": 8,
+      "family": "FM",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "3670",
+          "rms": "1093.347",
+          "clipped": "0",
+          "avg_us": "7",
+          "max_us": "14"
+        },
+        {
+          "notes": "4",
+          "peak": "12239",
+          "rms": "2206.242",
+          "clipped": "0",
+          "avg_us": "26",
+          "max_us": "36"
+        },
+        {
+          "notes": "6",
+          "peak": "10025",
+          "rms": "2691.422",
+          "clipped": "0",
+          "avg_us": "37",
+          "max_us": "46"
+        },
+        {
+          "notes": "8",
+          "peak": "12762",
+          "rms": "3129.646",
+          "clipped": "0",
+          "avg_us": "49",
+          "max_us": "55"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 917,
+          "avg_us": 7,
+          "max_us": 10
+        },
+        {
+          "notes": 4,
+          "peak": 3670,
+          "avg_us": 25,
+          "max_us": 36
+        },
+        {
+          "notes": 8,
+          "peak": 7341,
+          "avg_us": 50,
+          "max_us": 71
+        }
+      ],
+      "release_tail_peak": 0,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 151,
+      "rom_name": "DX7 FLUTE   1",
+      "oscillators_per_voice": 8,
+      "family": "FM",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "793",
+          "rms": "557.611",
+          "clipped": "0",
+          "avg_us": "7",
+          "max_us": "13"
+        },
+        {
+          "notes": "4",
+          "peak": "3146",
+          "rms": "1089.436",
+          "clipped": "0",
+          "avg_us": "29",
+          "max_us": "32"
+        },
+        {
+          "notes": "6",
+          "peak": "4518",
+          "rms": "1407.851",
+          "clipped": "0",
+          "avg_us": "44",
+          "max_us": "55"
+        },
+        {
+          "notes": "8",
+          "peak": "5270",
+          "rms": "1561.707",
+          "clipped": "0",
+          "avg_us": "58",
+          "max_us": "69"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 198,
+          "avg_us": 8,
+          "max_us": 14
+        },
+        {
+          "notes": 4,
+          "peak": 792,
+          "avg_us": 30,
+          "max_us": 47
+        },
+        {
+          "notes": 8,
+          "peak": 1356,
+          "avg_us": 58,
+          "max_us": 80
+        }
+      ],
+      "release_tail_peak": 0,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 4,
+      "rom_name": "Juno A15 Moving Strings",
+      "oscillators_per_voice": 6,
+      "family": "subtractive",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "1000",
+          "rms": "302.725",
+          "clipped": "0",
+          "avg_us": "5",
+          "max_us": "11"
+        },
+        {
+          "notes": "4",
+          "peak": "2784",
+          "rms": "610.456",
+          "clipped": "0",
+          "avg_us": "20",
+          "max_us": "28"
+        },
+        {
+          "notes": "6",
+          "peak": "2886",
+          "rms": "726.427",
+          "clipped": "0",
+          "avg_us": "31",
+          "max_us": "42"
+        },
+        {
+          "notes": "8",
+          "peak": "3625",
+          "rms": "882.351",
+          "clipped": "0",
+          "avg_us": "41",
+          "max_us": "49"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 250,
+          "avg_us": 6,
+          "max_us": 12
+        },
+        {
+          "notes": 4,
+          "peak": 622,
+          "avg_us": 21,
+          "max_us": 29
+        },
+        {
+          "notes": 8,
+          "peak": 847,
+          "avg_us": 41,
+          "max_us": 54
+        }
+      ],
+      "release_tail_peak": 0,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 8,
+      "rom_name": "Juno A21 Organ I",
+      "oscillators_per_voice": 6,
+      "family": "subtractive",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "4646",
+          "rms": "1666.821",
+          "clipped": "0",
+          "avg_us": "7",
+          "max_us": "13"
+        },
+        {
+          "notes": "4",
+          "peak": "12779",
+          "rms": "3184.117",
+          "clipped": "0",
+          "avg_us": "20",
+          "max_us": "25"
+        },
+        {
+          "notes": "6",
+          "peak": "15857",
+          "rms": "3883.831",
+          "clipped": "0",
+          "avg_us": "31",
+          "max_us": "51"
+        },
+        {
+          "notes": "8",
+          "peak": "16262",
+          "rms": "4274.481",
+          "clipped": "0",
+          "avg_us": "38",
+          "max_us": "44"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 521,
+          "avg_us": 5,
+          "max_us": 10
+        },
+        {
+          "notes": 4,
+          "peak": 1229,
+          "avg_us": 19,
+          "max_us": 29
+        },
+        {
+          "notes": 8,
+          "peak": 2114,
+          "avg_us": 37,
+          "max_us": 53
+        }
+      ],
+      "release_tail_peak": 0,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 12,
+      "rom_name": "Juno A25 Donald Pluck",
+      "oscillators_per_voice": 6,
+      "family": "subtractive",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "418",
+          "rms": "144.944",
+          "clipped": "0",
+          "avg_us": "7",
+          "max_us": "12"
+        },
+        {
+          "notes": "4",
+          "peak": "2127",
+          "rms": "545.507",
+          "clipped": "0",
+          "avg_us": "25",
+          "max_us": "792"
+        },
+        {
+          "notes": "6",
+          "peak": "4543",
+          "rms": "1601.367",
+          "clipped": "0",
+          "avg_us": "29",
+          "max_us": "38"
+        },
+        {
+          "notes": "8",
+          "peak": "5504",
+          "rms": "1801.333",
+          "clipped": "0",
+          "avg_us": "42",
+          "max_us": "690"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 222,
+          "avg_us": 5,
+          "max_us": 8
+        },
+        {
+          "notes": 4,
+          "peak": 626,
+          "avg_us": 18,
+          "max_us": 24
+        },
+        {
+          "notes": 8,
+          "peak": 1317,
+          "avg_us": 36,
+          "max_us": 46
+        }
+      ],
+      "release_tail_peak": 0,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 14,
+      "rom_name": "Juno A27 Elect. Piano I",
+      "oscillators_per_voice": 6,
+      "family": "subtractive",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "2796",
+          "rms": "491.384",
+          "clipped": "0",
+          "avg_us": "6",
+          "max_us": "10"
+        },
+        {
+          "notes": "4",
+          "peak": "6213",
+          "rms": "1123.325",
+          "clipped": "0",
+          "avg_us": "20",
+          "max_us": "653"
+        },
+        {
+          "notes": "6",
+          "peak": "7384",
+          "rms": "1545.108",
+          "clipped": "0",
+          "avg_us": "26",
+          "max_us": "130"
+        },
+        {
+          "notes": "8",
+          "peak": "9489",
+          "rms": "2025.011",
+          "clipped": "0",
+          "avg_us": "33",
+          "max_us": "65"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 980,
+          "avg_us": 4,
+          "max_us": 7
+        },
+        {
+          "notes": 4,
+          "peak": 2792,
+          "avg_us": 14,
+          "max_us": 19
+        },
+        {
+          "notes": 8,
+          "peak": 5264,
+          "avg_us": 28,
+          "max_us": 60
+        }
+      ],
+      "release_tail_peak": 1,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 31,
+      "rom_name": "Juno A48 Synth Bass I (unison)",
+      "oscillators_per_voice": 6,
+      "family": "subtractive",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "4833",
+          "rms": "747.813",
+          "clipped": "0",
+          "avg_us": "7",
+          "max_us": "12"
+        },
+        {
+          "notes": "4",
+          "peak": "13979",
+          "rms": "1600.791",
+          "clipped": "0",
+          "avg_us": "22",
+          "max_us": "35"
+        },
+        {
+          "notes": "6",
+          "peak": "16031",
+          "rms": "2104.135",
+          "clipped": "0",
+          "avg_us": "31",
+          "max_us": "46"
+        },
+        {
+          "notes": "8",
+          "peak": "25165",
+          "rms": "2722.985",
+          "clipped": "0",
+          "avg_us": "54",
+          "max_us": "111"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 609,
+          "avg_us": 6,
+          "max_us": 26
+        },
+        {
+          "notes": 4,
+          "peak": 2119,
+          "avg_us": 20,
+          "max_us": 26
+        },
+        {
+          "notes": 8,
+          "peak": 2566,
+          "avg_us": 43,
+          "max_us": 62
+        }
+      ],
+      "release_tail_peak": 0,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 0,
+      "rom_name": "Juno A11 Brass Set 1",
+      "oscillators_per_voice": 6,
+      "family": "subtractive",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "2260",
+          "rms": "530.466",
+          "clipped": "0",
+          "avg_us": "3",
+          "max_us": "6"
+        },
+        {
+          "notes": "4",
+          "peak": "4883",
+          "rms": "1056.522",
+          "clipped": "0",
+          "avg_us": "18",
+          "max_us": "531"
+        },
+        {
+          "notes": "6",
+          "peak": "6318",
+          "rms": "1272.567",
+          "clipped": "0",
+          "avg_us": "33",
+          "max_us": "73"
+        },
+        {
+          "notes": "8",
+          "peak": "7194",
+          "rms": "1490.553",
+          "clipped": "0",
+          "avg_us": "30",
+          "max_us": "84"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 565,
+          "avg_us": 4,
+          "max_us": 10
+        },
+        {
+          "notes": 4,
+          "peak": 1330,
+          "avg_us": 14,
+          "max_us": 25
+        },
+        {
+          "notes": 8,
+          "peak": 2408,
+          "avg_us": 27,
+          "max_us": 45
+        }
+      ],
+      "release_tail_peak": 0,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 1,
+      "rom_name": "Juno A12 Brass Swell",
+      "oscillators_per_voice": 6,
+      "family": "subtractive",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "5358",
+          "rms": "1840.299",
+          "clipped": "0",
+          "avg_us": "6",
+          "max_us": "9"
+        },
+        {
+          "notes": "4",
+          "peak": "15124",
+          "rms": "3647.040",
+          "clipped": "0",
+          "avg_us": "19",
+          "max_us": "28"
+        },
+        {
+          "notes": "6",
+          "peak": "15806",
+          "rms": "4334.992",
+          "clipped": "0",
+          "avg_us": "28",
+          "max_us": "174"
+        },
+        {
+          "notes": "8",
+          "peak": "18761",
+          "rms": "4689.063",
+          "clipped": "0",
+          "avg_us": "36",
+          "max_us": "62"
+        }
+      ],
+      "reusable": [
+        {
+          "notes": 1,
+          "peak": 625,
+          "avg_us": 5,
+          "max_us": 10
+        },
+        {
+          "notes": 4,
+          "peak": 1857,
+          "avg_us": 18,
+          "max_us": 39
+        },
+        {
+          "notes": 8,
+          "peak": 2115,
+          "avg_us": 34,
+          "max_us": 49
+        }
+      ],
+      "release_tail_peak": 0,
+      "software_candidate": true,
+      "hardware_qualified": false
+    },
+    {
+      "id": 32,
+      "rom_name": "Juno A51 Lead I",
+      "oscillators_per_voice": 6,
+      "family": "subtractive",
+      "dry_fresh_engine": [
+        {
+          "notes": "1",
+          "peak": "5499",
+          "rms": "1783.752",
+          "clipped": "0",
+          "avg_us": "14",
+          "max_us": "701"
+        },
+        {
+          "notes": "4",
+          "peak": "18066",
+          "rms": "5691.670",
+          "clipped": "0",
+          "avg_us": "39",
+          "max_us": "652"
+        },
+        {
+          "notes": "6",
+          "peak": "23304",
+          "rms": "6214.999",
+          "clipped": "0",
+          "avg_us": "35",
+          "max_us": "71"
+        },
+        {
+          "notes": "8",
+          "peak": "32767",
+          "rms": "6628.136",
+          "clipped": "144",
+          "avg_us": "36",
+          "max_us": "65"
+        }
+      ],
+      "reusable": [],
+      "release_tail_peak": null,
+      "software_candidate": false,
+      "hardware_qualified": false
+    }
+  ]
+}
