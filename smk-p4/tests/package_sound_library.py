@@ -70,8 +70,9 @@ def main():
         assert authorization["app_offset"] == "0x10000"
         manifest["flash_authorized"] = True
         copy(args.authorization, "authorization.json")
-        for file in sorted(args.authorization.parent.glob("*.log")):
-            copy(file,"physical/" + file.name)
+        for file in sorted(args.authorization.parent.iterdir()):
+            if file.is_file() and file.suffix in (".log", ".json"):
+                copy(file,"physical/" + file.name)
         rollback=args.authorization.parent / "rollback_06_eight.bin"
         if rollback.exists(): copy(rollback,"rollback/firmware_06_eight.bin")
     for file in sorted((ROOT / "build/smk_p4_amy_8_library").glob("*.wav")):

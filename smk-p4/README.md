@@ -19,7 +19,9 @@ python smk-p4/tests/check_blueprint_build.py --voices 8 --sound-library --enviro
 Esse build seguro deixa I²S/USB desligados. O ambiente separado
 `guition-sound-library-8-bench` usa a montagem histórica0.6; build não autoriza
 upload. Operador autorizou a gravação; startup físico da revisão corrigida PASS.
-Smoke/audição e janela prolongada: **MANUAL / PENDENTES**. Não herda o PASS físico0.6.
+Smoke anterior passou, mas a primeira janela foi rejeitada por25 eventos USB
+descartados. Revisão com fila USB64 (32 aplicados/bloco) instalada;
+novo smoke e janela prolongada: **MANUAL / PENDENTES**. Não herda o PASS físico0.6.
 [Registro da gravação/rollback/memória](docs/sound_library_07_hardware_qualification.md).
 [Inventário](docs/patch_library_inventory_07.md), [resultados/limites](docs/sound_library_07_results.md),
 [procedimento físico](docs/sound_library_07_hardware_test.md).

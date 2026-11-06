@@ -4,7 +4,7 @@
 base `725ffb085e0bd7d99049eb049cd322486526e45c` da polyphony0.6.
 **Entrega incremental: quatro timbres FM reais em perfil opt-in de oito vozes.
 Expansão Juno e Gate E não concluídos. Gravação autorizada posteriormente; startup físico da revisão PASS,
-qualificação musical/prolongada ainda em andamento.**
+primeira janela com overflow foi rejeitada e a revisão USB64 aguarda novo smoke.**
 
 ## Escopo, baseline e conflito de especificação
 
@@ -62,7 +62,7 @@ no serviço. Vozes/FM usam8 osciladores:ALGO+6 operadores+LFO privados.
 |Heap AMY vivo com reserva do serviço|206010B|286490B|
 |Delta de heap|referência|+80480B|
 |Alocações vivas|250|426|
-|Runtime estático|3276B|3276B|
+|Runtime estático (USB64 na revisão atual)|3276B|4044B|
 |Deltas reservados/blocos|3128/2|3384/2|
 
 Banco FM8 materializado acrescentou38976B/88 alocações; banco Juno8,
@@ -195,8 +195,8 @@ PASS: auditor `check_blueprint_build.py --voices 8 --sound-library --environment
 
 |Ambiente|Aplicação B|DRAM0+DRAM1 data/BSS B|IRAM B|SHA256 firmware|
 |---|---:|---:|---:|---|
-|guition-sound-library-8|1109824|169572|96768|`097ad8ee8e77f5ade011404c3d8904b055035fb25fbdb0e68bd7b1bc4da10df6`|
-|guition-sound-library-8-bench|1203696|169928|101888|`37be3adad7dfcac9272328e5bdbf1785bf602af1eabd88cd9f868b6682cb2f38`|
+|guition-sound-library-8|1110672|170340|96768|`d9453eda524dae0e6c97ea9cbd16ec39645eb2ee582da63fe23f9c14ccfddfdf`|
+|guition-sound-library-8-bench|1204704|170696|101888|`2038bb68159ecc88aa256cf286a434b32914fc5e461b320f28216691b17b26f1`|
 
 O resumo PIO omite DRAM1; a tabela acima soma ambos os bancos. Memória dinâmica
 é reportada separadamente. O binário audível foi gravado app-only com hash
@@ -228,3 +228,20 @@ oito notas em cada patch, quatro hot-plugs e navegação. Identificação/backup
 autorização/gravação já foram executados; não repetir aprovação desnecessária.
 Depois de medir margem real sob carga, reavaliar Juno com política explícita de
 EQ/efeitos e novo orçamento, preservando oito vozes.
+
+
+## Correção de rajada USB após reprovação física
+
+A primeira janela foi interrompida por25 drops/overflows de eventos USB,
+com áudio/deadlines/OOM/driver errors0 e audição aprovada pelo operador.
+Evidência raw/JSON preservada; não houve30min aprovados. Nova revisão usa
+armazenamento USB64 somente no perfil Library; aplicação DSP continua32 eventos
+válidos/bloco. Varredura de gerações antigas limitada a64. UI/legados mantêm32.
+Sem alterações do driver USB, AMY, vozes, deltas, ganho ou DMA.
+
+PASS host:57 eventos sem perda, drenagem32+25 em dois blocos,64 comandos antigos
+invalidados após disconnect e overflow real com Panic. Runtime+768B, sem heap
+adicional. Regressões completas Library8/legado4/USB passadas. Nova gravação
+app-only hash verificado; startup USB conectado/ready/I²S e drops0 em repouso.
+Reprodução física sob a mesma carga e nova janela>=30min continuam obrigatórias;
+não considerar o defeito fisicamente encerrado apenas pelo host/boot.

@@ -59,16 +59,47 @@ O maior bloco31KiB depois da UI é uma limitação explícita; as guardas existe
 são aplicadas antes de I²S/USB/UI. É preciso observar a margem com endpoints USB,
 trocas e navegação. Não aprovar Gate E nem oito notas por estes dados de repouso.
 
-## Smoke e janela prolongada — PENDENTES
+## Smoke — MANUAL/PASS; janela prolongada em andamento
 
 Operador foi solicitado a conectar SMK25 e testar128/135/138/142, oito notas,
 rejeição da nona, soltura, sustain, reataque, bend/CC1, troca, Panic e tela/toque.
 Captura `smoke07_v2.log` iniciada, sem enviar notas/comandos ou fabricar ações.
-Somente após smoke confirmado iniciar>=30min, incluindo quatro hot-plugs,
+Operador respondeu **“Smoke passou”**, confirmando o escopo descrito. Após essa
+aprovação foi iniciada captura1880s sem reset, incluindo quatro hot-plugs,
 navegação e oito notas amostradas em cada patch. Analisador agora aceita
 `--voices 8 --patches 128 135 138 142 --require-full-patches`, mantendo default
 legado128/135. Onze regressões do analisador PASS.
 
-Audição, margem DSP sob carga, endpoints/hot-plug e janela>=30min: MANUAL/NOT RUN
-até serem executados e cruzados com ações reais do operador. Não transferir a
+Audição/smoke: MANUAL/PASS do operador. Janela>=30min, margem DSP/memória sob
+carga e quatro hot-plugs continuam em execução, sujeitos à análise final. Não transferir a
 aprovação0.6 para esta imagem.
+
+
+## Primeira janela prolongada — FAIL preservado; captura interrompida
+
+Arquivo `qualification07_fc268af589ee45e8a80aa6aac1fbb30b.log`; analisador `qualification07_fc268af589ee45e8a80aa6aac1fbb30b.failed_report.json`.
+Operador confirmou ações sem problemas audíveis, mas houve25 eventos descartados/
+overflow na fila USB. Driver USB/errors0, OOM0, áudio/deadlines/clipping0;
+não confundir com descartes do MIDI_TRACE. Gate E foi rejeitado apesar da audição.
+Janela foi encerrada para investigar, sem cumprir os30min. Foram amostrados oito
+gates em todos os patches, duas desconexões e21 transições de tela; não são quatro
+hot-plugs/28 transições verificados. Não substituir contadores por confirmação manual.
+
+## Revisão USB64 — startup PASS, novo smoke pendente
+
+Aplicação `2038bb68159ecc88aa256cf286a434b32914fc5e461b320f28216691b17b26f1`,
+1204704B, app-only0x10000, hash verificado. Mesmo motor, drivers, pinos, DSP,
+polifonia8 e reserva de deltas. Apenas aplicação: armazenamento USB64 em vez de32,
+com orçamento de32 comandos válidos por bloco. Varredura limitada a64 permite
+invalidar gerações antigas sem bloquear os eventos novos. O perfil legado permanece32.
+
+Host PASS: rajada57 sem perdas, drenagem32+25 em dois blocos, descarte de64
+comandos antigos após disconnect, saturação real65 com Panic seguro, regressões
+completas da biblioteca e legado4. Runtime estático3276→4044B (+768B); heap AMY
+continua286490B, sem alocação de serviço. Não foi ampliado o trabalho DSP por bloco.
+
+Startup na placa:387491B/maior245760B antes;110259B/maior36864B após engine;
+91019B/maior31744B depois de I²S/UI/USB conectado. OOM/deadlines/descartes0 em
+repouso. Memória do engine277232B; guardas e stack mantidos. Captura `boot07_v3.log`.
+Solicitado novo smoke com oito notas, bend/CC1 rápido, sustain, troca, hot-plug e
+Panic. Depois será necessária outra janela>=30min, sem reaproveitar a janela falha.
