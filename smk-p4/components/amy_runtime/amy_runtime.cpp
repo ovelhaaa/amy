@@ -25,6 +25,7 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
     if(started_ || sample_rate_hz!=kSampleRateHz) return false;
     state_=Snapshot{}; bank_=0; gain_q16_=0;
     for(auto& v:voices_) v=Voice{};
+    for(auto& g:groups_) g=Group{};
     commands_.panic(); state_.generation=commands_.generation();
     publishOutput(OutputReason::Boot);
     auto config=amy_default_config();
@@ -79,6 +80,7 @@ void Runtime::end() {
     if(started_) { silence(); amy_stop(); started_=false; }
     state_.ready=false; state_.active_notes=0;
     for(auto& v:voices_) v=Voice{};
+    for(auto& g:groups_) g=Group{};
     commands_.panic();
 }
 void Runtime::silence() {
@@ -94,7 +96,8 @@ void Runtime::silence() {
     std::memset(sustain_,0,sizeof(sustain_));
     std::memset(bend_,0,sizeof(bend_)); std::memset(modulation_,0,sizeof(modulation_));
     for(auto& v:voices_) v=Voice{};
-    state_.active_notes=0;
+    for(auto& g:groups_) g=Group{};
+    state_.active_notes=0;state_.last_count=0;state_.last_admitted=false;
 }
 void Runtime::note(unsigned slot,uint8_t velocity) {
     const auto& v=voices_[slot];
@@ -115,7 +118,45 @@ void Runtime::tune(unsigned slot) {
 }
 void Runtime::release(unsigned slot) {
     if(!voices_[slot].used) return;
-    note(slot,0); voices_[slot]=Voice{}; --state_.active_notes;
+    note(slot,0);
+    auto& g=groups_[voices_[slot].group];g.live&=uint16_t(~(1u<<slot));if(!g.live)g=Group{};
+    voices_[slot]=Voice{}; --state_.active_notes;
+}
+unsigned Runtime::findGroup(bool usb,uint8_t channel,uint8_t input) const {
+    for(unsigned i=0;i<kVoices;++i)if(groups_[i].used && groups_[i].usb==usb &&
+        groups_[i].channel==channel && groups_[i].input==input)return i;
+    return kVoices;
+}
+void Runtime::releaseGroup(unsigned group) {
+    for(unsigned i=0;i<kVoices;++i)if(voices_[i].used && voices_[i].group==group)release(i);
+}
+void Runtime::startGroup(bool usb,const Command& c,uint32_t now_ms) {
+    auto config=state_.harmony;
+    const bool eligible=usb?c.channel==config.channel:config.touch;
+    if(!eligible)config.scale_on=config.chord_on=false;
+    const auto notes=harmony::transform(uint8_t(c.id),config);
+    state_.last_input=uint8_t(c.id);state_.last_admitted=false;state_.last_count=0;
+    if(notes.error!=harmony::Error::None){++state_.harmony_errors;return;}
+    unsigned group=kVoices,free=0;
+    for(unsigned i=0;i<kVoices;++i){if(!voices_[i].used)++free;if(!groups_[i].used && group==kVoices)group=i;}
+    if(free<notes.count || group==kVoices || next_group_==UINT32_MAX) {
+        if(notes.count>1)++state_.groups_rejected;else ++state_.polyphony_rejected;
+        return;
+    }
+    auto& g=groups_[group];g=Group{};
+    g.used=true;g.usb=usb;g.held=true;g.channel=usb?c.channel:0;g.input=uint8_t(c.id);
+    g.token=c.token;g.identity=++next_group_;g.generation=usb?usb_generation_:state_.generation;
+    g.started_ms=now_ms;g.configuration=config;g.count=notes.count;
+    unsigned n=0;
+    // Owner is sole allocator. Reserve every slot before issuing any AMY On.
+    for(unsigned i=0;i<kVoices && n<notes.count;++i)if(!voices_[i].used) {
+        g.notes[n]=notes.notes[n];g.slots[n]=uint8_t(i);g.live|=uint16_t(1u<<i);
+        auto& v=voices_[i];v.used=v.held=true;v.usb=usb;v.pitch=notes.notes[n];v.channel=g.channel;
+        v.input=g.input;v.group=uint8_t(group);v.token=c.token;v.started_ms=now_ms;++n;
+    }
+    state_.active_notes+=notes.count;
+    for(unsigned i=0;i<notes.count;++i){note(g.slots[i],c.value);state_.last_notes[i]=notes.notes[i];}
+    state_.last_group=g.identity;state_.last_count=notes.count;state_.last_admitted=true;++state_.groups_admitted;
 }
 void Runtime::cancelUsb() {
     for(unsigned i=0;i<kVoices;++i) if(voices_[i].used && voices_[i].usb) release(i);
@@ -135,21 +176,18 @@ void Runtime::applyUsb(uint32_t now_ms) {
         if(c.channel>=16) { ++state_.invalid_commands; continue; }
         if(c.type==CommandType::NoteOn || c.type==CommandType::NoteOff) {
             if(c.id>=128 || c.value>127) { ++state_.invalid_commands; continue; }
-            unsigned found=kVoices,free=kVoices;
-            for(unsigned i=0;i<kVoices;++i) {
-                const auto& v=voices_[i];
-                if(!v.used && free==kVoices) free=i;
-                if(v.used && v.usb && v.channel==c.channel && v.pitch==c.id) found=i;
-            }
+            const unsigned found=findGroup(true,c.channel,uint8_t(c.id));
             if(c.type==CommandType::NoteOff || !c.value) {
-                if(found<kVoices) { voices_[found].held=false; if(!sustain_[c.channel]) release(found); }
+                if(found<kVoices) {
+                    auto& g=groups_[found];g.held=false;g.sustained=sustain_[c.channel];
+                    for(unsigned i=0;i<kVoices;++i)if(voices_[i].used && voices_[i].group==found)voices_[i].held=false;
+                    if(!sustain_[c.channel])releaseGroup(found);
+                }
             } else {
-                if(latency>=kLeaseMs) continue; // Never replay an old queued gate.
-                if(found<kVoices && voices_[found].held) continue; // Idempotent while held.
-                if(found<kVoices) { release(found); free=found; }
-                if(free==kVoices) { ++state_.polyphony_rejected; continue; }
-                voices_[free]={true,true,true,static_cast<uint8_t>(c.id),c.channel,0,now_ms};
-                ++state_.active_notes; note(free,c.value);
+                if(latency>=kLeaseMs)continue;
+                if(found<kVoices && groups_[found].held)continue;
+                if(found<kVoices)releaseGroup(found);
+                startGroup(true,c,now_ms);
             }
         } else if(c.type==CommandType::Control && c.value<=127) {
             if(c.id==64) {
@@ -193,7 +231,7 @@ void Runtime::apply(uint32_t now_ms) {
         const auto& v=voices_[i];
         if(v.used && !v.usb) {
             const bool expired=uint32_t(now_ms-v.started_ms)>=kLeaseMs;
-            if(expired || atOrAfter(commands_.released(v.pitch),v.token)) {
+            if(expired || atOrAfter(commands_.released(v.input),v.token)) {
                 release(i); if(expired) ++state_.expired_notes;
             }
         }
@@ -208,19 +246,20 @@ void Runtime::apply(uint32_t now_ms) {
         if(latency>state_.command_latency_max_ms) state_.command_latency_max_ms=latency;
         if(c.type==CommandType::NoteOn) {
             if(c.id>=128 || c.value>127 || !c.token) { ++state_.invalid_commands; continue; }
-            unsigned found=kVoices,free=kVoices;
-            for(unsigned j=0;j<kVoices;++j) {
-                const auto& v=voices_[j];
-                if(!v.used && free==kVoices) free=j;
-                if(v.used && !v.usb && v.pitch==c.id) found=j;
-            }
-            if(!c.value) { if(found<kVoices && voices_[found].token==c.token) release(found); continue; }
+            const unsigned found=findGroup(false,0,uint8_t(c.id));
+            if(!c.value) {if(found<kVoices && groups_[found].token==c.token)releaseGroup(found);continue;}
             if(atOrAfter(commands_.released(c.id),c.token) ||
-               (found<kVoices && voices_[found].token==c.token) || latency>=kLeaseMs) continue;
-            if(found<kVoices) { release(found); free=found; }
-            if(free==kVoices) { ++state_.invalid_commands; ++state_.polyphony_rejected; continue; }
-            voices_[free]={true,false,true,static_cast<uint8_t>(c.id),0,c.token,now_ms};
-            ++state_.active_notes; note(free,c.value);
+               (found<kVoices && groups_[found].token==c.token) || latency>=kLeaseMs)continue;
+            if(found<kVoices)releaseGroup(found);
+            startGroup(false,c,now_ms);
+        } else if(c.type==CommandType::Harmony) {
+#ifdef SMKP4_HARMONY
+            const auto config=harmony::unpack(c.token);
+            if((c.token>>27) || !harmony::valid(config)){++state_.harmony_errors;continue;}
+            state_.harmony=config;++state_.harmony_revision;
+#else
+            ++state_.invalid_commands;
+#endif
         } else if(c.type==CommandType::Patch) {
             const int index=patchIndex(c.id);
             if(index<0) { ++state_.invalid_commands; continue; }
@@ -288,6 +327,7 @@ void Runtime::failRendering() {
     // No allocator or new delta events on an exhausted resource path.
     amy_deltas_reset();all_notes_off();
     for(auto& voice:voices_)voice=Voice{};
+    for(auto& g:groups_)g=Group{};
     std::memset(sustain_,0,sizeof(sustain_));
     std::memset(bend_,0,sizeof(bend_));std::memset(modulation_,0,sizeof(modulation_));
     state_.active_notes=0;state_.patch_state=PatchState::Failed;state_.patch_error=-102;

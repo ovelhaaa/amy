@@ -1,4 +1,8 @@
 menu "SMK-P4 AMY capacity"
+config SMKP4_HARMONY
+    bool "0.9 live scale and chord assist (experimental)"
+    depends on SMKP4_UNIFIED_ENGINE && SMKP4_AMY_VOICES_8
+    default n
 config SMKP4_UNIFIED_ENGINE
     bool "0.8 reusable instruments (candidate; no physical qualification)"
     depends on SMKP4_STANDALONE

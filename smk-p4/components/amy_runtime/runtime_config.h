@@ -5,6 +5,9 @@
 #ifdef ESP_PLATFORM
 #include "sdkconfig.h"
 #define SMKP4_VOICES CONFIG_SMKP4_AMY_VOICES
+#ifdef CONFIG_SMKP4_HARMONY
+#define SMKP4_HARMONY 1
+#endif
 #ifdef CONFIG_SMKP4_UNIFIED_ENGINE
 #define SMKP4_UNIFIED_ENGINE 1
 #endif

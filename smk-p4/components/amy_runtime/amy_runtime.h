@@ -1,9 +1,15 @@
 #pragma once
 #include "usb_input.h"
 #include "output_context.h"
+#include "harmony.h"
 namespace smk::p4::amy {
 enum class PatchState : uint8_t { Ready, Requested, Loading, Verifying, Failed };
 struct Snapshot {
+    harmony::Config harmony;
+    uint32_t harmony_revision=0,harmony_errors=0,groups_admitted=0,groups_rejected=0;
+    uint32_t last_group=0;
+    uint8_t last_notes[4]{},last_count=0,last_input=0;
+    bool last_admitted=false;
     bool ready=false;
     uint16_t patch_id=kPatches[0].id;
     uint8_t master=64;
@@ -37,6 +43,9 @@ private:
     void note(unsigned slot,uint8_t velocity);
     void release(unsigned slot);
     void cancelUsb();
+    unsigned findGroup(bool usb,uint8_t channel,uint8_t input) const;
+    void releaseGroup(unsigned group);
+    void startGroup(bool usb,const Command& c,uint32_t now_ms);
     void applyUsb(uint32_t now_ms);
     void tune(unsigned slot);
     bool loadReusable(uint16_t patch_id);
@@ -49,9 +58,17 @@ private:
     uint8_t bank_=0;
     struct Voice {
         bool used=false, usb=false, held=false;
-        uint8_t pitch=0, channel=0;
+        uint8_t pitch=0, channel=0, input=0, group=0;
         uint32_t token=0, started_ms=0;
     } voices_[kVoices]{};
+    struct Group {
+        bool used=false,usb=false,held=false,sustained=false;
+        uint8_t channel=0,input=0,count=0,notes[4]{},slots[4]{};
+        uint16_t live=0;
+        uint32_t identity=0,token=0,generation=0,started_ms=0;
+        harmony::Config configuration;
+    } groups_[kVoices]{};
+    uint32_t next_group_=0;
     uint32_t usb_generation_=0;
     bool sustain_[16]{};
     int16_t bend_[16]{};

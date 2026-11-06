@@ -2,7 +2,7 @@
 #include "runtime_config.h"
 #include <atomic>
 namespace smk::p4::amy {
-enum class CommandType : uint8_t { NoteOn, Patch, Master, NoteOff, Control, Bend };
+enum class CommandType : uint8_t { NoteOn, Patch, Master, NoteOff, Control, Bend, Harmony };
 struct Command {
     CommandType type{};
     uint16_t id=0;
