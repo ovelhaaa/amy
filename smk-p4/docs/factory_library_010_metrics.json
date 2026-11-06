@@ -76,7 +76,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 1,
@@ -144,7 +145,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 2,
@@ -212,7 +214,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 3,
@@ -280,7 +283,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 4,
@@ -348,7 +352,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 5,
@@ -416,7 +421,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 6,
@@ -484,7 +490,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 7,
@@ -552,7 +559,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 8,
@@ -620,7 +628,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 9,
@@ -688,7 +697,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 10,
@@ -756,7 +766,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 11,
@@ -824,7 +835,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 12,
@@ -892,7 +904,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 13,
@@ -960,7 +973,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 14,
@@ -1028,7 +1042,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 15,
@@ -1096,7 +1111,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 16,
@@ -1164,7 +1180,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 17,
@@ -1232,7 +1249,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 18,
@@ -1300,7 +1318,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 19,
@@ -1368,7 +1387,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 20,
@@ -1436,7 +1456,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 21,
@@ -1504,7 +1525,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 22,
@@ -1612,7 +1634,8 @@
           "heap": 116618,
           "calls": 269
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 23,
@@ -1680,7 +1703,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 24,
@@ -1788,7 +1812,8 @@
           "heap": 116618,
           "calls": 341
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 25,
@@ -1896,7 +1921,8 @@
           "heap": 116618,
           "calls": 365
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 26,
@@ -2004,7 +2030,8 @@
           "heap": 116618,
           "calls": 389
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 27,
@@ -2072,7 +2099,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 28,
@@ -2140,7 +2168,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 29,
@@ -2248,7 +2277,8 @@
           "heap": 116618,
           "calls": 461
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 30,
@@ -2316,7 +2346,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 31,
@@ -2384,7 +2415,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 32,
@@ -2452,7 +2484,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 33,
@@ -2520,7 +2553,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 34,
@@ -2588,7 +2622,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 35,
@@ -2656,7 +2691,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 36,
@@ -2764,7 +2800,8 @@
           "heap": 116618,
           "calls": 533
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 37,
@@ -2872,7 +2909,8 @@
           "heap": 116618,
           "calls": 557
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 38,
@@ -2940,7 +2978,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 39,
@@ -3008,7 +3047,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 40,
@@ -3076,7 +3116,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 41,
@@ -3144,7 +3185,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 42,
@@ -3212,7 +3254,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 43,
@@ -3280,7 +3323,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 44,
@@ -3348,7 +3392,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 45,
@@ -3416,7 +3461,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 46,
@@ -3484,7 +3530,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 47,
@@ -3552,7 +3599,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 48,
@@ -3620,7 +3668,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 49,
@@ -3688,7 +3737,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 50,
@@ -3796,7 +3846,8 @@
           "heap": 116618,
           "calls": 653
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 51,
@@ -3864,7 +3915,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 52,
@@ -3932,7 +3984,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 53,
@@ -4000,7 +4053,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 54,
@@ -4068,7 +4122,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 55,
@@ -4176,7 +4231,8 @@
           "heap": 116618,
           "calls": 773
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 56,
@@ -4244,7 +4300,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 57,
@@ -4312,7 +4369,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 58,
@@ -4420,7 +4478,8 @@
           "heap": 116618,
           "calls": 845
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 59,
@@ -4488,7 +4547,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 60,
@@ -4556,7 +4616,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 61,
@@ -4624,7 +4685,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 62,
@@ -4732,7 +4794,8 @@
           "heap": 116618,
           "calls": 965
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 63,
@@ -4800,7 +4863,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 64,
@@ -4908,7 +4972,8 @@
           "heap": 116618,
           "calls": 1037
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 65,
@@ -5016,7 +5081,8 @@
           "heap": 116618,
           "calls": 1085
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 66,
@@ -5124,7 +5190,8 @@
           "heap": 116618,
           "calls": 1133
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 67,
@@ -5192,7 +5259,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 68,
@@ -5300,7 +5368,8 @@
           "heap": 116618,
           "calls": 1157
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 69,
@@ -5368,7 +5437,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 70,
@@ -5436,7 +5506,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 71,
@@ -5504,7 +5575,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 72,
@@ -5572,7 +5644,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 73,
@@ -5640,7 +5713,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 74,
@@ -5708,7 +5782,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 75,
@@ -5776,7 +5851,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 76,
@@ -5844,7 +5920,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 77,
@@ -5952,7 +6029,8 @@
           "heap": 116618,
           "calls": 1205
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 78,
@@ -6060,7 +6138,8 @@
           "heap": 116618,
           "calls": 1229
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 79,
@@ -6128,7 +6207,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 80,
@@ -6196,7 +6276,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 81,
@@ -6264,7 +6345,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 82,
@@ -6332,7 +6414,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 83,
@@ -6400,7 +6483,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 84,
@@ -6508,7 +6592,8 @@
           "heap": 116618,
           "calls": 1277
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 85,
@@ -6576,7 +6661,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 86,
@@ -6644,7 +6730,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 87,
@@ -6712,7 +6799,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 88,
@@ -6820,7 +6908,8 @@
           "heap": 116618,
           "calls": 1349
         }
-      ]
+      ],
+      "host_cost": "LOW"
     },
     {
       "id": 89,
@@ -6928,7 +7017,8 @@
           "heap": 116618,
           "calls": 1397
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 90,
@@ -7036,7 +7126,8 @@
           "heap": 116618,
           "calls": 1445
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 91,
@@ -7104,7 +7195,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 92,
@@ -7172,7 +7264,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 93,
@@ -7240,7 +7333,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 94,
@@ -7348,7 +7442,8 @@
           "heap": 116618,
           "calls": 1493
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 95,
@@ -7416,7 +7511,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 96,
@@ -7484,7 +7580,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 97,
@@ -7552,7 +7649,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 98,
@@ -7620,7 +7718,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 99,
@@ -7688,7 +7787,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 100,
@@ -7756,7 +7856,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 101,
@@ -7824,7 +7925,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 102,
@@ -7892,7 +7994,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 103,
@@ -7960,7 +8063,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 104,
@@ -8028,7 +8132,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 105,
@@ -8096,7 +8201,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 106,
@@ -8164,7 +8270,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 107,
@@ -8232,7 +8339,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 108,
@@ -8300,7 +8408,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 109,
@@ -8368,7 +8477,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 110,
@@ -8436,7 +8546,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 111,
@@ -8504,7 +8615,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 112,
@@ -8572,7 +8684,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 113,
@@ -8640,7 +8753,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 114,
@@ -8708,7 +8822,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 115,
@@ -8776,7 +8891,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 116,
@@ -8844,7 +8960,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 117,
@@ -8952,7 +9069,8 @@
           "heap": 116618,
           "calls": 1541
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 118,
@@ -9020,7 +9138,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 119,
@@ -9088,7 +9207,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 120,
@@ -9156,7 +9276,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 121,
@@ -9224,7 +9345,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 122,
@@ -9292,7 +9414,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "LOW"
     },
     {
       "id": 123,
@@ -9400,7 +9523,8 @@
           "heap": 116618,
           "calls": 1565
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 124,
@@ -9468,7 +9592,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 125,
@@ -9536,7 +9661,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 126,
@@ -9604,7 +9730,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 127,
@@ -9672,7 +9799,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 128,
@@ -9740,7 +9868,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 129,
@@ -9808,7 +9937,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 130,
@@ -9876,7 +10006,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 131,
@@ -9944,7 +10075,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 132,
@@ -10012,7 +10144,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 133,
@@ -10080,7 +10213,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 134,
@@ -10148,7 +10282,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 135,
@@ -10216,7 +10351,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 136,
@@ -10284,7 +10420,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 137,
@@ -10352,7 +10489,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 138,
@@ -10420,7 +10558,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 139,
@@ -10488,7 +10627,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 140,
@@ -10556,7 +10696,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 141,
@@ -10624,7 +10765,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 142,
@@ -10732,7 +10874,8 @@
           "heap": 116618,
           "calls": 245
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 143,
@@ -10800,7 +10943,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 144,
@@ -10868,7 +11012,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 145,
@@ -10936,7 +11081,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 146,
@@ -11004,7 +11150,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 147,
@@ -11072,7 +11219,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 148,
@@ -11140,7 +11288,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 149,
@@ -11208,7 +11357,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 150,
@@ -11316,7 +11466,8 @@
           "heap": 116618,
           "calls": 293
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 151,
@@ -11424,7 +11575,8 @@
           "heap": 116618,
           "calls": 317
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 152,
@@ -11492,7 +11644,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 153,
@@ -11560,7 +11713,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 154,
@@ -11668,7 +11822,8 @@
           "heap": 116618,
           "calls": 413
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 155,
@@ -11736,7 +11891,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 156,
@@ -11844,7 +12000,8 @@
           "heap": 116618,
           "calls": 437
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 157,
@@ -11952,7 +12109,8 @@
           "heap": 116618,
           "calls": 485
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 158,
@@ -12020,7 +12178,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 159,
@@ -12088,7 +12247,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 160,
@@ -12156,7 +12316,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 161,
@@ -12224,7 +12385,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 162,
@@ -12332,7 +12494,8 @@
           "heap": 116618,
           "calls": 509
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 163,
@@ -12400,7 +12563,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 164,
@@ -12468,7 +12632,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 165,
@@ -12536,7 +12701,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 166,
@@ -12604,7 +12770,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 167,
@@ -12712,7 +12879,8 @@
           "heap": 116618,
           "calls": 581
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 168,
@@ -12780,7 +12948,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 169,
@@ -12848,7 +13017,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 170,
@@ -12916,7 +13086,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 171,
@@ -12984,7 +13155,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 172,
@@ -13092,7 +13264,8 @@
           "heap": 116618,
           "calls": 605
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 173,
@@ -13160,7 +13333,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 174,
@@ -13228,7 +13402,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 175,
@@ -13296,7 +13471,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 176,
@@ -13364,7 +13540,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 177,
@@ -13472,7 +13649,8 @@
           "heap": 116618,
           "calls": 629
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 178,
@@ -13580,7 +13758,8 @@
           "heap": 116618,
           "calls": 677
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 179,
@@ -13688,7 +13867,8 @@
           "heap": 116618,
           "calls": 701
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 180,
@@ -13796,7 +13976,8 @@
           "heap": 116618,
           "calls": 725
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 181,
@@ -13864,7 +14045,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 182,
@@ -13972,7 +14154,8 @@
           "heap": 116618,
           "calls": 749
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 183,
@@ -14040,7 +14223,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "HIGH"
     },
     {
       "id": 184,
@@ -14148,7 +14332,8 @@
           "heap": 116618,
           "calls": 797
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 185,
@@ -14256,7 +14441,8 @@
           "heap": 116618,
           "calls": 821
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 186,
@@ -14364,7 +14550,8 @@
           "heap": 116618,
           "calls": 869
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 187,
@@ -14472,7 +14659,8 @@
           "heap": 116618,
           "calls": 893
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 188,
@@ -14580,7 +14768,8 @@
           "heap": 116618,
           "calls": 917
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 189,
@@ -14688,7 +14877,8 @@
           "heap": 116618,
           "calls": 941
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 190,
@@ -14796,7 +14986,8 @@
           "heap": 116618,
           "calls": 989
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 191,
@@ -14904,7 +15095,8 @@
           "heap": 116618,
           "calls": 1013
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 192,
@@ -15012,7 +15204,8 @@
           "heap": 116618,
           "calls": 1061
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 193,
@@ -15120,7 +15313,8 @@
           "heap": 116618,
           "calls": 1109
         }
-      ]
+      ],
+      "host_cost": "HIGH"
     },
     {
       "id": 194,
@@ -15188,7 +15382,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 195,
@@ -15256,7 +15451,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 196,
@@ -15364,7 +15560,8 @@
           "heap": 116618,
           "calls": 1181
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 197,
@@ -15432,7 +15629,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 198,
@@ -15500,7 +15698,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 199,
@@ -15568,7 +15767,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 200,
@@ -15636,7 +15836,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 201,
@@ -15704,7 +15905,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 202,
@@ -15772,7 +15974,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 203,
@@ -15840,7 +16043,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 204,
@@ -15908,7 +16112,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 205,
@@ -15976,7 +16181,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 206,
@@ -16044,7 +16250,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 207,
@@ -16112,7 +16319,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 208,
@@ -16180,7 +16388,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 209,
@@ -16288,7 +16497,8 @@
           "heap": 116618,
           "calls": 1253
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 210,
@@ -16356,7 +16566,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 211,
@@ -16424,7 +16635,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 212,
@@ -16532,7 +16744,8 @@
           "heap": 116618,
           "calls": 1301
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 213,
@@ -16600,7 +16813,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 214,
@@ -16668,7 +16882,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 215,
@@ -16776,7 +16991,8 @@
           "heap": 116618,
           "calls": 1325
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 216,
@@ -16884,7 +17100,8 @@
           "heap": 116618,
           "calls": 1373
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 217,
@@ -16992,7 +17209,8 @@
           "heap": 116618,
           "calls": 1421
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 218,
@@ -17100,7 +17318,8 @@
           "heap": 116618,
           "calls": 1469
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 219,
@@ -17168,7 +17387,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 220,
@@ -17236,7 +17456,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 221,
@@ -17304,7 +17525,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 222,
@@ -17372,7 +17594,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 223,
@@ -17440,7 +17663,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 224,
@@ -17508,7 +17732,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 225,
@@ -17576,7 +17801,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 226,
@@ -17644,7 +17870,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 227,
@@ -17712,7 +17939,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 228,
@@ -17780,7 +18008,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 229,
@@ -17848,7 +18077,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 230,
@@ -17916,7 +18146,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 231,
@@ -17984,7 +18215,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 232,
@@ -18052,7 +18284,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 233,
@@ -18120,7 +18353,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 234,
@@ -18188,7 +18422,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 235,
@@ -18256,7 +18491,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 236,
@@ -18324,7 +18560,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 237,
@@ -18392,7 +18629,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 238,
@@ -18460,7 +18698,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 239,
@@ -18528,7 +18767,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 240,
@@ -18596,7 +18836,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 241,
@@ -18664,7 +18905,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 242,
@@ -18732,7 +18974,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 243,
@@ -18800,7 +19043,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 244,
@@ -18908,7 +19152,8 @@
           "heap": 116618,
           "calls": 1517
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 245,
@@ -18976,7 +19221,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 246,
@@ -19044,7 +19290,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 247,
@@ -19112,7 +19359,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 248,
@@ -19180,7 +19428,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 249,
@@ -19248,7 +19497,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 250,
@@ -19316,7 +19566,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 251,
@@ -19384,7 +19635,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 252,
@@ -19452,7 +19704,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 253,
@@ -19560,7 +19813,8 @@
           "heap": 116618,
           "calls": 1589
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 254,
@@ -19628,7 +19882,8 @@
           }
         }
       ],
-      "timing_retest": []
+      "timing_retest": [],
+      "host_cost": "MEDIUM"
     },
     {
       "id": 255,
@@ -19736,7 +19991,8 @@
           "heap": 116618,
           "calls": 1613
         }
-      ]
+      ],
+      "host_cost": "MEDIUM"
     }
   ]
 }

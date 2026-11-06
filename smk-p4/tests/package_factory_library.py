@@ -48,10 +48,18 @@ def main():
         manifest["rollback_requires_current_device_backup_and_authorization"] = True
     metrics=json.loads((ROOT / "smk-p4/docs/factory_library_010_metrics.json").read_text())
     manifest["factory"]={"inventoried":256,"host_tested":256,"supported":sum(p["supported"] for p in metrics["patches"]),"resident_instruments":8,"oscillators":64,"p4_per_patch_timing":"NOT RUN"}
+    preflight_path=ROOT/'build/factory010/preflight/preflight.json'
+    if preflight_path.exists():
+        preflight=json.loads(preflight_path.read_text())
+        for name,digest in preflight['files'].items():
+            assert sha(preflight_path.parent/name)==digest, 'Changed device backup'
+        assert preflight['matching_full_reads']==2
+        manifest['device_backup_verified_in_this_task']=True
+        manifest['preflight']=preflight
     tracked = git("ls-files", "src", "smk-p4", "shared").splitlines()
     manifest["product_sources_sha256_lf"] = {
         name: hashlib.sha256((ROOT / name).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
-        for name in tracked if Path(name).suffix in (".c", ".cpp", ".h", ".txt", ".yml", ".ini")
+        for name in tracked if Path(name).suffix in (".c", ".cpp", ".h", ".inc", ".txt", ".yml", ".ini")
         or Path(name).name in ("Kconfig", "dependencies.lock") or "sdkconfig.defaults" in name}
     for env, audible in (("guition-factory-8", False), ("guition-factory-8-bench", True)):
         args = [sys.executable, "smk-p4/tests/check_blueprint_build.py", "--voices", "8", "--sound-library",
@@ -62,7 +70,7 @@ def main():
         build = ROOT / "smk-p4/.pio/build" / env
         for name in tracked:
             source = ROOT / name
-            if name.startswith(("smk-p4/main/", "smk-p4/components/")) and source.suffix in (".cpp", ".c", ".h"):
+            if name.startswith(("smk-p4/main/", "smk-p4/components/")) and source.suffix in (".cpp", ".c", ".h", ".inc"):
                 assert source.stat().st_mtime <= (build / "firmware.bin").stat().st_mtime, f"Stale image: {name}"
         for name in ("firmware.bin", "firmware.elf", "firmware.map", "bootloader.bin", "partitions.bin", "sdkconfig",
                      "config/sdkconfig.h", "compile_commands.json", "flasher_args.json", "project_description.json"):
@@ -82,7 +90,7 @@ def main():
             "compiled_project_version": json.loads((build / "project_description.json").read_text()).get("project_version"),
             "sections_bytes": {name: size for name, size in sections.items() if name.startswith((".dram", ".iram", ".rtc", ".tcm"))}}
     for file in (ROOT / "build/factory010").rglob("*"):
-        if file.is_file() and file.suffix in (".log", ".png", ".pcm", ".json"):
+        if file.is_file() and file.suffix in (".log", ".png", ".pcm", ".json", ".bin"):
             copy(file, "evidence/" + file.relative_to(ROOT / "build/factory010").as_posix())
     for file in (ROOT / "smk-p4/docs").glob("factory_library_010*"):
         copy(file, "docs/" + file.name)

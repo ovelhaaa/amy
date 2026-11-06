@@ -110,18 +110,25 @@ public:
         // Collect matching patches
         size_t total_count = 0;
         const BlueprintPatchEntry* catalog = UiModel::catalog(total_count);
-        const BlueprintPatchEntry* filtered[UiModel::kCatalogSize]{};
+        constexpr size_t kRowsPerPage = 6;
+        const BlueprintPatchEntry* filtered[kRowsPerPage]{};
         size_t match_count = 0;
         for (size_t i = 0; i < total_count; ++i) {
             if (matchesFilter(backend, catalog[i])) {
-                filtered[match_count++] = &catalog[i];
+                ++match_count;
             }
         }
 
-        constexpr size_t kRowsPerPage = 6;
         const size_t total_pages = (match_count + kRowsPerPage - 1) / kRowsPerPage;
         if (g_browser.page >= total_pages && total_pages > 0) {
             g_browser.page = static_cast<uint8_t>(total_pages - 1);
+        }
+
+        // Keep only the visible page on the UI stack, even for a large catalog.
+        size_t matched=0,visible=0;
+        const size_t first=g_browser.page*kRowsPerPage;
+        for(size_t i=0;i<total_count && visible<kRowsPerPage;++i) {
+            if(matchesFilter(backend,catalog[i]) && matched++>=first)filtered[visible++]=&catalog[i];
         }
 
         // 3. Left List Panel (x = 8..516, y = 82..386)
@@ -139,7 +146,7 @@ public:
                             &lv_font_montserrat_14, palette::kTextSecondary);
                 continue;
             }
-            const auto* entry = filtered[idx];
+            const auto* entry = filtered[r];
             const bool is_sel = (entry->id == active_id);
             const bool is_fav = backend.model().isFavorite(entry->id);
 
