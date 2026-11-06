@@ -26,6 +26,7 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
     state_=Snapshot{}; bank_=0; gain_q16_=0;
     for(auto& v:voices_) v=Voice{};
     commands_.panic(); state_.generation=commands_.generation();
+    publishOutput(OutputReason::Boot);
     auto config=amy_default_config();
     config.features.default_synths=config.features.startup_bleep=0;
     config.features.reverb=config.features.chorus=config.features.echo=0;
@@ -72,7 +73,7 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
     delta_release_list(reserved);
     state_.oom_count=amy_get_oom_count();
     if(state_.oom_count) { end(); return false; }
-    state_.ready=true; return true;
+    state_.ready=true; publishOutput(OutputReason::Ready); return true;
 }
 void Runtime::end() {
     if(started_) { silence(); amy_stop(); started_=false; }
@@ -182,6 +183,7 @@ void Runtime::apply(uint32_t now_ms) {
         }
 #endif
         silence(); state_.generation=generation;
+        publishOutput(OutputReason::Panic);
         // Global Panic also invalidates queued USB notes/controls.
         usb_.commands.panic(); usb_generation_=usb_.commands.generation();
     }
@@ -229,6 +231,7 @@ void Runtime::apply(uint32_t now_ms) {
             usb_.commands.panic(); usb_generation_=usb_.commands.generation();
             state_.requested_patch_id=c.id; state_.patch_error=0;
             state_.patch_state=PatchState::Requested;
+            publishOutput(OutputReason::Patch);
             return;
 #else
             silence(); usb_.commands.panic(); usb_generation_=usb_.commands.generation();
@@ -249,6 +252,7 @@ void Runtime::apply(uint32_t now_ms) {
     }
 }
 const int16_t* Runtime::render() {
+    publishOutput(state_.patch_state==PatchState::Ready?OutputReason::Ready:state_.patch_state==PatchState::Failed?OutputReason::Failed:OutputReason::Patch);
     if(!state_.ready) return nullptr;
 #ifdef SMKP4_UNIFIED_ENGINE
     if(state_.patch_state!=PatchState::Ready) return silent_pcm_;
@@ -349,6 +353,7 @@ void Runtime::loadPendingPatch() {
     if(!started_ || state_.patch_state!=PatchState::Requested) return;
     load_oom_baseline_=amy_get_oom_count();
     state_.patch_state=PatchState::Loading;
+    publishOutput(OutputReason::Patch);
     const bool loaded=loadReusable(state_.requested_patch_id);
     const bool cancelled=commands_.generation()!=state_.generation ||
         usb_.commands.generation()!=usb_generation_;
@@ -366,6 +371,7 @@ void Runtime::loadPendingPatch() {
         state_.patch_state=PatchState::Ready;++state_.patch_changes;
     }
     state_.oom_count=amy_get_oom_count();
+    publishOutput(state_.patch_state==PatchState::Ready?OutputReason::Ready:OutputReason::Failed);
 #endif
 }
 }

@@ -343,6 +343,11 @@ extern "C" void app_main() {
                 ESP_LOGI(kTag,"PATCH08 state=%u requested=%u confirmed=%u error=%ld changes=%lu failures=%lu; worker dma_* above=enqueue pacing, not physical I2S",
                     unsigned(state.engine.patch_state),state.engine.requested_patch_id,state.engine.patch_id,
                     long(state.engine.patch_error),(unsigned long)state.engine.patch_changes,(unsigned long)state.engine.patch_failures);
+                ESP_LOGI(kTag,"GAP09 boot=%lu patch=%lu panic=%lu stale=%lu unexpected_active=%lu other=%lu stale_discarded=%lu",
+                    (unsigned long)state.output.gaps.boot,(unsigned long)state.output.gaps.patch,
+                    (unsigned long)state.output.gaps.panic,(unsigned long)state.output.gaps.stale,
+                    (unsigned long)state.output.gaps.unexpected_active,(unsigned long)state.output.gaps.other,
+                    (unsigned long)state.output.stale_discarded);
                 ESP_LOGI(kTag,"OUTPUT08 frames=%llu blocks=%lu gaps=%lu barriers=%lu write_avg/max_us=%llu/%lu errors=%lu timeouts=%lu refill_risks=%lu stack_free=%lu underruns=UNMEASURED",
                     (unsigned long long)state.output.frames,(unsigned long)state.output.blocks,(unsigned long)state.output.silence_blocks,
                     (unsigned long)state.output.barriers,(unsigned long long)(state.output.blocks?state.output.write_total_us/state.output.blocks:0),

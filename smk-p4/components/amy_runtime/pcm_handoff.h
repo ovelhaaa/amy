@@ -14,12 +14,13 @@ public:
         std::memcpy(block.pcm,samples,sizeof(block.pcm));block.generation=generation;
         write_.store(w+1,std::memory_order_release);return true;
     }
-    bool take(int16_t* output,uint32_t generation) {
+    bool take(int16_t* output,uint32_t generation,unsigned* stale=nullptr) {
         bool copied=false;
         for(unsigned i=0;i<Blocks;++i) {
             const uint32_t r=read_.load(std::memory_order_relaxed);
             if(r==write_.load(std::memory_order_acquire)) break;
             const auto& block=blocks_[r%Blocks];
+            if(block.generation!=generation && stale) ++*stale;
             if(block.generation==generation) {
                 std::memcpy(output,block.pcm,sizeof(block.pcm));copied=true;
             }

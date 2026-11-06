@@ -2,6 +2,7 @@
 #include "pcm5102_output.h"
 #include "pcm_handoff.h"
 #include "commands.h"
+#include "output_context.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -13,6 +14,8 @@ namespace smk::p4::audio {
 class UnifiedOutput {
 public:
     struct Metrics {
+        amy::GapCounts gaps;
+        uint32_t stale_discarded=0;
         uint64_t frames=0,write_total_us=0;
         uint32_t blocks=0,silence_blocks=0,barriers=0,write_max_us=0;
         uint32_t write_errors=0,timeouts=0,refill_risks=0,stack_free=0;
@@ -73,7 +76,11 @@ private:
             const bool barrier=generation!=output_generation;
             if(barrier)++m.barriers;
             output_generation=generation;
-            if(barrier || !handoff_.take(pcm,generation)) {
+            unsigned stale=0;
+            const bool copied=!barrier && handoff_.take(pcm,generation,&stale);
+            m.stale_discarded+=stale;
+            if(!copied) {
+                m.gaps.add(commands_.output_context.load(std::memory_order_acquire),generation,stale!=0);
                 ++silence_blocks_;
                 ++m.silence_blocks;
                 // One bounded block ramps the last sample to zero on a gap.

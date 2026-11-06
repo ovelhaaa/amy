@@ -1,5 +1,6 @@
 #pragma once
 #include "usb_input.h"
+#include "output_context.h"
 namespace smk::p4::amy {
 enum class PatchState : uint8_t { Ready, Requested, Loading, Verifying, Failed };
 struct Snapshot {
@@ -32,6 +33,7 @@ public:
     const Snapshot& snapshot() const { return state_; }
 private:
     void silence();
+    void publishOutput(OutputReason reason) { commands_.output_context.store(outputContext(state_.generation,reason,state_.active_notes!=0),std::memory_order_release); }
     void note(unsigned slot,uint8_t velocity);
     void release(unsigned slot);
     void cancelUsb();
