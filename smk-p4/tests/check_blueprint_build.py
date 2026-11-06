@@ -13,6 +13,7 @@ def require(condition, message):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sound-library", action="store_true")
+    parser.add_argument("--unified-engine", action="store_true")
     parser.add_argument("--musical", action="store_true")
     parser.add_argument("--voices", type=int, choices=(4, 6, 8), default=4)
     parser.add_argument("--environment", help="Explicit build directory name")
@@ -20,11 +21,12 @@ def main():
     project = Path(__file__).resolve().parents[1]
     environment = "guition-standalone-blueprint" + (f"-{args.voices}" if args.voices != 4 else "")
     if args.environment:
-        require(args.environment in {"guition-sound-library-8-bench", "guition-sound-library-8", "guition-standalone-blueprint", "guition-standalone-blueprint-6", "guition-standalone-blueprint-8", "guition-standalone-blueprint-6-bench", "guition-standalone-blueprint-8-bench"}, "unknown environment")
+        require(args.environment in {"guition-unified-engine-8-bench", "guition-unified-engine-8", "guition-sound-library-8-bench", "guition-sound-library-8", "guition-standalone-blueprint", "guition-standalone-blueprint-6", "guition-standalone-blueprint-8", "guition-standalone-blueprint-6-bench", "guition-standalone-blueprint-8-bench"}, "unknown environment")
         environment = args.environment
     build = project / ".pio/build" / environment
     defines = dict(re.findall(r"^#define (CONFIG_\w+) ([^\r\n]+)", (build / "config/sdkconfig.h").read_text(), re.M))
     require((defines.get("CONFIG_SMKP4_SOUND_LIBRARY")=="1")==args.sound_library, "effective resident library profile")
+    require((defines.get("CONFIG_SMKP4_UNIFIED_ENGINE")=="1")==args.unified_engine, "effective unified engine profile")
     require(defines.get("CONFIG_SMKP4_AMY_VOICES") == str(args.voices), "compiled polyphony differs from selected profile")
     for key in ("CONFIG_IDF_TARGET_ESP32P4", "CONFIG_SMKP4_STANDALONE", "CONFIG_SMKP4_UI_BLUEPRINT", "CONFIG_LV_FONT_MONTSERRAT_14"):
         require(defines.get(key) == "1", key)

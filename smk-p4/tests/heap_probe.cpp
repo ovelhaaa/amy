@@ -15,7 +15,11 @@ static size_t live_bytes=0,peak_bytes=0;
 static bool realtime=false;
 static size_t fail_bytes=0;
 static unsigned fail_remaining=0;
+static unsigned fail_next=0,callback_remaining=0;
+static void (*allocation_callback)()=nullptr;
 static bool fail_allocation(size_t bytes) {
+    if(callback_remaining && --callback_remaining==0 && allocation_callback) allocation_callback();
+    if(fail_next && --fail_next==0)return true;
     if(bytes!=fail_bytes || !fail_remaining) return false;
     assert(!realtime);
     return --fail_remaining==0;
@@ -45,6 +49,8 @@ void probe_dump() { for(unsigned i=0;i<4096;++i) if(allocations[i]) std::fprintf
 size_t probe_bytes() { return live_bytes; }
 size_t probe_peak_bytes() { return peak_bytes; }
 void probe_fail_nth(size_t bytes,unsigned occurrence) { fail_bytes=bytes; fail_remaining=occurrence; }
+void probe_fail_next(unsigned occurrence) { fail_next=occurrence; }
+void probe_on_allocation(unsigned occurrence,void (*callback)()) { callback_remaining=occurrence;allocation_callback=callback; }
 bool probe_failure_consumed() { return fail_bytes && !fail_remaining; }
 uint32_t probe_calls() { return calls; }
 }

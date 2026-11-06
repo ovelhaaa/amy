@@ -29,6 +29,9 @@ public:
         assert(rt_.begin());
         rt_.commands().push({CommandType::Patch, patch_, 0, 0, 0, 0});
         rt_.apply(0);
+#ifdef SMKP4_UNIFIED_ENGINE
+        rt_.loadPendingPatch();
+#endif
         // warm up
         for (int b = 0; b < 10; ++b) {
             now_ms_ += 256 * 1000 / 48000;
@@ -113,7 +116,12 @@ public:
             blocks(15000, -1, r); // FM tails can exceed one second.
             assert(last_block_silent_);
             // Output silence is not equivalent to operator last_amp == 0.
-            uint16_t voice; assert(instrument_get_num_voices(patchIndex(patch_)*kVoices+1,&voice)==1);
+            uint16_t voice;
+#ifdef SMKP4_UNIFIED_ENGINE
+            assert(instrument_get_num_voices(1,&voice)==1);
+#else
+            assert(instrument_get_num_voices(patchIndex(patch_)*kVoices+1,&voice)==1);
+#endif
             unsigned residual=0;
             for(unsigned o=0;o<kOscillators;++o)
                 if(osc_to_voice[o]==voice && msynth[o] && msynth[o]->last_amp!=0) ++residual;
@@ -214,6 +222,9 @@ public:
         uint16_t other = (patch_ == 135) ? 128 : 135;
         rt_.commands().push({CommandType::Patch, other, 0, 0, 0, 0});
         rt_.apply(now_ms_);
+#ifdef SMKP4_UNIFIED_ENGINE
+        rt_.loadPendingPatch();
+#endif
         blocks(10, 0, r);
         noteOn(64);
         blocks(12, 1, r);

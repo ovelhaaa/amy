@@ -57,6 +57,10 @@ jobs:
             environment: guition-sound-library-8
             voices: 8
             audit_flags: --sound-library --environment guition-sound-library-8
+          - project: smk-p4
+            environment: guition-unified-engine-8
+            voices: 8
+            audit_flags: --sound-library --unified-engine --environment guition-unified-engine-8
           - project: smk-s3
             environment: esp32-s3-link
     steps:
@@ -72,7 +76,7 @@ jobs:
         if: matrix.project == 'smk-s3'
         run: python -c "from pathlib import Path; assert '#define CONFIG_SMKS3_P4_HEADLESS 1' in Path('smk-s3/.pio/build/esp32-s3-link/config/sdkconfig.h').read_text()"
       - name: Verify Blueprint target and safe hardware defaults
-        if: startsWith(matrix.environment, 'guition-standalone-blueprint') || matrix.environment == 'guition-sound-library-8'
+        if: startsWith(matrix.environment, 'guition-standalone-blueprint') || matrix.environment == 'guition-sound-library-8' || matrix.environment == 'guition-unified-engine-8'
         run: python smk-p4/tests/check_blueprint_build.py --voices ${{ matrix.voices }} ${{ matrix.audit_flags }}
       - name: Verify standalone target and safe hardware defaults
         if: matrix.environment == 'guition-standalone'
@@ -100,3 +104,6 @@ jobs:
           }
           ./smk-p4/tests/run_amy.ps1 -Voices 8 -SoundLibrary
           ./smk-p4/tests/run_blueprint_adapter.ps1 -Voices 8 -SoundLibrary
+          ./smk-p4/tests/run_unified_probe.ps1
+          ./smk-p4/tests/run_unified_ui.ps1
+          python smk-p4/tests/summarize_unified_engine.py

@@ -141,7 +141,11 @@ int main() {
     }
     midi(r,0x90,60,100); r.apply(0);
     assert(ui.push({CommandType::Patch,135,0,0,0,0}));
-    midi(r,0x90,64,100); r.apply(1); audio(r);
+    midi(r,0x90,64,100); r.apply(1);
+#ifdef SMKP4_UNIFIED_ENGINE
+    probe_realtime(false);r.loadPendingPatch();probe_realtime(true);
+#endif
+    audio(r);
     assert(!r.snapshot().active_notes && r.snapshot().patch_id==135);
     midi(r,0x90,60,100); r.apply(2); audio(r); assert(r.snapshot().active_notes==1);
     ui.panic(); r.apply(3); audio(r); assert(!r.snapshot().active_notes);

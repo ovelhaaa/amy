@@ -18,4 +18,18 @@ try {
     if($LASTEXITCODE) { throw 'Unified probe link failed' }
     & "$build/probe.exe" | Tee-Object "$build/probe.log"
     if($LASTEXITCODE) { throw 'Unified probe failed' }
+    & g++ -std=c++17 @flags smk-p4/tests/patch_bank_probe.cpp smk-p4/tests/heap_probe.cpp smk-p4/components/amy_runtime/amy_runtime.cpp @objects '-Wl,--wrap=malloc' '-Wl,--wrap=calloc' '-Wl,--wrap=realloc' '-Wl,--wrap=free' -lm -o "$build/candidates.exe"
+    if($LASTEXITCODE) { throw 'Candidate probe link failed' }
+    & "$build/candidates.exe" | Tee-Object "$build/candidates.log"
+    if($LASTEXITCODE) { throw 'Candidate probe failed' }
+    & g++ -std=c++17 -pthread @flags -DSMKP4_VOICES=8 -DSMKP4_SOUND_LIBRARY=1 -DSMKP4_UNIFIED_ENGINE=1 -Ismk-p4/main -Ishared/smk_protocol smk-p4/tests/unified_runtime_test.cpp smk-p4/tests/heap_probe.cpp smk-p4/components/amy_runtime/amy_runtime.cpp @objects '-Wl,--wrap=malloc' '-Wl,--wrap=calloc' '-Wl,--wrap=realloc' '-Wl,--wrap=free' -lm -o "$build/runtime.exe"
+    if($LASTEXITCODE) { throw 'Unified runtime link failed' }
+    & "$build/runtime.exe" | Tee-Object "$build/runtime.log"
+    if($LASTEXITCODE) { throw 'Unified runtime failed' }
+    foreach($test in @('usb_musical_test','test_retrigger_scenarios')) {
+        & g++ -std=c++17 -pthread @flags -DSMKP4_VOICES=8 -DSMKP4_SOUND_LIBRARY=1 -DSMKP4_UNIFIED_ENGINE=1 "smk-p4/tests/$test.cpp" smk-p4/tests/heap_probe.cpp smk-p4/components/amy_runtime/amy_runtime.cpp @objects '-Wl,--wrap=malloc' '-Wl,--wrap=calloc' '-Wl,--wrap=realloc' '-Wl,--wrap=free' -lm -o "$build/$test.exe"
+        if($LASTEXITCODE) { throw "Unified link failed: $test" }
+        & "$build/$test.exe" | Tee-Object "$build/$test.log"
+        if($LASTEXITCODE) { throw "Unified test failed: $test" }
+    }
 } finally { Pop-Location }
