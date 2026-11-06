@@ -2,7 +2,7 @@
 
 Este candidato não herda aprovação física da 0.6. Gravação/startup já executados
 na unidade do [registro físico](sound_library_07_hardware_qualification.md);
-smoke e janela longa continuam pendentes. Não gravar sem autorização
+smoke corrigido PASS; nova janela longa dispensada pelo operador nesta sessão. Não gravar sem autorização
 explícita para a imagem concreta, após os passos abaixo. O build seguro tem
 I²S/USB desligados. O ambiente `guition-sound-library-8-bench` usa o perfil
 histórico 0.6, ainda sujeito à reconfirmação da montagem atual.

@@ -222,12 +222,10 @@ Rollback: imagens/bundles/backup0.6 de4/6/8 permanecem intocados. Para rollback
 físico, reconfirmar unidade/layout/hashes e obter autorização para aquela imagem.
 Não usar o build novo de um ambiente antigo como substituto de bundle qualificado.
 
-Próximo menor passo: obter o resultado do smoke já solicitado e executar o
-[roteiro físico](sound_library_07_hardware_test.md) por>=30min com controlador,
-oito notas em cada patch, quatro hot-plugs e navegação. Identificação/backup/
-autorização/gravação já foram executados; não repetir aprovação desnecessária.
-Depois de medir margem real sob carga, reavaliar Juno com política explícita de
-EQ/efeitos e novo orçamento, preservando oito vozes.
+Próximo menor passo: ampliar a qualificação somente se solicitado pelo operador.
+O smoke corrigido foi aprovado; a nova captura longa foi explicitamente dispensada.
+Não há autorização implícita para promover o Gate E integral ou apagar a janela
+falha. Uma futura expansão Juno exige novo orçamento e política de EQ/efeitos.
 
 
 ## Correção de rajada USB após reprovação física
@@ -243,5 +241,16 @@ PASS host:57 eventos sem perda, drenagem32+25 em dois blocos,64 comandos antigos
 invalidados após disconnect e overflow real com Panic. Runtime+768B, sem heap
 adicional. Regressões completas Library8/legado4/USB passadas. Nova gravação
 app-only hash verificado; startup USB conectado/ready/I²S e drops0 em repouso.
-Reprodução física sob a mesma carga e nova janela>=30min continuam obrigatórias;
-não considerar o defeito fisicamente encerrado apenas pelo host/boot.
+Operador aprovou o smoke da revisão corrigida. A leitura curta pós-smoke confirmou
+zero perdas/overflow/erros/deadlines, mas não reproduz integralmente a janela
+anterior. Por instrução “não há necessidade da captura tão longa”, nova janela
+>=30min não executada. Encerramento desta sessão: smoke PASS, Gate E integral
+não aprovado; escopo e limites no relatório físico.
+
+
+## Encerramento por orientação do operador
+
+MANUAL/PASS: “Smoke da revisão corrigida passou”. PASS: captura curta8s após
+smoke, MIDI dropped/overflow0, ready1/I²S/USB conectado, notas0 e deadlines0.
+NOT RUN: nova captura1880s, dispensada explicitamente pelo operador. Nenhuma
+nova imagem foi gravada nessa confirmação. Mantém-se a revisão USB64 SHA2038bb68…b26f1.

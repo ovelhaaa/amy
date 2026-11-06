@@ -85,7 +85,7 @@ Janela foi encerrada para investigar, sem cumprir os30min. Foram amostrados oito
 gates em todos os patches, duas desconexões e21 transições de tela; não são quatro
 hot-plugs/28 transições verificados. Não substituir contadores por confirmação manual.
 
-## Revisão USB64 — startup PASS, novo smoke pendente
+## Revisão USB64 — startup e smoke PASS; ensaio longo dispensado pelo operador
 
 Aplicação `2038bb68159ecc88aa256cf286a434b32914fc5e461b320f28216691b17b26f1`,
 1204704B, app-only0x10000, hash verificado. Mesmo motor, drivers, pinos, DSP,
@@ -101,5 +101,20 @@ continua286490B, sem alocação de serviço. Não foi ampliado o trabalho DSP po
 Startup na placa:387491B/maior245760B antes;110259B/maior36864B após engine;
 91019B/maior31744B depois de I²S/UI/USB conectado. OOM/deadlines/descartes0 em
 repouso. Memória do engine277232B; guardas e stack mantidos. Captura `boot07_v3.log`.
-Solicitado novo smoke com oito notas, bend/CC1 rápido, sustain, troca, hot-plug e
-Panic. Depois será necessária outra janela>=30min, sem reaproveitar a janela falha.
+Operador confirmou **“Smoke da revisão corrigida passou”** para oito notas,
+bend/CC1 rápido, sustain, troca, hot-plug e Panic. Em seguida determinou:
+**“não há necessidade da captura tão longa”**. A nova captura1880s não foi iniciada.
+
+PASS: leitura curta de8s, `prewindow07_v3.log`, após o smoke: AMY ready1,
+USB conectado, notes0, eventos324, dropped0/overflow0/parse_errors0/USB errors0,
+clipping0/OOM0/compute deadlines0/render deadlines0. Render máximo acumulado3321us,
+comandos máximo1233us e troca578us; máximos desde boot, não medidos só nesses8s.
+Heap livre91839B, mínimo91019B, maior bloco31744B;11 transições de tela acumuladas.
+A confirmação manual de hot-plug foi preservada; os contadores lidos mostraram
+connects1/disconnects0, portanto não se declara reconexão instrumentada na revisão.
+
+MANUAL/PASS: smoke e audição da revisão corrigida. NOT RUN: nova janela>=30min,
+quatro hot-plugs instrumentados e matriz completa de carga prolongada, dispensados
+nesta sessão por instrução explícita do operador. Gate E integral não é promovido.
+A falha anterior25 drops continua documentada e não foi apagada pela revisão.
+
