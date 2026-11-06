@@ -1,4 +1,5 @@
 #include "ui_model.h"
+#include "../../amy_runtime/harmony.h"
 #include "../../amy_runtime/patch_library.h"
 #include <algorithm>
 #include <cmath>
@@ -58,24 +59,6 @@ const BlueprintPatchEntry kPatchCatalog[UiModel::kCatalogSize] = {
     {241, "USER KARPLUS PLK","USER DEMO",PatchCategory::Plucks,        SynthFamily::KarplusStrong, FeatureStatus::Demo,      false,
      {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}}
 };
-
-// Bitmask of active pitch classes relative to root (bit 0 = root)
-uint16_t scaleIntervalMask(int32_t scale_idx) {
-    switch (scale_idx) {
-        case 0:  return 0x0FFF; // Chromatic: all 12 notes
-        case 1:  return 0x0AB5; // Major: 0, 2, 4, 5, 7, 9, 11
-        case 2:  return 0x05AD; // Natural Minor: 0, 2, 3, 5, 7, 8, 10
-        case 3:  return 0x09AD; // Harmonic Minor: 0, 2, 3, 5, 7, 8, 11
-        case 4:  return 0x02A5; // Pentatonic Major: 0, 2, 4, 7, 9
-        case 5:  return 0x04A9; // Pentatonic Minor: 0, 3, 5, 7, 10
-        case 6:  return 0x04E9; // Blues: 0, 3, 5, 6, 7, 10
-        case 7:  return 0x06AD; // Dorian: 0, 2, 3, 5, 7, 9, 10
-        case 8:  return 0x05AB; // Phrygian: 0, 1, 3, 5, 7, 8, 10
-        case 9:  return 0x0AD5; // Lydian: 0, 2, 4, 6, 7, 9, 11
-        case 10: return 0x06B5; // Mixolydian: 0, 2, 4, 5, 7, 9, 10
-        default: return 0x0FFF;
-    }
-}
 
 } // namespace
 
@@ -510,99 +493,15 @@ void UiModel::setMidiLearnSlot(int idx) {
 }
 
 HarmonyPreviewResult UiModel::computeHarmony(uint8_t raw_midi_note) const {
-    HarmonyPreviewResult res{};
-    res.is_demo_calculation = true;
-    res.input_note = raw_midi_note & 0x7F;
-
-    const int32_t root = std::clamp<int32_t>(getInt("harmony.root_note", 0), 0, 11);
-    const int32_t scale_idx = std::clamp<int32_t>(getInt("harmony.scale_type", 2), 0, 10);
-    const bool scale_on = getBool("harmony.scale_enable", true);
-    const int32_t quant_mode = getInt("harmony.quant_mode", 0);
-
-    const uint16_t rel_mask = scaleIntervalMask(scale_idx);
-    // Rotate mask so bit p corresponds to absolute pitch class p (0=C..11=B)
-    uint16_t abs_mask = 0;
-    for (int pc = 0; pc < 12; ++pc) {
-        const int rel = (pc + 12 - root) % 12;
-        if (rel_mask & (1u << rel)) {
-            abs_mask |= static_cast<uint16_t>(1u << pc);
-        }
-    }
-    res.scale_mask_12 = abs_mask;
-
-    const int in_pc = res.input_note % 12;
-    res.input_in_scale = (abs_mask & (1u << in_pc)) != 0;
-
-    int q_note = res.input_note;
-    if (scale_on && !res.input_in_scale) {
-        if (quant_mode == 2) {
-            // Snap to root of current octave
-            q_note = (res.input_note / 12) * 12 + root;
-        } else {
-            for (int dist = 1; dist <= 6; ++dist) {
-                const int cand_up = std::clamp(static_cast<int>(res.input_note) + dist, 0, 127);
-                const int cand_dn = std::clamp(static_cast<int>(res.input_note) - dist, 0, 127);
-                if (quant_mode == 1) {
-                    // Prefer downward
-                    if (abs_mask & (1u << (cand_dn % 12))) { q_note = cand_dn; break; }
-                    if (abs_mask & (1u << (cand_up % 12))) { q_note = cand_up; break; }
-                } else {
-                    // Prefer upward
-                    if (abs_mask & (1u << (cand_up % 12))) { q_note = cand_up; break; }
-                    if (abs_mask & (1u << (cand_dn % 12))) { q_note = cand_dn; break; }
-                }
-            }
-        }
-    }
-    res.quantized_note = static_cast<uint8_t>(std::clamp(q_note, 0, 127));
-
-    // Chord Assist intervals
-    const bool chord_on = getBool("harmony.chord_enable", true);
-    const int32_t chord_type = getInt("harmony.chord_type", 2);
-    const int32_t inversion = std::clamp<int32_t>(getInt("harmony.inversion", 0), 0, 3);
-    const int32_t spread = std::clamp<int32_t>(getInt("harmony.spread", 0), 0, 2);
-
-    if (!chord_on || chord_type == 0) {
-        res.chord_notes[0] = res.quantized_note;
-        res.chord_count = 1;
-        return res;
-    }
-
-    int intervals[5] = {0, 4, 7, 0, 0};
-    uint8_t count = 3;
-    switch (chord_type) {
-        case 1:  intervals[1] = 4; intervals[2] = 7; count = 3; break; // Major
-        case 2:  intervals[1] = 3; intervals[2] = 7; count = 3; break; // Minor
-        case 3:  intervals[1] = 3; intervals[2] = 6; count = 3; break; // Diminished
-        case 4:  intervals[1] = 4; intervals[2] = 8; count = 3; break; // Augmented
-        case 5:  intervals[1] = 2; intervals[2] = 7; count = 3; break; // Sus2
-        case 6:  intervals[1] = 5; intervals[2] = 7; count = 3; break; // Sus4
-        case 7:  intervals[1] = 4; intervals[2] = 7; intervals[3] = 10; count = 4; break; // Dom 7
-        case 8:  intervals[1] = 4; intervals[2] = 7; intervals[3] = 11; count = 4; break; // Maj 7
-        case 9:  intervals[1] = 3; intervals[2] = 7; intervals[3] = 10; count = 4; break; // Min 7
-        case 10: intervals[1] = 4; intervals[2] = 7; intervals[3] = 14; count = 4; break; // Add9
-        case 11: intervals[1] = 4; intervals[2] = 7; intervals[3] = 10; intervals[4] = 14; count = 5; break; // 9th
-        default: break;
-    }
-
-    // Apply inversion by raising lower chord tones by +12 semitones
-    for (int inv = 0; inv < inversion && inv < static_cast<int>(count); ++inv) {
-        intervals[inv] += 12;
-    }
-    // Apply spread to upper voices
-    if (spread > 0 && count >= 3) {
-        intervals[1] += 12 * spread;
-    }
-    std::sort(intervals, intervals + count);
-
-    uint8_t out_idx = 0;
-    for (uint8_t i = 0; i < count && out_idx < 6; ++i) {
-        const int n = static_cast<int>(res.quantized_note) + intervals[i];
-        if (n >= 0 && n <= 127) {
-            res.chord_notes[out_idx++] = static_cast<uint8_t>(n);
-        }
-    }
-    res.chord_count = (out_idx > 0) ? out_idx : 1;
+    harmony::Config c;
+    c.scale_on=getBool("harmony.scale_enable");c.chord_on=getBool("harmony.chord_enable");
+    c.root=getInt("harmony.root_note");c.scale=getInt("harmony.scale_type");
+    c.quant=getInt("harmony.quant_mode");c.chord=getInt("harmony.chord_type");
+    c.inversion=getInt("harmony.inversion");c.open=getInt("harmony.voicing");c.spread=getInt("harmony.spread");
+    const auto n=harmony::transform(raw_midi_note,c);
+    HarmonyPreviewResult res{};res.input_note=raw_midi_note;res.quantized_note=n.quantized;
+    res.input_in_scale=n.in_scale;res.scale_mask_12=n.mask;res.chord_count=n.count;
+    for(unsigned i=0;i<n.count;++i)res.chord_notes[i]=n.notes[i];
     return res;
 }
 
