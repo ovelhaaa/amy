@@ -74,5 +74,15 @@ int main(){
     r.commands().release(60,fresh);r.apply(0);assert(!r.snapshot().active_notes);
     printf("HARMONY_TIMING transform_max_us=%u admission_max_us=%u delta_reserve=%u boot_guard=%zu\n",r.snapshot().transform_max_us,r.snapshot().admission_max_us,amy::kDeltaReserve,amy::Runtime::bootFreeInternalBytes());
     puts("PASS full Touch burst: no service allocation; stale Touch release isolation");
-    r.end();
+    usb(r,0x90,60,100);usb(r,0x90,62,100);r.apply(0);r.render();assert(r.snapshot().active_notes==8);
+    for(unsigned i=0;i<32;++i)usb(r,0xb0,1,uint8_t(i*4));
+    for(unsigned i=0;i<32;++i)usb(r,0xe0,uint8_t(i*4),64);
+    probe_realtime(true);uint64_t control_max=0;
+    for(unsigned i=0;i<2;++i){const auto t=std::chrono::steady_clock::now();r.apply(0);
+        const uint64_t elapsed=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-t).count();
+        if(elapsed>control_max)control_max=elapsed;
+        r.render();}
+    probe_realtime(false);assert(!r.snapshot().oom_count && r.snapshot().active_notes==8);
+    printf("PASS full eight-voice channel controls32_per_block max_apply_us=%llu; no service allocation\n",(unsigned long long)control_max);
+    panic(r);r.end();
 }
