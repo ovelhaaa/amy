@@ -1,3 +1,29 @@
+# Harmony Assist 0.9 - candidato experimental
+
+Perfil isolado `guition-harmony-8`: quantizacao real, acordes fixos/diatonicos,
+inversoes, oito vozes com admissao atomica, USB por canal e Touch independente.
+A tela Harmony envia configuracao ao owner e mostra confirmacao e ultimo grupo
+admitido separadamente da previsao. Boot: Scale OFF, Chord OFF, canal USB1.
+AMY core, quinze patches, ganho, drivers e baseline0.8 preservados.
+
+```powershell
+./smk-p4/tests/run_harmony.ps1
+./smk-p4/ui-preview/run_preview.ps1
+./smk-p4/tests/run_harmony_ui.ps1
+C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-harmony-8 -j 8
+python smk-p4/tests/check_blueprint_build.py --voices 8 --sound-library --unified-engine --harmony --environment guition-harmony-8
+```
+
+Compile PIO em sequencia; termine a resolucao de dependencias antes do host UI.
+`guition-harmony-8-bench` gera imagem audivel para a bancada existente; build nao
+autoriza gravacao. O manifesto e produzido depois de commits/testes com
+`python smk-p4/tests/package_harmony.py`. Nao houve gravacao nesta etapa.
+
+[Resultados](docs/harmony_09_results.md), [arquitetura/regras](docs/harmony_09_architecture.md),
+[ownership](docs/harmony_09_note_ownership.md), [testes](docs/harmony_09_test_matrix.md),
+[classificacao PCM](docs/output_08_gap_classification.md), [smoke curto](docs/harmony_09_hardware_smoke.md).
+Gaps fisicos, confirmacao auditiva e qualificacao prolongada continuam pendentes.
+
 # Unified Patch Engine 0.8 — candidato de software
 
 O perfil isolado `guition-unified-engine-8` reutiliza oito instrumentos AMY e
