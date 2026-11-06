@@ -1,5 +1,6 @@
 #pragma once
 #include "ui_parameters.h"
+#include "../../amy_runtime/harmony.h"
 #include "../../amy_runtime/patch_library.h"
 #include <cstddef>
 #include <cstdint>
@@ -100,6 +101,7 @@ public:
         16;
 #endif
 
+    harmony::State live_harmony; // Copied owner state, separate from predicted keyboard notes.
     UiModel();
 
     void resetToDefaults();

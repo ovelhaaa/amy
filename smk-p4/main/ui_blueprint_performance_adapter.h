@@ -20,6 +20,7 @@ public:
     const char* modeBadgeText() const override { return "P4 LIVE"; }
     const char* statusText() const override { return backend_.status(); }
     ui::FeatureStatus parameterStatus(const char* id) const override;
+    bool isParameterValueSupported(const char*,int32_t) const override;
     bool isParameterEditable(const char* id) const override;
     bool isPatchSelectable(uint16_t id) const override;
     ui::FeatureStatus patchStatus(uint16_t id) const override;
@@ -48,6 +49,11 @@ private:
     ui::UiSignalMeters meters_{};
     Gesture gestures_[kGestureCapacity]{};
     Pending patch_, master_;
+    harmony::Config requested_harmony_;
+    bool harmony_pending_=false;
+    int32_t harmony_preset_=0;
+    uint32_t harmony_requested_ms_=0,harmony_revision_=0;
+    void syncHarmony(harmony::Config config);
     uint32_t next_token_=0, now_ms_=0, revision_=0;
     bool have_snapshot_=false, was_connected_=false;
     ui::UiCommandState last_state_=ui::UiCommandState::Rejected;

@@ -5,6 +5,10 @@
 namespace smk::p4 {
 using namespace ui;
 namespace {
+constexpr const char* kHarmonyIds[]={"harmony.scale_enable","harmony.chord_enable","harmony.apply_touch",
+    "harmony.root_note","harmony.scale_type","harmony.quant_mode","harmony.chord_type",
+    "harmony.inversion","harmony.voicing","harmony.spread","harmony.usb_channel","harmony.preset"};
+int harmonyIndex(const char* id){if(id)for(unsigned i=0;i<12;++i)if(std::strcmp(id,kHarmonyIds[i])==0)return int(i);return -1;}
 bool eq(const char* a,const char* b) { return a && std::strcmp(a,b)==0; }
 }
 UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend& backend):backend_(backend) {
@@ -13,10 +17,14 @@ UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend&
     d={}; d.is_demo_mode=false; d.firmware_version="SMK-P4 LIBRARY 0.7"; d.max_voices=backend_.voiceCapacity();
 #if defined(SMKP4_UNIFIED_ENGINE) || defined(CONFIG_SMKP4_UNIFIED_ENGINE)
     d.firmware_version="SMK-P4 UNIFIED 0.8 CANDIDATE";
+#if defined(SMKP4_HARMONY) || defined(CONFIG_SMKP4_HARMONY)
+    d.firmware_version="SMK-P4 HARMONY 0.9 EXPERIMENTAL";
+#endif
 #endif
     d.amy_status="WAIT SNAPSHOT"; d.i2s_status="NOT LIVE"; d.usb_status="DISCONNECTED";
     model_.setBool("harmony.scale_enable",false);
     model_.setBool("harmony.chord_enable",false);
+    syncHarmony({});
     model_.setNotice("WAIT OWNER SNAPSHOT; TOUCH LEASE 10s");
 }
 UiCommandResult UiBlueprintPerformanceAdapter::result(UiCommandState state,const char* id,const char* notice,uint32_t token) {
@@ -27,9 +35,21 @@ UiCommandResult UiBlueprintPerformanceAdapter::result(UiCommandState state,const
     model_.setNotice(notice); model_.bumpRevision();
     return {state,token,notice};
 }
+void UiBlueprintPerformanceAdapter::syncHarmony(harmony::Config c) {
+    const int values[]={c.scale_on,c.chord_on,c.touch,c.root,c.scale,c.quant,c.chord,c.inversion,c.open,c.spread,int(c.channel)+1};
+    for(unsigned i=0;i<11;++i)model_.setInt(kHarmonyIds[i],values[i]);
+}
 FeatureStatus UiBlueprintPerformanceAdapter::parameterStatus(const char* id) const {
+    if(backend_.harmonyState() && harmonyIndex(id)>=0)return FeatureStatus::Available;
     return eq(id,"perf.master_volume") || eq(id,"perf.octave_shift") || eq(id,"perf.patch_id")
         ? FeatureStatus::Available : FeatureStatus::Planned;
+}
+bool UiBlueprintPerformanceAdapter::isParameterValueSupported(const char* id,int32_t value) const {
+    if(!backend_.harmonyState())return true;
+    if(eq(id,"harmony.chord_type"))return value!=10 && value!=11;
+    if(eq(id,"harmony.voicing"))return value<=1;
+    if(eq(id,"harmony.inversion") && value==3){const auto c=backend_.harmonyState()->configuration;return c.chord==7 || c.chord==8 || c.chord==9 || c.chord==13;}
+    return true;
 }
 bool UiBlueprintPerformanceAdapter::isParameterEditable(const char* id) const {
     return parameterStatus(id)==FeatureStatus::Available && usable();
@@ -62,6 +82,33 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterBool(const char* 
 UiCommandResult UiBlueprintPerformanceAdapter::requestParameterInt(const char* id,int32_t v) {
     if(parameterStatus(id)!=FeatureStatus::Available) return result(UiCommandState::Unsupported,id,"PLANNED; NO DSP COMMAND");
     if(!usable()) return result(UiCommandState::Rejected,id,"ENGINE/SNAPSHOT UNAVAILABLE");
+    const int hi=harmonyIndex(id);
+    if(hi>=0 && backend_.harmonyState()) {
+        if(harmony_pending_)return result(UiCommandState::Rejected,id,"HARMONY WAIT OWNER");
+        auto c=backend_.harmonyState()->configuration;
+        if(v<0 || v>127)return result(UiCommandState::Rejected,id,"HARMONY OUT OF RANGE");
+        switch(hi){
+            case 0:if(v>1)break;c.scale_on=v;goto submit;
+            case 1:if(v>1)break;c.chord_on=v;goto submit;
+            case 2:if(v>1)break;c.touch=v;goto submit;
+            case 3:if(v>11)break;c.root=v;goto submit;
+            case 4:if(v>10)break;c.scale=v;goto submit;
+            case 5:if(v>5)break;c.quant=v;goto submit;
+            case 6:if(v>13)break;c.chord=v;goto submit;
+            case 7:if(v>3)break;c.inversion=v;goto submit;
+            case 8:if(v>1)break;c.open=v;goto submit;
+            case 9:if(v>2)break;c.spread=v;goto submit;
+            case 10:if(v<1 || v>16)break;c.channel=v-1;goto submit;
+            case 11:if(v>4)break;c=harmony::preset(v,c);goto submit;
+        }
+        return result(UiCommandState::Rejected,id,"HARMONY VALUE PLANNED/INVALID");
+submit:
+        if(!harmony::valid(c) || !backend_.setHarmony(c,now_ms_))return result(UiCommandState::Rejected,id,"HARMONY INCOMPATIBLE/REJECTED");
+        if(hi==11)harmony_preset_=v;
+        requested_harmony_=c;harmony_pending_=true;harmony_requested_ms_=now_ms_;
+        harmony_revision_=backend_.harmonyState()->revision;
+        return result(UiCommandState::Requested,id,"HARMONY REQUESTED; WAIT OWNER");
+    }
     if(eq(id,"perf.octave_shift")) {
         if(v < -2 || v > 2) return result(UiCommandState::Rejected,id,"OCTAVE OUT OF RANGE");
         releaseAllUiNotes(); // Old releases cannot terminate the next octave generation.
@@ -161,6 +208,17 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     if(patch_.active && uint32_t(now_ms-patch_.requested_ms)>=kPatchConfirmationTimeoutMs) {
         patch_.active=false;
         result(UiCommandState::Rejected,"perf.patch_id","PATCH NOT CONFIRMED; OWNER STATE RETAINED");
+    }
+    if(const auto* h=backend_.harmonyState()) {
+        model_.live_harmony=*h;model_.live_harmony.pending=harmony_pending_;
+        if(harmony_pending_ && h->revision!=harmony_revision_ && harmony::pack(h->configuration)==harmony::pack(requested_harmony_)) {
+            harmony_pending_=false;model_.live_harmony.pending=false;
+            syncHarmony(h->configuration);model_.setInt("harmony.preset",harmony_preset_);result(UiCommandState::Confirmed,last_id_,"HARMONY APPLIED; EXISTING GROUPS FROZEN");
+        } else if(harmony_pending_ && uint32_t(now_ms-harmony_requested_ms_)>=kPatchConfirmationTimeoutMs) {
+            harmony_pending_=false;model_.live_harmony.pending=false;
+            result(UiCommandState::Rejected,last_id_,"HARMONY NOT CONFIRMED; OWNER RETAINED");
+        } else if(!harmony_pending_)syncHarmony(h->configuration);
+        model_.bumpRevision();
     }
     // MIDI publication does not advance stateRevision. Inspect flags every tick.
     auto& d=model_.diagnostics();

@@ -83,7 +83,13 @@ constexpr unsigned kOscillators = kAmyVoices * kOscillatorsPerVoice;
 // A Touch retrigger emits Off+On (four fields/osc). At least one slot belongs
 // to Touch in that case, leaving at most N-1 USB voices for every queued CC.
 constexpr unsigned kDeltaReserve = kOscillatorsPerVoice *
-    (4 * kCommandCapacity + (kCommandCapacity + 1) * (kVoices - 1) + 2 * kAmyVoices);
+    (
+#ifdef SMKP4_HARMONY
+     16 * kCommandCapacity + // Four-note Touch Off+On per input event.
+#else
+     4 * kCommandCapacity +
+#endif
+     (kCommandCapacity + 1) * (kVoices - 1) + 2 * kAmyVoices);
 static_assert(kSynthCount < UINT8_MAX && kOscillators < UINT16_MAX);
 static_assert(kVoices < kCommandCapacity);
 inline int patchIndex(uint16_t id) {

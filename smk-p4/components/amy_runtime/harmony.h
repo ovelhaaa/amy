@@ -2,11 +2,17 @@
 #include <cstdint>
 namespace smk::p4::harmony {
 // Blueprint scale order. This is the single P4 table used by preview and owner.
-constexpr uint16_t kScales[]={0xfff,0xab5,0x5ad,0x9ad,0x2a5,0x4a9,0x4e9,0x6ad,0x5ab,0xad5,0x6b5};
+constexpr uint16_t kScales[]={0xfff,0xab5,0x5ad,0x9ad,0x295,0x4a9,0x4e9,0x6ad,0x5ab,0xad5,0x6b5};
 enum class Quant : uint8_t { NearUp, NearDown, Root, Filter, Down, Up };
 struct Config {
     bool scale_on=false,chord_on=false,touch=true;
     uint8_t root=0,scale=1,quant=0,chord=1,inversion=0,open=0,spread=0,channel=0;
+};
+struct State {
+    Config configuration;
+    uint32_t revision=0,errors=0,rejected=0,admitted=0,identity=0;
+    uint8_t notes[4]{},count=0,input=0,voices=0,capacity=8;
+    bool last_admitted=false,available=false,pending=false;
 };
 constexpr uint32_t pack(Config c) {
     return unsigned(c.scale_on)|(unsigned(c.chord_on)<<1)|(unsigned(c.touch)<<2)|
@@ -25,7 +31,7 @@ inline unsigned degrees(uint8_t scale) {
 }
 inline bool valid(Config c) {
     return c.root<12 && c.scale<11 && c.quant<6 && c.chord<14 && c.chord!=10 && c.chord!=11 &&
-        c.inversion<4 && c.open<2 && c.spread<3 && c.channel<16 &&
+        (c.inversion<3 || (c.inversion==3 && (c.chord==7 || c.chord==8 || c.chord==9 || c.chord==13)) || !c.chord_on) && c.open<2 && c.spread<3 && c.channel<16 &&
         (!(c.chord_on && c.chord>=12) || degrees(c.scale)==7);
 }
 enum class Error : uint8_t { None, Configuration, Filtered, NonDiatonic, Range };
@@ -58,7 +64,7 @@ inline Notes transform(uint8_t input,Config c) {
             if(!inside(q)){r.error=Error::NonDiatonic;return r;}
             count=c.chord==12?3:4;int n=q;unsigned degree=0,index=1;
             // Seven-note scales only. At most 12 scale steps / 24 semitones.
-            for(int step=1;step<=24 && index<count;++step)if(inside(n+step) || (r.mask&(1u<<((n+step)%12)))) {
+            for(int step=1;step<=24 && index<count;++step)if(r.mask&(1u<<((n+step)%12))) {
                 if(++degree%2==0)ns[index++]=n+step;
             }
         } else {

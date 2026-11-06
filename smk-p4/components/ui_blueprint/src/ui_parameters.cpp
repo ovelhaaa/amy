@@ -26,12 +26,13 @@ constexpr const char* kScaleTypes[] = {
     "CHROMATIC", "MAJOR", "NAT MINOR", "HARM MINOR", "PENTA MAJ",
     "PENTA MIN", "BLUES", "DORIAN", "PHRYGIAN", "LYDIAN", "MIXOLYDIAN"
 };
-constexpr const char* kQuantizeModes[] = {"NEAR UP", "NEAR DOWN", "SNAP ROOT", "FILTER OUT"};
+constexpr const char* kQuantizeModes[] = {"NEAR UP", "NEAR DOWN", "SNAP ROOT", "FILTER OUT", "DOWN", "UP"};
 constexpr const char* kChordTypes[] = {
     "OFF", "MAJOR", "MINOR", "DIMINISHED", "AUGMENTED",
-    "SUS2", "SUS4", "DOM 7", "MAJ 7", "MIN 7", "ADD9", "9TH"
+    "SUS2", "SUS4", "DOM 7", "MAJ 7", "MIN 7", "ADD9 (PLAN)", "9TH (PLAN)", "DIAT TRIAD", "DIAT 7"
 };
 constexpr const char* kChordVoicings[] = {"CLOSE", "OPEN", "DROP 2", "SPREAD", "POWER"};
+constexpr const char* kHarmonyPresets[]={"NORMAL KEYBOARD","C MAJ TRIADS","A MIN TRIADS","C MAJ SEVENTHS","SCALE ONLY"};
 constexpr const char* kVelBehaviors[] = {"FOLLOW IN", "FIXED 100", "HUMANIZE", "ACCENT"};
 constexpr const char* kDestLayers[] = {"LAYER A", "LAYER B", "BOTH A+B"};
 constexpr const char* kVelCurves[] = {"LINEAR", "SOFT", "HARD", "FIXED 100"};
@@ -515,8 +516,8 @@ const ParameterDescriptor kDescriptors[] = {
      ParameterScale::Linear, "Harmony", "SCALE", kScaleTypes, 11, kStdCtrl,
      FeatureStatus::Planned, nullptr, -1, "smk-s3/components/midi/include/scale_quantizer.h",
      "Active musical scale interval mask"},
-    {"harmony.quant_mode", "harmony", "QUANT MODE", ParameterValueType::Enum, 0.0f, 3.0f, 0.0f, 1.0f, "",
-     ParameterScale::Linear, "Harmony", "SCALE", kQuantizeModes, 4, kStdCtrl,
+    {"harmony.quant_mode", "harmony", "QUANT MODE", ParameterValueType::Enum, 0.0f, 5.0f, 0.0f, 1.0f, "",
+     ParameterScale::Linear, "Harmony", "SCALE", kQuantizeModes, 6, kStdCtrl,
      FeatureStatus::Planned, "harmony.scale_enable", 1, "smk-s3/components/midi/include/scale_quantizer.h",
      "Rounding behavior for out-of-scale notes"},
     {"harmony.preserve_outside", "harmony", "ACCIDENTALS", ParameterValueType::Bool, 0.0f, 1.0f, 0.0f, 1.0f, "",
@@ -527,8 +528,8 @@ const ParameterDescriptor kDescriptors[] = {
      ParameterScale::Linear, "Harmony", "CHORD", nullptr, 0, kStdCtrl,
      FeatureStatus::Planned, nullptr, -1, "smk-s3/components/midi/include/chord_memory.h",
      "Trigger full chord voicing from single key press"},
-    {"harmony.chord_type", "harmony", "CHORD TYPE", ParameterValueType::Enum, 0.0f, 11.0f, 2.0f, 1.0f, "",
-     ParameterScale::Linear, "Harmony", "CHORD", kChordTypes, 12, kStdCtrl,
+    {"harmony.chord_type", "harmony", "CHORD TYPE", ParameterValueType::Enum, 0.0f, 13.0f, 2.0f, 1.0f, "",
+     ParameterScale::Linear, "Harmony", "CHORD", kChordTypes, 14, kStdCtrl,
      FeatureStatus::Planned, "harmony.chord_enable", 1, "smk-s3/components/midi/include/chord_memory.h",
      "Chord interval structure (Major, Minor, Dim, Aug, Sus2/4, 7, Maj7, m7, Add9, 9)"},
     {"harmony.voicing", "harmony", "VOICING", ParameterValueType::Enum, 0.0f, 4.0f, 0.0f, 1.0f, "",
@@ -553,6 +554,16 @@ const ParameterDescriptor kDescriptors[] = {
      "Target synth layer for generated harmony notes"},
 
     // ── MIDI SETTINGS ────────────────────────────────────────────────────
+    {"harmony.usb_channel", "harmony", "USB CHANNEL", ParameterValueType::Int, 1, 16, 1, 1, "ch",
+     ParameterScale::Linear, "Harmony", "SOURCE", nullptr, 0, kStdCtrl,
+     FeatureStatus::Planned, nullptr, -1, "harmony.h", "Only this USB channel is transformed"},
+    {"harmony.apply_touch", "harmony", "APPLY TOUCH", ParameterValueType::Bool, 0, 1, 1, 1, "",
+     ParameterScale::Linear, "Harmony", "SOURCE", nullptr, 0, kStdCtrl,
+     FeatureStatus::Planned, nullptr, -1, "harmony.h", "Touch eligible when Harmony is enabled"},
+    {"harmony.preset", "harmony", "QUICK SET", ParameterValueType::Enum, 0, 4, 0, 1, "",
+     ParameterScale::Linear, "Harmony", "SOURCE", kHarmonyPresets, 5, kStdCtrl,
+     FeatureStatus::Planned, nullptr, -1, "harmony.h", "RAM only; applies a complete musical configuration"},
+
     {"midi.input_channel", "midi", "INPUT CH", ParameterValueType::Int, 0.0f, 16.0f, 0.0f, 1.0f, "ch",
      ParameterScale::Linear, "MIDI", "ROUTING", nullptr, 0, kStdCtrl,
      FeatureStatus::Available, nullptr, -1, "smk-p4/components/amy_runtime/usb_input.h",

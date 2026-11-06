@@ -144,7 +144,8 @@ void onKeyboardKeyEvent(lv_event_t* e) {
     }
     // Split and harmony keyboards are visual previews; never send live notes.
     if (!state.backend->isDemoMode() &&
-        (state.mode == KeyboardDisplayMode::SplitZones || state.mode == KeyboardDisplayMode::HarmonyView)) return;
+        (state.mode == KeyboardDisplayMode::SplitZones ||
+         (state.mode == KeyboardDisplayMode::HarmonyView && !state.backend->model().live_harmony.available))) return;
 
     if (code == LV_EVENT_PRESSED) {
         // Guard against duplicate PRESSED without an intervening release
@@ -159,6 +160,7 @@ void onKeyboardKeyEvent(lv_event_t* e) {
             slot->active_note = note;
             slot->active_token = res.token;
         }
+        state.backend->model().setLastPreviewNote(note);
         // Safe in-place visual update (never call destructive navigateTo inside key callback)
         updateKeyVisuals(state);
         if (state.nav) {

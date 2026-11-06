@@ -35,32 +35,32 @@ public:
         lv_obj_set_pos(top_badge, 496, 4);
         lv_obj_set_size(top_badge, 296, 36);
         lv_obj_set_style_pad_all(top_badge, 4, 0);
-        createLabel(top_badge, "DEMO PREVIEW (NO LIVE MIDI TX)", 6, 4, 280,
+        badge_ = createLabel(top_badge, backend.isDemoMode()?"DEMO PREVIEW":"PREDICTED / WAIT OWNER", 6, 4, 280,
                     &lv_font_montserrat_14, palette::kAccentPrimary);
 
         // 2. Controls Row (y = 44..220)
         if (tab == 0) {
             // Scale Quantizer Controls
-            createParameterCard(parent, backend, "harmony.scale_enable",     8,   44, 190, 86);
-            createParameterCard(parent, backend, "harmony.root_note",        206, 44, 190, 86);
-            createParameterCard(parent, backend, "harmony.scale_type",       404, 44, 190, 86);
-            createParameterCard(parent, backend, "harmony.quant_mode",       602, 44, 190, 86);
+            card(parent, backend, "harmony.scale_enable",     8,   44, 190, 86);
+            card(parent, backend, "harmony.root_note",        206, 44, 190, 86);
+            card(parent, backend, "harmony.scale_type",       404, 44, 190, 86);
+            card(parent, backend, "harmony.quant_mode",       602, 44, 190, 86);
 
-            createParameterCard(parent, backend, "harmony.preserve_outside", 8,   134, 190, 86);
-            createParameterCard(parent, backend, "harmony.chord_enable",     206, 134, 190, 86);
-            createParameterCard(parent, backend, "harmony.chord_type",       404, 134, 190, 86);
-            createParameterCard(parent, backend, "harmony.dest_layer",       602, 134, 190, 86);
+            card(parent, backend, "harmony.preset",           8,   134, 190, 86);
+            card(parent, backend, "harmony.chord_enable",     206, 134, 190, 86);
+            card(parent, backend, "harmony.chord_type",       404, 134, 190, 86);
+            card(parent, backend, "harmony.usb_channel",      602, 134, 190, 86);
         } else {
             // Chord Assist Detailed Voicing Controls
-            createParameterCard(parent, backend, "harmony.chord_enable", 8,   44, 190, 86);
-            createParameterCard(parent, backend, "harmony.root_note",    206, 44, 190, 86);
-            createParameterCard(parent, backend, "harmony.chord_type",   404, 44, 190, 86);
-            createParameterCard(parent, backend, "harmony.voicing",      602, 44, 190, 86);
+            card(parent, backend, "harmony.chord_enable", 8,   44, 190, 86);
+            card(parent, backend, "harmony.root_note",    206, 44, 190, 86);
+            card(parent, backend, "harmony.chord_type",   404, 44, 190, 86);
+            card(parent, backend, "harmony.voicing",      602, 44, 190, 86);
 
-            createParameterCard(parent, backend, "harmony.inversion",    8,   134, 190, 86);
-            createParameterCard(parent, backend, "harmony.spread",       206, 134, 190, 86);
-            createParameterCard(parent, backend, "harmony.vel_behavior", 404, 134, 190, 86);
-            createParameterCard(parent, backend, "harmony.dest_layer",   602, 134, 190, 86);
+            card(parent, backend, "harmony.inversion",    8,   134, 190, 86);
+            card(parent, backend, "harmony.spread",       206, 134, 190, 86);
+            card(parent, backend, "harmony.apply_touch",  404, 134, 190, 86);
+            card(parent, backend, "harmony.usb_channel",  602, 134, 190, 86);
         }
 
         // 3. Live Harmony Calculation Inspector Strip (y = 224..266)
@@ -80,6 +80,13 @@ public:
     }
 
     void refresh(IUiBackend& backend) override {
+        for(unsigned i=0;i<card_count_;++i)if(cards_[i])lv_obj_send_event(cards_[i],LV_EVENT_REFRESH,nullptr);
+        const auto& live=backend.model().live_harmony;
+        if(badge_ && live.available){
+            char status[80];std::snprintf(status,sizeof(status),"%s | %u/%u VOICES | %lu REJECT",
+                live.pending?"REQUESTED":"APPLIED",live.voices,live.capacity,(unsigned long)live.rejected);
+            lv_label_set_text(badge_,status);
+        }
         if (summary_lbl_) {
             const HarmonyPreviewResult harm = backend.model().computeHarmony(backend.model().lastPreviewNote());
             char in_s[20], q_s[20], chord_s[96]{};
@@ -100,6 +107,16 @@ public:
                           "IN: %s [%s]  ->  QUANT: %s  ->  CHORD (%u): %s   [TAP KEYS]",
                           in_s, harm.input_in_scale ? "IN SCALE" : "CORRECTED",
                           q_s, harm.chord_count, chord_s);
+            if(live.available) {
+                char actual[80]{};size_t off=0;
+                for(unsigned i=0;i<live.count && off<sizeof(actual);++i) {
+                    const int len=std::snprintf(actual+off,sizeof(actual)-off,"%s%u",i?"+":"",live.notes[i]);
+                    if(len>0)off+=size_t(len);
+                }
+                std::snprintf(summary,sizeof(summary),"PREDICT %s | LAST %s #%lu IN %u: %s | %s",
+                    chord_s,live.last_admitted?"ADMITTED":"REJECT/NONE",(unsigned long)live.identity,
+                    live.input,actual,backend.model().lastNotice());
+            }
             lv_label_set_text(summary_lbl_, summary);
             lv_obj_set_style_text_color(
                 summary_lbl_,
@@ -111,6 +128,11 @@ public:
     }
 
 private:
+    lv_obj_t* cards_[8]{};unsigned card_count_=0;
+    void card(lv_obj_t* parent,IUiBackend& backend,const char* id,int x,int y,int w,int h){
+        if(card_count_<8)cards_[card_count_++]=createParameterCard(parent,backend,id,x,y,w,h);
+    }
+    lv_obj_t* badge_ = nullptr;
     lv_obj_t* summary_lbl_ = nullptr;
     lv_obj_t* kb_          = nullptr;
 };

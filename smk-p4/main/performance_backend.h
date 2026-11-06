@@ -1,5 +1,6 @@
 #pragma once
 #include "smk_state.h"
+#include "../components/amy_runtime/harmony.h"
 namespace smk::p4 {
 // Shared presentation DTO; local state is owner-applied AMY state, never a
 // simulated S3 session. No transport frames in the widget/backend contract.
@@ -16,6 +17,8 @@ public:
     virtual const char* status() const=0;
     virtual const char* takeNotice() { return nullptr; }
     virtual uint8_t voiceCapacity() const { return 4; }
+    virtual const harmony::State* harmonyState() const { return nullptr; }
+    virtual bool setHarmony(harmony::Config,uint32_t) { return false; }
     virtual bool local() const { return false; }
     virtual bool midiError() const { return false; }
     virtual bool patchError() const { return false; }

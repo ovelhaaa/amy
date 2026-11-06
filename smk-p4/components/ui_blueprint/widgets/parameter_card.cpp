@@ -10,6 +10,15 @@ struct CardActionCtx {
     lv_obj_t*   val_label = nullptr;
     int32_t     delta     = 0;
 };
+void attachValueRefresh(lv_obj_t* card,IUiBackend& backend,const ParameterDescriptor& desc,lv_obj_t* label) {
+    attachLvContext<CardActionCtx>(card,CardActionCtx{&backend,desc.id,label,0},[](lv_event_t* e){
+        auto* ctx=static_cast<CardActionCtx*>(lv_event_get_user_data(e));
+        if(!ctx || !ctx->val_label)return;
+        const auto* d=ParameterRegistry::findById(ctx->param_id);ParameterValue v{};
+        ctx->backend->model().getValue(ctx->param_id,v);char text[32];ParameterRegistry::formatValue(*d,v,text,sizeof(text));
+        lv_label_set_text(ctx->val_label,text);
+    },LV_EVENT_REFRESH);
+}
 } // namespace
 
 lv_obj_t* createParameterCard(lv_obj_t* parent, IUiBackend& backend, const char* param_id,
@@ -55,6 +64,7 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, IUiBackend& backend, const char*
         if (!enabled && btn) lv_obj_add_state(btn, LV_STATE_DISABLED);
         if (btn) {
             lv_obj_t* lbl = lv_obj_get_child(btn, 0);
+            attachValueRefresh(card,backend,*desc,lbl);
             attachLvContext<CardActionCtx>(
                 btn, CardActionCtx{&backend, desc->id, lbl, 1},
                 [](lv_event_t* e) {
@@ -77,6 +87,7 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, IUiBackend& backend, const char*
         const int32_t btn_w = (w < 140) ? 28 : 38;
         lv_obj_t* vlbl = createLabel(card, vbuf, btn_w + 8, h - 34, w - (btn_w * 2 + 24),
                                      &lv_font_montserrat_14, palette::kAccentPrimary);
+        attachValueRefresh(card,backend,*desc,vlbl);
         lv_obj_t* dec_btn = createActionButton(card, "-", 4, h - 42, btn_w, 34, nullptr, nullptr);
         lv_obj_t* inc_btn = createActionButton(card, "+", w - btn_w - 14, h - 42, btn_w, 34, nullptr, nullptr);
         if (!enabled) {
@@ -97,6 +108,9 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, IUiBackend& backend, const char*
             cur += ctx->delta;
             if (cur < min_v) cur = max_v;
             if (cur > max_v) cur = min_v;
+            for(int32_t tries=0;tries<=max_v-min_v && !ctx->backend->isParameterValueSupported(ctx->param_id,cur);++tries){
+                cur+=ctx->delta;if(cur<min_v)cur=max_v;if(cur>max_v)cur=min_v;
+            }
             ctx->backend->requestParameterInt(ctx->param_id, cur);
             if (ctx->val_label) {
                 ParameterValue cur_pv{};

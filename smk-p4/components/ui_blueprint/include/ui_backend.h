@@ -72,6 +72,7 @@ public:
 
     // 3. Resource availability & command state tracking
     virtual FeatureStatus parameterStatus(const char* id) const = 0;
+    virtual bool isParameterValueSupported(const char*,int32_t) const { return true; }
     virtual bool isParameterEditable(const char* id) const = 0;
     virtual bool isPatchSelectable(uint16_t patch_id) const = 0;
     virtual FeatureStatus patchStatus(uint16_t id) const {

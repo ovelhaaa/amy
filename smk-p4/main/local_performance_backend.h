@@ -14,6 +14,14 @@ public:
         loading_=snapshot.patch_state==amy::PatchState::Requested || snapshot.patch_state==amy::PatchState::Loading || snapshot.patch_state==amy::PatchState::Verifying;
         failed_=snapshot.patch_state==amy::PatchState::Failed;
 #endif
+        #ifdef SMKP4_HARMONY
+        harmony_.configuration=snapshot.harmony;harmony_.revision=snapshot.harmony_revision;
+        harmony_.errors=snapshot.harmony_errors;harmony_.rejected=snapshot.groups_rejected;
+        harmony_.admitted=snapshot.groups_admitted;harmony_.identity=snapshot.last_group;
+        harmony_.count=snapshot.last_count;harmony_.input=snapshot.last_input;harmony_.last_admitted=snapshot.last_admitted;
+        for(unsigned i=0;i<4;++i)harmony_.notes[i]=snapshot.last_notes[i];
+        harmony_.voices=snapshot.active_notes;harmony_.capacity=amy::kVoices;harmony_.available=true;
+#endif
         ready_=snapshot.ready; state_.patch_id=state_.engine_patch=snapshot.patch_id;
         const int index=amy::patchIndex(snapshot.patch_id);
         std::snprintf(state_.patch_name,sizeof(state_.patch_name),"%s",index<0?"ERROR":amy::kPatches[index].name);
@@ -31,6 +39,21 @@ public:
         midi_connected_=connected; midi_error_=error; state_.midi_events=events;
         if(connected) state_.flags|=link::kUsbConnected;
         else state_.flags&=~link::kUsbConnected;
+    }
+    const harmony::State* harmonyState() const override {
+#ifdef SMKP4_HARMONY
+        return &harmony_;
+#else
+        return nullptr;
+#endif
+    }
+    bool setHarmony(harmony::Config config,uint32_t now_ms) override {
+#ifdef SMKP4_HARMONY
+        if(!ready_ || busy() || failed_ || !harmony::valid(config))return false;
+        return commands_.push({amy::CommandType::Harmony,0,0,0,harmony::pack(config),now_ms});
+#else
+        (void)config;(void)now_ms;return false;
+#endif
     }
     bool midiError() const override { return midi_error_; }
     bool patchError() const override { return failed_; }
@@ -79,6 +102,7 @@ public:
 private:
     void clearTokens() { for(auto& token:tokens_) token=0; }
     amy::Commands& commands_; PerformanceState state_;
+    harmony::State harmony_;
     uint32_t tokens_[128]{},revision_=0,generation_=0;
     bool ready_=false;
     bool midi_connected_=false,midi_error_=false;
