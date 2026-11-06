@@ -3,7 +3,8 @@
 Subsequent authorized application write/readback and idle boot: **PASS**.
 See [physical follow-up](harmony_09_hardware_qualification.md). The software
 candidate report below retains its preflash statuses as historical evidence;
-musical smoke and sustained active-play qualification remain pending.
+operator-reported musical smoke is now MANUAL / PASS in that follow-up; individual
+scenario coverage and sustained active-play qualification remain pending.
 
 Branch: `feature/smk-p4-harmony-assist-09`. Separate worktree:
 `build/worktrees/smk-p4-harmony-assist-09`. Baseline0.8 branch remains at

@@ -71,12 +71,31 @@ groups. This capture had no MIDI notes or patch changes, so zero unexpected gaps
 is only an idle observation, not sustained active-play qualification. Hardware
 DMA underruns and analog continuity/latency remain UNMEASURED.
 
-## MANUAL / NOT RUN
+## Original pending matrix before operator feedback
 
-Operator auditory/musical smoke remains pending: normal keyboard, C/A scales,
+The pre-feedback matrix requested: normal keyboard, C/A scales,
 triads/sevenths, capacity rejection, sustain, bend/CC1, Touch, patch changes,
 Panic and USB reconnect. Follow [the short procedure](harmony_09_hardware_smoke.md).
 Do not inherit0.8 smoke as approval of0.9. Prolonged qualification is separately
 PENDING; this write/boot result is not professional-stage or gapless-audio approval.
 The original review manifest remains a preflash historical snapshot; this report
 and the new raw evidence record the subsequent authorized write and verification.
+
+
+## MANUAL / PASS - operator-reported musical smoke
+
+After the authorized0.9 write/readback and the suggestion to test Harmony with
+QUICK SET -> C MAJ TRIADS, the operator reported on2026-11-06:
+**"maravilha, fucionou direitinho!"**
+
+Record this as an aggregate operator confirmation that the installed0.9 musical
+function worked correctly in the performed test. It is specific to0.9, not inherited
+from0.8. The exact actions and all twenty individual matrix results were not
+reported, so do not independently mark each row PASS or infer coverage of every
+scale, patch, sustain, capacity, Panic or reconnect scenario. No additional serial
+capture, write or reset was performed in response to this feedback.
+
+The installed image is now an operator-smoked experimental candidate for personal
+rehearsal. Full physical scenario coverage, sustained READY-active gap attribution,
+measured latency and prolonged qualification remain MANUAL / NOT RUN or PENDING.
+This does not constitute professional-stage qualification.

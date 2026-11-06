@@ -18,12 +18,13 @@ Compile PIO em sequencia; termine a resolucao de dependencias antes do host UI.
 `guition-harmony-8-bench` gera imagem audivel para a bancada existente; build nao
 autoriza gravacao. O manifesto e produzido depois de commits/testes com
 `python smk-p4/tests/package_harmony.py`. Gravacao0.9 autorizada e leitura independente: PASS;
-[boot/contadores e limites](docs/harmony_09_hardware_qualification.md). Smoke musical pendente.
+[boot/contadores e limites](docs/harmony_09_hardware_qualification.md). Smoke musical0.9: MANUAL/PASS pelo operador (confirmacao agregada).
 
 [Resultados](docs/harmony_09_results.md), [arquitetura/regras](docs/harmony_09_architecture.md),
 [ownership](docs/harmony_09_note_ownership.md), [testes](docs/harmony_09_test_matrix.md),
 [classificacao PCM](docs/output_08_gap_classification.md), [smoke curto](docs/harmony_09_hardware_smoke.md).
-Gaps fisicos, confirmacao auditiva e qualificacao prolongada continuam pendentes.
+Matriz fisica completa, atribuicao de gaps em execucao sustentada e qualificacao
+prolongada continuam pendentes.
 
 # Unified Patch Engine 0.8 — candidato de software
 

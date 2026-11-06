@@ -1,6 +1,7 @@
 # Harmony 0.9 short hardware smoke
 
-Musical smoke: MANUAL / NOT RUN. Authorized0.9 application write, independent
+Musical smoke: MANUAL / PASS, aggregate operator report; individual rows below
+remain NOT RUN/unconfirmed unless explicitly observed. Authorized0.9 application write, independent
 readback and idle boot: PASS in the [physical follow-up](harmony_09_hardware_qualification.md).
 Building an audible candidate does not authorize upload. Existing0.8 image,
 readback logs, full-flash/app backups and rollback bundle stay untouched.
