@@ -5,6 +5,9 @@
 #include "pcm5102_output.h"
 #include "pcm_test.h"
 #include "amy_runtime.h"
+#ifdef SMKP4_UNIFIED_ENGINE
+#include "unified_output.h"
+#endif
 #include "self_test.h"
 #include "local_performance_backend.h"
 #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
@@ -33,6 +36,11 @@ constexpr const char* kTag = "P4_AMY";
 smk::p4::amy::Runtime runtime;
 smk::p4::usb::Host usb_host(runtime.usbInput());
 struct Snapshot {
+#ifdef SMKP4_UNIFIED_ENGINE
+    UnifiedOutput::Metrics output;
+    uint32_t swap_free_before=0,swap_largest_before=0,swap_psram_before=0,swap_psram_largest_before=0;
+    uint32_t swap_free_after=0,swap_largest_after=0,swap_psram_after=0,swap_psram_largest_after=0;
+#endif
     smk::p4::amy::Snapshot engine;
     uint64_t frames = 0, render_total_us = 0, command_total_us = 0, dma_total_us = 0;
     uint32_t command_max_us = 0, dma_max_us = 0, patch_max_us = 0, service_deadlines = 0;
@@ -50,7 +58,11 @@ uint8_t snapshot_storage[sizeof(Snapshot)];
 QueueHandle_t snapshots = nullptr;
 
 void runAudio() {
+#ifdef SMKP4_UNIFIED_ENGINE
+    UnifiedOutput output(runtime.commands());
+#else
     Pcm5102Output output;
+#endif
     TestTone tone;
     Snapshot state{};
     int16_t pcm[kBlockSamples]{};
@@ -124,17 +136,42 @@ void runAudio() {
         const uint16_t previous_patch=runtime.snapshot().patch_id;
         const int64_t command_start=esp_timer_get_time();
         runtime.apply(static_cast<uint32_t>(command_start/1000));
+#ifdef SMKP4_UNIFIED_ENGINE
+        const bool loading=runtime.snapshot().patch_state==smk::p4::amy::PatchState::Requested;
+        if(loading) {
+            state.swap_free_before=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+            state.swap_largest_before=heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+            state.swap_psram_before=heap_caps_get_free_size(MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+            state.swap_psram_largest_before=heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+            state.engine=runtime.snapshot();xQueueOverwrite(snapshots,&state);
+        }
+#endif
+        runtime.loadPendingPatch(); // No-op in legacy profiles; worker-only in0.8.
+#ifdef SMKP4_UNIFIED_ENGINE
+        if(loading) {
+            state.swap_free_after=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+            state.swap_largest_after=heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+            state.swap_psram_after=heap_caps_get_free_size(MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+            state.swap_psram_largest_after=heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+        }
+#endif
         const uint32_t command_us=static_cast<uint32_t>(esp_timer_get_time()-command_start);
         state.command_total_us+=command_us;
         if(command_us>state.command_max_us) state.command_max_us=command_us;
-        if(previous_patch!=runtime.snapshot().patch_id && command_us>state.patch_max_us) state.patch_max_us=command_us;
+        if((previous_patch!=runtime.snapshot().patch_id ||
+            state.engine.patch_changes!=runtime.snapshot().patch_changes ||
+            state.engine.patch_failures!=runtime.snapshot().patch_failures) && command_us>state.patch_max_us) state.patch_max_us=command_us;
         const int64_t dsp_start=esp_timer_get_time();
 #if defined(CONFIG_SMKP4_PCM_DIAGNOSTIC)
         if(!tone.render(pcm,kBlockFrames,sequence)) { state.error=ESP_FAIL; break; }
 #else
         (void)sequence;
         samples=runtime.render();
+#ifdef SMKP4_UNIFIED_ENGINE
+        if(!samples) { state.error=ESP_FAIL; break; }
+#else
         if(!samples || runtime.snapshot().oom_count) { state.error=ESP_FAIL; break; }
+#endif
 #endif
         const uint32_t render_us = static_cast<uint32_t>(esp_timer_get_time() - dsp_start);
         state.render_total_us += render_us;
@@ -143,7 +180,13 @@ void runAudio() {
         if (render_us * static_cast<uint64_t>(kSampleRateHz) > kBlockFrames * 1000000ULL)
             ++state.render_deadlines;
         const int64_t dma_start=esp_timer_get_time();
-        if(state.physical) state.error = output.write(samples, kBlockFrames);
+        if(state.physical) {
+#ifdef SMKP4_UNIFIED_ENGINE
+            state.error=output.write(samples,kBlockFrames,runtime.snapshot().generation);
+#else
+            state.error=output.write(samples,kBlockFrames);
+#endif
+        }
         const uint32_t dma_us=state.physical?static_cast<uint32_t>(esp_timer_get_time()-dma_start):0;
         state.dma_total_us+=dma_us;
         if(dma_us>state.dma_max_us) state.dma_max_us=dma_us;
@@ -154,7 +197,13 @@ void runAudio() {
             if (state.error == ESP_ERR_TIMEOUT) ++state.timeouts;
             break; // Stop clocks; never loop rapidly on a failed DMA channel.
         }
-        if(state.physical) state.frames += kBlockFrames;
+        if(state.physical) {
+#ifdef SMKP4_UNIFIED_ENGINE
+            state.output=output.metrics();state.frames=state.output.frames;
+#else
+            state.frames += kBlockFrames;
+#endif
+        }
         state.engine=runtime.snapshot();
         state.stack_free_bytes = uxTaskGetStackHighWaterMark(nullptr);
         xQueueOverwrite(snapshots, &state); // Fixed single-element mailbox, no waiting.
@@ -290,6 +339,22 @@ extern "C" void app_main() {
                     (unsigned long long)(state.blocks?state.render_total_us/state.blocks:0),(unsigned long)state.render_max_us,
                     (unsigned long)state.service_deadlines,(unsigned long)state.patch_max_us,
                     (unsigned long long)(state.blocks?state.dma_total_us/state.blocks:0),(unsigned long)state.dma_max_us);
+#ifdef SMKP4_UNIFIED_ENGINE
+                ESP_LOGI(kTag,"PATCH08 state=%u requested=%u confirmed=%u error=%ld changes=%lu failures=%lu; worker dma_* above=enqueue pacing, not physical I2S",
+                    unsigned(state.engine.patch_state),state.engine.requested_patch_id,state.engine.patch_id,
+                    long(state.engine.patch_error),(unsigned long)state.engine.patch_changes,(unsigned long)state.engine.patch_failures);
+                ESP_LOGI(kTag,"OUTPUT08 frames=%llu blocks=%lu gaps=%lu barriers=%lu write_avg/max_us=%llu/%lu errors=%lu timeouts=%lu refill_risks=%lu stack_free=%lu underruns=UNMEASURED",
+                    (unsigned long long)state.output.frames,(unsigned long)state.output.blocks,(unsigned long)state.output.silence_blocks,
+                    (unsigned long)state.output.barriers,(unsigned long long)(state.output.blocks?state.output.write_total_us/state.output.blocks:0),
+                    (unsigned long)state.output.write_max_us,(unsigned long)state.output.write_errors,(unsigned long)state.output.timeouts,
+                    (unsigned long)state.output.refill_risks,(unsigned long)state.output.stack_free);
+                ESP_LOGI(kTag,"SWAP08 changes=%lu failures=%lu internal_before/free_largest=%lu/%lu after=%lu/%lu psram_before/free_largest=%lu/%lu after=%lu/%lu",
+                    (unsigned long)state.engine.patch_changes,(unsigned long)state.engine.patch_failures,
+                    (unsigned long)state.swap_free_before,(unsigned long)state.swap_largest_before,
+                    (unsigned long)state.swap_free_after,(unsigned long)state.swap_largest_after,
+                    (unsigned long)state.swap_psram_before,(unsigned long)state.swap_psram_largest_before,
+                    (unsigned long)state.swap_psram_after,(unsigned long)state.swap_psram_largest_after);
+#endif
             }
             smk::p4::reportMemory();
 #if defined(CONFIG_SMKP4_UI_BLUEPRINT)

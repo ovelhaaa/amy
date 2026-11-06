@@ -8,6 +8,12 @@ class LocalAmyPerformanceBackend final : public PerformanceBackend {
 public:
     explicit LocalAmyPerformanceBackend(amy::Commands& commands):commands_(commands) {}
     void publish(const amy::Snapshot& snapshot,bool output_live,uint32_t max_render_us,uint32_t deadlines) {
+#ifdef SMKP4_UNIFIED_ENGINE
+        if(snapshot.patch_changes!=changes_ || snapshot.patch_failures!=failures_) pending_=false;
+        changes_=snapshot.patch_changes;failures_=snapshot.patch_failures;
+        loading_=snapshot.patch_state==amy::PatchState::Requested || snapshot.patch_state==amy::PatchState::Loading || snapshot.patch_state==amy::PatchState::Verifying;
+        failed_=snapshot.patch_state==amy::PatchState::Failed;
+#endif
         ready_=snapshot.ready; state_.patch_id=state_.engine_patch=snapshot.patch_id;
         const int index=amy::patchIndex(snapshot.patch_id);
         std::snprintf(state_.patch_name,sizeof(state_.patch_name),"%s",index<0?"ERROR":amy::kPatches[index].name);
@@ -27,13 +33,14 @@ public:
         else state_.flags&=~link::kUsbConnected;
     }
     bool midiError() const override { return midi_error_; }
+    bool patchError() const override { return failed_; }
     bool connected() const override { return ready_; }
-    bool busy() const override { return false; }
+    bool busy() const override { return pending_ || loading_; }
     uint8_t voiceCapacity() const override { return amy::kVoices; }
     bool local() const override { return true; }
     const PerformanceState& state() const override { return state_; }
     uint32_t stateRevision() const override { return revision_; }
-    const char* status() const override { return !ready_?"AMY INIT/ERROR":(state_.flags&link::kAudioLive)?"LOCAL AMY / PCM5102A":"LOCAL AMY / I2S DISABLED"; }
+    const char* status() const override { return !ready_?"AMY INIT/ERROR":failed_?"PATCH LOAD FAILED; RETRY":busy()?"PATCH LOADING":(state_.flags&link::kAudioLive)?"LOCAL AMY / PCM5102A":"LOCAL AMY / I2S DISABLED"; }
     uint16_t patchCount() const override { return amy::kPatchCount; }
     uint16_t patchAt(uint16_t index) const override { return index<amy::kPatchCount?amy::kPatches[index].id:UINT16_MAX; }
     bool patchInfo(uint16_t index,PatchInfo& info,uint32_t) override {
@@ -43,14 +50,18 @@ public:
     }
     bool setPatch(uint16_t id,uint32_t now_ms) override {
         if(!ready_ || amy::patchIndex(id)<0) return false;
-        panic(); return commands_.push({amy::CommandType::Patch,id,0,0,0,now_ms});
+        panic(); const bool accepted=commands_.push({amy::CommandType::Patch,id,0,0,0,now_ms});
+#ifdef SMKP4_UNIFIED_ENGINE
+        pending_=accepted;
+#endif
+        return accepted;
     }
     bool setMacro(uint8_t,uint8_t,uint32_t) override { return false; }
     bool setMaster(uint8_t value,uint32_t now_ms) override {
         return ready_ && value<=127 && commands_.push({amy::CommandType::Master,0,value,0,0,now_ms});
     }
     bool noteOn(uint8_t note,uint8_t velocity,uint32_t now_ms) override {
-        if(!ready_ || note>=128 || velocity>127) return false;
+        if(!ready_ || busy() || failed_ || note>=128 || velocity>127) return false;
         if(!velocity) { noteOff(note); return true; }
         if(tokens_[note]) return true;
         // Token zero is reserved. Exhaustion fails closed rather than reusing
@@ -64,12 +75,14 @@ public:
         if(note<128 && tokens_[note]) { commands_.release(note,tokens_[note]); tokens_[note]=0; }
     }
     void heldNote(uint8_t) override {} // Owner enforces a fixed independent lease.
-    void panic() override { commands_.panic(); generation_=commands_.generation(); clearTokens(); }
+    void panic() override { commands_.panic(); generation_=commands_.generation(); clearTokens();pending_=false; }
 private:
     void clearTokens() { for(auto& token:tokens_) token=0; }
     amy::Commands& commands_; PerformanceState state_;
     uint32_t tokens_[128]{},revision_=0,generation_=0;
     bool ready_=false;
     bool midi_connected_=false,midi_error_=false;
+    bool pending_=false,loading_=false,failed_=false;
+    uint32_t changes_=0,failures_=0;
 };
 }

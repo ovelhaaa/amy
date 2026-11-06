@@ -32,7 +32,11 @@ inline constexpr Patch kCandidates[] = {
     {4,"MOVING STRINGS",6,SynthFamily::Subtractive,PatchCategory::Strings}, {31,"SYNTH BASS I",6,SynthFamily::Subtractive,PatchCategory::Bass},
     {32,"JUNO LEAD I",6,SynthFamily::Subtractive,PatchCategory::Leads}, {8,"JUNO ORGAN I",6,SynthFamily::Subtractive,PatchCategory::Organ},
     {0,"JUNO BRASS SET 1",6,SynthFamily::Subtractive,PatchCategory::Brass}, {1,"JUNO BRASS SWELL",6,SynthFamily::Subtractive,PatchCategory::Pads},
-    {12,"DONALD PLUCK",6,SynthFamily::Subtractive,PatchCategory::Plucks}, {14,"ELECT. PIANO I",6,SynthFamily::Subtractive,PatchCategory::ElectricPiano}
+    {12,"DONALD PLUCK",6,SynthFamily::Subtractive,PatchCategory::Plucks}, {14,"ELECT. PIANO I",6,SynthFamily::Subtractive,PatchCategory::ElectricPiano},
+    {131,"DX7 STRINGS 1",8,SynthFamily::FM,PatchCategory::Strings},
+    {141,"DX7 SYN-LEAD 1",8,SynthFamily::FM,PatchCategory::Leads},
+    {144,"DX7 E.ORGAN 1",8,SynthFamily::FM,PatchCategory::Organ},
+    {151,"DX7 FLUTE 1",8,SynthFamily::FM,PatchCategory::FX}
 };
 constexpr const Patch* find(uint16_t id) {
     for(const auto& patch:kCandidates) if(patch.id==id) return &patch;

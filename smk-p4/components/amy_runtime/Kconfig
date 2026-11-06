@@ -1,4 +1,8 @@
 menu "SMK-P4 AMY capacity"
+config SMKP4_UNIFIED_ENGINE
+    bool "0.8 reusable instruments (candidate; no physical qualification)"
+    depends on SMKP4_STANDALONE
+    default n
 choice SMKP4_AMY_POLYPHONY
     prompt "Musical voices (fixed at boot)"
     depends on SMKP4_STANDALONE

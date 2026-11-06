@@ -83,6 +83,9 @@ void Runtime::end() {
 void Runtime::silence() {
     amy_deltas_reset();
     for(size_t i=0;i<kAmyVoices;++i) {
+#ifdef SMKP4_UNIFIED_ENGINE
+        if(instrument_get_num_voices(i+1,nullptr)<=0) continue;
+#endif
         auto e=amy_default_event(); e.synth=static_cast<uint8_t>(i+1); e.pedal=0; e.velocity=0;
         amy_add_event(&e);
     }
@@ -173,6 +176,11 @@ void Runtime::apply(uint32_t now_ms) {
     if(!state_.ready) return;
     const uint32_t generation=commands_.generation();
     if(generation!=state_.generation) {
+#ifdef SMKP4_UNIFIED_ENGINE
+        if(state_.patch_state==PatchState::Requested) {
+            state_.patch_state=PatchState::Failed;state_.patch_error=-100;++state_.patch_failures;
+        }
+#endif
         silence(); state_.generation=generation;
         // Global Panic also invalidates queued USB notes/controls.
         usb_.commands.panic(); usb_generation_=usb_.commands.generation();
@@ -191,6 +199,9 @@ void Runtime::apply(uint32_t now_ms) {
     Command c;
     for(unsigned i=0;i<kCommandCapacity && commands_.pop(c);++i) {
         if(c.generation!=state_.generation || c.generation!=commands_.generation()) continue;
+#ifdef SMKP4_UNIFIED_ENGINE
+        if(state_.patch_state!=PatchState::Ready && c.type!=CommandType::Patch && c.type!=CommandType::Master) continue;
+#endif
         const uint32_t latency=eventAgeMs(now_ms,c.timestamp_ms);
         if(latency>state_.command_latency_max_ms) state_.command_latency_max_ms=latency;
         if(c.type==CommandType::NoteOn) {
@@ -211,12 +222,27 @@ void Runtime::apply(uint32_t now_ms) {
         } else if(c.type==CommandType::Patch) {
             const int index=patchIndex(c.id);
             if(index<0) { ++state_.invalid_commands; continue; }
+#ifdef SMKP4_UNIFIED_ENGINE
+            silence(); amy_execute_deltas(); gain_q16_=0;
+            // Barrier discards all events admitted before this request was applied.
+            commands_.panic(); state_.generation=commands_.generation();
+            usb_.commands.panic(); usb_generation_=usb_.commands.generation();
+            state_.requested_patch_id=c.id; state_.patch_error=0;
+            state_.patch_state=PatchState::Requested;
+            return;
+#else
             silence(); usb_.commands.panic(); usb_generation_=usb_.commands.generation();
             bank_=static_cast<uint8_t>(index); state_.patch_id=c.id;
+#endif
         } else if(c.type==CommandType::Master && c.value<=127) state_.master=c.value;
         else ++state_.invalid_commands;
     }
+#ifdef SMKP4_UNIFIED_ENGINE
+    if(state_.patch_state==PatchState::Ready) applyUsb(now_ms);
+    else { usb_.commands.panic();usb_generation_=usb_.commands.generation(); }
+#else
     applyUsb(now_ms);
+#endif
     if(commands_.generation()!=state_.generation) {
         silence(); state_.generation=commands_.generation();
         usb_.commands.panic(); usb_generation_=usb_.commands.generation();
@@ -224,11 +250,18 @@ void Runtime::apply(uint32_t now_ms) {
 }
 const int16_t* Runtime::render() {
     if(!state_.ready) return nullptr;
+#ifdef SMKP4_UNIFIED_ENGINE
+    if(state_.patch_state!=PatchState::Ready) return silent_pcm_;
+    if(amy_get_oom_count()!=state_.oom_count) { failRendering();return silent_pcm_; }
+#endif
     for(unsigned i=0;i<kVoices;++i)
         if(voices_[i].used && voices_[i].usb && modulation_[voices_[i].channel]) tune(i);
     vibrato_frame_=(vibrato_frame_+kBlockFrames)%kSampleRateHz;
     amy_execute_deltas(); amy_render(0,AMY_OSCS,0);
     int16_t* pcm=amy_fill_buffer();
+#ifdef SMKP4_UNIFIED_ENGINE
+    if(amy_get_oom_count()!=state_.oom_count) { failRendering();return silent_pcm_; }
+#endif
     const int32_t target=static_cast<int32_t>(state_.master)*256; // <= 0.5 FS master
     uint32_t peak=0;
     for(unsigned f=0;f<kBlockFrames;++f) {
@@ -245,5 +278,94 @@ const int16_t* Runtime::render() {
     }
     state_.peak=peak; ++state_.blocks; state_.oom_count=amy_get_oom_count();
     return pcm;
+}
+
+void Runtime::failRendering() {
+    // No allocator or new delta events on an exhausted resource path.
+    amy_deltas_reset();all_notes_off();
+    for(auto& voice:voices_)voice=Voice{};
+    std::memset(sustain_,0,sizeof(sustain_));
+    std::memset(bend_,0,sizeof(bend_));std::memset(modulation_,0,sizeof(modulation_));
+    state_.active_notes=0;state_.patch_state=PatchState::Failed;state_.patch_error=-102;
+    state_.oom_count=amy_get_oom_count();++state_.patch_failures;
+    commands_.panic();state_.generation=commands_.generation();
+    usb_.commands.panic();usb_generation_=usb_.commands.generation();gain_q16_=0;
+}
+
+bool Runtime::verifyReusable(uint16_t patch_id) {
+    const auto* patch=library::find(patch_id);
+    if(!patch || amy_get_oom_count()!=load_oom_baseline_) return false;
+    bool seen[kOscillators]{};
+    for(unsigned id=1;id<=kVoices;++id) {
+        uint16_t voice;
+        if(instrument_get_patch_number(id)!=patch_id ||
+           instrument_get_num_voices(id,&voice)!=1 || voice>=kAmyVoices ||
+           instrument_get_oscs_per_voice(id)!=patch->oscillators) return false;
+        const unsigned base=voice_to_base_osc[voice];
+        if(base+patch->oscillators>kOscillators) return false;
+        if(patch->family==library::SynthFamily::FM) {
+            if(!synth[base] || synth[base]->wave!=ALGO) return false;
+            for(unsigned op=0;op<MAX_ALGO_OPS;++op) {
+                const unsigned source=synth[base]->algo_source[op];
+                if(source>=kOscillators || osc_to_voice[source]!=voice || !synth[source])return false;
+            }
+        }
+        unsigned owned=0;
+        for(unsigned o=0;o<kOscillators;++o) if(osc_to_voice[o]==voice) {
+            if(seen[o] || o<base || o>=base+patch->oscillators || !synth[o]) return false;
+            seen[o]=true; ++owned;
+        }
+        if(owned!=patch->oscillators) return false;
+    }
+    return true;
+}
+bool Runtime::loadReusable(uint16_t patch_id) {
+    // Drop the complete old layout before assigning differently sized voices.
+    // This is quiescent reconstruction, NOT transactional rollback.
+    amy_deltas_reset(); all_notes_off();
+    for(unsigned id=1;id<=kVoices;++id) {
+        auto e=amy_default_event();e.synth=id;e.num_voices=0;e.time=0;
+        const auto result=patches_load_patch_checked(&e);
+        if(result!=AMY_PATCH_RESOURCES_ASSIGNED) { state_.patch_error=result;return false; }
+    }
+    amy_execute_deltas();
+    auto neutral=amy_default_event();neutral.bus=0;
+    neutral.eq_l=neutral.eq_m=neutral.eq_h=0;amy_add_event(&neutral);
+    for(unsigned id=1;id<=kVoices;++id) {
+        if(commands_.generation()!=state_.generation) { state_.patch_error=-100;return false; }
+        auto e=amy_default_event();e.synth=id;e.patch_number=patch_id;
+        e.num_voices=1;e.bus=0;e.synth_delay_ms=0;e.time=0;
+        const auto result=patches_load_patch_checked(&e);
+        if(result!=AMY_PATCH_RESOURCES_ASSIGNED) { state_.patch_error=result;return false; }
+    }
+    amy_execute_deltas();
+    state_.patch_state=PatchState::Verifying;
+    // Warm lazy DSP on the worker while output continues zero-filled PCM.
+    amy_simple_fill_buffer();
+    return verifyReusable(patch_id);
+}
+void Runtime::loadPendingPatch() {
+#ifdef SMKP4_UNIFIED_ENGINE
+    if(!started_ || state_.patch_state!=PatchState::Requested) return;
+    load_oom_baseline_=amy_get_oom_count();
+    state_.patch_state=PatchState::Loading;
+    const bool loaded=loadReusable(state_.requested_patch_id);
+    const bool cancelled=commands_.generation()!=state_.generation ||
+        usb_.commands.generation()!=usb_generation_;
+    // Invalidate all traffic admitted DURING loading, not only before it.
+    commands_.panic();state_.generation=commands_.generation();
+    usb_.commands.panic();usb_generation_=usb_.commands.generation();
+    silence();amy_execute_deltas();gain_q16_=0;
+    if(!loaded || cancelled || amy_get_oom_count()!=load_oom_baseline_) {
+        if(!state_.patch_error) state_.patch_error=cancelled?-100:-101;
+        state_.patch_state=PatchState::Failed;++state_.patch_failures;
+        // Explicit retry of a valid patch may reconstruct the full set. Until
+        // then no notes enter a partially loaded engine. No fictitious rollback.
+    } else {
+        state_.patch_id=state_.requested_patch_id;bank_=0;
+        state_.patch_state=PatchState::Ready;++state_.patch_changes;
+    }
+    state_.oom_count=amy_get_oom_count();
+#endif
 }
 }
