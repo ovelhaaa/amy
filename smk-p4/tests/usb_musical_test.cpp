@@ -129,7 +129,7 @@ int main() {
     }
     // Release under saturation triggers USB source cancellation outside queue.
     midi(r,0x90,60,100); r.apply(0);
-    for(unsigned i=0;i<kCommandCapacity;++i) midi(r,0xb0,1,i);
+    for(unsigned i=0;i<kUsbCommandCapacity;++i) midi(r,0xb0,1,i%128);
     midi(r,0x80,60,0); assert(usb.dropped==1); r.apply(1); assert(!r.snapshot().active_notes);
     // Whole malformed transfer is rejected before publishing a partial chord.
     uint8_t bad[]={9,0x90,60,100,8,0x90,60,0};

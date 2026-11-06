@@ -122,8 +122,10 @@ void Runtime::applyUsb(uint32_t now_ms) {
     auto& q=usb_.commands;
     if(q.generation()!=usb_generation_) { cancelUsb(); usb_generation_=q.generation(); }
     Command c;
-    for(unsigned n=0;n<kCommandCapacity && q.pop(c);++n) {
+    unsigned applied=0;
+    for(unsigned scanned=0;scanned<kUsbCommandCapacity && applied<kCommandCapacity && q.pop(c);++scanned) {
         if(c.generation!=usb_generation_ || c.generation!=q.generation()) continue;
+        ++applied;
         const uint32_t latency=eventAgeMs(now_ms,c.timestamp_ms);
         if(latency>state_.command_latency_max_ms) state_.command_latency_max_ms=latency;
         if(c.channel>=16) { ++state_.invalid_commands; continue; }

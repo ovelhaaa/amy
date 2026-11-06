@@ -81,6 +81,18 @@ int main() {
     std::printf("MEM voices=%u oscs=%u runtime_size=%zu live_bytes=%zu peak_bytes=%zu live_allocs=%u delta_blocks=%d delta_size=%zu\n",kVoices,kOscillators,sizeof(r),probe_bytes()-bytes,probe_peak_bytes(),probe_live()-live,next_delta_block,sizeof(struct delta));
     if(kPatchCount>2) assert(probe_peak_bytes()-bytes<=kLibraryEngineHeapBudgetBytes);
     probe_realtime(true);
+#ifdef SMKP4_SOUND_LIBRARY
+    // Captured workload needed at least57 slots. Preserve every command, but
+    // never expand the per-block apply budget or allocate during service.
+    for(unsigned n=0;n<57;++n) midi(r,0xb0,1,n);
+    assert(r.usbInput().commands.depth()==57 && !r.usbInput().dropped);
+    service(r);assert(r.usbInput().commands.depth()==25);
+    service(r);assert(!r.usbInput().commands.depth() && !r.usbInput().dropped);
+    // Full stale generations are purged in one bounded scan, not replayed.
+    for(unsigned n=0;n<kUsbCommandCapacity;++n) midi(r,0x90,48+n%12,100);
+    r.usbInput().disconnect();service(r);
+    assert(!r.usbInput().commands.depth() && !r.snapshot().active_notes);
+#endif
     service(r,128,"idle"); // idle
     for(unsigned bank=0;bank<kPatchCount;++bank) {
         assert(r.commands().push({CommandType::Patch,kPatches[bank].id,0,0,0,now_ms})); service(r);
@@ -157,7 +169,7 @@ int main() {
         service(r); assert(r.snapshot().active_notes==kVoices && r.snapshot().master==127);
         for(unsigned n=0;n<kCommandCapacity;++n) midi(r,0xb0,1,n);
         service(r,128,"cc1_full_channel"); assert(r.snapshot().active_notes==kVoices);
-        for(unsigned n=0;n<kCommandCapacity;++n) midi(r,0xb0,1,n);
+        for(unsigned n=0;n<kUsbCommandCapacity;++n) midi(r,0xb0,1,n%128);
         midi(r,0x80,60,0); service(r); assert(!r.snapshot().active_notes);
         chord(r);
         assert(r.commands().push({CommandType::Patch,kPatches[(bank+1)%kPatchCount].id,0,0,0,now_ms})); service(r);

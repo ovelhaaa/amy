@@ -13,6 +13,13 @@
 #endif
 namespace smk::p4::amy {
 constexpr unsigned kVoices = SMKP4_VOICES, kCommandCapacity = 32;
+// Burst storage after the32-slot queue lost25 events on the bench. The owner applies
+// at most32 current-generation USB commands per block. Legacy profiles stay32.
+#ifdef SMKP4_SOUND_LIBRARY
+constexpr unsigned kUsbCommandCapacity = 64;
+#else
+constexpr unsigned kUsbCommandCapacity = kCommandCapacity;
+#endif
 static_assert(kVoices == 4 || kVoices == 6 || kVoices == 8, "Supported musical voice profiles: 4, 6, 8");
 constexpr unsigned kOwnerStackBytes = 12288, kOwnerPriority = 5;
 // Conservative admission, not a measured P4 allocation size. Preserve the
@@ -48,7 +55,7 @@ constexpr unsigned kAmyVoices = kVoices * kPatchCount;
 constexpr unsigned kSynthCount = kAmyVoices + 1; // Instrument ID zero is reserved.
 constexpr unsigned kOscillators = kAmyVoices * kOscillatorsPerVoice;
 // Bound simultaneous Touch retriggers, USB per-channel tuning and the next
-// vibrato update, plus a full-bank safety command. Both producer queues are 32.
+// vibrato update, plus a full-bank safety command. Both producer service budgets are32; USB storage may hold64.
 // A Touch retrigger emits Off+On (four fields/osc). At least one slot belongs
 // to Touch in that case, leaving at most N-1 USB voices for every queued CC.
 constexpr unsigned kDeltaReserve = kOscillatorsPerVoice *

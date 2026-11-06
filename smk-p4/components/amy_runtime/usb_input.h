@@ -13,7 +13,7 @@ public:
         if(r==trace_write_.load(std::memory_order_acquire)) return false;
         t=trace_[r%kCommandCapacity]; trace_read_.store(r+1,std::memory_order_release); return true;
     }
-    Commands commands;
+    CommandQueue<kUsbCommandCapacity> commands;
     bool packet(const uint8_t* p,uint32_t now_ms) {
         if(p[0]>>4) return true; // This application routes only virtual cable 0.
         const unsigned cin=p[0]&15, status=p[1]>>4;
