@@ -5,8 +5,8 @@ O perfil isolado `guition-unified-engine-8` reutiliza oito instrumentos AMY e
 foram avaliados em host. Juno32 continua indisponível por clipping. A saída PCM
 tem tarefa própria e a UI só confirma o patch após carga/verificação. AMY core,
 drivers e perfis legados permanecem preservados. A imagem0.8 foi gravada com
-autorização e verificada por leitura; a qualificação musical e prolongada ainda
-está pendente. Veja [resultados e limitações](docs/unified_engine_08_results.md).
+autorização e verificada por leitura; o operador aprovou o smoke, e a
+qualificação prolongada ficou para depois. Veja [resultados e limitações](docs/unified_engine_08_results.md).
 
 ```powershell
 ./smk-p4/tests/run_unified_probe.ps1

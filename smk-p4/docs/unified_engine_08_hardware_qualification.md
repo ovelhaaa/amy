@@ -52,13 +52,56 @@ patch changes, worst-case stack, load-time deadlines, audible quality or
 long-term stability. LVGL is the same128KiB static pool; do not add its unused
 space to free internal heap.
 
-## Musical smoke and prolonged stability — MANUAL / PENDING
+## Musical smoke — MANUAL / PASS; prolonged stability — NOT RUN
 
 The operator was asked to test Touch and SMK25, eight-note chords, FM/Juno
 selection including128/135/4, release/retrigger/sustain, bend/CC1, Panic and
-USB reconnect, while listening for clipping, stuck notes and clicks. The first
-55-second follow-up capture showed no MIDI events or patch changes, so it is
-another idle observation, not a completed musical smoke. Only the operator can
-approve sound and touch. Any failure requires preserving logs and following the separately
-authorized rollback procedure. Full30-minute qualification and the required
-instrumented hot-plug/load matrix remain NOT RUN until executed and assessed.
+USB reconnect, while listening for clipping, stuck notes and clicks. The operator
+replied **“Smoke passou”**. This is a manual approval of the requested smoke,
+not independent instrumentation of each individual action or physical approval
+of every one of the15 software candidates.
+
+The first55-second follow-up capture contained no MIDI events or patch changes;
+it was an idle observation, not the smoke. A later20-second post-smoke capture
+(`post_smoke_operator_08.log`) recorded cumulative counters from the same boot:
+
+|Metric|Post-smoke cumulative observation|
+|---|---:|
+|Confirmed patch changes / load failures|22 / 0|
+|USB connects / disconnects|2 / 1|
+|Selected-cable MIDI events / parse errors / musical queue dropped / overflow|2669 / 0 / 0 / 0|
+|Ignored duplicate cable packets|2669|
+|Diagnostic MIDI trace records dropped|5122|
+|Render max / render deadline misses|3164us / 0|
+|Synth worker command max / compute deadline misses|30995us / 22|
+|Synth worker refill risks|11|
+|Output fallback blocks / generation barriers|145 / 66|
+|Output refill risks / I2S write errors / timeouts|0 / 0 / 0|
+|Clipping / OOM / active notes at snapshot|0 / 0 / 0|
+|Internal free / lowest observed / largest block|202071 / 201263 / 126976 B|
+|Last swap internal before/after / largest|202071 / 202071 / 126976 B|
+|Stack minimum free: synth / output / UI / USB|3492 / 1412 / 3012 / 4144 B|
+
+The trace queue is diagnostic and distinct from the USB musical command queue:
+5122 trace records were not retained, although the selected-cable command queue
+reported no drops or overflows. The captured stream is therefore incomplete.
+The logged compute deadline is for the synth worker and includes patch loading;
+22 misses and22 selections are observed but cannot be paired individually from
+this capture. The11 worker refill-risk counts are not the output-task counter,
+which was0. Hardware DMA underruns remain UNMEASURED.
+
+Output fallback counts include both generation barriers and empty/stale handoff
+blocks. Of145 blocks,66 coincided with observed barrier handling and79 did not;
+the latter include the one present before the first boot snapshot. At256 frames
+and48kHz this represents approximately773ms of combined ramp/silence blocks
+since boot, not a measurement of individual audible interruptions. The capture
+cannot attribute each non-barrier block to a particular patch change or prove
+that all of them were intentional. The operator's smoke PASS is preserved, but
+these counters prevent an unconditional real-time/continuity PASS.
+
+The operator chose **“Prefiro fazer depois”** when asked to perform the proposed
+at-least30-minute representative FM/Juno/eight-voice/UI/MIDI window with four
+instrumented hot-plugs. That window and the full physical screen/patch matrix
+remain NOT RUN. The elapsed boot uptime alone does not qualify as representative
+activity. Do not infer individual transition times, fragmentation stability or
+audible behavior beyond the operator's reported smoke.
