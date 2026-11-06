@@ -22,7 +22,8 @@ int main(){
     // Configuration change freezes an existing group and Off still uses input.
     config(r,harmony::preset(2));usb(r,0x80,60);r.apply(0);assert(!r.snapshot().active_notes);
     probe_realtime(true);for(unsigned i=0;i<15000;++i)r.render();const auto tail=r.render();
-    for(unsigned i=0;i<512;++i)assert(tail[i]>=-2 && tail[i]<=2);probe_realtime(false);
+    for(unsigned i=0;i<512;++i)assert(tail[i]>=-2 && tail[i]<=2);
+    probe_realtime(false);
     config(r,c);usb(r,0x90,60,100);usb(r,0x90,64,90);r.apply(0);assert(r.snapshot().active_notes==6);
     auto rejected=r.snapshot().groups_rejected;usb(r,0x90,67,100);r.apply(0);assert(r.snapshot().active_notes==6 && r.snapshot().groups_rejected==rejected+1);
     usb(r,0x80,60);r.apply(0);assert(r.snapshot().active_notes==3);usb(r,0x80,64);r.apply(0);assert(!r.snapshot().active_notes);
