@@ -105,5 +105,6 @@ IRAM text unchanged. The fixed output worker additionally requests4096 stack
 bytes dynamically; its handoff is in the existing12288-byte synthesis task
 stack. These are separate from AMY heap savings and need target stack minima.
 The128KiB LVGL pool remains in static DRAM1. The PIO RAM summary omits DRAM1;
-it must not be used as total RAM accounting. New P4 free/largest heap readings
-remain MANUAL; offline sections are not a runtime allocation measurement.
+it must not be used as total RAM accounting. Subsequent boot measurements on
+the P4 are reported separately in [physical qualification](unified_engine_08_hardware_qualification.md);
+offline sections themselves are not a runtime allocation measurement.

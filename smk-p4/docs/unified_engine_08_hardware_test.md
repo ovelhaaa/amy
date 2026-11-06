@@ -1,9 +1,10 @@
-# Physical qualification0.8 — MANUAL / NOT RUN
+# Physical qualification0.8 — MANUAL / PENDING
 
 Preflight identified COM13 (USB serial80:F1:B2:D3:CC:86), captured the running
-0.7 diagnostics, and reset the device for read-only flash backup. No flash write
-has been performed. Existing installed firmware, full backups and rollback
-bundles are preserved. Historical0.7 USB64 smoke is not0.8 approval; corrected
+0.7 diagnostics, and reset the device for read-only flash backup. After explicit
+confirmation of the exact SHA and wiring, the0.8 application was written and
+independently read back. The0.7 full backup and rollback bundles are preserved.
+Historical0.7 USB64 smoke is not0.8 approval; corrected
 0.7 did not undergo a replacement prolonged window.
 
 The ROM identified ESP32-P4 revision1.3. Two independent complete16MiB reads
@@ -21,10 +22,9 @@ The audible candidate is1211392 bytes at0x10000, SHA256
 `a5b410c29b677fcdc894ee78b1f2a22c64d98594143f460edd7800a4965e8617`.
 Image inspection identifies ESP32-P4,16MB, DIO/80MHz; the previous application
 has the same image-header settings. Effective sdkconfig selects eight voices,
-PCM5102 GPIO50/51/52 and USB HS0. The prior bench wiring confirmation is historical;
-reconfirm the physical setup before any flash. Generic permission was given to
-prepare recording, but this task's instruction requires explicit confirmation of
-this exact candidate SHA before writing it.
+PCM5102 GPIO50/51/52 and USB HS0. The operator subsequently confirmed the exact
+SHA and this wiring before the write. See the
+[physical qualification record](unified_engine_08_hardware_qualification.md).
 
 The reviewed write scope is the application at0x10000 only, within the existing
 0x300000-byte factory partition. Bootloader, partition table, NVS and the rest
