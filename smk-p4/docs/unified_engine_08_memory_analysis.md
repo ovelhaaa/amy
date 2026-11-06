@@ -45,3 +45,25 @@ Allocation domains must remain separate:
 New A/B/C measurements and exact limitations are appended after isolated reuse
 stress. Target largest blocks, fragmentation, stack and total memory during
 swaps remain MANUAL until an explicitly authorized image is exercised.
+
+## Isolated reuse experiment (PASS)
+
+`./smk-p4/tests/run_unified_probe.ps1`, `build/unified08/probe.log`: 2005
+selections per architecture across128/135/138/142/4. One eight-voice instrument:
+114042 live bytes,140 allocations alive; eight one-voice instruments:116618
+bytes,161 alive. After warmup every same-patch live-byte reading was identical.
+All teardown readings returned to baseline. Whole-set deletion before load
+avoids tight-pool six/eight-osc map fragmentation. Oscillator storage remains
+at its FM high-water even on Juno;48 assigned oscs does not imply48 allocated
+objects. Replacement after warmup makes3/24 allocations respectively.
+
+Observed host maximum load+materialization:1362/1413 microseconds respectively;
+these are scheduler-sensitive host observations, not target deadlines. Chord
+PCM was nonzero and unclipped for this fixed five-patch scenario; Panic output
+was exactly zero. Guarded steady render made no heap calls. Host allocator
+fragmentation/largest free block is NOT measured by requested-byte equality.
+
+Choose eight reusable instruments:2576 bytes extra versus one, preserving P4
+control semantics. Configured capacity becomes64 oscillators/eight AMY voices,
+independent of catalog count. Do not compare isolated116618 bytes directly
+with full-runtime286490 or target277232: delta reservations differ.
