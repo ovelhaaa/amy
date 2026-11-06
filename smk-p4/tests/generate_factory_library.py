@@ -17,7 +17,10 @@ def category(name):
 
 def products():
     source, costs, entries = inventory()
-    raw = {int(m[1]):m[3] for m in re.finditer(r'/\* (\d+): (.*?) \*/ "(.*?)",',source)}
+    matches=list(re.finditer(r'/\* (\d+): (.*?) \*/ "(.*?)",',source))
+    factory_matches=[m for m in matches if int(m[1])<256]
+    assert len(factory_matches)==256 and len({int(m[1]) for m in factory_matches})==256, 'Duplicate/missing factory IDs'
+    raw = {int(m[1]):m[3] for m in matches}
     assert len(entries)==266 and len(costs)==391
     assert all(i in entries and entries[i][0] for i in range(256))
     results_path=ROOT/'smk-p4/docs/factory_library_010_metrics.json'
@@ -34,6 +37,9 @@ def products():
     for i in range(256):
         name,cost,family,*_=entries[i]
         cmd=raw[i]; fam='Subtractive' if i<128 else 'FM'
+        assert family==('subtractive' if i<128 else 'FM'), (i,family)
+        assert set(re.findall(r'[A-Za-z]',cmd)) <= set('ABFGILOPRZabcdfkmovwx'), 'Unreviewed ROM command'
+        assert not any(token in cmd for token in ('ic','io')), 'Embedded instrument/mapping command'
         assert cost==(6 if i<128 else 8)
         refs=[int(x) for x in re.findall(r'(?:v|c|L|m)(\d+)',cmd)]
         # L is a modulation target selector, m is a local oscillator source.
@@ -47,11 +53,11 @@ def products():
             r=results['patches'][i]; assert r['id']==i
             status |= 2
             if r['supported']: status |= 4; admitted.append(i)
-            else: status |= 16; reason=r['reason']
+            else: status |= 16 | 8; reason=r['reason']
         elif i in LEGACY and i!=32: status |= 4; admitted.append(i)
         cat=category(name)
         lines.append(f'    {{{i},{json.dumps(name)},{cost},SynthFamily::{fam},PatchCategory::{cat},{json.dumps(bank)},{status}}},')
-        ui.append(f'    {{{i},library::kFactory[{i}].name,library::kFactory[{i}].bank,library::kFactory[{i}].category,library::kFactory[{i}].family,FeatureStatus::{"Available" if status&4 else "Planned"},false,{{"CHAR","BRIGHT","MOTION","SHAPE","ATK","REL","SPACE","DRIVE"}}}},')
+        ui.append(f'    {{{i},library::kFactory[{i}].name,library::kFactory[{i}].bank,library::kFactory[{i}].category,library::kFactory[{i}].family,FeatureStatus::{"Available" if status&4 else "Unavailable" if status&16 else "Planned"},false,{{"CHAR","BRIGHT","MOTION","SHAPE","ATK","REL","SPACE","DRIVE"}}}},')
         letters=''.join(sorted(set(re.findall(r'[A-Za-z]',cmd))))
         inv.append(f'|{i}|{name}|{fam}|{cat}|{bank}|{cost}|{"LPF24 G4" if "G4" in cmd else "none"}|{"EQ/chorus dry" if "x" in cmd or "k" in cmd else "none"}|{letters}|local references within voice; {reason}|')
     lines+=['};']

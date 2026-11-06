@@ -399,3 +399,53 @@ python smk-p4/tests/check_blueprint_build.py --voices 6 --environment guition-st
 Este ambiente separado habilita I²S50/51/52 e USB HS0, preservando os ambientes
 seguros. Não autoriza upload. Identificar unidade/porta/imagem atual, preservar
 backup e conferir SHA/configuração antes de pedir autorização para a imagem concreta.
+
+
+## Full factory library 0.10 (experimental software candidate)
+
+The isolated `guition-factory-8` and `guition-factory-8-bench` profiles expose
+all256 Juno/DX7 ROM IDs in the existing paged Blueprint browser, with229 admitted
+host candidates and27 blocked entries. This changes metadata/selection only:
+eight reusable instruments, eight musical voices and64 oscillator capacity remain.
+Harmony0.9 and PCM generation ownership are retained. No shared AMY/S3/driver
+changes. The older S3 specification is superseded only for this explicit P4 task.
+See [results](docs/factory_library_010_results.md),
+[generated patch matrix](docs/factory_library_010_patch_matrix.md),
+[browser](docs/factory_library_010_browser.md) and
+[short physical smoke](docs/factory_library_010_hardware_smoke.md).
+
+Builds (no upload authorization implied):
+
+```powershell
+C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-factory-8 -j 8
+C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-factory-8-bench -j 8
+```
+
+Reproduce qualification with the existing GCC/MinGW toolchain and Python:
+
+```powershell
+./smk-p4/tests/run_harmony.ps1
+./smk-p4/tests/run_factory_probe.ps1
+./smk-p4/tests/run_factory_probe.ps1 -Observe
+python smk-p4/tests/summarize_factory_library.py
+# Optional: remeasure IDs pending solely for timing without concurrent builds.
+./smk-p4/tests/run_factory_probe.ps1 -TimingOnly
+python smk-p4/tests/summarize_factory_library.py
+python smk-p4/tests/generate_factory_library.py
+python -m unittest discover -s smk-p4/tests -p test_factory_library.py
+./smk-p4/tests/run_factory_runtime.ps1
+./smk-p4/ui-preview/run_preview.ps1
+./smk-p4/tests/run_factory_ui.ps1
+./smk-p4/tests/compare_factory_heap.ps1
+./smk-p4/tests/compare_harmony_off.ps1 -Baseline ../smk-p4-harmony-assist-09
+```
+
+`-TimingOnly` requires a generated metrics JSON with timing-only pending IDs;
+use it only when such IDs exist. Keep initial and recheck evidence together.
+Offline generators are not used during boot. Requalification may change the
+admission count; commit generated metadata, matrix and evidence together.
+The observer compiles a generated build-only copy of `amy.c`, leaving the
+shared source and production DSP untouched. Host timings never qualify P4
+real-time performance. Favorites are RAM-only. No new pin mapping, effects,
+NVS, sample subsystem or UI redesign is introduced. Hardware smoke remains
+separate from host tests and requires authorization for the exact image SHA.

@@ -14,18 +14,18 @@ Memory requires oscillator/filter state, eight instrument/FIFO maps and shared d
 |3|Juno A14 Flutes|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |4|Juno A15 Moving Strings|Subtractive|Strings|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |5|Juno A16 Brass & Strings|Subtractive|Brass|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|6|Juno A17 Choir|Subtractive|Strings|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|6|Juno A17 Choir|Subtractive|Strings|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
 |7|Juno A18 Piano I|Subtractive|Piano|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |8|Juno A21 Organ I|Subtractive|Organ|JUNO A|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |9|Juno A22 Organ II|Subtractive|Organ|JUNO A|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|10|Juno A23 Combo Organ|Subtractive|Organ|JUNO A|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|10|Juno A23 Combo Organ|Subtractive|Organ|JUNO A|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
 |11|Juno A24 Calliope|Subtractive|Organ|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |12|Juno A25 Donald Pluck|Subtractive|Plucks|JUNO A|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |13|Juno A26 Celeste* (1 oct.up)|Subtractive|Percussion|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|14|Juno A27 Elect. Piano I|Subtractive|ElectricPiano|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|15|Juno A28 Elect. Piano II|Subtractive|ElectricPiano|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|14|Juno A27 Elect. Piano I|Subtractive|ElectricPiano|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
+|15|Juno A28 Elect. Piano II|Subtractive|ElectricPiano|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
 |16|Juno A31 Clock Chimes* (1 oct. up)|Subtractive|Percussion|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|17|Juno A32 Steel Drums|Subtractive|Percussion|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|17|Juno A32 Steel Drums|Subtractive|Percussion|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
 |18|Juno A33 Xylophone|Subtractive|Percussion|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |19|Juno A34 Brass III|Subtractive|Brass|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |20|Juno A35 Fanfare|Subtractive|Brass|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
@@ -40,7 +40,7 @@ Memory requires oscillator/filter state, eight instrument/FIFO maps and shared d
 |29|Juno A46 Dark Pluck|Subtractive|Plucks|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |30|Juno A47 Funky I|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |31|Juno A48 Synth Bass I (unison)|Subtractive|Bass|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|32|Juno A51 Lead I|Subtractive|Leads|JUNO A|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|32|Juno A51 Lead I|Subtractive|Leads|JUNO A|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
 |33|Juno A52 Lead II|Subtractive|Leads|JUNO A|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |34|Juno A53 Lead III|Subtractive|Leads|JUNO A|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |35|Juno A54 Funky II|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
@@ -55,21 +55,21 @@ Memory requires oscillator/filter state, eight instrument/FIFO maps and shared d
 |44|Juno A65 Tom Toms (unison)|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |45|Juno A66 Timpani (unison)|Subtractive|Percussion|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |46|Juno A67 Shaker|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|47|Juno A68 Synth Pad|Subtractive|Pads|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|47|Juno A68 Synth Pad|Subtractive|Pads|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
 |48|Juno A71 Sweep I|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |49|Juno A72 Pluck Sweep|Subtractive|Plucks|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |50|Juno A73 Repeater|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|51|Juno A74 Sweep II|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|51|Juno A74 Sweep II|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
 |52|Juno A75 Pluck Bell|Subtractive|Plucks|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |53|Juno A76 Dark Synth Piano|Subtractive|Piano|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|54|Juno A77 Sustainer|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|54|Juno A77 Sustainer|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
 |55|Juno A78 Wah Release|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |56|Juno A81 Gong (play low chords)|Subtractive|Percussion|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |57|Juno A82 Resonance Funk|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |58|Juno A83 Drum Booms* (1 oct. down)|Subtractive|Percussion|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|59|Juno A84 Dust Storm|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|59|Juno A84 Dust Storm|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
 |60|Juno A85 Rocket Men|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|61|Juno A86 Hand Claps|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|61|Juno A86 Hand Claps|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
 |62|Juno A87 FX Sweep|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |63|Juno A88 Caverns|Subtractive|FX|JUNO A|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |64|Juno B11 Strings|Subtractive|Strings|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
@@ -77,10 +77,10 @@ Memory requires oscillator/filter state, eight instrument/FIFO maps and shared d
 |66|Juno B13 Chorus Vibes|Subtractive|Percussion|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |67|Juno B14 Organ 1|Subtractive|Organ|JUNO B|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |68|Juno B15 Harpsichord 1|Subtractive|Plucks|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|69|Juno B16 Recorder|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|69|Juno B16 Recorder|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; RELEASE_TAIL|
 |70|Juno B17 Perc. Pluck|Subtractive|Plucks|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|71|Juno B18 Noise Sweep|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|72|Juno B21 Space Chimes|Subtractive|Percussion|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|71|Juno B18 Noise Sweep|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
+|72|Juno B21 Space Chimes|Subtractive|Percussion|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
 |73|Juno B22 Nylon Guitar|Subtractive|Plucks|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |74|Juno B23 Orchestral Pad|Subtractive|Pads|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |75|Juno B24 Bright Pluck|Subtractive|Plucks|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
@@ -89,7 +89,7 @@ Memory requires oscillator/filter state, eight instrument/FIFO maps and shared d
 |78|Juno B27 FX Rise 1|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |79|Juno B28 FX Rise 2|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |80|Juno B31 Brass|Subtractive|Brass|JUNO B|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|81|Juno B32 Helicopter|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|81|Juno B32 Helicopter|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING,HOST_DEADLINE_REVIEW|
 |82|Juno B33 Lute|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |83|Juno B34 Chorus Funk|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |84|Juno B35 Tomita|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
@@ -106,27 +106,27 @@ Memory requires oscillator/filter state, eight instrument/FIFO maps and shared d
 |95|Juno B48 Chorused Bell|Subtractive|Percussion|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |96|Juno B51 Clav|Subtractive|Plucks|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |97|Juno B52 Organ 2|Subtractive|Organ|JUNO B|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|98|Juno B53 Bassoon|Subtractive|Bass|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|99|Juno B54 Auto Release Noise Sweep|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|98|Juno B53 Bassoon|Subtractive|Bass|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
+|99|Juno B54 Auto Release Noise Sweep|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
 |100|Juno B55 Brass Ensemble|Subtractive|Brass|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |101|Juno B56 Ethereal|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |102|Juno B57 Chorus Bell 2|Subtractive|Percussion|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|103|Juno B58 Blizzard|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|103|Juno B58 Blizzard|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING,HOST_DEADLINE_REVIEW|
 |104|Juno B61 E. Piano with Tremolo|Subtractive|Piano|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|105|Juno B62 Clarinet|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|106|Juno B63 Thunder|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|105|Juno B62 Clarinet|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
+|106|Juno B63 Thunder|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
 |107|Juno B64 Reedy Organ|Subtractive|Organ|JUNO B|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |108|Juno B65 Flute / Horn|Subtractive|Brass|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |109|Juno B66 Toy Rhodes|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |110|Juno B67 Surf's Up|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |111|Juno B68 OW Bass|Subtractive|Bass|JUNO B|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|112|Juno B71 Piccolo|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|112|Juno B71 Piccolo|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; RELEASE_TAIL|
 |113|Juno B72 Melodic Taps|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |114|Juno B73 Meow Brass|Subtractive|Brass|JUNO B|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |115|Juno B74 Violin (high)|Subtractive|Strings|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |116|Juno B75 High Bells|Subtractive|Percussion|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |117|Juno B76 Rolling Wah|Subtractive|FX|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
-|118|Juno B77 Ping Bell|Subtractive|Percussion|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
+|118|Juno B77 Ping Bell|Subtractive|Percussion|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; HARD_CLIPPING|
 |119|Juno B78 Brassy Organ|Subtractive|Organ|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |120|Juno B81 Low Dark Strings|Subtractive|Strings|JUNO B|6|LPF24 G4|EQ/chorus dry|AFGLRZacdfkmvwx|local references within voice; NOT RUN|
 |121|Juno B82 Piccolo Trumpet|Subtractive|Brass|JUNO B|6|LPF24 G4|EQ/chorus dry|ABFGLRZacdfkmvwx|local references within voice; NOT RUN|
@@ -152,7 +152,7 @@ Memory requires oscillator/filter state, eight instrument/FIFO maps and shared d
 |141|DX7 SYN-LEAD 1|FM|Leads|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |142|DX7 BASS    1|FM|Bass|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |143|DX7 BASS    2|FM|Bass|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
-|144|DX7 E.ORGAN 1|FM|Organ|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
+|144|DX7 E.ORGAN 1|FM|Organ|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; HARD_CLIPPING|
 |145|DX7 PIPES   1|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |146|DX7 HARPSICH 1|FM|Plucks|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |147|DX7 CLAV    1|FM|Plucks|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
@@ -166,7 +166,7 @@ Memory requires oscillator/filter state, eight instrument/FIFO maps and shared d
 |155|DX7 TIMPANI|FM|Percussion|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |156|DX7 REFS WHISL|FM|FX|AMY DX7|8|none|none|ALOPZabfovw|local references within voice; NOT RUN|
 |157|DX7 VOICE   1|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
-|158|DX7 TRAIN|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
+|158|DX7 TRAIN|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; HARD_CLIPPING|
 |159|DX7 TAKE OFF|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |160|DX7 PIANO   4|FM|Piano|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |161|DX7 PIANO   5|FM|Piano|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
@@ -240,7 +240,7 @@ Memory requires oscillator/filter state, eight instrument/FIFO maps and shared d
 |229|DX7 SYN-CLAV 2|FM|Plucks|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |230|DX7 SYN-CLAV 3|FM|Plucks|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |231|DX7 SYN-PIANO|FM|Piano|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
-|232|DX7 SYNBRASS 1|FM|Brass|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
+|232|DX7 SYNBRASS 1|FM|Brass|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; HARD_CLIPPING|
 |233|DX7 SYNBRASS 2|FM|Brass|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |234|DX7 SYNORGAN 1|FM|Organ|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |235|DX7 SYNORGAN 2|FM|Organ|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
@@ -256,11 +256,11 @@ Memory requires oscillator/filter state, eight instrument/FIFO maps and shared d
 |245|DX7 B.DRM-SNAR|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |246|DX7 SHIMMER|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |247|DX7 EVOLUTION|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
-|248|DX7 WATER GDN|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
+|248|DX7 WATER GDN|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; HARD_CLIPPING|
 |249|DX7 WASP STING|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |250|DX7 LASER GUN|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |251|DX7 DESCENT|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |252|DX7 OCTAVE WAR|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
 |253|DX7 GRAND PRIX|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
-|254|DX7 ST.HELENS|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|
+|254|DX7 ST.HELENS|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; RELEASE_TAIL,HOST_DEADLINE_REVIEW|
 |255|DX7 EXPLOSION|FM|FX|AMY DX7|8|none|none|AILOPZabfovw|local references within voice; NOT RUN|

@@ -19,6 +19,9 @@ UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend&
     d.firmware_version="SMK-P4 UNIFIED 0.8 CANDIDATE";
 #if defined(SMKP4_HARMONY) || defined(CONFIG_SMKP4_HARMONY)
     d.firmware_version="SMK-P4 HARMONY 0.9 EXPERIMENTAL";
+#if defined(SMKP4_FULL_FACTORY_LIBRARY) || defined(CONFIG_SMKP4_FULL_FACTORY_LIBRARY)
+    d.firmware_version="SMK-P4 FACTORY 0.10 EXPERIMENTAL";
+#endif
 #endif
 #endif
     d.amy_status="WAIT SNAPSHOT"; d.i2s_status="NOT LIVE"; d.usb_status="DISCONNECTED";
@@ -66,7 +69,11 @@ bool UiBlueprintPerformanceAdapter::isPatchSelectable(uint16_t id) const {
     return false;
 }
 FeatureStatus UiBlueprintPerformanceAdapter::patchStatus(uint16_t id) const {
+#if defined(SMKP4_FULL_FACTORY_LIBRARY) || defined(CONFIG_SMKP4_FULL_FACTORY_LIBRARY)
+    return isPatchSelectable(id)?FeatureStatus::Available:FeatureStatus::Unavailable;
+#else
     return isPatchSelectable(id)?FeatureStatus::Available:FeatureStatus::Planned;
+#endif
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestParameterValue(const char* id,const ParameterValue& v) {
     if(v.type==ParameterValueType::String) return result(UiCommandState::Rejected,id,"INVALID VALUE TYPE");

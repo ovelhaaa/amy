@@ -1,0 +1,11 @@
+# Factory library 0.10 — Patch Browser
+
+The existing Blueprint1.1/800x480 screen and six-row pagination are retained. The opt-in factory profile uses one generated constexpr256-entry UI catalog derived from the same ROM metadata as runtime. It creates six row buttons per page, not256 permanent widgets. Forty-three pages cover256 IDs; bounds clamp repeated navigation. Name display truncates at28 characters in rows, preserving original names in metadata/inspector. Failed entries show UNAVAIL and cannot enter the engine.
+
+Bank filters are ALL/JUNO A/JUNO B/AMY DX7/FAVORITES. Juno A/B are explicit in ROM names. Historical DX7 ROM1–4 attribution is unresolved; a speculative mapping is not supplied. Existing musical category pills use documented deterministic name heuristics; FX is the fallback. Favorites are bounded RAM flags, cleared on reboot, with no NVS writes.
+
+Stage Prev/Next traverses only admitted IDs and respects the last browser bank/category/favorites filter in the factory profile. No matching alternative produces no request. The applied name remains until owner confirmation. Existing request timeout/busy/loading/error feedback is retained. Direct backend selection now also rejects requests while busy, preventing producer callers from scheduling overlapping loads. Re-selecting the same ID explicitly in the browser remains a supported reconstruction; Prev/Next avoids accidental same-ID selection. Short muted changes are expected; no crossfade or gapless promise.
+
+Legacy profiles retain their original catalog and bank filters. Factory metadata status distinguishes ROM_PRESENT/HOST_TESTED/SUPPORTED/UNAVAILABLE/FAILED/HARDWARE_TESTED. Hardware-tested is never inferred from host results. The new image identifies itself as FACTORY0.10; Harmony math, I2S, USB and display drivers are unchanged.
+
+Validation command: `./smk-p4/tests/run_factory_ui.ps1` (after real-AMY objects and the pinned LVGL host archive exist). It drives real LVGL9.3 and AMY, all14 screens, every admitted selection, requested/applied/busy/error states, injected OOM/retry/Panic,44 forward/back page actions, every bank, RAM favorites, actual filtered Prev/Next and LVGL heap integrity. Screenshots are under `build/factory010/`. Hardware navigation remains MANUAL.
