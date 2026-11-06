@@ -117,4 +117,3 @@ MANUAL/PASS: smoke e audição da revisão corrigida. NOT RUN: nova janela>=30mi
 quatro hot-plugs instrumentados e matriz completa de carga prolongada, dispensados
 nesta sessão por instrução explícita do operador. Gate E integral não é promovido.
 A falha anterior25 drops continua documentada e não foi apagada pela revisão.
-
