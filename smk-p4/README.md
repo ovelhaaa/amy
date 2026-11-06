@@ -1,4 +1,29 @@
-# Sound Library 0.7 — candidato isolado
+# Unified Patch Engine 0.8 — candidato de software
+
+O perfil isolado `guition-unified-engine-8` reutiliza oito instrumentos AMY e
+64 osciladores de capacidade para uma seleção de15 patches FM/Juno;16 candidatos
+foram avaliados em host. Juno32 continua indisponível por clipping. A saída PCM
+tem tarefa própria e a UI só confirma o patch após carga/verificação. AMY core,
+drivers e perfis legados permanecem preservados. Nenhuma imagem0.8 foi gravada
+ou qualificada fisicamente. Veja [resultados e limitações](docs/unified_engine_08_results.md).
+
+```powershell
+./smk-p4/tests/run_unified_probe.ps1
+./smk-p4/ui-preview/run_preview.ps1
+./smk-p4/tests/run_unified_ui.ps1
+python smk-p4/tests/summarize_unified_engine.py
+C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-unified-engine-8 -j 8
+python smk-p4/tests/check_blueprint_build.py --voices 8 --sound-library --unified-engine --environment guition-unified-engine-8
+```
+
+Execute os builds PIO em sequência e conclua a configuração de dependências
+antes dos testes UI em host. O ambiente separado `guition-unified-engine-8-bench`
+gera candidato audível para a bancada existente; build não autoriza upload.
+O [procedimento físico](docs/unified_engine_08_hardware_test.md) exige revisão
+do SHA específico, unidade, backup e rollback. Congele o bundle após os testes
+e commits com `python smk-p4/tests/package_unified_engine.py`.
+
+## Sound Library 0.7 — baseline preservado
 
 Perfil opt-in de oito vozes e quatro bancos FM residentes:128 Brass,135 Piano,
 138 Electric Piano,142 Bass. O padrão e os bundles físicos0.6 foram preservados.
