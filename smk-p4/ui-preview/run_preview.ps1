@@ -1,3 +1,4 @@
+param([ValidateSet(96,128)][int]$PoolKB=128)
 $ErrorActionPreference = "Stop"
 
 $PreviewDir = $PSScriptRoot
@@ -8,6 +9,12 @@ $BuildDir = Join-Path $RepoRoot "build\ui_blueprint_host"
 $LvglObjDir = Join-Path $BuildDir "lvgl_obj"
 $UiObjDir = Join-Path $BuildDir "ui_obj"
 $ShotsDir = Join-Path $RepoRoot "build\ui_preview_shots"
+if($PoolKB -ne 128) {
+    $BuildDir = Join-Path $RepoRoot "build\ui_blueprint_host_$PoolKB"
+    $LvglObjDir = Join-Path $BuildDir "lvgl_obj"
+    $UiObjDir = Join-Path $BuildDir "ui_obj"
+    $ShotsDir = Join-Path $RepoRoot "build\ui_preview_shots_$PoolKB"
+}
 
 New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
 New-Item -ItemType Directory -Force -Path $LvglObjDir | Out-Null
@@ -61,7 +68,7 @@ foreach ($file in $AllLvglFiles) {
     $objFile = Join-Path $LvglObjDir ($relPath + ".o")
     $LvglObjFiles += $objFile
     if (-not (Test-Path $objFile) -or ($file.LastWriteTime -gt (Get-Item $objFile).LastWriteTime) -or ((Get-Item (Join-Path $PreviewDir "lv_conf.h")).LastWriteTime -gt (Get-Item $objFile).LastWriteTime)) {
-        & gcc -O2 -std=c99 -DLV_CONF_INCLUDE_SIMPLE=1 `
+        & gcc "-DSMKP4_LVGL_POOL_KB=$PoolKB" -O2 -std=c99 -DLV_CONF_INCLUDE_SIMPLE=1 `
             "-I$PreviewDir" `
             "-I$LvglRoot" `
             "-I$LvglSrcDir" `
@@ -97,7 +104,7 @@ foreach ($file in $UiCppFiles) {
     $objFile = Join-Path $UiObjDir ($file.BaseName + ".o")
     $UiObjFiles += $objFile
     if (-not (Test-Path $objFile) -or ($file.LastWriteTime -gt (Get-Item $objFile).LastWriteTime) -or ($LatestHeaderTime -gt (Get-Item $objFile).LastWriteTime)) {
-        & g++ -O2 -std=c++20 -Wall -Wextra -Werror -DLV_CONF_INCLUDE_SIMPLE=1 `
+        & g++ "-DSMKP4_LVGL_POOL_KB=$PoolKB" -O2 -std=c++20 -Wall -Wextra -Werror -DLV_CONF_INCLUDE_SIMPLE=1 `
             "-I$PreviewDir" `
             "-I$UiIncDir" `
             "-I$LvglRoot" `
@@ -110,7 +117,7 @@ foreach ($file in $UiCppFiles) {
 Write-Host "[3/4] Building and running blueprint_test_suite.exe ..."
 $TestSuiteSrc = Join-Path $UiCompDir "tests\blueprint_test_suite.cpp"
 $TestSuiteExe = Join-Path $BuildDir "blueprint_test_suite.exe"
-& g++ -O2 -std=c++20 -Wall -Wextra -Werror -DLV_CONF_INCLUDE_SIMPLE=1 `
+& g++ "-DSMKP4_LVGL_POOL_KB=$PoolKB" -O2 -std=c++20 -Wall -Wextra -Werror -DLV_CONF_INCLUDE_SIMPLE=1 `
     "-I$PreviewDir" `
     "-I$UiIncDir" `
     "-I$LvglRoot" `
@@ -124,7 +131,7 @@ if ($LASTEXITCODE -ne 0) { throw "blueprint_test_suite.exe FAILED" }
 Write-Host "[4/4] Building and running preview_main.exe (800x480 framebuffer capture) ..."
 $PreviewSrc = Join-Path $PreviewDir "preview_main.cpp"
 $PreviewExe = Join-Path $BuildDir "preview_main.exe"
-& g++ -O2 -std=c++20 -Wall -Wextra -Werror -DLV_CONF_INCLUDE_SIMPLE=1 `
+& g++ "-DSMKP4_LVGL_POOL_KB=$PoolKB" -O2 -std=c++20 -Wall -Wextra -Werror -DLV_CONF_INCLUDE_SIMPLE=1 `
     "-I$PreviewDir" `
     "-I$UiIncDir" `
     "-I$LvglRoot" `

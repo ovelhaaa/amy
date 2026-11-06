@@ -2,6 +2,10 @@
 #define LV_CONF_H
 
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+/* Host assertions must terminate tests instead of spinning indefinitely. */
+#define LV_ASSERT_HANDLER do { fprintf(stderr,"LVGL assertion %s:%d\n",__FILE__,__LINE__); abort(); } while(0);
 
 /* Color depth: 16 (RGB565) matching Guition JC-ESP32P4-M3 ST7701S configuration */
 #define LV_COLOR_DEPTH 16
@@ -10,7 +14,10 @@
 #define LV_USE_STDLIB_MALLOC    LV_STDLIB_BUILTIN
 #define LV_USE_STDLIB_STRING    LV_STDLIB_CLIB
 #define LV_USE_STDLIB_SPRINTF   LV_STDLIB_CLIB
-#define LV_MEM_SIZE             (128U * 1024U)
+#ifndef SMKP4_LVGL_POOL_KB
+#define SMKP4_LVGL_POOL_KB 128U
+#endif
+#define LV_MEM_SIZE             (SMKP4_LVGL_POOL_KB * 1024U)
 
 /* HAL settings */
 #define LV_DEF_REFR_PERIOD      16
