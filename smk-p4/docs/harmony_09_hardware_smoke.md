@@ -1,6 +1,7 @@
 # Harmony 0.9 short hardware smoke
 
-Status: MANUAL / NOT RUN. No firmware written and no port opened in this task.
+Musical smoke: MANUAL / NOT RUN. Authorized0.9 application write, independent
+readback and idle boot: PASS in the [physical follow-up](harmony_09_hardware_qualification.md).
 Building an audible candidate does not authorize upload. Existing0.8 image,
 readback logs, full-flash/app backups and rollback bundle stay untouched.
 

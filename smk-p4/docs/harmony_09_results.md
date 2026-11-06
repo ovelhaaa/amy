@@ -1,5 +1,10 @@
 # SMK-P4 Harmony Assist 0.9 - software candidate
 
+Subsequent authorized application write/readback and idle boot: **PASS**.
+See [physical follow-up](harmony_09_hardware_qualification.md). The software
+candidate report below retains its preflash statuses as historical evidence;
+musical smoke and sustained active-play qualification remain pending.
+
 Branch: `feature/smk-p4-harmony-assist-09`. Separate worktree:
 `build/worktrees/smk-p4-harmony-assist-09`. Baseline0.8 branch remains at
 `f40f34b4cd74e90231b5c604786ca511121a6df7`. Original working tree unchanged.
