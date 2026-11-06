@@ -15,6 +15,11 @@ static void panic(amy::Runtime& r){r.commands().panic();r.apply(0);assert(!r.sna
 int main(){
     amy::Runtime r;assert(r.begin());LocalAmyPerformanceBackend b(r.commands());
     auto publish=[&]{b.publish(r.snapshot(),true,0,0);};publish();
+    config(r,harmony::preset(4));usb(r,0x90,66,100);r.apply(0);r.render();
+    assert(r.snapshot().active_notes==1 && r.snapshot().last_notes[0]==67);
+    uint16_t corrected_voice;instrument_get_num_voices(1,&corrected_voice);
+    assert(synth[voice_to_base_osc[corrected_voice]]->midi_note==67);
+    usb(r,0x80,66);r.apply(0);assert(!r.snapshot().active_notes);
     auto c=harmony::preset(1);config(r,c);
     usb(r,0x90,60,100);r.apply(0);assert(r.snapshot().active_notes==3);
     assert(r.snapshot().last_notes[0]==60 && r.snapshot().last_notes[1]==64 && r.snapshot().last_notes[2]==67);
