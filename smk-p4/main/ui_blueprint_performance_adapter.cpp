@@ -11,6 +11,9 @@ UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend&
     meters_.is_simulated=false; // No amplitude measurement available: meters stay zero/N/A.
     auto& d=model_.diagnostics();
     d={}; d.is_demo_mode=false; d.firmware_version="SMK-P4 LIBRARY 0.7"; d.max_voices=backend_.voiceCapacity();
+#ifdef SMKP4_UNIFIED_ENGINE
+    d.firmware_version="SMK-P4 UNIFIED 0.8 CANDIDATE";
+#endif
     d.amy_status="WAIT SNAPSHOT"; d.i2s_status="NOT LIVE"; d.usb_status="DISCONNECTED";
     model_.setBool("harmony.scale_enable",false);
     model_.setBool("harmony.chord_enable",false);
@@ -142,7 +145,10 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
             if(model_.getInt("layer_a.patch_id")!=s.patch_id) model_.setInt("layer_a.patch_id",s.patch_id);
         }
         if(s.master<=127 && model_.getInt("perf.master_volume")!=s.master) model_.setInt("perf.master_volume",s.master);
-        if(patch_.active && rev!=patch_.revision && s.patch_id==patch_.value) {
+        if(patch_.active && backend_.patchError()) {
+            patch_.active=false; result(UiCommandState::Rejected,"perf.patch_id","PATCH LOAD FAILED; RETRY SAFE PATCH");
+        }
+        if(patch_.active && !backend_.busy() && rev!=patch_.revision && s.patch_id==patch_.value) {
             patch_.active=false; result(UiCommandState::Confirmed,"perf.patch_id","PATCH CONFIRMED BY SNAPSHOT");
         }
         if(master_.active && rev!=master_.revision && s.master==master_.value) {

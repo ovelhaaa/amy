@@ -42,6 +42,12 @@ const BlueprintPatchEntry kPatchCatalog[UiModel::kCatalogSize] = {
     {library::kCandidates[3].id, library::kCandidates[3].name,      "ROM DX7",  static_cast<PatchCategory>(library::kCandidates[3].category), static_cast<SynthFamily>(library::kCandidates[3].family),            FeatureStatus::Planned,   true,
      {"CHAR", "BRIGHT", "MOTION", "FDBK", "RATIO", "DTUNE", "SPACE", "EDGE"}},
 
+#if defined(SMKP4_UNIFIED_ENGINE) || defined(CONFIG_SMKP4_UNIFIED_ENGINE)
+    {library::kCandidates[12].id,library::kCandidates[12].name,"ROM DX7",library::kCandidates[12].category,library::kCandidates[12].family,FeatureStatus::Planned,false,{}},
+    {library::kCandidates[13].id,library::kCandidates[13].name,"ROM DX7",library::kCandidates[13].category,library::kCandidates[13].family,FeatureStatus::Planned,false,{}},
+    {library::kCandidates[14].id,library::kCandidates[14].name,"ROM DX7",library::kCandidates[14].category,library::kCandidates[14].family,FeatureStatus::Planned,false,{}},
+    {library::kCandidates[15].id,library::kCandidates[15].name,"ROM DX7",library::kCandidates[15].category,library::kCandidates[15].family,FeatureStatus::Planned,false,{}},
+#endif
     // User Bank Demo Slots (Explicitly marked DEMO)
     {240, "USER STAGE PAD",  "USER DEMO",PatchCategory::Pads,          SynthFamily::Subtractive,   FeatureStatus::Demo,      false,
      {"CHAR", "BRIGHT", "MOTION", "SHAPE", "ATK", "REL", "SPACE", "DRIVE"}},

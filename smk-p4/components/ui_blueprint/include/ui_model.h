@@ -3,6 +3,9 @@
 #include "../../amy_runtime/patch_library.h"
 #include <cstddef>
 #include <cstdint>
+#ifdef ESP_PLATFORM
+#include "sdkconfig.h"
+#endif
 
 namespace smk::p4::ui {
 
@@ -90,7 +93,12 @@ public:
     static constexpr size_t kDrumTracks    = 8;
     static constexpr size_t kModSlots      = 8;
     static constexpr size_t kMidiMappings  = 8;
-    static constexpr size_t kCatalogSize   = 16;
+    static constexpr size_t kCatalogSize   =
+#if defined(SMKP4_UNIFIED_ENGINE) || defined(CONFIG_SMKP4_UNIFIED_ENGINE)
+        20;
+#else
+        16;
+#endif
 
     UiModel();
 
