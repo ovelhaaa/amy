@@ -53,6 +53,9 @@ int main() {
     for(unsigned page=0;page<44;++page)click("PAGE >");
     for(unsigned page=0;page<44;++page)click("< PAGE");
     for(const char* bank:{"JUNO A","JUNO B","AMY DX7","FAVORITES *","ALL BANKS"}){click(bank);for(unsigned page=0;page<5;++page)click("PAGE >");}
+    click("BASS");assert(a.model().browser_category==PatchCategory::Bass);
+    click("STRINGS");assert(a.model().browser_category==PatchCategory::Strings);
+    click("ALL");assert(a.model().browser_category==PatchCategory::All);
     for(unsigned i=0;i<256;++i){a.model().toggleFavorite(i);a.model().toggleFavorite(i);}
     assert(a.model().activePatch().id==128);
     a.model().browser_bank=1;

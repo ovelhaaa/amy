@@ -2,7 +2,7 @@
 
 ROM SHA256 `3e76efb6519174663fb81073fa4e8332130489b991b4d3c6825535e1e8516a5e`. 256 Juno/DX7 IDs; 391 total positions, 266 populated, 125 reserved.
 
-Names and costs come directly from ROM. Categories are deterministic name heuristics (FX is the fallback), not historical factory classifications. Juno bank A/B is explicit in ROM names; DX7 source bank is recorded as AMY DX7, because ROM1–4 provenance is not established here. No invented historical bank mapping.
+Names and costs come directly from ROM. Categories are deterministic name heuristics (FX is the fallback), not historical factory classifications. Juno bank A/B is explicit in ROM names; DX7 source bank is recorded as AMY DX7: amy/headers.py uses fm.DX7Patch.from_patch_number, and amy/fm.py reads sequential156-byte records from default-dx7-patches.bin (dx7db/learnfm). This does not establish historical ROM1–4 provenance. No invented historical bank mapping.
 
 Memory requires oscillator/filter state, eight instrument/FIFO maps and shared delta storage; actual requested bytes are in the generated qualification matrix. FX disabled: chorus requests are ignored, factory EQ retained. Mono/unison in a name does not force monophony: eight independent gates remain. All rows are ROM_PRESENT; host/support/failure states are separate flags.
 

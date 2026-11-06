@@ -31,7 +31,7 @@ def products():
     ui=['// Generated; included inside constexpr BlueprintPatchEntry array.']
     admitted=[]
     inv=['# Factory library 0.10 inventory','',f'ROM SHA256 `{rom_hash}`. 256 Juno/DX7 IDs; 391 total positions, 266 populated, 125 reserved.','',
-         'Names and costs come directly from ROM. Categories are deterministic name heuristics (FX is the fallback), not historical factory classifications. Juno bank A/B is explicit in ROM names; DX7 source bank is recorded as AMY DX7, because ROM1–4 provenance is not established here. No invented historical bank mapping.','',
+         'Names and costs come directly from ROM. Categories are deterministic name heuristics (FX is the fallback), not historical factory classifications. Juno bank A/B is explicit in ROM names; DX7 source bank is recorded as AMY DX7: amy/headers.py uses fm.DX7Patch.from_patch_number, and amy/fm.py reads sequential156-byte records from default-dx7-patches.bin (dx7db/learnfm). This does not establish historical ROM1–4 provenance. No invented historical bank mapping.','',
          'Memory requires oscillator/filter state, eight instrument/FIFO maps and shared delta storage; actual requested bytes are in the generated qualification matrix. FX disabled: chorus requests are ignored, factory EQ retained. Mono/unison in a name does not force monophony: eight independent gates remain. All rows are ROM_PRESENT; host/support/failure states are separate flags.','',
          '|ID|Original name|Family|Category|Bank|Osc/voice|Filters|Effects/global|Command letters|Structure|','|---|---|---|---|---|---:|---|---|---|---|']
     for i in range(256):
@@ -68,4 +68,4 @@ if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--check',action='store_true');a=p.parse_args()
     for path,data in products().items():
         if a.check: assert path.read_text(encoding='utf-8')==data, f'Stale {path}'
-        else: path.write_text(data,encoding='utf-8')
+        elif not path.exists() or path.read_text(encoding='utf-8')!=data: path.write_text(data,encoding='utf-8')
