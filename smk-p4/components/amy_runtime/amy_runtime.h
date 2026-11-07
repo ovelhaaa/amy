@@ -5,6 +5,10 @@
 namespace smk::p4::amy {
 enum class PatchState : uint8_t { Ready, Requested, Loading, Verifying, Failed };
 struct Snapshot {
+#ifdef SMKP4_SOUND_EDITOR
+    edit::State edit;
+    bool storage_quiet=false;
+#endif
     harmony::Config harmony;
     uint32_t harmony_revision=0,harmony_errors=0,groups_admitted=0,groups_rejected=0;
     uint32_t last_group=0,transform_max_us=0,admission_max_us=0;
@@ -38,6 +42,20 @@ public:
     UsbInput& usbInput() { return usb_; }
     const Snapshot& snapshot() const { return state_; }
 private:
+#ifdef SMKP4_SOUND_EDITOR
+    void captureEdit();
+    void applyEdit();
+    struct EditOsc {
+        uint16_t wave=0;
+        float cutoff=0,resonance=0,amp=0,ratio=0;
+        uint32_t attack_samples=0,release_samples=0;
+        uint8_t release_index=0;
+        bool envelope=false;
+    } edit_oscs_[8]{};
+    uint16_t edit_map_[kVoices][8]{};
+    uint8_t edit_count_=0,edit_ops_[6]{};
+    bool edit_modulators_[6]{};
+#endif
     void silence();
     void publishOutput(OutputReason reason) { commands_.output_context.store(outputContext(state_.generation,reason,state_.active_notes!=0),std::memory_order_release); }
     void note(unsigned slot,uint8_t velocity);

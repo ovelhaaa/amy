@@ -1,6 +1,7 @@
 #pragma once
 #include "runtime_config.h"
 #include "output_context.h"
+#include "sound_edit.h"
 #include <atomic>
 namespace smk::p4::amy {
 enum class CommandType : uint8_t { NoteOn, Patch, Master, NoteOff, Control, Bend, Harmony };
@@ -53,7 +54,13 @@ private:
     uint32_t next_token_=0; // Producer lifetime, survives UI/backend/engine restart.
     std::atomic<uint32_t> read_{0},write_{0},generation_{1},overflows_{0},released_[128]{};
 };
-using Commands = CommandQueue<kCommandCapacity>;
+class Commands : public CommandQueue<kCommandCapacity> {
+public:
+#ifdef SMKP4_SOUND_EDITOR
+    edit::Mailbox edits;
+    std::atomic<bool> storage_requested{false};
+#endif
+};
 inline bool atOrAfter(uint32_t a,uint32_t b) { return static_cast<int32_t>(a-b)>=0; }
 // The owner samples its clock before draining. A concurrent producer can
 // timestamp a command just after that sample; it is fresh, not UINT32_MAX ms
