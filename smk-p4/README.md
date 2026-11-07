@@ -3,7 +3,8 @@
 Perfil isolado `guition-editor-8` / `guition-editor-8-bench`: edição Juno de
 cutoff/Q/Attack/Release, nível/ratio FM mapeados, brilho por moduladores,
 Compare/Revert, macros e16 User Presets NVS. Save As ocorre com barreira de
-silêncio; não é salvamento contínuo durante execução. Sem gravação autorizada.
+silêncio; não é salvamento contínuo durante execução. Imagem0.11 gravada com autorização e readback verificado; smoke musical e
+Save/Recall físico pendentes. [Registro](docs/sound_editor_011_hardware_qualification.md).
 [Resultados/limites](docs/sound_editor_011_results.md) e
 [smoke físico pendente](docs/sound_editor_011_hardware_smoke.md).
 

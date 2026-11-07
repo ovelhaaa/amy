@@ -1,5 +1,10 @@
 # Sound editor0.11 — experimental software candidate
 
+Subsequent authorized application write/readback and observed boot/idle: **PASS**.
+See [hardware follow-up](sound_editor_011_hardware_qualification.md). Fresh preflight
+block is resolved; operator musical smoke and physical persistence remain
+**MANUAL / NOT RUN**. The original preflash software report below is preserved.
+
 Branch feature/smk-p4-live-sound-editor-011 in independent worktree
 build/worktrees/smk-p4-live-sound-editor-011. Baseline exact commit
  dfcef41dd04eaa034fc4c20945bfd95ce65062d9 (0.10). Initial checkout was clean.
