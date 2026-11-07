@@ -175,7 +175,7 @@ public:
         auto* name=lv_textarea_create(root);lv_obj_set_pos(name,284,42);lv_obj_set_size(name,396,42);
         lv_textarea_set_one_line(name,true);lv_textarea_set_max_length(name,24);lv_textarea_set_text(name,"MY SOUND 01");
         auto* info=createLabel(root,"SELECT SLOT; SAVE AS ALSO RENAMES. OCCUPIED SLOT REQUIRES TWO PRESSES.",12,88,680);
-        auto* keyboard=lv_keyboard_create(root);lv_obj_set_pos(keyboard,12,166);lv_obj_set_size(keyboard,680,190);lv_keyboard_set_textarea(keyboard,name);
+        auto* keyboard=lv_keyboard_create(root);lv_obj_set_align(keyboard,LV_ALIGN_TOP_LEFT);lv_obj_set_pos(keyboard,12,166);lv_obj_set_size(keyboard,680,190);lv_keyboard_set_textarea(keyboard,name);
         auto* context=attachLvContext<PresetPanel>(root,PresetPanel{&backend,root,slot,name,info,false},nullptr);
         if(!context){lv_obj_delete(root);return;}
         lv_obj_add_event_cb(slot,[](lv_event_t* e){auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));

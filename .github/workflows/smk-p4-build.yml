@@ -30,6 +30,8 @@ jobs:
           ./smk-p4/tests/run_amy.ps1 -Voices 6 | Tee-Object build/profile6_tests.log
           ./smk-p4/tests/run_amy.ps1 -Voices 8 | Tee-Object build/profile8_tests.log
           ./smk-p4/tests/run_amy.ps1 -Voices 8 -SoundLibrary
+          ./smk-p4/tests/run_harmony.ps1
+          ./smk-p4/tests/run_sound_editor.ps1
           python smk-p4/tests/audit_patch_library.py --check
           python smk-p4/tests/summarize_polyphony.py
   build:
@@ -69,6 +71,14 @@ jobs:
             environment: guition-factory-8
             voices: 8
             audit_flags: --sound-library --unified-engine --harmony --full-factory --environment guition-factory-8
+          - project: smk-p4
+            environment: guition-editor-8
+            voices: 8
+            audit_flags: --sound-library --unified-engine --harmony --full-factory --sound-editor --environment guition-editor-8
+          - project: smk-p4
+            environment: guition-editor-8-bench
+            voices: 8
+            audit_flags: --sound-library --unified-engine --harmony --full-factory --sound-editor --musical --environment guition-editor-8-bench
           - project: smk-s3
             environment: esp32-s3-link
     steps:
