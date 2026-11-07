@@ -74,6 +74,14 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     assert(backend.editAction(1));backend.service(21);tick();backend.publish(runtime.snapshot(),false,0,0);
     assert(backend.editAction(3,1));tick();runtime.loadPendingPatch();backend.publish(runtime.snapshot(),false,0,0);backend.service(42);tick();backend.publish(runtime.snapshot(),false,0,0);
     assert(runtime.snapshot().edit.mask==(1u<<edit::Depth));
+    assert(backend.editParameter(edit::Depth,0.25f));backend.service(100);
+    backend.service(3000);assert(backend.editError() && !backend.editPending());
+    tick();backend.publish(runtime.snapshot(),false,0,0);
+    assert(backend.editParameter(edit::Depth,0.4f));backend.service(3025);tick();backend.publish(runtime.snapshot(),false,0,0);
+    assert(!backend.editError() && runtime.snapshot().edit.applied[edit::Depth]==0.4f);
+    for(unsigned i=0;i<1000;++i)assert(backend.editParameter(edit::Depth,(i%100)/100.0f));
+    assert(backend.editCoalesced()>=999 && runtime.commands().depth()==0);
+    backend.service(3050);tick();backend.publish(runtime.snapshot(),false,0,0);assert(runtime.snapshot().edit.applied[edit::Depth]==0.99f);
     std::puts("PASS editor: eight-voice Juno/FM, native maps, no retrigger/allocation, limits, Compare/Revert, stale rejection;16-slot codec/CRC/future version/interrupted overwrite/recall");
     runtime.end();
 }

@@ -7,9 +7,9 @@
 using namespace smk::p4;
 using namespace smk::p4::ui;
 struct MemoryStore:edit::PresetStore {
-    uint8_t bytes[16][2][128]{};bool present[16][2]{};
+    uint8_t bytes[16][2][128]{};bool present[16][2]{};bool fail=false;
     bool read(unsigned s,unsigned b,uint8_t* p,unsigned& n) override {if(!present[s][b] || n<128)return false;std::memcpy(p,bytes[s][b],128);n=128;return true;}
-    bool write(unsigned s,unsigned b,const uint8_t* p,unsigned n) override {assert(n==128);std::memcpy(bytes[s][b],p,n);present[s][b]=true;return true;}
+    bool write(unsigned s,unsigned b,const uint8_t* p,unsigned n) override {if(fail)return false;assert(n==128);std::memcpy(bytes[s][b],p,n);present[s][b]=true;return true;}
 };
 static lv_obj_t* button(lv_obj_t* root,const char* text){
     for(unsigned i=0;i<lv_obj_get_child_count(root);++i){auto* child=lv_obj_get_child(root,i);
@@ -41,6 +41,9 @@ int main(){
     r.apply(preview::g_sim_tick_ms);assert(r.snapshot().storage_quiet);publish(); // writes in UI service
     r.apply(preview::g_sim_tick_ms);publish();assert(!b.busy());
     char name[25];uint16_t origin;assert(b.userPreset(0,name,sizeof(name),origin));assert(origin==4 && !std::strcmp(name,"MY STRINGS 01"));
+    store.fail=true;assert(a.requestSoundAction(2,0,"MY STRINGS 01").accepted());
+    r.apply(preview::g_sim_tick_ms);publish();r.apply(preview::g_sim_tick_ms);publish();
+    assert(a.lastCommandState()==UiCommandState::Rejected);store.fail=false;
     assert(a.requestSelectPatch(135).accepted());apply();
     assert(a.requestParameterInt("fm.selected_op",1).accepted());
     assert(a.parameterStatus("filter.cutoff_hz")==FeatureStatus::Unavailable);

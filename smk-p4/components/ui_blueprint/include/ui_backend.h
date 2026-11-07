@@ -92,6 +92,7 @@ public:
     virtual UiCommandResult requestSelectPatch(uint16_t patch_id, uint8_t target_layer = 0) = 0;
 
     virtual bool hasSoundEditor() const { return false; }
+    virtual const char* soundEditName() const {return model().activePatch().name;}
     virtual const char* soundEditStatus() const { return "EDITOR PLANNED"; }
     virtual UiCommandResult requestSoundAction(unsigned,unsigned=0,const char* =nullptr) { return {}; }
     virtual bool userPreset(unsigned,char*,unsigned,uint16_t&) { return false; }

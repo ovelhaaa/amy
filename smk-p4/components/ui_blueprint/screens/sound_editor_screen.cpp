@@ -151,7 +151,9 @@ public:
     }
 
     void refresh(IUiBackend& backend) override {
-        if(banner_ && backend.hasSoundEditor())lv_label_set_text(banner_,backend.soundEditStatus());
+        if(banner_ && backend.hasSoundEditor()){
+            char text[96];std::snprintf(text,sizeof(text),"%s | %s",backend.soundEditName(),backend.soundEditStatus());lv_label_set_text(banner_,text);
+        }
     }
 private:
     lv_obj_t* banner_=nullptr;
