@@ -59,10 +59,14 @@ The capture contains a partial early image-load line and periodic running snapsh
 
 The synthesis service maximum11171us includes PCM enqueue pacing; it is not a measured11171us DSP render. DMA underruns remain explicitly UNMEASURED. The comparable old0.9 idle-after-read capture had163319B free internal RAM; this0.10 observation is232B lower, consistent with the static data/BSS difference, but this does not characterize fragmentation under playing/patch changes.
 
-## MANUAL / NOT RUN — musical smoke
+## MANUAL / PASS — operator-reported musical smoke
 
 No note, patch change, USB MIDI event or Harmony group occurred in this capture. Zero idle error counters do not qualify eight-note DSP performance, analog continuity/latency, MIDI reconnect, touchscreen appearance or musical usability. The physical board/bench profile was retained (GPIO50/51/52, USB HS0); no wiring change was introduced. The229 host-admitted patches remain experimental candidates.
 
-Next smallest step: operator runs the [short musical smoke](factory_library_010_hardware_smoke.md), checking Juno/DX7, browser/PrevNext, eight notes, Harmony, sustain, bend/CC1, Panic and USB reconnect. Report audition and counters independently. Prolonged qualification remains PENDING; no automatic30-minute requirement.
+On 2026-11-07 (America/Sao_Paulo), the operator reported **“smoke passou, pode fazer push”** after the requested short smoke of the installed 0.10 image. Record the musical smoke as **MANUAL / PASS**, based on that aggregate operator confirmation. This supplements the earlier idle capture; it does not turn that capture into active-play telemetry.
+
+Individual checklist outcomes, per-patch coverage, active-play counter deltas and measured analog continuity/latency were not supplied. Do not infer that all 229 admitted patches received individual hardware qualification, or set their per-patch HARDWARE_TESTED flags from this aggregate report. The original checklist remains available in the [short smoke procedure](factory_library_010_hardware_smoke.md).
+
+Next smallest step: retain this image as an operator-smoke-approved experimental candidate and collect representative active-play diagnostics when further qualification is undertaken. Prolonged qualification remains PENDING, independently of this short smoke; no automatic 30-minute requirement.
 
 Authorization, fresh prefix, write/readback logs/bytes, boot capture and hashes are in `build/factory010/flash/`. A ZIP-tested supplemental receipt is `build/factory010/factory_010_authorized_flash_receipt.zip`; it does not replace or mutate the original software candidate/rollback bundle. No AMY core, source configuration or application binary was changed during this write task. Validation of this documentation change is `git diff --check`; no firmware rebuild is necessary.

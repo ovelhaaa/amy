@@ -1,6 +1,6 @@
 # Factory library 0.10 — short physical smoke
 
-Musical smoke: MANUAL / NOT RUN. Subsequent authorized application write/readback and observed boot/idle: PASS in the [physical follow-up](factory_library_010_hardware_qualification.md). Building and host qualification do not authorize upload. No automatic thirty-minute window is required. Prolonged qualification remains PENDING separately.
+Musical smoke: **MANUAL / PASS**, aggregate operator confirmation on 2026-11-07: “smoke passou, pode fazer push”. Individual checklist outcomes and active-play counter deltas were not provided; the rows below remain the original procedure, not individually confirmed results. Subsequent authorized application write/readback and observed boot/idle: PASS in the [physical follow-up](factory_library_010_hardware_qualification.md). Building and host qualification do not authorize upload. No automatic thirty-minute window is required. Prolonged qualification remains PENDING separately.
 
 Before writing, match the candidate manifest SHA256, ESP32-P4 ES1.3 JC-ESP32P4-M3 board, actual port/USB serial, currently installed app and partition table. Preserve two matching full-flash reads plus the extracted application and hashes. Obtain explicit authorization for the concrete application SHA and app-only erase interval. Keep bootloader, partitions and NVS unchanged. The existing GPIO50 BCLK /51 WS /52 DATA and USB HS0 are the previously validated bench profile, not newly assigned final wiring; reconfirm PCM module straps, supply, ground, line output and protected VBUS.
 

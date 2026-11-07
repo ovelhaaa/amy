@@ -1,6 +1,6 @@
 # Factory library 0.10 — software candidate results
 
-Subsequent authorized application write/readback and observed boot/idle: **PASS**. See [physical follow-up](factory_library_010_hardware_qualification.md). Musical smoke remains MANUAL / NOT RUN. The report below preserves its original preflash software-candidate statuses.
+Subsequent authorized application write/readback and observed boot/idle: **PASS**. See [physical follow-up](factory_library_010_hardware_qualification.md). Musical smoke is now **MANUAL / PASS**, reported by the operator on 2026-11-07 (“smoke passou, pode fazer push”). Individual scenario/per-patch hardware coverage and active-play measurements were not supplied; prolonged qualification remains PENDING. The report below preserves its original preflash software-candidate statuses.
 
 Branch `feature/smk-p4-full-factory-library-010`, isolated worktree `build/worktrees/smk-p4-full-factory-library-010`, baseline Harmony0.9 `2551d0d0`. The original worktree, earlier branches, binaries and recovery bundles remain intact. No destructive reset, force-push, automatic merge, dependency upgrade or firmware write. The explicit ESP32-P4/800x480 task supersedes the older S3/284x76 specification only in this isolated P4 application.
 
