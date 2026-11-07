@@ -46,7 +46,7 @@ own native mappings/tests rather than false AVAILABLE labels.
 |PASS|python smk-p4/tests/generate_factory_library.py --check; ROM/catalog unchanged|
 |PASS|git diff --check; no src/smk-s3/shared diff relative0.10|
 |PASS|C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-editor-8 -j8 and -e guition-editor-8-bench -j8; sequential final builds|
-|PASS|python smk-p4/tests/check_blueprint_build.py --voices8 --sound-library --unified-engine --harmony --full-factory --sound-editor --environment guition-editor-8 (actual arguments use --voices 8); bench adds --musical and its environment;48k/256/stereo, pins/gates, LVGL128KiB, identity and owner verified|
+|PASS|python smk-p4/tests/check_blueprint_build.py --voices 8 --sound-library --unified-engine --harmony --full-factory --sound-editor --environment guition-editor-8; bench adds --musical and its environment;48k/256/stereo, pins/gates, LVGL128KiB, identity and owner verified|
 |BLOCKED|Fresh read-flash on COM13 stalled opening serial; stopped with no bytes/new backup or firmware write. Serial inventory still matches80:F1:B2:D3:CC:86|
 |PASS|Prior complete0.9 Flash reads rehashed identically; prior0.10 independent app readback rehashed; preserved as rollback evidence|
 |MANUAL / NOT RUN|0.11 physical audio/touch/USB smoke, NVS reboot/power-cut/GC/Flash-cache behavior, P4 timings/RAM/stacks and prolonged qualification|
@@ -118,3 +118,8 @@ source hashes, image hashes, evidence and rollback; it never uploads firmware.
 |guition-editor-8-bench|1287776|`0bd1fd6ce2f6c72679c17cecf9e96ca6e61cefc8993349463e70701f5c3f2911`|+38672B|
 
 Exact SDK configuration, ELF/map/sections, source archive, logs,22 WAV fixtures, PCM equivalence bytes and rollback are packaged by package_sound_editor.py. Image hashes here identify the reviewed binaries; Flash authorization remains false.
+
+Static ELF data+BSS (excluding unchanged60B TCM): safe174480B vs172316B
+(+2164B); bench174896B vs172740B (+2156B). IRAM text+end: safe98816B vs96640B
+(+2176B); bench103936B vs101888B (+2048B). These measured section increases
+are not runtime free/largest-block or stack measurements. Section logs are in the bundle.

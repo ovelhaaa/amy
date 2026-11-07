@@ -78,6 +78,7 @@ def main():
             copy(build / name, f"{environment}/{name}")
         manifest["profiles"][environment] = {"bytes": binary.stat().st_size, "sha256": sha(binary)}
     subprocess.run(["git", "archive", "--format=zip", "--output", str(target / "sources.zip"), "HEAD"], cwd=ROOT, check=True)
+    (target / "evidence").mkdir(exist_ok=True)
     artifacts = ROOT / "build/editor011"
     for path in artifacts.iterdir():
         if path.suffix in (".log", ".png"):
