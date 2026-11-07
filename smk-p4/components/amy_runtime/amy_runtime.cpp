@@ -95,6 +95,9 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
     delta_release_list(reserved);
     state_.oom_count=amy_get_oom_count();
     if(state_.oom_count) { end(); return false; }
+    #ifdef SMKP4_SOUND_EDITOR
+    captureEdit();
+#endif
     state_.ready=true; publishOutput(OutputReason::Ready); return true;
 }
 void Runtime::end() {
@@ -242,6 +245,17 @@ void Runtime::applyUsb(uint32_t now_ms) {
     if(q.generation()!=usb_generation_) { cancelUsb(); usb_generation_=q.generation(); }
 }
 void Runtime::apply(uint32_t now_ms) {
+#ifdef SMKP4_SOUND_EDITOR
+    if(commands_.storage_requested.load(std::memory_order_acquire)) {
+        if(!state_.storage_quiet){
+            silence();amy_execute_deltas();state_.storage_quiet=true;
+            commands_.panic(OutputReason::Patch);state_.generation=commands_.generation();
+            usb_.commands.panic();usb_generation_=usb_.commands.generation();
+        }
+        return;
+    }
+    if(state_.storage_quiet){state_.storage_quiet=false;commands_.panic();state_.generation=commands_.generation();usb_.commands.panic();usb_generation_=usb_.commands.generation();}
+#endif
     if(!state_.ready) return;
     const uint32_t generation=commands_.generation();
     if(generation!=state_.generation) {
@@ -315,6 +329,9 @@ void Runtime::apply(uint32_t now_ms) {
 #else
     applyUsb(now_ms);
 #endif
+#ifdef SMKP4_SOUND_EDITOR
+    applyEdit();
+#endif
     if(commands_.generation()!=state_.generation) {
         silence(); state_.generation=commands_.generation();
         usb_.commands.panic(); usb_generation_=usb_.commands.generation();
@@ -325,6 +342,9 @@ const int16_t* Runtime::render() {
     if(!state_.ready) return nullptr;
 #ifdef SMKP4_UNIFIED_ENGINE
     if(state_.patch_state!=PatchState::Ready) return silent_pcm_;
+#ifdef SMKP4_SOUND_EDITOR
+    if(state_.storage_quiet){publishOutput(OutputReason::Patch);return silent_pcm_;}
+#endif
     if(amy_get_oom_count()!=state_.oom_count) { failRendering();return silent_pcm_; }
 #endif
     for(unsigned i=0;i<kVoices;++i)
@@ -439,9 +459,16 @@ void Runtime::loadPendingPatch() {
     } else {
         state_.patch_id=state_.requested_patch_id;bank_=0;
         state_.patch_state=PatchState::Ready;++state_.patch_changes;
+#ifdef SMKP4_SOUND_EDITOR
+        captureEdit();
+#endif
     }
     state_.oom_count=amy_get_oom_count();
     publishOutput(state_.patch_state==PatchState::Ready?OutputReason::Ready:OutputReason::Failed);
 #endif
 }
 }
+
+#ifdef SMKP4_SOUND_EDITOR
+#include "sound_edit_runtime.inc"
+#endif
