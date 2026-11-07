@@ -10,6 +10,9 @@
 #endif
 #include "self_test.h"
 #include "local_performance_backend.h"
+#ifdef SMKP4_SOUND_EDITOR
+#include "user_preset_nvs.h"
+#endif
 #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
 #include "ui_blueprint.h"
 #include "ui_blueprint_performance_adapter.h"
@@ -230,6 +233,11 @@ void audioTask(void*) {
 }
 
 extern "C" void app_main() {
+#ifdef SMKP4_SOUND_EDITOR
+    static smk::p4::NvsUserPresets user_presets;
+    const bool presets_ready=user_presets.begin(); // Before synthesis/USB start.
+    if(!presets_ready)ESP_LOGE(kTag,"User Presets unavailable: %s; factory audio continues",esp_err_to_name(user_presets.error()));
+#endif
     if (!smk::p4::reportHardware()) return;
     ESP_LOGI(kTag, "Standalone local AMY; USB opt-in; no UART, ES8311 or NS4150");
     ESP_LOGI(kTag, "PCM=%" PRIu32 "Hz signed16 stereo Philips; block=%u DMA=%ux%u MCLK=unused",
@@ -292,6 +300,9 @@ extern "C" void app_main() {
 #endif
     const bool display_ready = smk::p4::beginDisplayTest(diagnostic);
     static smk::p4::LocalAmyPerformanceBackend backend(runtime.commands());
+#ifdef SMKP4_SOUND_EDITOR
+    if(presets_ready)backend.presetStore(&user_presets);
+#endif
     #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
     if(snapshot_received) backend.publish(initial.engine,initial.running && initial.physical,initial.render_max_us,initial.render_deadlines);
     static smk::p4::UiBlueprintPerformanceAdapter adapter(backend);
@@ -344,6 +355,13 @@ extern "C" void app_main() {
                     unsigned(state.engine.patch_state),state.engine.requested_patch_id,state.engine.patch_id,
                     long(state.engine.patch_error),(unsigned long)state.engine.patch_changes,(unsigned long)state.engine.patch_failures);
 #ifdef SMKP4_HARMONY
+#ifdef SMKP4_SOUND_EDITOR
+                ESP_LOGI(kTag,"EDIT011 patch=%u epoch=%lu revision=%lu request=%lu mask=%lx compare=%d dirty=%d available=%lx errors=%lu apply_max_us=%lu quiet=%d coalesced=%lu",
+                    state.engine.edit.patch,(unsigned long)state.engine.edit.epoch,(unsigned long)state.engine.edit.revision,
+                    (unsigned long)state.engine.edit.request,(unsigned long)state.engine.edit.mask,state.engine.edit.compare,state.engine.edit.dirty,
+                    (unsigned long)state.engine.edit.available,(unsigned long)state.engine.edit.errors,(unsigned long)state.engine.edit.apply_max_us,
+                    state.engine.storage_quiet,(unsigned long)backend.editCoalesced());
+#endif
                 ESP_LOGI(kTag,"HARMONY09 revision=%lu groups=%lu rejected=%lu errors=%lu transform_max_us=%lu admission_max_us=%lu",
                     (unsigned long)state.engine.harmony_revision,(unsigned long)state.engine.groups_admitted,
                     (unsigned long)state.engine.groups_rejected,(unsigned long)state.engine.harmony_errors,

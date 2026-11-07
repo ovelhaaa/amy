@@ -5,6 +5,16 @@
 namespace smk::p4::ui {
 
 namespace {
+float sliderValue(const ParameterDescriptor& d,float norm){
+    if(d.scale==ParameterScale::Logarithmic && d.minimum>0 && d.maximum>d.minimum)
+        return d.minimum*std::pow(d.maximum/d.minimum,norm);
+    return d.minimum+norm*(d.maximum-d.minimum);
+}
+int32_t sliderPercent(const ParameterDescriptor& d,float value){
+    if(d.scale==ParameterScale::Logarithmic && d.minimum>0 && d.maximum>d.minimum && value>0)
+        return int32_t(std::lround(100*std::log(value/d.minimum)/std::log(d.maximum/d.minimum)));
+    return d.maximum>d.minimum?int32_t(std::lround(100*(value-d.minimum)/(d.maximum-d.minimum))):0;
+}
 struct SliderCtx {
     IUiBackend* backend   = nullptr;
     const char* param_id  = nullptr;
@@ -66,9 +76,8 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
         lv_obj_set_ext_click_area(slider, 14);
         lv_slider_set_range(slider, 0, 100);
 
-        const float span = (desc->maximum > desc->minimum) ? (desc->maximum - desc->minimum) : 1.0f;
         const float cur = backend.model().getFloat(param_id, desc->default_value);
-        const int32_t pct = static_cast<int32_t>(std::lround(((cur - desc->minimum) / span) * 100.0f));
+        const int32_t pct = sliderPercent(*desc,cur);
         lv_slider_set_value(slider, pct, LV_ANIM_OFF);
 
         if (!enabled) {
@@ -85,13 +94,12 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
                 if (!d) return;
                 auto* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
                 const int32_t pct_val = lv_slider_get_value(target);
-                const float span_v = (d->maximum > d->minimum) ? (d->maximum - d->minimum) : 1.0f;
                 const float norm = static_cast<float>(pct_val) / 100.0f;
-                const float mapped = d->minimum + norm * span_v;
+                const float mapped = sliderValue(*d,norm);
                 const UiCommandResult res = ctx->backend->requestParameterFloat(ctx->param_id, mapped);
                 if (!res.accepted()) {
                     const float confirmed = ctx->backend->model().getFloat(ctx->param_id, d->default_value);
-                    const int32_t conf_pct = static_cast<int32_t>(std::lround(((confirmed - d->minimum) / span_v) * 100.0f));
+                    const int32_t conf_pct = sliderPercent(*d,confirmed);
                     lv_slider_set_value(target, conf_pct, LV_ANIM_OFF);
                 }
                 if (ctx->val_label) {
@@ -115,8 +123,7 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
             if(!ctx->backend->isDemoMode() && ctx->backend->parameterStatus(ctx->param_id)!=FeatureStatus::Available) std::snprintf(text,sizeof(text),"PLAN");
             if(ctx->val_label) lv_label_set_text(ctx->val_label,text);
             if(!lv_obj_has_state(obj,LV_STATE_PRESSED)) {
-                const float span=d->maximum-d->minimum;
-                lv_slider_set_value(obj,span>0?static_cast<int32_t>(std::lround((value.asFloat()-d->minimum)*100/span)):0,LV_ANIM_OFF);
+                lv_slider_set_value(obj,sliderPercent(*d,value.asFloat()),LV_ANIM_OFF);
             }
             if(ctx->backend->isParameterEditable(ctx->param_id)) lv_obj_remove_state(obj,LV_STATE_DISABLED);
             else lv_obj_add_state(obj,LV_STATE_DISABLED);

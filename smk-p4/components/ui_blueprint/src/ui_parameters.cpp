@@ -6,6 +6,11 @@ namespace smk::p4::ui {
 
 namespace {
 
+#if defined(SMKP4_SOUND_EDITOR) || defined(CONFIG_SMKP4_SOUND_EDITOR)
+constexpr float kResonanceMaximum=2.0f;
+#else
+constexpr float kResonanceMaximum=8.0f;
+#endif
 constexpr const char* kLayerModes[] = {"SINGLE A", "SINGLE B", "DUAL LAYER", "SPLIT A/B"};
 constexpr const char* kWaveforms[] = {"SINE", "PULSE", "SAW DOWN", "SAW UP", "TRIANGLE", "NOISE", "KARPLUS", "PCM", "FM ALGO"};
 constexpr const char* kFilterTypes[] = {"PRESET", "NONE", "LPF 12dB", "BPF", "HPF", "LPF 24dB", "NOTCH", "PHASER", "MOOG 24", "TPT SVF"};
@@ -136,6 +141,10 @@ const ParameterDescriptor kDescriptors[] = {
      "White/pink noise generator level"},
 
     // ── SOUND EDITOR: FM ─────────────────────────────────────────────────
+    {"fm.depth", "fm", "FM BRIGHTNESS", ParameterValueType::Float, 0.0f, 1.0f, 1.0f, 0.01f, "x",
+     ParameterScale::Linear, "Synthesis", "FM", nullptr, 0, kModTargetCtrl,
+     FeatureStatus::Planned, nullptr, -1, "src/algorithms.c",
+     "Relative modulation intensity; native routing determines modulators"},
     {"fm.algo", "fm", "FM ALGORITHM", ParameterValueType::Int, 1.0f, 32.0f, 1.0f, 1.0f, "",
      ParameterScale::Linear, "Synthesis", "FM", nullptr, 0, kStdCtrl,
      FeatureStatus::Planned, "osc.1.wave", 8, "smk-s3/components/synth/include/macro_profile.h",
@@ -178,7 +187,7 @@ const ParameterDescriptor kDescriptors[] = {
      ParameterScale::Logarithmic, "Synthesis", "FILTER", nullptr, 0, kModTargetCtrl,
      FeatureStatus::Planned, nullptr, -1, "smk-s3/components/synth/include/patch_types.h",
      "Filter cutoff frequency in Hz"},
-    {"filter.resonance", "filter", "RESONANCE", ParameterValueType::Float, 0.1f, 8.0f, 1.2f, 0.1f, "Q",
+    {"filter.resonance", "filter", "RESONANCE", ParameterValueType::Float, 0.1f, kResonanceMaximum, 1.2f, 0.1f, "Q",
      ParameterScale::Linear, "Synthesis", "FILTER", nullptr, 0, kModTargetCtrl,
      FeatureStatus::Planned, nullptr, -1, "smk-s3/components/synth/include/patch_types.h",
      "Filter resonance Q factor"},

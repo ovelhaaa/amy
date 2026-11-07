@@ -39,6 +39,11 @@ public:
     const ui::UiSignalMeters& meters() const override { return meters_; }
     uint8_t activeSequencerStep() const override { return 0; }
     bool isNoteHeld(uint8_t note) const override;
+    bool hasSoundEditor() const override { return backend_.soundEdit()!=nullptr; }
+    const char* soundEditStatus() const override { return backend_.editNotice(); }
+    ui::UiCommandResult requestSoundAction(unsigned action,unsigned slot=0,const char* name=nullptr) override;
+    bool userPreset(unsigned slot,char* name,unsigned capacity,uint16_t& origin) override {return backend_.userPreset(slot,name,capacity,origin);}
+
 private:
     struct Gesture { uint32_t token=0, start_ms=0; uint8_t note=0; };
     struct Pending { bool active=false; uint16_t value=0; uint32_t revision=0, requested_ms=0; };
@@ -55,6 +60,11 @@ private:
     int32_t harmony_preset_=0;
     uint32_t harmony_requested_ms_=0,harmony_revision_=0;
     void syncHarmony(harmony::Config config);
+    int editIndex(const char* id) const;
+    unsigned selected_op_=0;
+    bool edit_requested_=false;
+    uint32_t edit_errors_=0;
+    const char* edit_id_="editor";
     uint32_t next_token_=0, now_ms_=0, revision_=0;
     bool have_snapshot_=false, was_connected_=false;
     ui::UiCommandState last_state_=ui::UiCommandState::Rejected;

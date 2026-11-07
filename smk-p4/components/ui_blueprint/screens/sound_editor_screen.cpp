@@ -30,71 +30,87 @@ public:
         std::snprintf(btxt, sizeof(btxt),
                       "EDITING: %03u %s  |  FAMILY: %s  |  DEMO STATE (NO AMY DSP WRITES)",
                       patch.id, patch.name, synthFamilyName(patch.family));
-        createLabel(banner, btxt, 6, 2, 760, &lv_font_montserrat_14, palette::kAccentPrimary);
+        if(backend.hasSoundEditor())std::snprintf(btxt,sizeof(btxt),"%03u %s | %s",patch.id,patch.name,backend.soundEditStatus());
+        banner_=createLabel(banner, btxt, 6, 2, 760, &lv_font_montserrat_14, palette::kAccentPrimary);
+        if(backend.hasSoundEditor()){
+            struct Action { IUiBackend* backend;unsigned action; };
+            const char* labels[]={"COMPARE","REVERT","USER / SAVE AS"};
+            for(unsigned a=0;a<3;++a){
+                auto* button=createActionButton(parent,labels[a],8+int(a)*264,350,256,36,nullptr,nullptr);
+                attachLvContext<Action>(button,Action{&backend,a},[](lv_event_t* e){
+                    if(lv_event_get_code(e)!=LV_EVENT_CLICKED)return;
+                    auto* c=static_cast<Action*>(lv_event_get_user_data(e));
+                    if(c->action<2)c->backend->requestSoundAction(c->action);
+                    else showPresets(static_cast<lv_obj_t*>(lv_event_get_target(e)),*c->backend);
+                },LV_EVENT_CLICKED);
+            }
+        }
 
         // 3. Tab-specific parameter grid (y = 82..386)
+        const int row2=backend.hasSoundEditor()?170:184,row3=backend.hasSoundEditor()?258:286;
+        const int cell_h=backend.hasSoundEditor()?78:94;
         switch (tab) {
             case 0: // OSC
-                createParameterCard(parent, backend, "osc.1.wave",        8,   82, 256, 94);
-                createParameterCard(parent, backend, "osc.1.pitch_st",    272, 82, 256, 94);
-                createParameterCard(parent, backend, "osc.1.detune_ct",   536, 82, 256, 94);
+                createParameterCard(parent, backend, "osc.1.wave",        8, 82, 256, cell_h);
+                createParameterCard(parent, backend, "osc.1.pitch_st",    272, 82, 256, cell_h);
+                createParameterCard(parent, backend, "osc.1.detune_ct",   536, 82, 256, cell_h);
 
-                createParameterCard(parent, backend, "osc.1.level",       8,   184, 256, 94);
-                createParameterCard(parent, backend, "osc.1.pan",         272, 184, 256, 94);
-                createParameterCard(parent, backend, "osc.1.pulse_width", 536, 184, 256, 94);
+                createParameterCard(parent, backend, "osc.1.level",       8, row2, 256, cell_h);
+                createParameterCard(parent, backend, "osc.1.pan",         272, row2, 256, cell_h);
+                createParameterCard(parent, backend, "osc.1.pulse_width", 536, row2, 256, cell_h);
 
-                createParameterCard(parent, backend, "osc.1.unison",      8,   286, 256, 94);
-                createParameterCard(parent, backend, "osc.sub_level",     272, 286, 256, 94);
-                createParameterCard(parent, backend, "osc.noise_level",   536, 286, 256, 94);
+                createParameterCard(parent, backend, "osc.1.unison",      8, row3, 256, cell_h);
+                createParameterCard(parent, backend, "osc.sub_level",     272, row3, 256, cell_h);
+                createParameterCard(parent, backend, "osc.noise_level",   536, row3, 256, cell_h);
                 break;
 
             case 1: // FM
-                createParameterCard(parent, backend, "fm.algo",        8,   82, 190, 94);
-                createParameterCard(parent, backend, "fm.selected_op", 206, 82, 190, 94);
-                createParameterCard(parent, backend, "fm.op.ratio",    404, 82, 190, 94);
-                createParameterCard(parent, backend, "fm.op.level",    602, 82, 190, 94);
+                createParameterCard(parent, backend, "fm.algo",        8, 82, 190, cell_h);
+                createParameterCard(parent, backend, "fm.selected_op", 206, 82, 190, cell_h);
+                createParameterCard(parent, backend, "fm.op.ratio",    404, 82, 190, cell_h);
+                createParameterCard(parent, backend, "fm.op.level",    602, 82, 190, cell_h);
 
-                createParameterCard(parent, backend, "fm.feedback",    8,   184, 190, 94);
-                createParameterCard(parent, backend, "fm.op.attack",   206, 184, 190, 94);
-                createParameterCard(parent, backend, "fm.op.decay",    404, 184, 190, 94);
-                createParameterCard(parent, backend, "fm.op.vel_sens", 602, 184, 190, 94);
+                createParameterCard(parent, backend, backend.hasSoundEditor()?"fm.depth":"fm.feedback",    8, row2, 190, cell_h);
+                createParameterCard(parent, backend, "fm.op.attack",   206, row2, 190, cell_h);
+                createParameterCard(parent, backend, "fm.op.decay",    404, row2, 190, cell_h);
+                createParameterCard(parent, backend, "fm.op.vel_sens", 602, row2, 190, cell_h);
 
                 {
                     lv_obj_t* algo_card = lv_obj_create(parent);
                     applyPanelStyle(algo_card, true);
-                    lv_obj_set_pos(algo_card, 8, 286);
-                    lv_obj_set_size(algo_card, 784, 94);
+                    lv_obj_set_pos(algo_card, 8, row3);
+                    lv_obj_set_size(algo_card, 784, cell_h);
                     char atxt[120];
                     std::snprintf(atxt, sizeof(atxt),
-                                  "DX7 6-OP ROUTING [ALGO %ld] : [OP6 fb] -> [OP5] -> [OP4] -> [OP3] + [OP2] -> [OP1 CARRIER]",
+                                  "DX7 6-OP: LEVEL = %% OF ORIGINAL GAIN; ROUTING PRESERVED (ALGO DISPLAY PLANNED) %ld",
                                   static_cast<long>(backend.model().getInt("fm.algo", 1)));
                     createLabel(algo_card, atxt, 8, 8, 756, &lv_font_montserrat_14, palette::kTextPrimary);
                     createLabel(algo_card,
                                 patch.family == SynthFamily::FM
-                                    ? "FM FAMILY ACTIVE: Operator controls enabled in UI Demo; P4 uses ROM 128/135."
+                                    ? "FM: enable only owner-verified controls. Operators follow native algo_source order."
                                     : "NON-FM PATCH SELECTED: FM operator controls marked UNAVAILABLE for this patch.",
                                 8, 38, 756, &lv_font_montserrat_14, palette::kTextSecondary);
                 }
                 break;
 
             case 2: // FILTER
-                createParameterCard(parent, backend, "filter.type",       8,   82, 256, 94);
-                createParameterCard(parent, backend, "filter.cutoff_hz",  272, 82, 256, 94);
-                createParameterCard(parent, backend, "filter.resonance",  536, 82, 256, 94);
+                createParameterCard(parent, backend, "filter.type",       8, 82, 256, cell_h);
+                createParameterCard(parent, backend, "filter.cutoff_hz",  272, 82, 256, cell_h);
+                createParameterCard(parent, backend, "filter.resonance",  536, 82, 256, cell_h);
 
-                createParameterCard(parent, backend, "filter.drive",      8,   184, 256, 94);
-                createParameterCard(parent, backend, "filter.keytrack",   272, 184, 256, 94);
-                createParameterCard(parent, backend, "filter.env_amount", 536, 184, 256, 94);
+                createParameterCard(parent, backend, "filter.drive",      8, row2, 256, cell_h);
+                createParameterCard(parent, backend, "filter.keytrack",   272, row2, 256, cell_h);
+                createParameterCard(parent, backend, "filter.env_amount", 536, row2, 256, cell_h);
 
                 {
                     lv_obj_t* fcard = lv_obj_create(parent);
                     applyPanelStyle(fcard, false);
-                    lv_obj_set_pos(fcard, 8, 286);
-                    lv_obj_set_size(fcard, 784, 94);
+                    lv_obj_set_pos(fcard, 8, row3);
+                    lv_obj_set_size(fcard, 784, cell_h);
                     createLabel(fcard, "BIQUAD / ZDF FILTER TOPOLOGY NOTES", 8, 6, 420,
                                 &lv_font_montserrat_14, palette::kAccentPrimary);
                     createLabel(fcard,
-                                "AMY supports LPF12/BPF/HPF/LPF24 per voice. Real-time filter mod is PLANNED on P4.",
+                                "Cutoff/Q: native AMY controls when AVAILABLE. Topology and modulation remain PLANNED.",
                                 8, 34, 756, &lv_font_montserrat_14, palette::kTextSecondary);
                 }
                 break;
@@ -109,11 +125,11 @@ public:
 
             case 4: // ENV
                 createEnvelopeEditor(parent, backend, 8, 82, 784, 148);
-                createParameterCard(parent, backend, "env.amp.attack_ms",  8,   238, 150, 144);
-                createParameterCard(parent, backend, "env.amp.decay_ms",   166, 238, 150, 144);
-                createParameterCard(parent, backend, "env.amp.sustain",    324, 238, 150, 144);
-                createParameterCard(parent, backend, "env.amp.release_ms", 482, 238, 150, 144);
-                createParameterCard(parent, backend, "env.amp.curve",      640, 238, 152, 144);
+                createParameterCard(parent, backend, "env.amp.attack_ms",  8,   238, 150, backend.hasSoundEditor()?104:144);
+                createParameterCard(parent, backend, "env.amp.decay_ms",   166, 238, 150, backend.hasSoundEditor()?104:144);
+                createParameterCard(parent, backend, "env.amp.sustain",    324, 238, 150, backend.hasSoundEditor()?104:144);
+                createParameterCard(parent, backend, "env.amp.release_ms", 482, 238, 150, backend.hasSoundEditor()?104:144);
+                createParameterCard(parent, backend, "env.amp.curve",      640, 238, 152, backend.hasSoundEditor()?104:144);
                 break;
 
             case 5: // LFO
@@ -127,17 +143,62 @@ public:
                 break;
 
             case 6: // MOD
-                createModulationMatrixWidget(parent, backend, nav, 0, 8, 82, 784, 298);
+                createModulationMatrixWidget(parent, backend, nav, 0, 8, 82, 784, backend.hasSoundEditor()?260:298);
                 break;
         }
 
         return true;
     }
 
-    void refresh(IUiBackend&) override {}
+    void refresh(IUiBackend& backend) override {
+        if(banner_ && backend.hasSoundEditor())lv_label_set_text(banner_,backend.soundEditStatus());
+    }
+private:
+    lv_obj_t* banner_=nullptr;
+    struct PresetPanel { IUiBackend* backend;lv_obj_t* root;lv_obj_t* slot;lv_obj_t* name;lv_obj_t* info;bool overwrite=false; };
+public:
+    static void showPresets(lv_obj_t* button,IUiBackend& backend){
+        auto* root=lv_obj_create(lv_obj_get_screen(button));applyPanelStyle(root,true);
+        lv_obj_set_pos(root,40,50);lv_obj_set_size(root,720,380);
+        createLabel(root,"USER PRESETS | SAVE ONLY WITH NOTES RELEASED",12,8,680);
+        auto* slot=lv_dropdown_create(root);lv_obj_set_pos(slot,12,42);lv_obj_set_size(slot,260,40);
+        char options[800]{};unsigned used=0;
+        for(unsigned i=0;i<16;++i){char name[25]{};uint16_t origin=0;
+            const bool valid=backend.userPreset(i,name,sizeof(name),origin);
+            const int n=std::snprintf(options+used,sizeof(options)-used,"%s%02u %s",i?"\n":"",i+1,valid?name:"EMPTY / INVALID");
+            if(n<0 || unsigned(n)>=sizeof(options)-used)break;
+            used+=unsigned(n);
+        }
+        lv_dropdown_set_options(slot,options);
+        auto* name=lv_textarea_create(root);lv_obj_set_pos(name,284,42);lv_obj_set_size(name,396,42);
+        lv_textarea_set_one_line(name,true);lv_textarea_set_max_length(name,24);lv_textarea_set_text(name,"MY SOUND 01");
+        auto* info=createLabel(root,"SELECT SLOT; SAVE AS ALSO RENAMES. OCCUPIED SLOT REQUIRES TWO PRESSES.",12,88,680);
+        auto* keyboard=lv_keyboard_create(root);lv_obj_set_pos(keyboard,12,166);lv_obj_set_size(keyboard,680,190);lv_keyboard_set_textarea(keyboard,name);
+        auto* context=attachLvContext<PresetPanel>(root,PresetPanel{&backend,root,slot,name,info,false},nullptr);
+        if(!context){lv_obj_delete(root);return;}
+        lv_obj_add_event_cb(slot,[](lv_event_t* e){auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));
+            c->overwrite=false;char name[25];uint16_t origin=0;
+            if(c->backend->userPreset(lv_dropdown_get_selected(c->slot),name,sizeof(name),origin)){
+                char text[80];std::snprintf(text,sizeof(text),"%s | FACTORY %03u",name,origin);lv_label_set_text(c->info,text);lv_textarea_set_text(c->name,name);
+            }else lv_label_set_text(c->info,"EMPTY OR INVALID SLOT");
+        },LV_EVENT_VALUE_CHANGED,context);
+        auto* save=createActionButton(root,"SAVE AS",12,118,210,40,nullptr,nullptr);
+        lv_obj_add_event_cb(save,[](lv_event_t* e){auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));
+            char name[25];uint16_t origin=0;const unsigned slot=lv_dropdown_get_selected(c->slot);
+            if(c->backend->userPreset(slot,name,sizeof(name),origin) && !c->overwrite){c->overwrite=true;lv_label_set_text(c->info,"PRESS SAVE AS AGAIN TO REPLACE THIS SLOT");return;}
+            const auto r=c->backend->requestSoundAction(2,slot,lv_textarea_get_text(c->name));c->overwrite=false;lv_label_set_text(c->info,r.notice?r.notice:"SAVE REJECTED");
+        },LV_EVENT_CLICKED,context);
+        auto* recall=createActionButton(root,"RECALL",244,118,210,40,nullptr,nullptr);
+        lv_obj_add_event_cb(recall,[](lv_event_t* e){auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));const auto r=c->backend->requestSoundAction(3,lv_dropdown_get_selected(c->slot));lv_label_set_text(c->info,r.notice?r.notice:"RECALL REJECTED; SAVE/REVERT FIRST");},LV_EVENT_CLICKED,context);
+        auto* close=createActionButton(root,"CLOSE",476,118,204,40,nullptr,nullptr);
+        lv_obj_add_event_cb(close,[](lv_event_t* e){auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));lv_obj_delete(c->root);},LV_EVENT_CLICKED,context);
+        lv_obj_send_event(slot,LV_EVENT_VALUE_CHANGED,nullptr);
+    }
 };
 
 } // namespace
+
+void showUserPresetPanel(lv_obj_t* anchor,IUiBackend& backend){SoundEditorScreen::showPresets(anchor,backend);}
 
 ScreenView* createSoundEditorScreen() {
     return new SoundEditorScreen();

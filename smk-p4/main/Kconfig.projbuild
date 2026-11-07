@@ -22,3 +22,8 @@ config SMKP4_FULL_FACTORY_LIBRARY
     bool "Qualified full Juno/DX7 factory catalog"
     depends on SMKP4_UNIFIED_ENGINE && SMKP4_HARMONY
     default n
+
+config SMKP4_SOUND_EDITOR
+    bool "Experimental live sound editor 0.11 and User Presets"
+    depends on SMKP4_FULL_FACTORY_LIBRARY && SMKP4_UI_BLUEPRINT
+    default n

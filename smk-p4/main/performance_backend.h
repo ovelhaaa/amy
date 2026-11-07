@@ -1,5 +1,6 @@
 #pragma once
 #include "smk_state.h"
+#include "../components/amy_runtime/sound_edit.h"
 #include "../components/amy_runtime/harmony.h"
 namespace smk::p4 {
 // Shared presentation DTO; local state is owner-applied AMY state, never a
@@ -19,6 +20,13 @@ public:
     virtual uint8_t voiceCapacity() const { return 4; }
     virtual const harmony::State* harmonyState() const { return nullptr; }
     virtual bool setHarmony(harmony::Config,uint32_t) { return false; }
+    virtual const edit::State* soundEdit() const { return nullptr; }
+    virtual bool editError() const {return false;}
+    virtual bool editPending() const {return false;}
+    virtual bool editParameter(unsigned,float) { return false; }
+    virtual bool editAction(unsigned,unsigned=0,const char* =nullptr) { return false; }
+    virtual bool userPreset(unsigned,char*,unsigned,uint16_t&) { return false; }
+    virtual const char* editNotice() const { return "EDITOR UNAVAILABLE"; }
     virtual bool local() const { return false; }
     virtual bool midiError() const { return false; }
     virtual bool patchError() const { return false; }

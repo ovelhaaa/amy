@@ -24,6 +24,9 @@ UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend&
 #endif
 #endif
 #endif
+#if defined(SMKP4_SOUND_EDITOR) || defined(CONFIG_SMKP4_SOUND_EDITOR)
+    d.firmware_version="SMK-P4 EDITOR 0.11 EXPERIMENTAL";
+#endif
     d.amy_status="WAIT SNAPSHOT"; d.i2s_status="NOT LIVE"; d.usb_status="DISCONNECTED";
     model_.setBool("harmony.scale_enable",false);
     model_.setBool("harmony.chord_enable",false);
@@ -42,7 +45,29 @@ void UiBlueprintPerformanceAdapter::syncHarmony(harmony::Config c) {
     const int values[]={c.scale_on,c.chord_on,c.touch,c.root,c.scale,c.quant,c.chord,c.inversion,c.open,c.spread,int(c.channel)+1};
     for(unsigned i=0;i<11;++i)model_.setInt(kHarmonyIds[i],values[i]);
 }
+int UiBlueprintPerformanceAdapter::editIndex(const char* id) const {
+    if(eq(id,"filter.cutoff_hz"))return edit::Cutoff;
+    if(eq(id,"filter.resonance"))return edit::Resonance;
+    if(eq(id,"env.amp.attack_ms"))return edit::Attack;
+    if(eq(id,"env.amp.release_ms"))return edit::Release;
+    if(eq(id,"fm.depth"))return edit::Depth;
+    if(eq(id,"fm.op.level"))return edit::OpLevel0+int(selected_op_);
+    if(eq(id,"fm.op.ratio"))return edit::OpRatio0+int(selected_op_);
+    return -1;
+}
+UiCommandResult UiBlueprintPerformanceAdapter::requestSoundAction(unsigned action,unsigned slot,const char* name){
+    if(!backend_.editAction(action,slot,name))return result(UiCommandState::Rejected,"editor","REJECTED: UNSAVED/BUSY/ACTIVE/INVALID");
+    edit_requested_=true;edit_errors_=backend_.soundEdit()?backend_.soundEdit()->errors:0;edit_id_="editor";
+    return result(UiCommandState::Requested,"editor",backend_.editNotice());
+}
 FeatureStatus UiBlueprintPerformanceAdapter::parameterStatus(const char* id) const {
+    if(const auto* state=backend_.soundEdit()){
+        if(eq(id,"perf.macro.2"))return state->available?FeatureStatus::Available:FeatureStatus::Unavailable;
+        if(eq(id,"perf.macro.5") || eq(id,"perf.macro.6"))return state->family==1 && (state->available&12)==12?FeatureStatus::Available:FeatureStatus::Unavailable;
+        if(eq(id,"fm.selected_op"))return state->family==0?FeatureStatus::Available:FeatureStatus::Unavailable;
+        const int p=editIndex(id);
+        if(p>=0)return state->available&(1u<<p)?FeatureStatus::Available:FeatureStatus::Unavailable;
+    }
     if(backend_.harmonyState() && harmonyIndex(id)>=0)return FeatureStatus::Available;
     return eq(id,"perf.master_volume") || eq(id,"perf.octave_shift") || eq(id,"perf.patch_id")
         ? FeatureStatus::Available : FeatureStatus::Planned;
@@ -80,6 +105,11 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterValue(const char*
     return requestParameterFloat(id,v.asFloat());
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestParameterFloat(const char* id,float v) {
+    if(backend_.soundEdit() && editIndex(id)>=0){
+        if(!usable() || !backend_.editParameter(unsigned(editIndex(id)),v))return result(UiCommandState::Rejected,id,"EDIT REJECTED; SEE CONFIRMED VALUE");
+        edit_requested_=true;edit_errors_=backend_.soundEdit()->errors;edit_id_=ParameterRegistry::findById(id)->id;
+        return result(UiCommandState::Requested,id,"EDIT REQUESTED; WAIT OWNER");
+    }
     if(!std::isfinite(v) || v < -32768 || v > 65535) return result(UiCommandState::Rejected,id,"INVALID VALUE");
     return requestParameterInt(id,static_cast<int32_t>(std::lround(v)));
 }
@@ -87,8 +117,22 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterBool(const char* 
     return requestParameterInt(id,v?1:0);
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestParameterInt(const char* id,int32_t v) {
+    if(backend_.soundEdit() && editIndex(id)>=0)return requestParameterFloat(id,float(v));
+    if(backend_.soundEdit() && eq(id,"fm.selected_op")){
+        if(v<1 || v>6 || backend_.soundEdit()->family!=0)return result(UiCommandState::Rejected,id,"OPERATOR UNAVAILABLE");
+        selected_op_=unsigned(v-1);model_.setInt(id,v);
+        model_.setFloat("fm.op.level",backend_.soundEdit()->applied[edit::OpLevel0+selected_op_]);
+        model_.setFloat("fm.op.ratio",backend_.soundEdit()->applied[edit::OpRatio0+selected_op_]);
+        return result(UiCommandState::Confirmed,id,"OPERATOR SELECTED; LOCAL MAP VERIFIED");
+    }
     if(parameterStatus(id)!=FeatureStatus::Available) return result(UiCommandState::Unsupported,id,"PLANNED; NO DSP COMMAND");
     if(!usable()) return result(UiCommandState::Rejected,id,"ENGINE/SNAPSHOT UNAVAILABLE");
+    if(backend_.soundEdit() && (eq(id,"perf.macro.2") || eq(id,"perf.macro.5") || eq(id,"perf.macro.6"))){
+        const unsigned m=eq(id,"perf.macro.2")?1:eq(id,"perf.macro.5")?4:5;
+        if(v<0 || v>127 || !backend_.setMacro(uint8_t(m),uint8_t(v),now_ms_))return result(UiCommandState::Rejected,id,"MACRO REJECTED");
+        edit_requested_=true;edit_errors_=backend_.soundEdit()->errors;edit_id_=ParameterRegistry::findById(id)->id;
+        return result(UiCommandState::Requested,id,"MACRO REQUESTED; WAIT OWNER");
+    }
     const int hi=harmonyIndex(id);
     if(hi>=0 && backend_.harmonyState()) {
         if(harmony_pending_)return result(UiCommandState::Rejected,id,"HARMONY WAIT OWNER");
@@ -194,6 +238,16 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     const uint32_t rev=backend_.stateRevision();
     if(backend_.connected() && rev && (!have_snapshot_ || rev!=revision_)) {
         have_snapshot_=true; revision_=rev;
+        if(const auto* edit=backend_.soundEdit()){
+            if(edit_requested_ && !backend_.editPending() && !backend_.busy()){
+                edit_requested_=false;
+                result(edit->errors==edit_errors_ && !backend_.editError()?UiCommandState::Confirmed:UiCommandState::Rejected,edit_id_,backend_.editNotice());
+            }
+            const char* ids[]={"filter.cutoff_hz","filter.resonance","env.amp.attack_ms","env.amp.release_ms","fm.depth","fm.op.level","fm.op.ratio"};
+            for(const char* id:ids){const int p=editIndex(id);if(edit->available&(1u<<p))model_.setFloat(id,edit->applied[p]);}
+            model_.setInt("fm.selected_op",int(selected_op_)+1);
+            model_.setInt("perf.macro.2",edit->macros[0]);model_.setInt("perf.macro.5",edit->macros[1]);model_.setInt("perf.macro.6",edit->macros[2]);
+        }
         const auto& s=backend_.state();
         if(isPatchSelectable(s.patch_id)) {
             if(model_.getInt("perf.patch_id")!=s.patch_id) model_.setInt("perf.patch_id",s.patch_id);

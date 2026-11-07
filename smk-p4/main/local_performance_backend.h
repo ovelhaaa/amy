@@ -2,6 +2,7 @@
 #include "performance_backend.h"
 #include "amy_runtime.h"
 #include <cstdio>
+#include "user_presets.h"
 namespace smk::p4 {
 // UI task only. publish() receives a copied single-element owner mailbox.
 class LocalAmyPerformanceBackend final : public PerformanceBackend {
@@ -22,9 +23,29 @@ public:
         for(unsigned i=0;i<4;++i)harmony_.notes[i]=snapshot.last_notes[i];
         harmony_.voices=snapshot.active_notes;harmony_.capacity=amy::kVoices;harmony_.available=true;
 #endif
+#ifdef SMKP4_SOUND_EDITOR
+        quiet_=snapshot.storage_quiet;
+        if(edit_.patch!=snapshot.edit.patch || edit_.revision!=snapshot.edit.revision){
+            const bool changed=edit_.epoch!=snapshot.edit.epoch;
+            edit_=snapshot.edit;
+            if(edit_.request>edit_serial_)edit_serial_=edit_.request;
+            if(changed){edit_pending_=false;edit_token_=edit_.request;saved_valid_=false;user_name_[0]=0;}
+            if(edit_.request==edit_token_){
+                notice_=edit_.errors!=last_edit_errors_?"EDIT REJECTED; CONFIRMED VALUES RESTORED":"EDIT CONFIRMED";
+                edit_error_=edit_.errors!=last_edit_errors_;last_edit_errors_=edit_.errors;
+                if(recall_wait_ && edit_.request==recall_token_){
+                    if(edit_.errors==recall_errors_){saved_edit_=edit_;saved_valid_=true;std::snprintf(user_name_,sizeof(user_name_),"%s",recall_.name);}
+                    recall_wait_=false;
+                }
+            }
+        }
+#endif
         ready_=snapshot.ready; state_.patch_id=state_.engine_patch=snapshot.patch_id;
         const int index=amy::patchIndex(snapshot.patch_id);
         std::snprintf(state_.patch_name,sizeof(state_.patch_name),"%s",index<0?"ERROR":amy::kPatches[index].name);
+        #ifdef SMKP4_SOUND_EDITOR
+        if(user_name_[0])std::snprintf(state_.patch_name,sizeof(state_.patch_name),"%s",user_name_);
+#endif
         state_.master=snapshot.master; state_.active_notes=snapshot.active_notes;
         state_.sample_rate_hz=amy::kSampleRateHz; state_.block_frames=amy::kBlockFrames;
         state_.flags=(output_live?link::kAudioLive:0)|(midi_connected_?link::kUsbConnected:0);
@@ -34,7 +55,83 @@ public:
         if(generation_!=generation) { generation_=generation; clearTokens(); }
         ++revision_;
     }
-    void service(uint32_t) override {}
+    void service(uint32_t now_ms) override {
+        (void)now_ms;
+#ifdef SMKP4_SOUND_EDITOR
+        last_service_ms_=now_ms;
+        if(saving_ && quiet_ && store_){
+            const bool saved=store_->save(save_slot_,save_preset_);edit_error_=!saved;
+            notice_=saved?"SAVED; RECALL TO VERIFY":"SAVE FAILED; PREVIOUS RECORD RETAINED";
+            if(saved){saved_edit_=edit_;saved_valid_=true;std::snprintf(user_name_,sizeof(user_name_),"%s",save_preset_.name);}
+            saving_=false;commands_.storage_requested.store(false,std::memory_order_release);
+        }
+        if(recalling_ && !busy() && !failed_ && edit_.patch==recall_.patch){
+            desired_={};desired_.patch=edit_.patch;desired_.generation=commands_.generation();
+            for(unsigned m=0;m<3;++m)desired_.macros[m]=recall_.macros[m];
+            desired_.mask=recall_.mask;desired_.slot=int8_t(recall_slot_);
+            for(unsigned p=0;p<edit::Count;++p)desired_.values[p]=recall_.values[p];
+            desired_.request=newEditToken();edit_pending_=true;recalling_=false;recall_wait_=true;recall_token_=edit_token_;recall_errors_=edit_.errors;
+        }
+        if(!edit_pending_ && edit_.request!=edit_token_ && !edit_timeout_ && uint32_t(now_ms-last_edit_ms_)>2000){
+            edit_timeout_=edit_error_=true;notice_="EDIT TIMEOUT; PANIC; RETRY AFTER SNAPSHOT";commands_.panic();
+        }
+        if(saving_ && !quiet_ && uint32_t(now_ms-save_requested_ms_)>2000){
+            saving_=false;edit_error_=true;notice_="SAVE QUIET BARRIER TIMEOUT";commands_.storage_requested.store(false,std::memory_order_release);
+        }
+        if(edit_pending_ && !saving_ && !busy() && uint32_t(now_ms-last_edit_ms_)>=20){
+            if(desired_.patch!=edit_.patch || desired_.generation!=commands_.generation()){
+                edit_pending_=false;edit_token_=edit_.request;edit_error_=true;notice_="STALE EDIT CANCELED";
+            }else if(commands_.edits.push(desired_)){edit_pending_=false;last_edit_ms_=now_ms;}
+        }
+#endif
+    }
+#ifdef SMKP4_SOUND_EDITOR
+    void presetStore(edit::PresetStore* store){store_=store;}
+    const edit::State* soundEdit() const override { return &edit_; }
+    uint32_t editCoalesced() const {return coalesced_;}
+    bool editError() const override {return edit_error_;}
+    bool editPending() const override {return edit_pending_ || (!edit_timeout_ && edit_.request!=edit_token_) || recalling_ || recall_wait_;}
+    const char* editNotice() const override {
+        if(saving_ || edit_pending_ || edit_.request!=edit_token_ || edit_error_)return notice_;
+        if(edit_.compare)return "ORIGINAL / EDITS RETAINED";
+        return unsaved()?"EDITED / UNSAVED":edit_.dirty?"EDITED / SAVED":"FACTORY ORIGINAL";
+    }
+    bool editParameter(unsigned p,float value) override {
+        if(!ready_ || busy() || saving_ || edit_.compare || p>=edit::Count || !(edit_.available&(1u<<p)) || !edit::valid(p,value))return false;
+        if(edit_pending_)++coalesced_;
+        prepareEdit();desired_.values[p]=value;
+        if(value==edit_.original[p])desired_.mask&=~(1u<<p);else desired_.mask|=1u<<p;
+        desired_.request=newEditToken();edit_pending_=true;notice_="EDIT REQUESTED; WAIT OWNER";return true;
+    }
+    // 0 Compare,1 Revert,2 Save As,3 Recall. Overwrite/rename uses explicit Save As.
+    bool editAction(unsigned action,unsigned slot=0,const char* name=nullptr) override {
+        if(!ready_ || busy() || saving_)return false;
+        if(action<2){prepareEdit();desired_.compare=action==0?!desired_.compare:false;
+            if(action==1){desired_.mask=0;desired_.slot=-1;for(auto& m:desired_.macros)m=64;}
+            desired_.request=newEditToken();edit_pending_=true;return true;}
+        if(slot>=edit::kSlots || !store_ || edit_pending_ || edit_.request!=edit_token_)return false;
+        if(action==2){
+            if(!name || !name[0] || std::strlen(name)>24 || state_.active_notes || edit_.compare)return false;
+            save_preset_={};save_preset_.sequence=1;save_preset_.patch=edit_.patch;save_preset_.family=edit_.family;
+            std::snprintf(save_preset_.name,sizeof(save_preset_.name),"%s",name);save_preset_.mask=edit_.mask;
+            for(unsigned m=0;m<3;++m)save_preset_.macros[m]=edit_.macros[m];
+            for(unsigned p=0;p<edit::Count;++p)save_preset_.values[p]=edit_.manual[p];
+            if(!edit::valid(save_preset_))return false;
+            save_slot_=slot;saving_=true;save_requested_ms_=last_service_ms_;notice_="SAVE REQUESTED; QUIET BARRIER";
+            commands_.storage_requested.store(true,std::memory_order_release);return true;
+        }
+        if(action==3){
+            if(unsaved() || !store_->load(slot,recall_) || amy::patchIndex(recall_.patch)<0)return false;
+            recalling_=true;recall_slot_=slot;
+            if(!setPatch(recall_.patch,0)){recalling_=false;return false;}return true;
+        }
+        return false;
+    }
+    bool userPreset(unsigned slot,char* name,unsigned capacity,uint16_t& origin) override {
+        edit::Preset preset;if(!store_ || !store_->load(slot,preset))return false;
+        std::snprintf(name,capacity,"%s",preset.name);origin=preset.patch;return true;
+    }
+#endif
     void publishMidi(bool connected,bool error,uint32_t events) {
         midi_connected_=connected; midi_error_=error; state_.midi_events=events;
         if(connected) state_.flags|=link::kUsbConnected;
@@ -58,7 +155,11 @@ public:
     bool midiError() const override { return midi_error_; }
     bool patchError() const override { return failed_; }
     bool connected() const override { return ready_; }
-    bool busy() const override { return pending_ || loading_; }
+    bool busy() const override { return pending_ || loading_
+#ifdef SMKP4_SOUND_EDITOR
+ || saving_ || quiet_
+#endif
+; }
     uint8_t voiceCapacity() const override { return amy::kVoices; }
     bool local() const override { return true; }
     const PerformanceState& state() const override { return state_; }
@@ -72,6 +173,9 @@ public:
         std::snprintf(info.name,sizeof(info.name),"%s",amy::kPatches[index].name); return true;
     }
     bool setPatch(uint16_t id,uint32_t now_ms) override {
+#ifdef SMKP4_SOUND_EDITOR
+        if(!recalling_ && unsaved())return false;
+#endif
         if(!ready_ || busy() || amy::patchIndex(id)<0) return false;
         panic(); const bool accepted=commands_.push({amy::CommandType::Patch,id,0,0,0,now_ms});
 #ifdef SMKP4_UNIFIED_ENGINE
@@ -79,7 +183,14 @@ public:
 #endif
         return accepted;
     }
-    bool setMacro(uint8_t,uint8_t,uint32_t) override { return false; }
+    bool setMacro(uint8_t index,uint8_t value,uint32_t) override {
+#ifdef SMKP4_SOUND_EDITOR
+        const int m=index==1?0:index==4?1:index==5?2:-1;
+        return m>=0 && macroParameter(unsigned(m),value);
+#else
+        (void)index;(void)value;return false;
+#endif
+    }
     bool setMaster(uint8_t value,uint32_t now_ms) override {
         return ready_ && value<=127 && commands_.push({amy::CommandType::Master,0,value,0,0,now_ms});
     }
@@ -100,6 +211,43 @@ public:
     void heldNote(uint8_t) override {} // Owner enforces a fixed independent lease.
     void panic() override { commands_.panic(); generation_=commands_.generation(); clearTokens();pending_=false; }
 private:
+#ifdef SMKP4_SOUND_EDITOR
+    bool macroParameter(unsigned m,uint8_t value){
+        if(m>=3 || value>127 || busy() || !ready_ || edit_.compare || (edit_.family==0 && m>0))return false;
+        prepareEdit();desired_.macros[m]=value;desired_.request=newEditToken();edit_pending_=true;return true;
+    }
+    bool unsaved() const {
+        if(edit_pending_ || edit_.request!=edit_token_)return true;
+        if(!edit_.dirty)return false;
+        if(!saved_valid_ || saved_edit_.patch!=edit_.patch || saved_edit_.mask!=edit_.mask)return true;
+        for(unsigned m=0;m<3;++m)if(saved_edit_.macros[m]!=edit_.macros[m])return true;
+        for(unsigned p=0;p<edit::Count;++p)if((edit_.mask&(1u<<p)) && saved_edit_.manual[p]!=edit_.manual[p])return true;
+        return false;
+    }
+    uint32_t newEditToken(){edit_error_=edit_timeout_=false;edit_token_=++edit_serial_;return edit_token_;}
+    void prepareEdit(){
+        if(edit_timeout_){edit_token_=edit_.request;edit_pending_=false;edit_timeout_=false;}
+        if(edit_pending_ || (desired_.request==edit_token_ && edit_.request!=edit_token_))return;
+        desired_={};desired_.patch=edit_.patch;desired_.generation=commands_.generation();desired_.mask=edit_.mask;
+        for(unsigned m=0;m<3;++m)desired_.macros[m]=edit_.macros[m];
+        desired_.compare=edit_.compare;desired_.slot=edit_.user_slot;
+        for(unsigned p=0;p<edit::Count;++p)desired_.values[p]=edit_.manual[p];
+    }
+    edit::State edit_;
+    edit::Request desired_;
+    edit::PresetStore* store_=nullptr;
+    edit::Preset save_preset_,recall_;
+    unsigned save_slot_=0,recall_slot_=0;
+    bool edit_pending_=false,saving_=false,quiet_=false,recalling_=false;
+    uint32_t coalesced_=0,save_requested_ms_=0,last_service_ms_=0,edit_serial_=0;
+    bool edit_error_=false,edit_timeout_=false;
+    uint32_t last_edit_ms_=0,edit_token_=0,last_edit_errors_=0;
+    edit::State saved_edit_;
+    bool saved_valid_=false,recall_wait_=false;
+    uint32_t recall_token_=0,recall_errors_=0;
+    char user_name_[25]{};
+    const char* notice_="FACTORY ORIGINAL";
+#endif
     void clearTokens() { for(auto& token:tokens_) token=0; }
     amy::Commands& commands_; PerformanceState state_;
     harmony::State harmony_;

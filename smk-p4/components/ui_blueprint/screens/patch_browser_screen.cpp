@@ -73,6 +73,7 @@ public:
                     g_browser.target_layer = (g_browser.target_layer == 0) ? 1 : 0;
                     break;
                 case 7: {
+                    if(ctx->backend->hasSoundEditor()){showUserPresetPanel(static_cast<lv_obj_t*>(lv_event_get_target(e)),*ctx->backend);return;}
                     if (!ctx->backend->isDemoMode()) break;
                     const UiCommandResult r = ctx->backend->requestNoteOn(60, 100);
                     if (r.accepted()) {
@@ -214,7 +215,7 @@ public:
             insp, backend.model().isFavorite(cur.id) ? "FAVORITE: YES *" : "FAVORITE: NO",
             8, 204, 242, 38, nullptr, nullptr, backend.model().isFavorite(cur.id), false);
         lv_obj_t* prv_btn = createActionButton(
-            insp, backend.isDemoMode() ? "AUDITION DEMO NOTE (RAM)" : "AUDITION: USE STAGE KEYS",
+            insp, backend.hasSoundEditor()?"USER PRESETS / SAVE AS":backend.isDemoMode() ? "AUDITION DEMO NOTE (RAM)" : "AUDITION: USE STAGE KEYS",
             8, 248, 242, 38, nullptr, nullptr, false, true);
 
         if (tgt_btn) attachLvContext<BrowserActionCtx>(tgt_btn, BrowserActionCtx{&backend, &nav, 6, 0}, cb, LV_EVENT_CLICKED);

@@ -91,6 +91,11 @@ public:
 
     virtual UiCommandResult requestSelectPatch(uint16_t patch_id, uint8_t target_layer = 0) = 0;
 
+    virtual bool hasSoundEditor() const { return false; }
+    virtual const char* soundEditStatus() const { return "EDITOR PLANNED"; }
+    virtual UiCommandResult requestSoundAction(unsigned,unsigned=0,const char* =nullptr) { return {}; }
+    virtual bool userPreset(unsigned,char*,unsigned,uint16_t&) { return false; }
+
     // 5. Note lifecycle with explicit token/pitch pairing (prevents stuck notes on octave shift)
     virtual UiCommandResult requestNoteOn(uint8_t note, uint8_t velocity) = 0;
     virtual UiCommandResult requestNoteOff(uint8_t note, uint32_t token = 0) = 0;
