@@ -1,3 +1,27 @@
+# Live Sound Editor0.11 — candidato experimental
+
+Perfil isolado `guition-editor-8` / `guition-editor-8-bench`: edição Juno de
+cutoff/Q/Attack/Release, nível/ratio FM mapeados, brilho por moduladores,
+Compare/Revert, macros e16 User Presets NVS. Save As ocorre com barreira de
+silêncio; não é salvamento contínuo durante execução. Sem gravação autorizada.
+[Resultados/limites](docs/sound_editor_011_results.md) e
+[smoke físico pendente](docs/sound_editor_011_hardware_smoke.md).
+
+```powershell
+./smk-p4/tests/run_harmony.ps1
+./smk-p4/tests/run_sound_editor.ps1
+./smk-p4/tests/compare_editor_factory.ps1 -Baseline ../smk-p4-full-factory-library-010
+./smk-p4/ui-preview/run_preview.ps1
+./smk-p4/tests/run_sound_editor_ui.ps1
+C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-editor-8 -j 8
+C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-editor-8-bench -j 8
+python smk-p4/tests/check_blueprint_build.py --voices 8 --sound-library --unified-engine --harmony --full-factory --sound-editor --environment guition-editor-8
+python smk-p4/tests/check_blueprint_build.py --voices 8 --sound-library --unified-engine --harmony --full-factory --sound-editor --musical --environment guition-editor-8-bench
+```
+
+Compile os perfis em sequência. Após commits/builds/testes, congele o pacote com
+`python smk-p4/tests/package_sound_editor.py`. Build/pacote não autorizam upload.
+
 # Harmony Assist 0.9 - candidato experimental
 
 Perfil isolado `guition-harmony-8`: quantizacao real, acordes fixos/diatonicos,
