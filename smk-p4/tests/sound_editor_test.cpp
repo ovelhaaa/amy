@@ -1,6 +1,7 @@
 #include "amy_runtime.h"
 #include "local_performance_backend.h"
 #include "user_presets.h"
+#include "user_presets_v2.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -72,7 +73,16 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     store.fail=true;assert(!store.save(0,preset));assert(store.load(0,restored) && restored.sequence==1);store.fail=false;
     store.torn=true;assert(!store.save(0,preset));assert(store.load(0,restored) && restored.sequence==1);store.torn=false;
     assert(!store.save(16,preset));
+    uint8_t v2[edit::kV2RecordBytes];edit::Preset v2preset;v2preset.sequence=4;v2preset.patch=4;v2preset.family=1;
+    std::strcpy(v2preset.name,"STRINGS");v2preset.mask=(1u<<edit::Decay)|(1u<<edit::Sustain);v2preset.values[edit::Decay]=1500;v2preset.values[edit::Sustain]=42;
+    assert(edit::encodeV2(v2preset,v2));edit::Preset decoded;assert(edit::decodeV2(v2,sizeof(v2),decoded));
+    assert(decoded.mask==v2preset.mask && decoded.values[edit::Decay]==1500 && decoded.values[edit::Sustain]==42 && !std::strcmp(decoded.name,"STRINGS"));
+    v2[53]^=1;assert(!edit::decodeV2(v2,sizeof(v2),decoded));v2[53]^=1;
+    v2[52]=edit::Sustain;edit::put32(v2+156,edit::crc(v2,156));assert(!edit::decodeV2(v2,sizeof(v2),decoded));
     uint8_t encoded[128];assert(edit::encode(preset,encoded));
+    edit::Preset v1;assert(edit::decode(encoded,sizeof(encoded),v1));assert(edit::encodeV2(v1,v2));
+    assert(edit::decodeV2(v2,sizeof(v2),decoded));assert(decoded.mask==v1.mask && decoded.values[edit::Depth]==v1.values[edit::Depth] && !std::strcmp(decoded.name,v1.name));
+    assert(decoded.values[edit::Decay]==0 && decoded.values[edit::Sustain]==0);
     {auto ram_only=preset;ram_only.mask=1u<<edit::Decay;ram_only.values[edit::Decay]=100;assert(!edit::encode(ram_only,encoded));}
     assert(edit::encode(preset,encoded));encoded[4]=2;edit::put32(encoded+124,edit::crc(encoded,124));assert(!edit::decode(encoded,128,restored));
     preset.patch=32;preset.family=1;preset.mask=1;preset.values[0]=1000;assert(!edit::encode(preset,encoded));

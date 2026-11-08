@@ -52,3 +52,20 @@ Validação deste incremento:
 | Novos parâmetros com persistência v2 | 0; NOT RUN — v2 não implementado |
 | Migração v1 → v2 | NOT RUN |
 | Smoke físico | MANUAL / NOT RUN; firmware não gravado |
+
+## Codec v2 isolado — persistência ainda desabilitada
+
+O codec experimental usa 160 bytes: cabeçalho e nome preservam os campos v1;
+pares ordenados ID/float codificam somente bits presentes (até 19 pares), ROM
+em 152 e CRC32 em 156. O decoder rejeita IDs fora de ordem, versão, ROM, CRC,
+valores e máscaras inválidos. Sem bit de override, o valor novo é neutro no
+sentido de deixar o patch de fábrica intacto. A conversão host v1 → v2 preserva
+nome, máscara e valores antigos. A codificação tem tamanho fixo, não depende de
+padding e não substitui as chaves v1.
+
+Este codec NÃO está conectado ao PresetStore nem à NVS. Para 16 slots com duas
+cópias v2 seriam 5120 bytes de payload adicionais, além das cópias v1 e overhead
+NVS; não há comprovação de capacidade/GC na partição de 24 KiB. Permanecem
+necessários chaves separadas, seleção de geração, recuperação após interrupção,
+admissão de espaço, testes de reinício e rollback. Save dos novos parâmetros
+continua rejeitado; nenhuma migração ou escrita real ocorreu.

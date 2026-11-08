@@ -13,22 +13,23 @@ struct Preset { uint32_t sequence=0;uint16_t patch=0;uint8_t family=0;char name[
 inline uint32_t crc(const uint8_t* data,unsigned n){uint32_t c=~0u;for(unsigned i=0;i<n;++i){c^=data[i];for(unsigned j=0;j<8;++j)c=(c>>1)^(0xedb88320u&uint32_t(-int32_t(c&1)));}return ~c;}
 inline void put32(uint8_t* p,uint32_t v){for(unsigned i=0;i<4;++i)p[i]=uint8_t(v>>(i*8));}
 inline uint32_t get32(const uint8_t* p){uint32_t v=0;for(unsigned i=0;i<4;++i)v|=uint32_t(p[i])<<(i*8);return v;}
-inline bool valid(const Preset& p){
+inline bool validPreset(const Preset& p,bool v1){
     const auto* patch=library::find(p.patch);
     if(!p.sequence || !patch || !(patch->qualification&library::SUPPORTED) || p.family!=uint8_t(patch->family) ||
-       p.mask>>kV1Count || !p.name[0] || p.name[24])return false;
+       (v1 ? (p.mask>>kV1Count) : (p.mask>>Count)) || !p.name[0] || p.name[24])return false;
 
     for(unsigned i=0;i<24 && p.name[i];++i)if(uint8_t(p.name[i])<32 || uint8_t(p.name[i])>126)return false;
 
     for(unsigned m=0;m<3;++m)if(p.macros[m]>127)return false;
     if(p.family==0 && (p.macros[1]!=64 || p.macros[2]!=64))return false;
-    const uint32_t allowed=p.family==1?15u:(((1u<<Count)-1)&~15u);
+    const uint32_t allowed=p.family==1?(15u | (v1?0u:((1u<<Decay)|(1u<<Sustain)))):(((1u<<kV1Count)-1)&~15u);
     if(p.mask&~allowed)return false;
 
     for(unsigned i=0;i<Count;++i)if((p.mask&(1u<<i)) && !valid(i,p.values[i]))return false;
 
     return true;
 }
+inline bool valid(const Preset& p){return validPreset(p,true);}
 inline bool encode(const Preset& p,uint8_t* b){
     if(!valid(p))return false;
 
