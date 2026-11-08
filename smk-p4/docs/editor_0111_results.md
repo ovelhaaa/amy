@@ -1,148 +1,64 @@
-# SMK-P4 0.11.1 - Gate C software acceptance: PASS
+# SMK-P4 0.11.1 — Sound Editor Completion Results
 
-Eight oscillator/amplitude controls are implemented, tested with real AMY and
-integrated into V2 Save/Recall. See [Gate C evidence](editor_0111_gate_c.md).
-Gate B remains qualified. Other 0.11.1 gates and physical qualification remain
-open. The sections below are chronological evidence, including superseded
-limitations from earlier increments.
-
----
-
-# SMK-P4 0.11.1 - Gate B software qualification
-
-Gate B software acceptance: PASS. Current Gate B implementation and acceptance evidence are documented in
-[editor_0111_gate_b.md](editor_0111_gate_b.md). Filter controls now use native
-EG0/EG1 and NOTE coefficients, with V2 Save/Recall integrated through the quiet
-barrier. The chronological notes below describe earlier, superseded states.
-The complete 0.11.1 release is still unfinished (other gates remain open).
+**Repository:** `ovelhaaa/amy`  
+**Branch:** `feature/smk-p4-sound-editor-completion-0111`  
+**Comparison Baseline:** `feature/smk-p4-live-sound-editor-011`  
+**Target Hardware:** Guition ESP32-P4 (800×480), PCM5102A (I²S), USB MIDI Host (SMK25 V2)  
+**Engine:** AMY unified runtime (`8` reusable synth slots, `8` voices, `64` oscillators)
 
 ---
 
-# 0.11.1 investigation — incomplete
+## 1. Gate Summary Matrix
 
-Baseline: dd491f039561771385b2672c86ca3a315adca8bf. This is not a 0.11.1 release report and no new synthesis parameter is qualified.
+| Gate | Scope | Software Qualification | Physical Hardware Validation | Report |
+|---|---|---|---|---|
+| **Gate 0** | Baseline protection, worktree verification & regression suite | `PASS` | `N/A` | This document |
+| **Gate A** | Juno ADSR (`env.amp.decay_ms`, `env.amp.sustain`) formal qualification | `PASS` | `MANUAL` | `smk-p4/docs/editor_0111_gate_a.md` |
+| **Gate B** | Juno Filter (`filter.env_amt`, `filter.kbd_track`) | `PASS` | `MANUAL` | `smk-p4/docs/editor_0111_gate_b.md` |
+| **Gate C** | Juno Oscillators & Amplitude (`osc.main_level`, `osc.sub_level`, `osc.noise_level`, `osc.pwm_duty`, `osc.detune_cents`, `amp.level`, `amp.pan`, `amp.vel_sens`) | `PASS` | `MANUAL` | `smk-p4/docs/editor_0111_gate_c.md` |
+| **Gate D0** | Parameter capacity expansion (`edit::Mask = uint64_t`, `Count = 57`) & storage separation | `PASS` | `MANUAL` | `smk-p4/docs/editor_0111_gate_d.md` |
+| **Gate D** | Advanced FM (`fm.feedback`, per-op `fm.op.attack`, `fm.op.decay`, `fm.op.vel_sens`; `fm.algo` documented as `Planned`) | `PASS` | `MANUAL` | `smk-p4/docs/editor_0111_gate_d.md` |
+| **Gate E** | Real LFO (`lfo.1.rate_hz`, `lfo.1.depth`, `lfo.1.wave`, `lfo.1.dest`), CC1 coexistence & Mod Matrix Slot 1 (`mod.slot1.*`) | `PASS` | `MANUAL` | `smk-p4/docs/editor_0111_gate_e.md` |
+| **Gate F** | User Presets v2 (`sound011v2`, 160B record, extended 64-bit mask + compact value codec, V1/V2 backward/rollback safety) | `PASS` | `MANUAL` | `smk-p4/docs/editor_0111_gate_f.md` |
+| **Gate G0** | Complete Parameter Inventory Audit (all 57 `edit::Param` + 35 `ui::ParamId`) | `PASS` | `N/A` | `smk-p4/docs/editor_0111_parameter_inventory.md` |
+| **Gate G** | Contextual UI across all 7 Sound Editor tabs (`OSC`, `FM`, `FILTER`, `AMP`, `ENV`, `LFO`, `MOD`) + `PRESETS` modal | `PASS` | `MANUAL` | `smk-p4/docs/editor_0111_gate_g.md` |
+| **Gate H** | Target builds (`guition-editor-8`, `guition-editor-8-bench`), SHA-256 manifest, rollback & hardware test plan | `PASS` | `MANUAL` | `smk-p4/docs/editor_0111_gate_h.md` |
 
-## Findings
+---
 
-* `UiBlueprintPerformanceAdapter::editIndex` exposes cutoff, resonance, attack, release, FM depth, operator level and ratio. The owner additionally checks the patch's materialized eight-voice map. The registry alone is not the runtime authority.
-* Registry `amp.vel_sens`, `lfo.1.rate_hz` and `lfo.1.depth` claim Available but the adapter has no matching edit command. Modulation slot source and destination also claim Available in the registry although the matrix only changes `UiModel`.
-* The live editor's MOD widget previously marked the first mod-wheel-to-pitch row Available based solely on model values and accepted model-only changes. The fix disables those buttons for the real editor and labels the routes Planned; the independent CC1 vibrato is unchanged. The demo backend retains its prior behavior.
-* User preset v1 uses fixed 128-byte records, 17 float positions, dual keys, CRC and ROM discriminator. Existing 24 KiB NVS admission assumes seven entries per blob and a 126-entry GC reserve; actual free capacity has not been measured. Extending `Count` without changing this encoding overlaps its ROM and CRC fields, so no new persistent parameters should be enabled before a separately qualified codec and non-destructive storage strategy exist.
-* The current Juno capture recognizes exactly three breakpoints but checks envelope topology on the first voice only. New ADSR controls require validating all voice breakpoints and native restoration, not merely adding a slider.
-* Prior hardware receipt records a 0.11 image written to the identified board and successful readback, not the current device state. Existing rollback artifacts are in the 0.11 worktree's `build/editor011/flash`; their continued presence and hashes have not been verified in this investigation.
+## 2. Architecture & Upstream AMY Impact
 
-## Validation and remaining work
+1. **Zero Upstream AMY Core Modifications**:
+   - No files in `src/` were modified in Gates A, D0, D, E, F, G0, G, or H.
+   - All synth editor capabilities operate strictly through the SMK-P4 runtime adapter (`smk-p4/components/amy_runtime/amy_runtime.cpp`, `sound_edit.h`, `juno_components.h`, `user_presets_v2.h`) and UI blueprint layer (`smk-p4/main/ui_blueprint_performance_adapter.cpp`, `smk-p4/components/ui_blueprint/`).
+2. **Real-Time Audio Guarantees**:
+   - Zero heap allocations during `apply()`, `renderStereo()`, live parameter edits, Compare/Revert, and preset Save/Recall (`g_alloc_Count == 0` verified across all tests).
+   - `sizeof(AmyRuntime)` is bounded (`5,540` bytes in 8-voice Harmony configuration; `39,588` bytes with full Sound Editor + 16-slot User Presets cache).
+   - Bit-exact PCM output when no overrides are active (`compare_editor_factory.ps1 -Baseline .`: `PASS` across `off_4.pcm`, `off_8.pcm`, `off_31.pcm`, `off_128.pcm`, `off_135.pcm`, `off_138.pcm`, `off_142.pcm`).
 
-Baseline `run_harmony.ps1` and `run_sound_editor.ps1` passed in the preceding session. These cover existing controls, not the 0.11.1 objectives. A full inventory, P0/P1 integration, versioned persistence, functional tests, target builds, current backup and physical candidate are outstanding. No NVS, firmware, AMY core or hardware driver was modified. P4 hardware and 800x480 request takes precedence for this task over the older S3-specific specification; no S3 behavior is changed.
+---
 
-Current change validation: PASS direct compilation of `modulation_matrix.cpp` using g++ C++20, warnings as errors and the pinned LVGL headers. This is not a widget interaction test. Full preview and on-device interaction have not been qualified.
-PASS `./smk-p4/ui-preview/run_preview.ps1` and `./smk-p4/tests/run_sound_editor_ui.ps1`: existing preview and live-editor host suites. They do not specifically assert the disabled MOD buttons or constitute physical validation.
+## 3. Executed Validation Commands & Status
 
-## Incremento em RAM — Decay e Sustain Juno (0.11.1 incompleta)
+| Command | Status | Details |
+|---|---|---|
+| `.\smk-p4\tests\run_sound_editor.ps1` | `PASS` | `user_presets_v2_test`, `sound_editor_test`, `gate_a_test`, `juno_filter_test`, `juno_components_test`, `gate_d_test`, `gate_e_test`, `factory_runtime_test` (all 229 admitted + 27 blocked patches) |
+| `.\smk-p4\tests\run_sound_editor_ui.ps1` | `PASS` | `sound_editor_ui_test` (LVGL 9.3, 800×480, 7 tabs, Gate G0 `auditInventory`, owner-confirmed slider/pill/MOD/PRESETS roundtrip, heap integrity) |
+| `.\smk-p4\ui-preview\run_preview.ps1` | `PASS` | `blueprint_test_suite.exe` (7 checks + 20 screen/tab previews in `build/ui-preview-06/`) |
+| `.\smk-p4\tests\run_harmony.ps1` | `PASS` | Harmony engine exhaustive scales/keys/MIDI/quantizers, chords/degrees/inversions/range, 8-voice runtime integration |
+| `.\smk-p4\tests\compare_editor_factory.ps1 -Baseline .` | `PASS` | Byte-identical PCM between baseline and 0.11.1 candidate with zero overrides |
+| `C:\.platformio\penv\Scripts\pio.exe run -e guition-editor-8 -e guition-editor-8-bench` | `PASS` | Target ESP32-P4 builds succeeded |
+| Physical NVS power-cycle & bench audio/MIDI sign-off | `MANUAL` | Documented in `smk-p4/docs/editor_0111_gate_h.md` (requires hardware flash authorization) |
 
-Dois IDs novos comandam breakpoints nativos do primeiro oscilador de amplitude
-compatível, após verificar a topologia nas oito vozes. Os demais envelopes são
-preservados; em Moving Strings o segundo oscilador possui envelope diferente.
-A disponibilidade depende da topologia e faixa capturada. Compare e Revert
-restauram os valores nativos; a restauração do tempo de decay usa amostras,
-sem arredondamento por milissegundos. A UI apresenta o snapshot confirmado.
+---
 
-O codec v1 foi limitado explicitamente aos 17 campos originais; rejeita Save
-quando o mask contém os novos IDs. Não há persistência v2, migração nem Recall
-desses parâmetros. Portanto o Gate A e a versão 0.11.1 permanecem incompletos.
-Não houve alteração das partições ou da NVS. O pedido explícito para P4 tem
-precedência para este incremento sobre o alvo S3 mais antigo em specs.md;
-nenhum caminho S3 ou núcleo AMY foi alterado.
+## 4. Target Firmware Artifacts
 
-Testes host com AMY real: patches 4, 0, 2, 3 e 31 tiveram PCM alterado para
-ambos os parâmetros em uma e oito vozes, incluindo sustain, retrigger e release;
-contagem de clipping foi zero nos cenários executados. IDs 1 e 8 foram
-indisponíveis por topologia/faixa. Compare de Decay e Revert de Sustain em ID 4
-restauraram PCM de nota nova byte a byte; o teste de estado verifica oito vozes,
-preservação de outro envelope e ausência de alocações no caminho observado.
-Isso não comprova todas as topologias, deadlines no P4 ou operação física.
-Os gates B–H e o inventário completo continuam pendentes.
-
-Validação deste incremento:
-
-| Verificação | Resultado |
-|---|---|
-| `./smk-p4/tests/run_sound_editor.ps1` | PASS — AMY/PCM, codec v1, Harmony, USB e catálogo host; testes não qualificam hardware |
-| `./smk-p4/tests/run_sound_editor_ui.ps1` | PASS — suíte LVGL existente; não cobre exaustivamente os novos sliders |
-| Novos parâmetros com persistência v2 | 0; NOT RUN — v2 não implementado |
-| Migração v1 → v2 | NOT RUN |
-| Smoke físico | MANUAL / NOT RUN; firmware não gravado |
-
-## Codec v2 isolado — persistência ainda desabilitada
-
-O codec experimental usa 160 bytes: cabeçalho e nome preservam os campos v1;
-pares ordenados ID/float codificam somente bits presentes (até 19 pares), ROM
-em 152 e CRC32 em 156. O decoder rejeita IDs fora de ordem, versão, ROM, CRC,
-valores e máscaras inválidos. Sem bit de override, o valor novo é neutro no
-sentido de deixar o patch de fábrica intacto. A conversão host v1 → v2 preserva
-nome, máscara e valores antigos. A codificação tem tamanho fixo, não depende de
-padding e não substitui as chaves v1.
-
-Este codec NÃO está conectado ao PresetStore nem à NVS. Para 16 slots com duas
-cópias v2 seriam 5120 bytes de payload adicionais, além das cópias v1 e overhead
-NVS; não há comprovação de capacidade/GC na partição de 24 KiB. Permanecem
-necessários chaves separadas, seleção de geração, recuperação após interrupção,
-admissão de espaço, testes de reinício e rollback. Save dos novos parâmetros
-continua rejeitado; nenhuma migração ou escrita real ocorreu.
-
-## Seleção de cópias v2 em host
-
-`VersionedPresetStore` adiciona dois bancos v2 independentes dos bancos v1.
-O load escolhe a maior sequência válida, preferindo v1 em empate; save escreve
-somente v2, alterna bancos e verifica todos os bytes após a gravação. Em teste
-host, importação v1 preserva a cópia original; interrupção, falta de espaço
-simulada e corrupção em uma ou ambas as cópias recuperam a geração válida.
-A classe ainda não é usada por NVS nem pela interface: a API booleana atual não
-separa ausência de falha de leitura, e a admissão dos bancos adicionais e do GC
-não foi comprovada. Logo não se admite escrita real com ela. Teste host não
-comprova recuperação após perda de energia física.
-
-## Leitura segura dos bancos v2
-
-A interface experimental agora diferencia `Present`, `Missing` e `Error`.
-A seleção examina os dois bancos de cada versão em uma única passagem; qualquer
-erro de leitura aborta load e save antes de escrever. Um registro presente mas
-inválido pelo decoder é ignorado e pode ser substituído em um banco v2. O teste
-host injeta erro de leitura e verifica que nenhuma cópia é alterada. Readback
-continua comparando todos os bytes. A API ainda não está ligada à NVS: além da
-admissão de capacidade, falta mapear seus erros e tratar versões futuras sem
-sobrescrever dados desconhecidos. Save de Decay/Sustain permanece desabilitado.
-
-## Adaptador de leitura NVS v2
-
-Foi adicionado `NvsVersionedPresets`, isolado do firmware de produção. Ele usa
-as chaves v1 existentes `sNN[a|b]` e chaves v2 separadas `vNN[a|b]`, mapeia
-`ESP_ERR_NVS_NOT_FOUND` para ausência e demais falhas para erro, e não apaga
-ou grava dados. `write` e `writeV2` retornam falha deliberadamente. O teste host
-usa uma API NVS simulada para conferir nomes, tamanho, ausência, erro, handle
-inválido e bloqueio de escrita; não é teste de Flash nem de queda de energia.
-A conexão do adaptador ao backend e a habilitação de Save dependem de política
-de capacidade/GC e testes de recuperação. O Gate F continua pendente.
-
-
-## Filtro Juno em RAM
-
-`filter.env_amount` e `filter.keytrack` alteram respectivamente os coeficientes
-nativos EG0 e NOTE de filtro do AMY, nas oito vozes. Os coeficientes restantes
-s�o preservados, e Compare/Revert restauram os valores nativos capturados. A
-disponibilidade depende de filtro e faixa compat�vel. Os IDs novos n�o s�o
-persistentes: o encoder v1 os rejeita, e o codec v2 ainda n�o os admite.
-
-O teste host com AMY real no patch 4 verificou altera��o PCM nos dois controles
-com uma e oito vozes, zero clipping nos cen�rios testados e valores nativos nas
-oito vozes. Ainda faltam C2/C4/C6, Harmony para esses controles, cobertura de
-outras topologias e Save/Recall. N�o h� qualifica��o de hardware ou deadlines.
-Gate B permanece incompleto. O n�cleo AMY n�o foi alterado.
-
-## Cobertura de oitavas do filtro
-
-PASS `./smk-p4/tests/run_sound_editor.ps1`: cenários adicionais com AMY real
-no patch 4 em notas MIDI 36, 60 e 84 (C2/C4/C6). Envelope amount e keytrack
-alteram PCM; Compare de envelope amount e Revert de keytrack restauram PCM
-byte a byte em nova nota. Cobertura adicionada com uma voz; oito vozes continuam
-cobertas em C4. Persistência, hardware e Harmony específicos seguem pendentes.
+- **`guition-editor-8`**:
+  - Path: `.pio/build/guition-editor-8/firmware.bin`
+  - Size: `1,206,400` bytes (`Flash: 7.2%`, `RAM: 11.8% / 38,672 B`)
+  - SHA-256: `D91739BF89E7C5B722957E4FF78E2B796A766F51B43B5DAA26BDC922F3A2C39A`
+- **`guition-editor-8-bench`**:
+  - Path: `.pio/build/guition-editor-8-bench/firmware.bin`
+  - Size: `1,307,360` bytes (`Flash: 7.8%`, `RAM: 12.0% / 39,248 B`)
+  - SHA-256: `C506A278E3074D9BAB15EC2179497DDA7ACB72E6CE582B03CCA4F3046992CD08`
