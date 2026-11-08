@@ -13,7 +13,6 @@ public:
     NvsVersionedPresets& operator=(const NvsVersionedPresets&)=delete;
     bool begin(){
         close();error_=nvs_flash_init();if(error_!=ESP_OK)return false;
-        error_=nvs_open("sound011",NVS_READWRITE,&legacy_);if(error_!=ESP_OK)return false;
         error_=nvs_open("sound011v2",NVS_READWRITE,&modern_);
         if(error_!=ESP_OK){close();return false;}
         return true; // Read/Recall remain usable even if writes lack space.
@@ -23,9 +22,18 @@ public:
     }
     bool write(unsigned,unsigned,const uint8_t*,unsigned) override {return false;}
     edit::BankRead readVersioned(unsigned version,unsigned slot,unsigned bank,uint8_t* data,unsigned& length) override {
-        if(!legacy_ || !modern_ || slot>=edit::kSlots || bank>1 || (version!=1 && version!=2))return edit::BankRead::Error;
+        if(!modern_ || slot>=edit::kSlots || bank>1 || (version!=1 && version!=2))return edit::BankRead::Error;
+        nvs_handle_t h = modern_;
+        if(version==1) {
+            if(!legacy_) {
+                error_=nvs_open("sound011",NVS_READWRITE,&legacy_);
+                if(error_==ESP_ERR_NVS_NOT_FOUND)return edit::BankRead::Missing;
+                if(error_!=ESP_OK)return edit::BankRead::Error;
+            }
+            h = legacy_;
+        }
         char key[12];makeKey(version,slot,bank,key);
-        size_t n=length;error_=nvs_get_blob(version==1?legacy_:modern_,key,data,&n);
+        size_t n=length;error_=nvs_get_blob(h,key,data,&n);
         if(error_==ESP_ERR_NVS_NOT_FOUND)return edit::BankRead::Missing;
         if(error_!=ESP_OK)return edit::BankRead::Error;
         length=unsigned(n);return edit::BankRead::Present;

@@ -16,8 +16,8 @@ C:\.platformio\penv\Scripts\pio.exe run -e guition-editor-8 -e guition-editor-8-
 
 | Environment | Binary Path | Size (Bytes) | Flash Usage | RAM Usage | SHA-256 | Status |
 |---|---|---:|---:|---:|---|---|
-| guition-editor-8 | .pio/build/guition-editor-8/firmware.bin | 1,206,640 | 7.2% (1,205,916 / 16,777,216 B) | 11.7% (38,308 / 327,680 B) | 6A4A2FBF40363CE5BEC0E422F9B8A7EF30B1BAC87F5D3EEA58DE1431E09DD2F4 | PASS |
-| guition-editor-8-bench | .pio/build/guition-editor-8-bench/firmware.bin | 1,307,600 | 7.8% (1,306,888 / 16,777,216 B) | 12.0% (39,248 / 327,680 B) | 9CF78C4AFE032F640632CD65ECDACD2D6C0F23B3A0EE387D81F6B56B8AB0D864 | PASS |
+| guition-editor-8 | .pio/build/guition-editor-8/firmware.bin | 1,206,688 | 7.2% (1,205,960 / 16,777,216 B) | 11.7% (38,308 / 327,680 B) | 7631D6F882E52827FC74A63E57CF9EF9684623B1B918E8E77D05564D1CB1FDF0 | PASS |
+| guition-editor-8-bench | .pio/build/guition-editor-8-bench/firmware.bin | 1,307,664 | 7.8% (1,306,942 / 16,777,216 B) | 12.0% (39,248 / 327,680 B) | 2E0CA749E571A069BEF0999DE37ECF7A5486D196035EC5C50DA6C03653033CC2 | PASS |
 
 ---
 

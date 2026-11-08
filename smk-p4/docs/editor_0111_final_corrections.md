@@ -110,8 +110,8 @@ A versão `0.11.1` realizou a etapa final de auditoria, saneamento e qualificaç
 
 | Perfil | Caminho do Binário | Tamanho (Bytes) | Flash Utilizada | RAM Utilizada | SHA-256 |
 |---|---|---:|---:|---:|---|
-| `guition-editor-8` | `smk-p4/.pio/build/guition-editor-8/firmware.bin` | `1,206,640` | `1,205,916` / `16,777,216` B (7.2%) | `38,308` / `327,680` B (11.7%) | `6A4A2FBF40363CE5BEC0E422F9B8A7EF30B1BAC87F5D3EEA58DE1431E09DD2F4` |
-| `guition-editor-8-bench` | `smk-p4/.pio/build/guition-editor-8-bench/firmware.bin` | `1,307,600` | `1,306,888` / `16,777,216` B (7.8%) | `39,248` / `327,680` B (12.0%) | `9CF78C4AFE032F640632CD65ECDACD2D6C0F23B3A0EE387D81F6B56B8AB0D864` |
+| `guition-editor-8` | `smk-p4/.pio/build/guition-editor-8/firmware.bin` | `1,206,688` | `1,205,960` / `16,777,216` B (7.2%) | `38,308` / `327,680` B (11.7%) | `7631D6F882E52827FC74A63E57CF9EF9684623B1B918E8E77D05564D1CB1FDF0` |
+| `guition-editor-8-bench` | `smk-p4/.pio/build/guition-editor-8-bench/firmware.bin` | `1,307,664` | `1,306,942` / `16,777,216` B (7.8%) | `39,248` / `327,680` B (12.0%) | `2E0CA749E571A069BEF0999DE37ECF7A5486D196035EC5C50DA6C03653033CC2` |
 
 ### 4.2 Baseline de Referência para Rollback (`0.11`)
 
@@ -203,4 +203,4 @@ Este roteiro objetivo valida musicalmente o sistema na bancada com Guition ESP32
 - **Status de Software:** `PASS` (qualificação rigorosa completa em host e targets).
 - **Status de Hardware:** `MANUAL / PENDING HARDWARE` (pronto para gravação de bancada mediante aprovação).
 - **Branch:** Mantida em `feature/smk-p4-sound-editor-completion-0111`.
-- **Próximo Passo:** Solicitar autorização do operador para gravação de bancada na Guition ESP32-P4 com o binário `guition-editor-8-bench` (SHA-256 `9CF78C4AFE032F640632CD65ECDACD2D6C0F23B3A0EE387D81F6B56B8AB0D864`).
+- **Próximo Passo:** Solicitar autorização do operador para gravação de bancada na Guition ESP32-P4 com o binário `guition-editor-8-bench` (SHA-256 `2E0CA749E571A069BEF0999DE37ECF7A5486D196035EC5C50DA6C03653033CC2`).

@@ -233,11 +233,6 @@ void audioTask(void*) {
 }
 
 extern "C" void app_main() {
-#ifdef SMKP4_SOUND_EDITOR
-    static smk::p4::NvsUserPresets user_presets;
-    const bool presets_ready=user_presets.begin(); // Before synthesis/USB start.
-    if(!presets_ready)ESP_LOGE(kTag,"User Presets unavailable: %s; factory audio continues",esp_err_to_name(user_presets.error()));
-#endif
     if (!smk::p4::reportHardware()) return;
     ESP_LOGI(kTag, "Standalone local AMY; USB opt-in; no UART, ES8311 or NS4150");
     ESP_LOGI(kTag, "PCM=%" PRIu32 "Hz signed16 stereo Philips; block=%u DMA=%ux%u MCLK=unused",
@@ -299,6 +294,11 @@ extern "C" void app_main() {
     constexpr bool diagnostic=false;
 #endif
     const bool display_ready = smk::p4::beginDisplayTest(diagnostic);
+#ifdef SMKP4_SOUND_EDITOR
+    static smk::p4::NvsUserPresets user_presets;
+    const bool presets_ready=user_presets.begin();
+    if(!presets_ready)ESP_LOGE(kTag,"User Presets unavailable: %s; factory audio continues",esp_err_to_name(user_presets.error()));
+#endif
     static smk::p4::LocalAmyPerformanceBackend backend(runtime.commands());
 #ifdef SMKP4_SOUND_EDITOR
     if(presets_ready)backend.presetStore(&user_presets);
