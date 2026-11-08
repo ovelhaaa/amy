@@ -14,7 +14,7 @@
 | Version | NVS Namespace | Record Size | Banks per Slot | Slots | Max NVS Entries (Dual-Bank) | Parameter Capacity |
 |---|---|---|---|---|---|---|
 | **V1 (`0.11`)** | `sound011` | `128 B` | `2` (`sXXa`, `sXXb`) | `16` | `32 * 5 = 160` entries | `17` fixed IDs (`0..16`) |
-| **V2 (`0.11.1`)** | `sound011v2` | `160 B` | `2` (`sXXa`, `sXXb`) | `16` | `32 * 6 = 192` entries | Up to `57` IDs (`0..56`, 64-bit `Mask`) |
+| **V2 (`0.11.1`)** | `sound011v2` | `160 B` | `2` (`vXXa`, `vXXb`) | `16` | `32 * 6 = 192` entries | Up to `57` IDs (`0..56`, 64-bit `Mask`) |
 
 - **Partition Budget (`24 KiB` = `6` pages * `126` entries = `756` raw entries; conservative threshold `<= 390` entries):**
   - Retaining all `32` V1 records (`160` entries) + all `32` V2 records (`192` entries) + `2` namespace entries + `1` write buffer = **`358` entries (`<= 390`)**, Fitting comfortably inside the existing `24 KiB` NVS partition without creating a third NVS copy set or deleting V1 records.

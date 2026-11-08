@@ -1,13 +1,27 @@
 # SMK-P4 0.11.1 — Inventário Integral de Parâmetros (Gate G0)
 
 **Branch:** `feature/smk-p4-sound-editor-completion-0111`  
-**Escopo:** Auditoria integral de todos os 88 parâmetros registrados em `ParameterRegistry` (`smk-p4/components/ui_blueprint/src/ui_parameters.cpp`) e dos 57 identificadores persistentes do motor (`edit::Param` `0..56` em `smk-p4/components/amy_runtime/sound_edit.h`).
+**Escopo:** Auditoria integral de todos os 137 descritores registrados em `ParameterRegistry` (`smk-p4/components/ui_blueprint/src/ui_parameters.cpp`) e dos 57 identificadores persistentes do motor (`edit::Param` `0..56` em `smk-p4/components/amy_runtime/sound_edit.h`).
 
-> **Garantia automatizada (Gate G0):** A função `auditInventory()` em `smk-p4/tests/sound_editor_ui_test.cpp` percorre programaticamente `ParameterRegistry::all()` tanto em patch Juno (`patch 4`) quanto em patch DX7 (`patch 135`) e falha o teste caso qualquer parâmetro reportado como `Available` pelo adaptador de produção (`UiBlueprintPerformanceAdapter`) não possua handler real confirmado pelo owner (`UiCommandState::Confirmed`) ou retorne `Unsupported`/`DemoApplied`.
+> **Garantia automatizada (Gate G0):** A função `auditInventory()` em `smk-p4/tests/sound_editor_ui_test.cpp` percorre programaticamente `ParameterRegistry::all()` (137 descritores) tanto em patch Juno (`patch 4`) quanto em patch DX7 (`patch 135`) e valida que qualquer parâmetro reportado como `Available` pelo adaptador de produção (`UiBlueprintPerformanceAdapter`) possui handler real confirmado pelo owner (`UiCommandState::Confirmed`) e rejeita comandos não suportados.
 
 ---
 
-## 1. Parâmetros do Sound Editor — Persistentes no Motor (`edit::Param` `0..56`)
+## 1. Totais Gerais do Inventário (Revisão 0.11.1 HEAD)
+
+| Categoria | Quantidade | Descrição / Detalhe |
+|---|---:|---|
+| **Descritores Totais de `ParameterRegistry`** | **137** | Todos os descritores registrados em `ui_parameters.cpp` |
+| **Parâmetros das 7 Abas do Sound Editor** | **44** | `osc` (9), `fm` (9), `filter` (6), `amp` (4), `env` (5), `lfo` (6), `mod` (5) |
+| **Descritores Gerais / Outros Subsistemas** | **93** | `perf` (13), `harmony` (15), `layer_a` (7), `layer_b` (7), `mixer` (9), `fx` (10), `arp` (8), `seq` (7), `drums` (5), `midi` (7), `sys` (5) |
+| **IDs Persistentes do Motor (`edit::Param`)** | **57** | `0..56` em `sound_edit.h` (Cutoff..ModPolarity, 64-bit mask) |
+| **Controles Funcionais Confirmados pelo Owner** | **25 (Juno) / 36 (FM)** | Confirmados com `UiCommandState::Confirmed`, sem mutação local especulativa |
+| **Controles Condicionais** | **4** | `osc.sub_level`, `osc.noise_level`, `osc.1.pulse_width`, `fm.op.ratio` (fixed-freq) |
+| **Controles Planejados na UI (`PLAN`)** | **119** | Exibidos com badge `PLAN`, botões desabilitados (`LV_STATE_DISABLED`) |
+
+---
+
+## 2. Parâmetros do Sound Editor — Persistentes no Motor (`edit::Param` `0..56`)
 
 | ID UI (`ParameterDescriptor`) | `edit::Param` ID | Aba UI | Família / Condição | Estado 0.11.1 | Destino Nativo AMY | Persistência | Evidência / Teste |
 |---|---:|---|---|---|---|---|---|
@@ -38,15 +52,15 @@
 | `lfo.1.depth` | `49` (`LfoDepth`) | `LFO` / `MOD` | Juno & DX7 FM | `Available` (Juno e FM) | Profundidade base (`0..100%`) aplicada ao destino selecionado de `lfo.1.dest`, composta com CC1/Slot 1 | `V2` | `gate_e_test.cpp`, `sound_editor_ui_test.cpp` |
 | `lfo.1.wave` | `50` (`LfoWave`) | `LFO` / `MOD` | Juno & DX7 FM | `Available` (Juno e FM) | `wave` (`SINE, TRIANGLE, SAW_DOWN, SAW_UP, PULSE`) no oscilador `mod_source` da voz | `V2` | `gate_e_test.cpp`, `sound_editor_ui_test.cpp` |
 | `lfo.1.dest` | `51` (`LfoDest`) | `LFO` / `MOD` | Juno (`NONE, PITCH, CUTOFF, AMP`) / FM (`NONE, PITCH, AMP`; `CUTOFF` = N/A) | `Available` (opções filtradas contextualmente por `isParameterValueSupported`) | `logfreq_coefs[COEF_MOD]`, `filter_freq_coefs[COEF_MOD]` (Juno) ou `amp_coefs[COEF_MOD]` | `V2` | `gate_e_test.cpp`, `sound_editor_ui_test.cpp` |
-| `mod.slot1.enable` | `52` (`ModEnable`) | `MOD` | Juno & DX7 FM | `Available` (Juno e FM) | Habilita/desabilita a rota do Slot 1 (`0` ou `1`) no cálculo owner de CC1 | `V2` | `gate_e_test.cpp`, `sound_editor_ui_test.cpp` |
-| `mod.slot1.source` | `53` (`ModSource`) | `MOD` | Juno & DX7 FM (`OFF=0`, `MOD WHEEL=1`) | `Available` (opções `2..9` bloqueadas por `isParameterValueSupported`) | Seleciona `CC1 Mod Wheel` (`mod_wheel_`) como fonte da rota Slot 1 | `V2` | `gate_e_test.cpp`, `sound_editor_ui_test.cpp` |
-| `mod.slot1.dest` | `54` (`ModDest`) | `MOD` | Juno (`NONE=0, OSC PITCH=1, FILTER CUT=3`) / FM (`NONE=0, OSC PITCH=1`) | `Available` (`FILTER CUT` bloqueado em FM por `isParameterValueSupported`) | Rota `CC1 -> Vibrato Pitch` (`logfreq_coefs[COEF_MOD]`) ou `CC1 -> Filter Cutoff` (`filter_freq_coefs[COEF_CONST]`) | `V2` | `gate_e_test.cpp`, `sound_editor_ui_test.cpp` |
-| `mod.slot1.amount` | `55` (`ModAmount`) | `MOD` | Juno & DX7 FM (`-100..+100%`) | `Available` (Juno e FM) | Intensidade percentual da rota Slot 1 sobre `CC1` | `V2` | `gate_e_test.cpp`, `sound_editor_ui_test.cpp` |
-| `mod.slot1.polarity` | `56` (`ModPolarity`) | `MOD` | Juno & DX7 FM (`UNI+=0, BIP+/-=1, INV-=2`) | `Available` (Juno e FM) | Lei de polaridade aplicada a `ModAmount` no cálculo de `CC1` | `V2` | `gate_e_test.cpp`, `sound_editor_ui_test.cpp` |
+| `mod.slot1.enable` | `52` (`ModEnable`) | `MOD` | Juno & DX7 FM | `Available` (Juno e FM) | Habilita/desabilita a rota do Slot 1 (`0` ou `1`) no cálculo owner de CC1 | `V2` | `gate_e_test.cpp`, `sound_editor_ui_test.cpp`, `final_corrections_test.cpp` |
+| `mod.slot1.source` | `53` (`ModSource`) | `MOD` | Juno & DX7 FM (`OFF=0`, `MOD WHEEL=1`) | `Available` (`OFF` desabilita rota, `MOD WHEEL` conecta CC1) | Seleciona `OFF` ou `CC1 Mod Wheel` (`mod_wheel_`) como fonte do Slot 1 | `V2` | `final_corrections_test.cpp`, `sound_editor_ui_test.cpp` |
+| `mod.slot1.dest` | `54` (`ModDest`) | `MOD` | Juno (`NONE=0, OSC PITCH=1, FILTER CUT=3`) / FM (`NONE=0, OSC PITCH=1`) | `Available` (`FILTER CUT` bloqueado em FM por `isParameterValueSupported`) | Rota `CC1 -> Vibrato Pitch` (`logfreq_coefs[COEF_MOD]`) ou `CC1 -> Filter Cutoff` (`filter_freq_coefs[COEF_CONST]`) | `V2` | `gate_e_test.cpp`, `sound_editor_ui_test.cpp`, `final_corrections_test.cpp` |
+| `mod.slot1.amount` | `55` (`ModAmount`) | `MOD` | Juno & DX7 FM (`-100..+100%`) | `Available` (Juno e FM) | Intensidade percentual da rota Slot 1 sobre `CC1` | `V2` | `gate_e_test.cpp`, `sound_editor_ui_test.cpp`, `final_corrections_test.cpp` |
+| `mod.slot1.polarity` | `56` (`ModPolarity`) | `MOD` | Juno & DX7 FM (`UNI+=0, BIP+/-=1, INV-=2`) | `Available` (Juno e FM) | Lei de polaridade musical explícita (`UNI+` unipolar positivo, `BIP+/-` bipolar, `INV-` unipolar invertido) | `V2` | `final_corrections_test.cpp`, `sound_editor_ui_test.cpp` |
 
 ---
 
-## 2. Parâmetros do Sound Editor e Performance — Sessão / Macros / Planejados
+## 3. Parâmetros de Performance e Controles de Sessão
 
 | ID UI (`ParameterDescriptor`) | Aba / Tela | Estado 0.11.1 | Comportamento no Adaptador Real (`UiBlueprintPerformanceAdapter`) | Persistência |
 |---|---|---|---|---|
@@ -67,10 +81,10 @@
 
 ---
 
-## 3. Demais Subsistema Registrados (`Harmony`, `Layers`, `Mixer`, `FX`, `Arp`, `Seq`, `Drums`, `MIDI`, `System`)
+## 4. Demais Subsistemas Registrados (`Harmony`, `Layers`, `Mixer`, `FX`, `Arp`, `Seq`, `Drums`, `MIDI`, `System`)
 
-| Grupo / IDs | Estado no Adaptador Real 0.11.1 | Notas de Implementação |
-|---|---|---|
-| **Harmony Assist** (`harmony.scale_enable`, `harmony.chord_enable`, `harmony.apply_touch`, `harmony.root_note`, `harmony.scale_type`, `harmony.quant_mode`, `harmony.chord_type`, `harmony.inversion`, `harmony.voicing`, `harmony.spread`, `harmony.usb_channel`, `harmony.preset`) | `Available` (12 parâmetros) | Confirmados por snapshot do owner (`harmonyState()`); opções planejadas (`ADD9`, `9TH`, voicings `>1`) filtradas por `isParameterValueSupported`. `harmony.preserve_outside`, `harmony.vel_behavior`, `harmony.dest_layer` permanecem `Planned`. |
-| **System Read-Only** (`sys.sample_rate_hz`) | `ReadOnly` (`48000 Hz`) | Protegido por `kCapReadOnly`; escrita rejeitada tanto em `UiModel` quanto no adaptador. |
-| **Layers / Mixer / FX / Arp / Seq / Drums / MIDI Config / System Settings** (demais IDs de `ParameterRegistry`) | `Planned` no `UiBlueprintPerformanceAdapter` | Exibidos com badge `PLAN` e controles desabilitados quando conectados ao backend real (`isParameterEditable(id) == false`), garantindo zero falsos positivos na interface. |
+| Grupo / IDs | Quantidade | Estado no Adaptador Real 0.11.1 | Notas de Implementação |
+|---|---:|---|---|
+| **Harmony Assist** (`harmony.scale_enable`, `harmony.chord_enable`, `harmony.apply_touch`, `harmony.root_note`, `harmony.scale_type`, `harmony.quant_mode`, `harmony.chord_type`, `harmony.inversion`, `harmony.voicing`, `harmony.spread`, `harmony.usb_channel`, `harmony.preset`) | 12 | `Available` | Confirmados por snapshot do owner (`harmonyState()`); opções planejadas (`ADD9`, `9TH`, voicings `>1`) filtradas por `isParameterValueSupported`. `harmony.preserve_outside`, `harmony.vel_behavior`, `harmony.dest_layer` permanecem `Planned` (total 15). |
+| **System Read-Only** (`sys.sample_rate_hz`) | 1 | `ReadOnly` (`48000 Hz`) | Protegido por `kCapReadOnly`; escrita rejeitada tanto em `UiModel` quanto no adaptador. |
+| **Layers / Mixer / FX / Arp / Seq / Drums / MIDI / System** | 80 | `Planned` | Exibidos com badge `PLAN` e controles desabilitados quando conectados ao backend real (`isParameterEditable(id) == false`), garantindo zero falsos positivos na interface. |

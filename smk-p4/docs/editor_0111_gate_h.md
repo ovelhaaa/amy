@@ -16,8 +16,8 @@ C:\.platformio\penv\Scripts\pio.exe run -e guition-editor-8 -e guition-editor-8-
 
 | Environment | Binary Path | Size (Bytes) | Flash Usage | RAM Usage | SHA-256 | Status |
 |---|---|---:|---:|---:|---|---|
-| `guition-editor-8` | `.pio/build/guition-editor-8/firmware.bin` | `1,206,400` | `7.2%` (`1,206,400` / `16,777,216` B) | `11.8%` (`38,672` / `327,680` B) | `D91739BF89E7C5B722957E4FF78E2B796A766F51B43B5DAA26BDC922F3A2C39A` | `PASS` |
-| `guition-editor-8-bench` | `.pio/build/guition-editor-8-bench/firmware.bin` | `1,307,360` | `7.8%` (`1,306,638` / `16,777,216` B) | `12.0%` (`39,248` / `327,680` B) | `C506A278E3074D9BAB15EC2179497DDA7ACB72E6CE582B03CCA4F3046992CD08` | `PASS` |
+| guition-editor-8 | .pio/build/guition-editor-8/firmware.bin | 1,206,640 | 7.2% (1,205,916 / 16,777,216 B) | 11.7% (38,308 / 327,680 B) | 6A4A2FBF40363CE5BEC0E422F9B8A7EF30B1BAC87F5D3EEA58DE1431E09DD2F4 | PASS |
+| guition-editor-8-bench | .pio/build/guition-editor-8-bench/firmware.bin | 1,307,600 | 7.8% (1,306,888 / 16,777,216 B) | 12.0% (39,248 / 327,680 B) | 9CF78C4AFE032F640632CD65ECDACD2D6C0F23B3A0EE387D81F6B56B8AB0D864 | PASS |
 
 ---
 
@@ -61,23 +61,37 @@ Verified in `.pio/build/guition-editor-8-bench/config/sdkconfig.h` and `sdkconfi
 ## 5. Rollback & Recovery Procedure
 
 ### 5.1 NVS Compatibility & Non-Destructive Coexistence
-- **V1 Namespace (`sound011`)**: Never modified or erased by `0.11.1`. If the user rolls back firmware to `0.11`, all original V1 presets remain intact in `sound011`.
-- **V2 Namespace (`sound011v2`)**: Uses `160`-byte double-buffered blobs (`u00a`/`u00b` .. `u15a`/`u15b`, max `390` NVS entries <= `480` entry budget in the `24 KiB` partition).
-- **Forward/Backward Safety between `0.11.1` builds**: Older 32-bit V2 records (`version = 2`) and extended 64-bit V2 records (`version = 2` with `kFlagExtendedMask64 = 0x8000`) validate with CRC-32 and preserve the dual-copy A/B generation commit model.
+- **V1 Namespace (`sound011`)**: Never modified or erased by `0.11.1`. If the operator rolls back firmware to `0.11`, all original V1 presets remain intact in `sound011` with keys `s00a`..`s15b`.
+- **V2 Namespace (`sound011v2`)**: Uses `160`-byte double-buffered blobs (`v00a`/`v00b` .. `v15a`/`v15b`, max `390` NVS entries <= `480` entry budget in the `24 KiB` partition).
+- **Forward/Backward Safety between `0.11` and `0.11.1` builds**:
+  - `0.11` firmware only opens and accesses `sound011`. The presence of `sound011v2` entries is completely ignored by `0.11`.
+  - Older 32-bit V2 records (`version = 2`, `mode = 0`) and extended 64-bit V2 records (`version = 2`, `mode = 1` or `2`) validate with CRC-32 and preserve the dual-copy A/B generation commit model.
 
-### 5.2 Firmware Flash & Rollback Commands (`MANUAL` — requires explicit hardware authorization)
-- **Backup existing NVS partition before flashing**:
-  ```powershell
-  esptool.py --chip esp32p4 -p COMx read_flash 0x9000 0x6000 nvs_backup_pre_0111.bin
-  ```
-- **Flash `0.11.1` bench candidate**:
-  ```powershell
-  C:\.platformio\penv\Scripts\pio.exe run -e guition-editor-8-bench -t nobuild -t upload
-  ```
-- **Rollback to previous firmware + NVS backup**:
-  ```powershell
-  esptool.py --chip esp32p4 -p COMx write_flash 0x9000 nvs_backup_pre_0111.bin
-  ```
+### 5.2 Firmware Flash & Verifiable Rollback Plan (`MANUAL` — requires explicit operator authorization)
+**Baseline Artifact for Rollback:**
+- Source worktree: `build/worktrees/smk-p4-live-sound-editor-011`
+- Baseline binary path: `build/worktrees/smk-p4-live-sound-editor-011/smk-p4/.pio/build/guition-editor-8-bench/firmware.bin`
+- Baseline SHA-256: `0BD1FD6CE2F6C72679C17CECF9E96CA6E61CEFC8993349463E70701F5C3F2911`
+
+**Step 1: Backup existing NVS partition (optional safety measure)**:
+```powershell
+esptool.py --chip esp32p4 -p COMx read_flash 0x9000 0x6000 nvs_backup_pre_0111.bin
+```
+
+**Step 2: Flash `0.11.1` candidate (only when operator explicitly authorizes)**:
+```powershell
+# Writes application partition at 0x10000; bootloader (0x0) and partition table (0x8000) remain intact:
+esptool.py --chip esp32p4 -p COMx write_flash 0x10000 .pio/build/guition-editor-8-bench/firmware.bin
+```
+
+**Step 3: Verifiable Rollback to `0.11` Baseline**:
+```powershell
+# Restore application partition (0x10000) using verified 0.11 baseline binary:
+esptool.py --chip esp32p4 -p COMx write_flash 0x10000 ../smk-p4-live-sound-editor-011/smk-p4/.pio/build/guition-editor-8-bench/firmware.bin
+
+# (Optional) Restore NVS partition if pristine pre-test state is desired:
+esptool.py --chip esp32p4 -p COMx write_flash 0x9000 nvs_backup_pre_0111.bin
+```
 
 ---
 
