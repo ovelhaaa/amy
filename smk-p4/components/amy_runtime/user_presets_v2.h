@@ -32,4 +32,38 @@ inline bool decodeV2(const uint8_t* b,unsigned n,Preset& out){
     if(!validPreset(p,false))return false;
     out=p;return true;
 }
+// Separate banks retain every V1 key for rollback.
+class VersionedPresetStore : public PresetStore {
+public:
+    virtual bool readV2(unsigned slot,unsigned bank,uint8_t* data,unsigned& length)=0;
+    virtual bool writeV2(unsigned slot,unsigned bank,const uint8_t* data,unsigned length)=0;
+    bool load(unsigned slot,Preset& out) override {
+        if(slot>=kSlots)return false;
+        Preset v1,a,b;const bool old=PresetStore::load(slot,v1);
+        const bool av=readBank(slot,0,a),bv=readBank(slot,1,b);
+        bool found=old;if(old)out=v1;
+        if(av && (!found || a.sequence>out.sequence)){out=a;found=true;}
+        if(bv && (!found || b.sequence>out.sequence)){out=b;found=true;}
+        return found;
+    }
+    bool save(unsigned slot,Preset p) override {
+        if(slot>=kSlots)return false;
+        Preset latest,a,b;const bool found=load(slot,latest);
+        if(found && latest.sequence==UINT32_MAX)return false;
+        p.sequence=found?latest.sequence+1:1;
+        const bool av=readBank(slot,0,a),bv=readBank(slot,1,b);
+        const unsigned bank=!av?0:!bv?1:a.sequence<=b.sequence?0:1;
+        uint8_t bytes[kV2RecordBytes];
+        if(!encodeV2(p,bytes) || !writeV2(slot,bank,bytes,sizeof(bytes)))return false;
+        uint8_t check[kV2RecordBytes];unsigned length=sizeof(check);
+        return readV2(slot,bank,check,length) && length==sizeof(check) &&
+               std::memcmp(check,bytes,sizeof(check))==0;
+    }
+private:
+    bool readBank(unsigned slot,unsigned bank,Preset& p){
+        uint8_t bytes[kV2RecordBytes];unsigned length=sizeof(bytes);
+        return readV2(slot,bank,bytes,length) && decodeV2(bytes,length,p);
+    }
+};
+
 }

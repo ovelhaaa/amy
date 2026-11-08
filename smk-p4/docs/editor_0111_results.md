@@ -69,3 +69,15 @@ NVS; não há comprovação de capacidade/GC na partição de 24 KiB. Permanecem
 necessários chaves separadas, seleção de geração, recuperação após interrupção,
 admissão de espaço, testes de reinício e rollback. Save dos novos parâmetros
 continua rejeitado; nenhuma migração ou escrita real ocorreu.
+
+## Seleção de cópias v2 em host
+
+`VersionedPresetStore` adiciona dois bancos v2 independentes dos bancos v1.
+O load escolhe a maior sequência válida, preferindo v1 em empate; save escreve
+somente v2, alterna bancos e verifica todos os bytes após a gravação. Em teste
+host, importação v1 preserva a cópia original; interrupção, falta de espaço
+simulada e corrupção em uma ou ambas as cópias recuperam a geração válida.
+A classe ainda não é usada por NVS nem pela interface: a API booleana atual não
+separa ausência de falha de leitura, e a admissão dos bancos adicionais e do GC
+não foi comprovada. Logo não se admite escrita real com ela. Teste host não
+comprova recuperação após perda de energia física.

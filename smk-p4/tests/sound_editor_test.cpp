@@ -15,6 +15,16 @@ struct MemoryStore:edit::PresetStore {
     bool read(unsigned s,unsigned b,uint8_t* out,unsigned& n) override {if(!present[s][b] || n<128)return false;std::memcpy(out,bytes[s][b],128);n=128;return true;}
     bool write(unsigned s,unsigned b,const uint8_t* data,unsigned n) override {if(fail)return false;if(torn){std::memset(bytes[s][b],0,128);std::memcpy(bytes[s][b],data,63);present[s][b]=true;return false;}assert(n==128);std::memcpy(bytes[s][b],data,n);present[s][b]=true;return true;}
 };
+struct VersionedMemoryStore:edit::VersionedPresetStore {
+    uint8_t legacy[2][128]{},modern[2][160]{};bool hasOld[2]{},hasNew[2]{},fail=false,torn=false;
+    bool read(unsigned, unsigned bank,uint8_t* out,unsigned& n) override {if(!hasOld[bank] || n<128)return false;std::memcpy(out,legacy[bank],128);n=128;return true;}
+    bool write(unsigned, unsigned bank,const uint8_t* data,unsigned n) override {if(n!=128)return false;std::memcpy(legacy[bank],data,n);hasOld[bank]=true;return true;}
+    bool readV2(unsigned,unsigned bank,uint8_t* out,unsigned& n) override {if(!hasNew[bank] || n<160)return false;std::memcpy(out,modern[bank],160);n=160;return true;}
+    bool writeV2(unsigned,unsigned bank,const uint8_t* data,unsigned n) override {
+        if(fail || n!=160)return false;
+        std::memcpy(modern[bank],data,torn?70:n);hasNew[bank]=true;return !torn;
+    }
+};
 static amy::Runtime runtime;
 static void patch(unsigned id){runtime.commands().panic();assert(runtime.commands().push({amy::CommandType::Patch,uint16_t(id)}));runtime.apply(1);runtime.loadPendingPatch();assert(runtime.snapshot().patch_state==amy::PatchState::Ready);}
 static void tick(){probe_realtime(true);runtime.apply(20);assert(runtime.render());probe_realtime(false);}
@@ -83,6 +93,19 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     edit::Preset v1;assert(edit::decode(encoded,sizeof(encoded),v1));assert(edit::encodeV2(v1,v2));
     assert(edit::decodeV2(v2,sizeof(v2),decoded));assert(decoded.mask==v1.mask && decoded.values[edit::Depth]==v1.values[edit::Depth] && !std::strcmp(decoded.name,v1.name));
     assert(decoded.values[edit::Decay]==0 && decoded.values[edit::Sustain]==0);
+    VersionedMemoryStore versioned;assert(versioned.write(0,0,encoded,sizeof(encoded)));
+    assert(versioned.load(0,decoded) && decoded.sequence==v1.sequence);
+    assert(versioned.save(0,v2preset));assert(versioned.load(0,decoded));
+    assert(decoded.sequence==v1.sequence+1 && decoded.mask==v2preset.mask);
+    assert(std::memcmp(versioned.legacy[0],encoded,sizeof(encoded))==0);
+    versioned.torn=true;assert(!versioned.save(0,v2preset));versioned.torn=false;
+    assert(versioned.load(0,decoded) && decoded.sequence==v1.sequence+1);
+    versioned.fail=true;assert(!versioned.save(0,v2preset));versioned.fail=false;
+    assert(versioned.load(0,decoded) && decoded.sequence==v1.sequence+1);
+    assert(versioned.save(0,v2preset));assert(versioned.load(0,decoded) && decoded.sequence==v1.sequence+2);
+    versioned.modern[1][30]^=1;assert(versioned.load(0,decoded) && decoded.sequence==v1.sequence+1);
+    versioned.modern[0][30]^=1;assert(versioned.load(0,decoded) && decoded.sequence==v1.sequence);
+
     {auto ram_only=preset;ram_only.mask=1u<<edit::Decay;ram_only.values[edit::Decay]=100;assert(!edit::encode(ram_only,encoded));}
     assert(edit::encode(preset,encoded));encoded[4]=2;edit::put32(encoded+124,edit::crc(encoded,124));assert(!edit::decode(encoded,128,restored));
     preset.patch=32;preset.family=1;preset.mask=1;preset.values[0]=1000;assert(!edit::encode(preset,encoded));

@@ -58,13 +58,13 @@ public:
     virtual ~PresetStore()=default;
     virtual bool read(unsigned slot,unsigned bank,uint8_t* data,unsigned& length)=0;
     virtual bool write(unsigned slot,unsigned bank,const uint8_t* data,unsigned length)=0;
-    bool load(unsigned slot,Preset& out){
+    virtual bool load(unsigned slot,Preset& out){
         if(slot>=kSlots)return false;
         Preset a,b;const bool av=readPreset(slot,0,a),bv=readPreset(slot,1,b);
         if(!av && !bv)return false;
         out=(!bv || (av && a.sequence>=b.sequence))?a:b;return true;
     }
-    bool save(unsigned slot,Preset p){
+    virtual bool save(unsigned slot,Preset p){
         if(slot>=kSlots)return false;
         Preset a,b;
         const bool av=readPreset(slot,0,a),bv=readPreset(slot,1,b);
