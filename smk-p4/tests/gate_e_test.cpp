@@ -375,14 +375,14 @@ static void testModMatrixAndCc1Composition() {
         runtime.apply(now);
         assert(std::fabs(freq_of_logfreq(synth[0]->filter_logfreq_coefs[COEF_CONST]) - 500.0f) < 0.5f);
 
-        // Unsupported ModSource (0 = LFO 1, 2 = AMP ENV) and unsupported ModDest (2 = SUB LVL) must be rejected
+        // Unsupported ModSource (2 = AMP ENV) and unsupported ModDest (2 = SUB LVL) must be rejected
         const uint32_t errs = runtime.snapshot().edit.errors;
         edit::Request bad{};
         bad.patch = 0;
         bad.generation = runtime.snapshot().generation;
         bad.request = runtime.snapshot().edit.request + 1;
         bad.mask = edit::bit(edit::ModSource);
-        bad.values[edit::ModSource] = 0.0f;
+        bad.values[edit::ModSource] = 2.0f;
         assert(runtime.commands().edits.push(bad));
         runtime.apply(now);
         assert(runtime.snapshot().edit.errors == errs + 1);

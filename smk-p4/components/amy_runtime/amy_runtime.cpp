@@ -161,8 +161,9 @@ void Runtime::tune(unsigned slot) {
             const float rate=((state_.edit.mask&edit::bit(edit::LfoRate)) && (state_.edit.available&edit::bit(edit::LfoRate)))?
                 state_.edit.applied[edit::LfoRate]:5.0f;
             const float s=std::sin(tau*rate*vibrato_frame_/kSampleRateHz);
-            const bool uni=std::lround(state_.edit.applied[edit::ModPolarity])==0;
-            vibrato=(modulation_[v.channel]/127.0f)*(uni?std::fabs(amt)*0.5f*(1.0f+s):amt*s);
+            const int pol=int(std::lround(state_.edit.applied[edit::ModPolarity]));
+            const float shape=(pol==0)?(0.5f*(1.0f+s)):(pol==2)?(-0.5f*(1.0f+s)):s;
+            vibrato=(modulation_[v.channel]/127.0f)*(amt*shape);
         }
     }
 #endif

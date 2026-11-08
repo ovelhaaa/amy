@@ -21,7 +21,8 @@ void Runtime::updateModWheelFilter() {
         std::lround(out.applied[edit::ModSource])==1 &&
         std::lround(out.applied[edit::ModDest])==3;
     const float raw_amt=out.applied[edit::ModAmount]/100.0f;
-    const float eff_amt=std::lround(out.applied[edit::ModPolarity])==0?std::fabs(raw_amt):raw_amt;
+    const int pol=int(std::lround(out.applied[edit::ModPolarity]));
+    const float eff_amt=(pol==0)?std::fabs(raw_amt):(pol==2)?(-std::fabs(raw_amt)):raw_amt;
     bool queued=false;
     for(unsigned v=0;v<kVoices;++v) {
         const uint16_t osc_id=edit_map_[v][edit_filter_];
@@ -276,7 +277,10 @@ void Runtime::applyEdit() {
         if((request.mask&edit::bit(p)) && !edit::valid(p,request.values[p])){++out.errors;return;}
     if((request.mask&edit::bit(edit::LfoDest)) && std::lround(request.values[edit::LfoDest])==2 &&
        (out.family==0 || edit_filter_>=edit_count_)) {++out.errors;return;}
-    if((request.mask&edit::bit(edit::ModSource)) && std::lround(request.values[edit::ModSource])!=1) {++out.errors;return;}
+    if(request.mask&edit::bit(edit::ModSource)) {
+        const int ms=int(std::lround(request.values[edit::ModSource]));
+        if(ms!=0 && ms!=1) {++out.errors;return;}
+    }
     if(request.mask&edit::bit(edit::ModDest)) {
         const int md=int(std::lround(request.values[edit::ModDest]));
         if(md==2 || (md==3 && (out.family==0 || edit_filter_>=edit_count_))) {++out.errors;return;}
