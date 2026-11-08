@@ -43,14 +43,20 @@ inline bool encodeV2(const Preset& p,uint8_t* b){
                 put32(b+pos,bits);pos+=4;
             }else if(isByteParamV2(i)){
                 if(pos+1>152)return false;
-                b[pos++]=uint8_t(std::lround(p.values[i]));
+                const float b_val=p.values[i];
+                if(!std::isfinite(b_val) || b_val<0.0f || b_val>255.0f) return false;
+                b[pos++]=uint8_t(std::lround(b_val));
             }else if(isTimeParamV2(i)){
                 if(pos+2>152)return false;
-                const uint16_t u=uint16_t(std::lround(p.values[i]*16.0f));
+                const float t_val=p.values[i]*16.0f;
+                if(!std::isfinite(t_val) || t_val<0.0f || t_val>65535.0f) return false;
+                const uint16_t u=uint16_t(std::lround(t_val));
                 b[pos++]=uint8_t(u&0xffu);b[pos++]=uint8_t(u>>8);
             }else{
                 if(pos+2>152)return false;
-                const uint16_t u=uint16_t(int16_t(std::lround(p.values[i]*100.0f)));
+                const float s_val=p.values[i]*100.0f;
+                if(!std::isfinite(s_val) || s_val<-32768.0f || s_val>32767.0f) return false;
+                const uint16_t u=uint16_t(int16_t(std::lround(s_val)));
                 b[pos++]=uint8_t(u&0xffu);b[pos++]=uint8_t(u>>8);
             }
         }

@@ -20,7 +20,7 @@ try {
         & build/editor011/test.exe | Tee-Object build/editor011/test.log
         if($LASTEXITCODE){throw 'Editor test failed'}
     }
-    $checks=if($GateAOnly){@('gate_a_test')}elseif($GateBOnly){@('gate_b_test')}elseif($GateCOnly){@('gate_c_test')}elseif($GateDOnly){@('gate_d_test')}elseif($GateEOnly){@('gate_e_test')}else{@('gate_a_test','gate_b_test','gate_c_test','gate_d_test','gate_e_test','sound_editor_pcm_test','harmony_runtime_test','usb_musical_test','factory_runtime_test')}
+    $checks=if($GateAOnly){@('gate_a_test')}elseif($GateBOnly){@('gate_b_test')}elseif($GateCOnly){@('gate_c_test')}elseif($GateDOnly){@('gate_d_test')}elseif($GateEOnly){@('gate_e_test')}else{@('gate_a_test','gate_b_test','gate_c_test','gate_d_test','gate_e_test','sound_editor_pcm_test','harmony_runtime_test','usb_musical_test','factory_runtime_test','final_corrections_test')}
     foreach($test in $checks){
         & g++ @flags -Wno-error=misleading-indentation "smk-p4/tests/$test.cpp" smk-p4/components/amy_runtime/amy_runtime.cpp smk-p4/tests/heap_probe.cpp @objects '-Wl,--wrap=malloc' '-Wl,--wrap=calloc' '-Wl,--wrap=realloc' '-Wl,--wrap=free' -lm -o "build/editor011/$test.exe"
         if($LASTEXITCODE){throw "Regression compile failed: $test"}
