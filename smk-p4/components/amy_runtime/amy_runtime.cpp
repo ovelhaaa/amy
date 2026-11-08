@@ -123,11 +123,23 @@ void Runtime::silence() {
     for(auto& v:voices_) v=Voice{};
     for(auto& g:groups_) g=Group{};
     state_.active_notes=0;state_.last_count=0;state_.last_admitted=false;state_.last_result=0;
+#ifdef SMKP4_SOUND_EDITOR
+    if(started_ && state_.ready && state_.patch_state==PatchState::Ready && state_.edit.patch==state_.patch_id) updateModWheelFilter();
+#endif
 }
 void Runtime::note(unsigned slot,uint8_t velocity) {
     const auto& v=voices_[slot];
     auto e=amy_default_event(); e.synth=bank_*kVoices+slot+1;
     e.midi_note=v.pitch; e.velocity=velocity/127.0f; amy_add_event(&e);
+#ifdef SMKP4_SOUND_EDITOR
+    if(velocity && state_.edit.family==0 && edit_count_>=8) {
+        const float vel=velocity/127.0f;
+        for(unsigned op=0;op<6;++op) {
+            const unsigned o=edit_map_[slot][edit_ops_[op]];
+            if(o<kOscillators && synth[o]) synth[o]->velocity=vel;
+        }
+    }
+#endif
     if(velocity && v.usb) tune(slot);
 }
 void Runtime::tune(unsigned slot) {
@@ -136,10 +148,29 @@ void Runtime::tune(unsigned slot) {
     // AMY pitch_bend is global. Per-voice fractional note updates preserve
     // channel and Touch isolation, without retriggering velocity/envelopes.
     constexpr float tau=6.28318530718f;
-    const float vibrato=0.5f*(modulation_[v.channel]/127.0f)*
+    float vibrato=0.5f*(modulation_[v.channel]/127.0f)*
         std::sin(tau*5.0f*vibrato_frame_/kSampleRateHz);
+#ifdef SMKP4_SOUND_EDITOR
+    if(!state_.edit.compare && (state_.edit.available&edit::bit(edit::ModEnable))) {
+        const bool en=std::lround(state_.edit.applied[edit::ModEnable])==1;
+        const int src=int(std::lround(state_.edit.applied[edit::ModSource]));
+        const int dst=int(std::lround(state_.edit.applied[edit::ModDest]));
+        if(!en || src!=1 || dst!=1) vibrato=0.0f;
+        else {
+            const float amt=state_.edit.applied[edit::ModAmount]/100.0f;
+            const float rate=((state_.edit.mask&edit::bit(edit::LfoRate)) && (state_.edit.available&edit::bit(edit::LfoRate)))?
+                state_.edit.applied[edit::LfoRate]:5.0f;
+            const float s=std::sin(tau*rate*vibrato_frame_/kSampleRateHz);
+            const bool uni=std::lround(state_.edit.applied[edit::ModPolarity])==0;
+            vibrato=(modulation_[v.channel]/127.0f)*(uni?std::fabs(amt)*0.5f*(1.0f+s):amt*s);
+        }
+    }
+#endif
     e.midi_note=v.pitch+bend_[v.channel]*(2.0f/8192.0f)+vibrato;
     amy_add_event(&e);
+#ifdef SMKP4_SOUND_EDITOR
+    updateModWheelFilter();
+#endif
 }
 void Runtime::release(unsigned slot) {
     if(!voices_[slot].used) return;
@@ -196,6 +227,9 @@ void Runtime::cancelUsb() {
     for(unsigned i=0;i<kVoices;++i) if(voices_[i].used && voices_[i].usb) release(i);
     std::memset(sustain_,0,sizeof(sustain_));
     std::memset(bend_,0,sizeof(bend_)); std::memset(modulation_,0,sizeof(modulation_));
+#ifdef SMKP4_SOUND_EDITOR
+    if(started_ && state_.ready && state_.patch_state==PatchState::Ready && state_.edit.patch==state_.patch_id) updateModWheelFilter();
+#endif
 }
 void Runtime::applyUsb(uint32_t now_ms) {
     auto& q=usb_.commands;
@@ -237,6 +271,9 @@ void Runtime::applyUsb(uint32_t now_ms) {
             } else if(c.id==1) {
                 modulation_[c.channel]=c.value;
                 for(unsigned i=0;i<kVoices;++i) if(voices_[i].used && voices_[i].usb && voices_[i].channel==c.channel) tune(i);
+#ifdef SMKP4_SOUND_EDITOR
+                updateModWheelFilter();
+#endif
             }
         } else if(c.type==CommandType::Bend && c.id<16384) {
             bend_[c.channel]=static_cast<int16_t>(int(c.id)-8192);

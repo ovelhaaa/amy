@@ -38,7 +38,7 @@ static void submit(edit::Request r){assert(runtime.commands().edits.push(r));tic
 int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     assert(runtime.begin());patch(4);
     auto state=runtime.snapshot().edit;
-    std::printf("Juno available=%x cutoff=%g Q=%g attack=%g release=%g Runtime=%zu State=%zu\n",state.available,state.original[0],state.original[1],state.original[2],state.original[3],sizeof(runtime),sizeof(state));
+    std::printf("Juno available=%llx cutoff=%g Q=%g attack=%g release=%g Runtime=%zu State=%zu\n",static_cast<unsigned long long>(state.available),state.original[0],state.original[1],state.original[2],state.original[3],sizeof(runtime),sizeof(state));
     for(unsigned o=0;o<6;++o)std::printf("osc%u wave%u filter%u bp%u amp_eg%g\n",o,synth[o]->wave,synth[o]->filter_type,synth[o]->max_num_breakpoints[0],synth[o]->amp_coefs[COEF_EG0]);
     assert((state.available&15)==15);
     assert((state.available & ((1u<<edit::Decay)|(1u<<edit::Sustain))) == ((1u<<edit::Decay)|(1u<<edit::Sustain)));
@@ -76,7 +76,7 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     r=request();r.mask=1;r.values[0]=700;submit(r);assert(runtime.snapshot().last_group==group && runtime.snapshot().active_notes==3);
     const uint8_t chord_off[]={8,0x80,60,0};assert(runtime.usbInput().packet(chord_off,0));tick();assert(runtime.snapshot().active_notes==0);
     patch(135);assert(runtime.snapshot().edit.family==0);
-    state=runtime.snapshot().edit;std::printf("FM available=%x\n",state.available);
+    state=runtime.snapshot().edit;std::printf("FM available=%llx\n",static_cast<unsigned long long>(state.available));
     assert((state.available&0x3f0)==0x3f0);
     uint16_t source[8][6];float amps[8][6];
     for(unsigned v=0;v<8;++v){uint16_t voice;assert(instrument_get_num_voices(v+1,&voice)==1);auto* a=synth[voice_to_base_osc[voice]];

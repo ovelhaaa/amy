@@ -146,13 +146,13 @@ static std::vector<int16_t> heldEdit(unsigned param,bool change){
 }
 static void codecCapacityTest(){
     edit::Preset p;p.sequence=1;p.patch=31;p.family=1;std::strcpy(p.name,"MAX JUNO");unsigned count=0;
-    for(unsigned i=0;i<edit::Count;++i)if(i<edit::OpLevel0 || i>=edit::Decay){
-        p.mask|=1u<<i;++count;
+    for(unsigned i=0;i<=edit::Velocity;++i)if(i<edit::OpLevel0 || i>=edit::Decay){
+        p.mask|=edit::bit(i);++count;
         p.values[i]=i==edit::Cutoff?500:i==edit::Resonance?1:i==edit::Attack || i==edit::Release || i==edit::Decay?100:
             i==edit::Sustain?50:i==edit::FilterEnv?2:i==edit::FilterKeytrack?150:i==edit::PulseWidth?30:i==edit::Pan?-48:35;
     }
     assert(count==16);uint8_t bytes[edit::kV2RecordBytes];assert(edit::encodeV2(p,bytes));edit::Preset decoded;assert(edit::decodeV2(bytes,sizeof(bytes),decoded) && decoded.mask==p.mask);
-    for(unsigned i=0;i<edit::Count;++i)if(p.mask&(1u<<i))assert(decoded.values[i]==p.values[i]);
+    for(unsigned i=0;i<=edit::Velocity;++i)if(p.mask&edit::bit(i))assert(decoded.values[i]==p.values[i]);
     p.mask|=1u<<edit::OpLevel0;assert(!edit::encodeV2(p,bytes));
     p.patch=135;p.family=0;p.mask=1u<<edit::OscLevel;assert(!edit::encodeV2(p,bytes));
     std::puts("PASS V2 capacity: all 16 Juno fields roundtrip; cross-family masks rejected");

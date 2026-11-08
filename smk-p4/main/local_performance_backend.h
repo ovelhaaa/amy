@@ -97,10 +97,10 @@ public:
         return unsaved()?"EDITED / UNSAVED":edit_.dirty?"EDITED / SAVED":"FACTORY ORIGINAL";
     }
     bool editParameter(unsigned p,float value) override {
-        if(!ready_ || busy() || saving_ || edit_.compare || p>=edit::Count || !(edit_.available&(1u<<p)) || !edit::valid(p,value))return false;
+        if(!ready_ || busy() || saving_ || edit_.compare || p>=edit::Count || !(edit_.available&edit::bit(p)) || !edit::valid(p,value))return false;
         if(edit_pending_)++coalesced_;
         prepareEdit();desired_.values[p]=value;
-        if(value==edit_.original[p])desired_.mask&=~(1u<<p);else desired_.mask|=1u<<p;
+        if(value==edit_.original[p])desired_.mask&=~edit::bit(p);else desired_.mask|=edit::bit(p);
         desired_.request=newEditToken();edit_pending_=true;notice_="EDIT REQUESTED; WAIT OWNER";return true;
     }
     // 0 Compare,1 Revert,2 Save As,3 Recall. Overwrite/rename uses explicit Save As.
@@ -221,7 +221,7 @@ private:
         if(!edit_.dirty)return false;
         if(!saved_valid_ || saved_edit_.patch!=edit_.patch || saved_edit_.mask!=edit_.mask)return true;
         for(unsigned m=0;m<3;++m)if(saved_edit_.macros[m]!=edit_.macros[m])return true;
-        for(unsigned p=0;p<edit::Count;++p)if((edit_.mask&(1u<<p)) && saved_edit_.manual[p]!=edit_.manual[p])return true;
+        for(unsigned p=0;p<edit::Count;++p)if((edit_.mask&edit::bit(p)) && saved_edit_.manual[p]!=edit_.manual[p])return true;
         return false;
     }
     uint32_t newEditToken(){edit_error_=edit_timeout_=false;edit_token_=++edit_serial_;return edit_token_;}
