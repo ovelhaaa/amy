@@ -9,6 +9,8 @@ try {
     $flags=@('-std=c++17','-O2','-DAMY_NO_MINIAUDIO','-DAMY_SAMPLE_RATE=48000','-DAMY_BLOCK_SIZE=256','-DBLOCK_SIZE_BITS=8','-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1','-DAMY_EXCLUSIVE_FM_PHASE_RESTART=1','-DSMKP4_VOICES=8','-DSMKP4_SOUND_LIBRARY=1','-DSMKP4_UNIFIED_ENGINE=1')
     foreach($which in @('baseline','candidate')){
         $source=if($which -eq 'baseline'){$baselineRepo}else{$repo}
+        $objects=Get-ChildItem "$source/build/harmony09/*.c.o" | ForEach-Object FullName
+        if(!$objects){throw "Run run_harmony.ps1 in $source first"}
         $extra=@();if($which -eq 'baseline' -and $EditorBaseline){$extra+=@('-DSMKP4_HARMONY=1','-DSMKP4_SOUND_EDITOR=1')}
         if($which -eq 'candidate'){$extra+=@('-DSMKP4_HARMONY=1','-DSMKP4_SOUND_EDITOR=1')}
         $out="build/editor011/pcm_$which"
