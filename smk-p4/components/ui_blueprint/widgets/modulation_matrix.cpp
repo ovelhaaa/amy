@@ -1,5 +1,6 @@
 #include "ui_widgets.h"
 #include <cstdio>
+#include <initializer_list>
 
 namespace smk::p4::ui {
 
@@ -50,6 +51,9 @@ lv_obj_t* createModulationMatrixWidget(lv_obj_t* parent, IUiBackend& backend, Ui
         if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
         auto* ctx = static_cast<ModRowCtx*>(lv_event_get_user_data(e));
         if (!ctx || !ctx->backend || !ctx->nav) return;
+        // The real editor has no modulation-route command yet. The model-only
+        // preview must not imply that a route has been applied to the synth.
+        if (ctx->backend->hasSoundEditor()) return;
         ModSlot slot = ctx->backend->model().modSlot(ctx->slot);
         switch (ctx->field) {
             case 0: slot.enabled = !slot.enabled; break;
@@ -82,10 +86,15 @@ lv_obj_t* createModulationMatrixWidget(lv_obj_t* parent, IUiBackend& backend, Ui
 
         lv_obj_t* pol_btn = createActionButton(box, kPolNames[slot.polarity % 3], 586, ry, 106, row_h - 6, nullptr, nullptr);
 
-        const FeatureStatus st = (slot_idx == 0 && slot.source == 1 && slot.dest == 1)
+        const FeatureStatus st = (!backend.hasSoundEditor() && slot_idx == 0 && slot.source == 1 && slot.dest == 1)
                                      ? FeatureStatus::Available
                                      : FeatureStatus::Planned;
         createStatusBadge(box, st, 700, ry + 8);
+
+        if (backend.hasSoundEditor()) {
+            for (auto* button : {en_btn, src_btn, dst_btn, dec_btn, inc_btn, pol_btn})
+                if (button) lv_obj_add_state(button, LV_STATE_DISABLED);
+        }
 
         if (en_btn)  attachLvContext<ModRowCtx>(en_btn,  ModRowCtx{&backend, &nav, slot_idx, 0}, row_cb, LV_EVENT_CLICKED);
         if (src_btn) attachLvContext<ModRowCtx>(src_btn, ModRowCtx{&backend, &nav, slot_idx, 1}, row_cb, LV_EVENT_CLICKED);
