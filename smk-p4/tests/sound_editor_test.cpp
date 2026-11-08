@@ -25,6 +25,7 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     std::printf("Juno available=%x cutoff=%g Q=%g attack=%g release=%g Runtime=%zu State=%zu\n",state.available,state.original[0],state.original[1],state.original[2],state.original[3],sizeof(runtime),sizeof(state));
     for(unsigned o=0;o<6;++o)std::printf("osc%u wave%u filter%u bp%u amp_eg%g\n",o,synth[o]->wave,synth[o]->filter_type,synth[o]->max_num_breakpoints[0],synth[o]->amp_coefs[COEF_EG0]);
     assert((state.available&15)==15);
+    assert((state.available & ((1u<<edit::Decay)|(1u<<edit::Sustain))) == ((1u<<edit::Decay)|(1u<<edit::Sustain)));
     for(unsigned n=60;n<68;++n){const uint8_t packet[]={0x09,0x90,uint8_t(n),100};assert(runtime.usbInput().packet(packet,0));}
     tick();assert(runtime.snapshot().active_notes==8);
     uint32_t clocks[64]{};for(unsigned o=0;o<64;++o)if(synth[o])clocks[o]=synth[o]->note_on_clock;
@@ -34,7 +35,10 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     assert(runtime.snapshot().active_notes==8);
     r=request();r.mask|=14;r.values[1]=1.5;r.values[2]=750;r.values[3]=1200;submit(r);
     for(unsigned v=0;v<8;++v){uint16_t voice;assert(instrument_get_num_voices(v+1,&voice)==1);const unsigned o=voice_to_base_osc[voice];assert(synth[o]->breakpoint_times[0][0]==36000);assert(synth[o]->breakpoint_times[0][2]==57600);}
-    r=request();r.compare=true;submit(r);assert(runtime.snapshot().edit.compare && runtime.snapshot().edit.mask==15);
+    const auto other_decay=synth[1]->breakpoint_times[0][1];const auto other_sustain=synth[1]->breakpoint_values[0][1];
+    r=request();r.mask|=(1u<<edit::Decay)|(1u<<edit::Sustain);r.values[edit::Decay]=1500;r.values[edit::Sustain]=10;submit(r);
+    for(unsigned v=0;v<8;++v){uint16_t voice;assert(instrument_get_num_voices(v+1,&voice)==1);const unsigned o=voice_to_base_osc[voice];assert(synth[o]->breakpoint_times[0][1]==72000);assert(std::fabs(synth[o]->breakpoint_values[0][1]-0.1f)<0.0001f);assert(synth[o+1]->breakpoint_times[0][1]==other_decay);assert(synth[o+1]->breakpoint_values[0][1]==other_sustain);}
+    r=request();r.compare=true;submit(r);assert(runtime.snapshot().edit.compare && (runtime.snapshot().edit.mask&15)==15);
     r=request();r.compare=false;submit(r);assert(runtime.snapshot().edit.applied[0]==500);
     r=request();r.mask=0;submit(r);assert(!runtime.snapshot().edit.dirty);
     for(unsigned n=0;n<1000;++n){r=request();r.mask=1;r.values[0]=float(200+n%100);submit(r);}
@@ -68,7 +72,9 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     store.fail=true;assert(!store.save(0,preset));assert(store.load(0,restored) && restored.sequence==1);store.fail=false;
     store.torn=true;assert(!store.save(0,preset));assert(store.load(0,restored) && restored.sequence==1);store.torn=false;
     assert(!store.save(16,preset));
-    uint8_t encoded[128];assert(edit::encode(preset,encoded));encoded[4]=2;edit::put32(encoded+124,edit::crc(encoded,124));assert(!edit::decode(encoded,128,restored));
+    uint8_t encoded[128];assert(edit::encode(preset,encoded));
+    {auto ram_only=preset;ram_only.mask=1u<<edit::Decay;ram_only.values[edit::Decay]=100;assert(!edit::encode(ram_only,encoded));}
+    assert(edit::encode(preset,encoded));encoded[4]=2;edit::put32(encoded+124,edit::crc(encoded,124));assert(!edit::decode(encoded,128,restored));
     preset.patch=32;preset.family=1;preset.mask=1;preset.values[0]=1000;assert(!edit::encode(preset,encoded));
     LocalAmyPerformanceBackend backend(runtime.commands());backend.presetStore(&store);backend.publish(runtime.snapshot(),false,0,0);
     assert(backend.editAction(1));backend.service(21);tick();backend.publish(runtime.snapshot(),false,0,0);

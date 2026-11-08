@@ -30,10 +30,19 @@ void Runtime::captureEdit() {
         // Juno ROM uses three ADSR breakpoints. Do not grow or reinterpret others.
         if(n==3 && s->breakpoint_times[0] && s->breakpoint_values[0]){
             b.envelope=true;b.release_index=2;b.attack_samples=s->breakpoint_times[0][0];
+            b.decay_samples=s->breakpoint_times[0][1];b.sustain=s->breakpoint_values[0][1];
             b.release_samples=s->breakpoint_times[0][2];
         }
         for(unsigned v=1;v<kVoices;++v){
             const auto* t=synth[edit_map_[v][o]];
+            if(b.envelope) {
+                unsigned count=0;
+                if(t->breakpoint_times[0] && t->breakpoint_values[0])
+                    while(count<t->max_num_breakpoints[0] && AMY_IS_SET(t->breakpoint_times[0][count]))++count;
+                if(count!=3 || t->breakpoint_times[0][0]!=b.attack_samples ||
+                   t->breakpoint_times[0][1]!=b.decay_samples || t->breakpoint_times[0][2]!=b.release_samples ||
+                   t->breakpoint_values[0][1]!=b.sustain) b.envelope=false;
+            }
             if(t->wave!=s->wave || t->filter_logfreq_coefs[COEF_CONST]!=b.cutoff ||
                 t->resonance!=b.resonance || t->amp_coefs[COEF_CONST]!=b.amp || std::memcmp(&t->logratio,&b.ratio,sizeof(float))!=0)return;
         }
@@ -48,9 +57,14 @@ void Runtime::captureEdit() {
         if(filter>=0){out.original[edit::Cutoff]=freq_of_logfreq(edit_oscs_[filter].cutoff);
             out.original[edit::Resonance]=edit_oscs_[filter].resonance;
             out.available|=3;}
+        edit_env_=env<0?255:uint8_t(env);
         if(env>=0){out.original[edit::Attack]=edit_oscs_[env].attack_samples*1000.0f/kSampleRateHz;
             out.original[edit::Release]=edit_oscs_[env].release_samples*1000.0f/kSampleRateHz;
-            out.available|=(1u<<edit::Attack)|(1u<<edit::Release);}
+            out.original[edit::Decay]=edit_oscs_[env].decay_samples*1000.0f/kSampleRateHz;
+            out.original[edit::Sustain]=edit_oscs_[env].sustain*100.0f;
+            out.available|=(1u<<edit::Attack)|(1u<<edit::Release);
+            if(edit::valid(edit::Decay,out.original[edit::Decay]) && edit::valid(edit::Sustain,out.original[edit::Sustain]))
+                out.available|=(1u<<edit::Decay)|(1u<<edit::Sustain);}
     } else if(patch->family==library::SynthFamily::FM){
         const auto* algo=synth[edit_map_[0][0]];
         if(algo->wave!=ALGO || algo->algorithm>32)return;
@@ -125,8 +139,13 @@ void Runtime::applyEdit() {
                 if(touched&(1u<<edit::Resonance)){e.resonance=(effective&2)?value(edit::Resonance):b.resonance;emit=true;}
             }
             if(b.envelope && s->amp_coefs[COEF_EG0]!=0){
-                if(touched&((1u<<edit::Attack)|(1u<<edit::Release)))e.bp_is_set[0]=1;
+                if(touched&((1u<<edit::Attack)|(1u<<edit::Release)|(1u<<edit::Decay)|(1u<<edit::Sustain)))e.bp_is_set[0]=1;
                 if(touched&(1u<<edit::Attack)){e.eg0_times[0]=(effective&(1u<<edit::Attack))?uint32_t(value(edit::Attack)):b.attack_samples*1000/kSampleRateHz;emit=true;}
+                if(o==edit_env_ && (touched&(1u<<edit::Decay))){
+                    if(effective&(1u<<edit::Decay)){e.eg0_times[1]=uint32_t(value(edit::Decay));emit=true;}
+                    else {struct delta d{};d.osc=e.osc;d.param=static_cast<params>(BP_START+2);d.data.i=b.decay_samples;add_delta_to_queue(&d,&amy_global.delta_queue);}
+                }
+                if(o==edit_env_ && (touched&(1u<<edit::Sustain))){e.eg0_values[1]=(effective&(1u<<edit::Sustain))?value(edit::Sustain)/100.0f:b.sustain;emit=true;}
                 if(touched&(1u<<edit::Release)){e.eg0_times[b.release_index]=(effective&(1u<<edit::Release))?uint32_t(value(edit::Release)):b.release_samples*1000/kSampleRateHz;emit=true;}
             }
         }else{

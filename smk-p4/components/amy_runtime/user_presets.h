@@ -5,6 +5,8 @@
 #include <limits>
 namespace smk::p4::edit {
 constexpr unsigned kRecordBytes=128;
+// V1 layout reserves exactly 17 floats; new RAM-only IDs are rejected.
+constexpr unsigned kV1Count=17;
 constexpr uint32_t kRomCompatibility=0x3e76efb6; // Qualified ROM SHA256 prefix.
 static_assert(sizeof(float)==4 && std::numeric_limits<float>::is_iec559);
 struct Preset { uint32_t sequence=0;uint16_t patch=0;uint8_t family=0;char name[25]{};uint8_t macros[3]{64,64,64};uint32_t mask=0;float values[Count]{}; };
@@ -14,7 +16,7 @@ inline uint32_t get32(const uint8_t* p){uint32_t v=0;for(unsigned i=0;i<4;++i)v|
 inline bool valid(const Preset& p){
     const auto* patch=library::find(p.patch);
     if(!p.sequence || !patch || !(patch->qualification&library::SUPPORTED) || p.family!=uint8_t(patch->family) ||
-       p.mask>>Count || !p.name[0] || p.name[24])return false;
+       p.mask>>kV1Count || !p.name[0] || p.name[24])return false;
 
     for(unsigned i=0;i<24 && p.name[i];++i)if(uint8_t(p.name[i])<32 || uint8_t(p.name[i])>126)return false;
 
@@ -33,7 +35,7 @@ inline bool encode(const Preset& p,uint8_t* b){
     std::memset(b,0,kRecordBytes);put32(b,0x31314553);put32(b+4,1);put32(b+8,p.sequence);
     put32(b+12,p.patch);put32(b+16,p.family);put32(b+20,p.mask);std::memcpy(b+24,p.name,25);
     for(unsigned m=0;m<3;++m)b[49+m]=p.macros[m];
-    for(unsigned i=0;i<Count;++i){uint32_t bits=0;const float v=p.mask&(1u<<i)?p.values[i]:0;std::memcpy(&bits,&v,4);put32(b+52+4*i,bits);}
+    for(unsigned i=0;i<kV1Count;++i){uint32_t bits=0;const float v=p.mask&(1u<<i)?p.values[i]:0;std::memcpy(&bits,&v,4);put32(b+52+4*i,bits);}
     // ROM compatibility; future FX require a new format version.
     put32(b+120,kRomCompatibility);
     put32(b+124,crc(b,124));return true;
@@ -45,7 +47,7 @@ inline bool decode(const uint8_t* b,unsigned n,Preset& p){
     Preset candidate;candidate.sequence=get32(b+8);candidate.patch=uint16_t(get32(b+12));candidate.family=uint8_t(get32(b+16));
     for(unsigned m=0;m<3;++m)candidate.macros[m]=b[49+m];
     candidate.mask=get32(b+20);std::memcpy(candidate.name,b+24,25);
-    for(unsigned i=0;i<Count;++i){const uint32_t bits=get32(b+52+4*i);std::memcpy(&candidate.values[i],&bits,4);}
+    for(unsigned i=0;i<kV1Count;++i){const uint32_t bits=get32(b+52+4*i);std::memcpy(&candidate.values[i],&bits,4);}
     if(!valid(candidate))return false;
     p=candidate;return true;
 }
