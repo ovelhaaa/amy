@@ -92,3 +92,14 @@ host injeta erro de leitura e verifica que nenhuma cópia é alterada. Readback
 continua comparando todos os bytes. A API ainda não está ligada à NVS: além da
 admissão de capacidade, falta mapear seus erros e tratar versões futuras sem
 sobrescrever dados desconhecidos. Save de Decay/Sustain permanece desabilitado.
+
+## Adaptador de leitura NVS v2
+
+Foi adicionado `NvsVersionedPresets`, isolado do firmware de produção. Ele usa
+as chaves v1 existentes `sNN[a|b]` e chaves v2 separadas `vNN[a|b]`, mapeia
+`ESP_ERR_NVS_NOT_FOUND` para ausência e demais falhas para erro, e não apaga
+ou grava dados. `write` e `writeV2` retornam falha deliberadamente. O teste host
+usa uma API NVS simulada para conferir nomes, tamanho, ausência, erro, handle
+inválido e bloqueio de escrita; não é teste de Flash nem de queda de energia.
+A conexão do adaptador ao backend e a habilitação de Save dependem de política
+de capacidade/GC e testes de recuperação. O Gate F continua pendente.
