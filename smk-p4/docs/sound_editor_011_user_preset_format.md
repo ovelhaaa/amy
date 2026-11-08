@@ -39,3 +39,11 @@ Recall reads both banks and selects the valid highest sequence. CRC-corrupt,
 future-format and torn copies fall back to the other valid copy. Exhausting the
 sequence fails closed. Host tests simulate failed/torn writes and rebooted runtime;
 this does not certify a physical power cut or ESP-IDF NVS implementation in host.
+
+
+## 0.11.1 V2 integration
+
+The V1 layout above remains a read/rollback format. New Save operations use
+160-byte sparse V2 records in the separate `sound011v2` namespace. See
+[Gate B storage layout, capacity and recovery](editor_0111_gate_b.md#v2-saverecall).
+No automatic rewrite or erasure of V1 keys is performed.

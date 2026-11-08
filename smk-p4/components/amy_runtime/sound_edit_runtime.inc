@@ -24,7 +24,11 @@ void Runtime::captureEdit() {
     for(unsigned o=0;o<edit_count_;++o){
         const auto* s=synth[edit_map_[0][o]];auto& b=edit_oscs_[o];b=EditOsc{};
         b.wave=s->wave;b.cutoff=s->filter_logfreq_coefs[COEF_CONST];
-        b.filter_env=s->filter_logfreq_coefs[COEF_EG0];b.filter_note=s->filter_logfreq_coefs[COEF_NOTE];
+        // Gated Juno VCA moves its musical ADSR from EG0 to EG1.
+        b.filter_env_coef=(s->filter_logfreq_coefs[COEF_EG0]==0 &&
+            (s->filter_logfreq_coefs[COEF_EG1]!=0 ||
+             (s->breakpoint_times[1] && AMY_IS_SET(s->breakpoint_times[1][0]))))?COEF_EG1:COEF_EG0;
+        b.filter_env=s->filter_logfreq_coefs[b.filter_env_coef];b.filter_note=s->filter_logfreq_coefs[COEF_NOTE];
         b.resonance=s->resonance;b.amp=s->amp_coefs[COEF_CONST];b.ratio=s->logratio;
         unsigned n=0;
         if(s->breakpoint_times[0])while(n<s->max_num_breakpoints[0] && AMY_IS_SET(s->breakpoint_times[0][n]))++n;
@@ -45,7 +49,7 @@ void Runtime::captureEdit() {
                    t->breakpoint_values[0][1]!=b.sustain) b.envelope=false;
             }
             if(t->wave!=s->wave || t->filter_logfreq_coefs[COEF_CONST]!=b.cutoff ||
-                t->filter_logfreq_coefs[COEF_EG0]!=b.filter_env || t->filter_logfreq_coefs[COEF_NOTE]!=b.filter_note ||
+                t->filter_type!=s->filter_type || t->filter_logfreq_coefs[b.filter_env_coef]!=b.filter_env || t->filter_logfreq_coefs[COEF_NOTE]!=b.filter_note ||
                 t->resonance!=b.resonance || t->amp_coefs[COEF_CONST]!=b.amp || std::memcmp(&t->logratio,&b.ratio,sizeof(float))!=0)return;
         }
     }
@@ -143,7 +147,7 @@ void Runtime::applyEdit() {
                     }
                 }
                 if(touched&(1u<<edit::FilterEnv)){
-                    struct delta d{};d.osc=e.osc;d.param=static_cast<params>(int(FILTER_FREQ)+int(COEF_EG0));
+                    struct delta d{};d.osc=e.osc;d.param=static_cast<params>(int(FILTER_FREQ)+int(b.filter_env_coef));
                     d.data.f=(effective&(1u<<edit::FilterEnv))?value(edit::FilterEnv):b.filter_env;add_delta_to_queue(&d,&amy_global.delta_queue);
                 }
                 if(touched&(1u<<edit::FilterKeytrack)){

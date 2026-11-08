@@ -33,3 +33,12 @@ Before flashing: preserve the current full Flash including NVS, compare partitio
 bytes, reconfirm device/port, authorize the exact candidate hash. App-only flashing
 must retain NVS/bootloader/partitions. Rollback may require restoring0.10 app and,
 only if needed and explicitly authorized, the independently preserved full image.
+
+
+## 0.11.1 V2 admission
+
+The earlier admission formula describes the 0.11 baseline. The integrated V2
+store now retains the legacy namespace and budgets 16 additional dual banks,
+using measured free entries and the separate V2 namespace's occupied count.
+See [the current capacity policy and validation](editor_0111_gate_b.md#v2-saverecall).
+Read remains available when space admission rejects Save.

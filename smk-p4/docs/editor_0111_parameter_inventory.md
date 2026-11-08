@@ -5,14 +5,14 @@ Os estados abaixo referem-se ao caminho P4 real, não ao backend de demonstraç�
 
 | Parâmetro | Estado | Persistência | Evidência / limite |
 |---|---|---|---|
-| env.amp.decay_ms | Condicional, edição em RAM | Não; Save v1 rejeitado | AMY PCM IDs 0, 2, 3, 4, 31, 1/8 vozes |
-| env.amp.sustain | Condicional, edição em RAM | Não; Save v1 rejeitado | AMY PCM IDs 0, 2, 3, 4, 31, 1/8 vozes |
+| env.amp.decay_ms | Conditional Juno | V2 | PCM tests from Gate A increment; Gate A qualification still separate |
+| env.amp.sustain | Conditional Juno | V2 | PCM tests from Gate A increment; Gate A qualification still separate |
 | amp.vel_sens | Planejado | Não | Não há comando P4; registro corrigido |
-| filter.env_amount, filter.keytrack | Condicional em RAM | N�o | PCM AMY patch 4; Gate B incompleto |
+| filter.env_amount, filter.keytrack | Native EG0/EG1 and NOTE, Juno only | V2 | Gate B software suite: 4 patches, C2/C4/C6, 1/8 voices, Harmony, PCM restoration and Recall |
 | osc.*, amp.level, amp.pan | Planejado | Não | Gate C pendente |
 | fm.feedback, fm.op.attack, fm.op.decay, fm.op.vel_sens | Planejado | Não | Gate D pendente |
 | LFO e matriz de modulação | Planejado | Não | Gate E pendente; CC1 existente preservado |
 
 O inventário da 0.11 documenta os controles existentes em
 `sound_editor_011_parameter_matrix.md`. Números totais de parâmetros e de
-persistência v2 não foram apurados; nenhum campo novo é persistente.
+V2 now admits 21 engine IDs: 17 baseline and 4 new fields; physical persistence is MANUAL.

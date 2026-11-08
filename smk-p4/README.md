@@ -1,3 +1,9 @@
+# Sound Editor 0.11.1 - Gate B
+
+Native Juno filter envelope/keytrack, eight-voice Harmony and V2 User Preset
+Save/Recall are integrated. See [Gate B evidence and limitations](docs/editor_0111_gate_b.md).
+Other 0.11.1 gates remain open. Software builds do not authorize flashing.
+
 # Live Sound Editor0.11 — candidato experimental
 
 Perfil isolado `guition-editor-8` / `guition-editor-8-bench`: edição Juno de

@@ -50,7 +50,7 @@ private:
         float cutoff=0,resonance=0,amp=0,ratio=0,filter_env=0,filter_note=0;
         uint32_t attack_samples=0,decay_samples=0,release_samples=0;
         float sustain=0;
-        uint8_t release_index=0;
+        uint8_t release_index=0,filter_env_coef=0;
         bool envelope=false;
     } edit_oscs_[8]{};
     uint16_t edit_map_[kVoices][8]{};

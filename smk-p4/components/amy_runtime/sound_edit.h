@@ -24,7 +24,7 @@ inline bool valid(unsigned p,float v) {
     if(p==Decay)return v>=1 && v<=30000;
     if(p>=OpLevel0 && p<=OpLevel5)return v>=0 && v<=100;
     if(p>=OpRatio0 && p<=OpRatio5)return v>=0.5f && v<=16;
-    if(p==FilterEnv)return v>=-4 && v<=4;
+    if(p==FilterEnv)return v>=-11 && v<=11;
     if(p==FilterKeytrack)return v>=0 && v<=200;
     if(p==Sustain)return v>=0 && v<=100;
     return p==Depth && v>=0 && v<=1;

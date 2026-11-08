@@ -1,3 +1,13 @@
+# SMK-P4 0.11.1 - Gate B software qualification
+
+Gate B software acceptance: PASS. Current Gate B implementation and acceptance evidence are documented in
+[editor_0111_gate_b.md](editor_0111_gate_b.md). Filter controls now use native
+EG0/EG1 and NOTE coefficients, with V2 Save/Recall integrated through the quiet
+barrier. The chronological notes below describe earlier, superseded states.
+The complete 0.11.1 release is still unfinished (other gates remain open).
+
+---
+
 # 0.11.1 investigation — incomplete
 
 Baseline: dd491f039561771385b2672c86ca3a315adca8bf. This is not a 0.11.1 release report and no new synthesis parameter is qualified.

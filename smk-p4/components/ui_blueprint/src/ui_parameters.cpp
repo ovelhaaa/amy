@@ -199,7 +199,7 @@ const ParameterDescriptor kDescriptors[] = {
      ParameterScale::Linear, "Synthesis", "FILTER", nullptr, 0, kStdCtrl,
      FeatureStatus::Planned, nullptr, -1, "smk-s3/components/synth/include/patch_types.h",
      "Filter keyboard pitch tracking percentage"},
-    {"filter.env_amount", "filter", "ENV AMOUNT", ParameterValueType::Float, -4.0f, 4.0f, 1.5f, 0.1f, "oct",
+    {"filter.env_amount", "filter", "ENV AMOUNT", ParameterValueType::Float, -11.0f, 11.0f, 1.5f, 0.1f, "oct",
      ParameterScale::Linear, "Synthesis", "FILTER", nullptr, 0, kModTargetCtrl,
      FeatureStatus::Planned, nullptr, -1, "smk-s3/components/synth/include/patch_types.h",
      "Bipolar filter envelope depth in octaves"},
