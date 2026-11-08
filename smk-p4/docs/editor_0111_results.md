@@ -118,3 +118,11 @@ com uma e oito vozes, zero clipping nos cenários testados e valores nativos nas
 oito vozes. Ainda faltam C2/C4/C6, Harmony para esses controles, cobertura de
 outras topologias e Save/Recall. Não há qualificação de hardware ou deadlines.
 Gate B permanece incompleto. O núcleo AMY não foi alterado.
+
+## Cobertura de oitavas do filtro
+
+PASS `./smk-p4/tests/run_sound_editor.ps1`: cenÃ¡rios adicionais com AMY real
+no patch 4 em notas MIDI 36, 60 e 84 (C2/C4/C6). Envelope amount e keytrack
+alteram PCM; Compare de envelope amount e Revert de keytrack restauram PCM
+byte a byte em nova nota. Cobertura adicionada com uma voz; oito vozes continuam
+cobertas em C4. PersistÃªncia, hardware e Harmony especÃ­ficos seguem pendentes.

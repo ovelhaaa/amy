@@ -8,7 +8,7 @@ extern "C" {
 void my_srand48(uint32_t);void probe_realtime(bool);}
 using namespace smk::p4;
 static amy::Runtime runtime;
-static std::vector<int16_t> run(unsigned patch,unsigned control,bool restore=false,unsigned voices=1){
+static std::vector<int16_t> run(unsigned patch,unsigned control,bool restore=false,unsigned voices=1,unsigned note=60){
     assert(runtime.begin());assert(runtime.commands().push({amy::CommandType::Patch,uint16_t(patch)}));runtime.apply(0);runtime.loadPendingPatch();
     if((control==10 || control==11) && !(runtime.snapshot().edit.available & (1u<<(control==10?edit::Decay:edit::Sustain)))) {
         std::printf("PCM patch=%u control=%u unavailable by topology/range\n",patch,control);runtime.end();return {};
@@ -20,7 +20,7 @@ static std::vector<int16_t> run(unsigned patch,unsigned control,bool restore=fal
         assert(runtime.commands().edits.push(r));runtime.apply(0);
     }
     my_srand48(123);
-    for(unsigned i=0;i<voices;++i){const uint8_t p[]={9,0x90,uint8_t(60+i),100};assert(runtime.usbInput().packet(p,0));}
+    for(unsigned i=0;i<voices;++i){const uint8_t p[]={9,0x90,uint8_t(note+i),100};assert(runtime.usbInput().packet(p,0));}
     runtime.apply(0);std::vector<int16_t> pcm;pcm.reserve(128*512);
     for(unsigned block=0;block<128;++block){
         if(block==32 && control && !restore){
@@ -29,8 +29,8 @@ static std::vector<int16_t> run(unsigned patch,unsigned control,bool restore=fal
             r.mask=1u<<parameter;r.values[parameter]=control==1?500:control==2?1.8f:control==3?750:control==4?1200:control==5?0.5f:control==6?50:control==7?2:control==10?1500:control==11?10:control==12?3:200;
             assert(runtime.commands().edits.push(r));
         }
-        if(block==96){for(unsigned i=0;i<voices;++i){const uint8_t p[]={9,0x90,uint8_t(60+i),100};assert(runtime.usbInput().packet(p,0));}}
-        if(block==64 || block==127){for(unsigned i=0;i<voices;++i){const uint8_t p[]={8,0x80,uint8_t(60+i),0};assert(runtime.usbInput().packet(p,0));}}
+        if(block==96){for(unsigned i=0;i<voices;++i){const uint8_t p[]={9,0x90,uint8_t(note+i),100};assert(runtime.usbInput().packet(p,0));}}
+        if(block==64 || block==127){for(unsigned i=0;i<voices;++i){const uint8_t p[]={8,0x80,uint8_t(note+i),0};assert(runtime.usbInput().packet(p,0));}}
         probe_realtime(true);runtime.apply(block*5);assert(runtime.snapshot().edit.errors==0);const int16_t* out=runtime.render();probe_realtime(false);assert(out);pcm.insert(pcm.end(),out,out+512);
     }
     assert(!runtime.snapshot().active_notes);std::printf("PCM patch=%u control=%u voices=%u clipped=%u\n",patch,control,voices,runtime.snapshot().clipped);
@@ -48,5 +48,13 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
         auto fm=run(135,0,false,voices);
         for(unsigned control:{5u,6u,7u})assert(run(135,control,false,voices)!=fm);
     }
+    for(unsigned note:{36u,60u,84u}){
+        auto baseline=run(4,0,false,1,note);
+        for(unsigned control:{12u,13u}){
+            assert(run(4,control,false,1,note)!=baseline);
+            assert(run(4,control,true,1,note)==baseline);
+        }
+    }
+    std::puts("PASS C2/C4/C6 filter PCM change and Compare/Revert restoration");
     std::puts("PASS real AMY PCM changes for compatible Juno decay/sustain and existing controls; Compare/Revert byte-identical fresh note;1/8 voices");
 }
