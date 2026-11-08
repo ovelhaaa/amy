@@ -52,6 +52,13 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     r=request();r.mask|=14;r.values[1]=1.5;r.values[2]=750;r.values[3]=1200;submit(r);
     for(unsigned v=0;v<8;++v){uint16_t voice;assert(instrument_get_num_voices(v+1,&voice)==1);const unsigned o=voice_to_base_osc[voice];assert(synth[o]->breakpoint_times[0][0]==36000);assert(synth[o]->breakpoint_times[0][2]==57600);}
     const auto other_decay=synth[1]->breakpoint_times[0][1];const auto other_sustain=synth[1]->breakpoint_values[0][1];
+    const auto orig_filter_env=synth[0]->filter_logfreq_coefs[COEF_EG0];
+    const auto orig_filter_note=synth[0]->filter_logfreq_coefs[COEF_NOTE];
+    r=request();r.mask=(1u<<edit::FilterEnv)|(1u<<edit::FilterKeytrack);r.values[edit::FilterEnv]=3;r.values[edit::FilterKeytrack]=200;submit(r);
+    assert(runtime.snapshot().edit.errors==0);
+    for(unsigned v=0;v<8;++v){uint16_t voice;assert(instrument_get_num_voices(v+1,&voice)==1);const auto* osc=synth[voice_to_base_osc[voice]];assert(osc->filter_logfreq_coefs[COEF_EG0]==3);assert(osc->filter_logfreq_coefs[COEF_NOTE]==2);}
+    r=request();r.mask=0;submit(r);assert(synth[0]->filter_logfreq_coefs[COEF_EG0]==orig_filter_env && synth[0]->filter_logfreq_coefs[COEF_NOTE]==orig_filter_note);
+    r=request();r.mask=15;r.values[0]=500;r.values[1]=1.5f;r.values[2]=750;r.values[3]=1200;submit(r);
     r=request();r.mask|=(1u<<edit::Decay)|(1u<<edit::Sustain);r.values[edit::Decay]=1500;r.values[edit::Sustain]=10;submit(r);
     for(unsigned v=0;v<8;++v){uint16_t voice;assert(instrument_get_num_voices(v+1,&voice)==1);const unsigned o=voice_to_base_osc[voice];assert(synth[o]->breakpoint_times[0][1]==72000);assert(std::fabs(synth[o]->breakpoint_values[0][1]-0.1f)<0.0001f);assert(synth[o+1]->breakpoint_times[0][1]==other_decay);assert(synth[o+1]->breakpoint_values[0][1]==other_sustain);}
     r=request();r.compare=true;submit(r);assert(runtime.snapshot().edit.compare && (runtime.snapshot().edit.mask&15)==15);

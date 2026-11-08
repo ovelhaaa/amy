@@ -48,6 +48,8 @@ void UiBlueprintPerformanceAdapter::syncHarmony(harmony::Config c) {
 int UiBlueprintPerformanceAdapter::editIndex(const char* id) const {
     if(eq(id,"filter.cutoff_hz"))return edit::Cutoff;
     if(eq(id,"filter.resonance"))return edit::Resonance;
+    if(eq(id,"filter.env_amount"))return edit::FilterEnv;
+    if(eq(id,"filter.keytrack"))return edit::FilterKeytrack;
     if(eq(id,"env.amp.attack_ms"))return edit::Attack;
     if(eq(id,"env.amp.release_ms"))return edit::Release;
     if(eq(id,"env.amp.decay_ms"))return edit::Decay;
@@ -245,7 +247,7 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
                 edit_requested_=false;
                 result(edit->errors==edit_errors_ && !backend_.editError()?UiCommandState::Confirmed:UiCommandState::Rejected,edit_id_,backend_.editNotice());
             }
-            const char* ids[]={"filter.cutoff_hz","filter.resonance","env.amp.attack_ms","env.amp.release_ms","env.amp.decay_ms","env.amp.sustain","fm.depth","fm.op.level","fm.op.ratio"};
+            const char* ids[]={"filter.cutoff_hz","filter.resonance","filter.env_amount","filter.keytrack","env.amp.attack_ms","env.amp.release_ms","env.amp.decay_ms","env.amp.sustain","fm.depth","fm.op.level","fm.op.ratio"};
             for(const char* id:ids){const int p=editIndex(id);if(edit->available&(1u<<p))model_.setFloat(id,edit->applied[p]);}
             model_.setInt("fm.selected_op",int(selected_op_)+1);
             model_.setInt("perf.macro.2",edit->macros[0]);model_.setInt("perf.macro.5",edit->macros[1]);model_.setInt("perf.macro.6",edit->macros[2]);

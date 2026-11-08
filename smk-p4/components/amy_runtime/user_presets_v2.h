@@ -11,6 +11,7 @@ inline bool encodeV2(const Preset& p,uint8_t* b){
     for(unsigned m=0;m<3;++m)b[49+m]=p.macros[m];
     unsigned pos=52;
     for(unsigned i=0;i<Count;++i)if(p.mask&(1u<<i)){
+        if(pos+5>152)return false;
         b[pos++]=uint8_t(i);uint32_t bits;std::memcpy(&bits,&p.values[i],4);
         put32(b+pos,bits);pos+=4;
     }
@@ -26,7 +27,7 @@ inline bool decodeV2(const uint8_t* b,unsigned n,Preset& out){
     if(p.mask>>Count)return false;
     unsigned pos=52;
     for(unsigned i=0;i<Count;++i)if(p.mask&(1u<<i)){
-        if(b[pos++]!=i)return false;
+        if(pos+5>152 || b[pos++]!=i)return false;
         const uint32_t bits=get32(b+pos);pos+=4;std::memcpy(&p.values[i],&bits,4);
     }
     if(!validPreset(p,false))return false;

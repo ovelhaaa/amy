@@ -103,3 +103,18 @@ usa uma API NVS simulada para conferir nomes, tamanho, ausÃªncia, erro, handle
 invÃ¡lido e bloqueio de escrita; nÃ£o Ã© teste de Flash nem de queda de energia.
 A conexÃ£o do adaptador ao backend e a habilitaÃ§Ã£o de Save dependem de polÃ­tica
 de capacidade/GC e testes de recuperaÃ§Ã£o. O Gate F continua pendente.
+
+
+## Filtro Juno em RAM
+
+`filter.env_amount` e `filter.keytrack` alteram respectivamente os coeficientes
+nativos EG0 e NOTE de filtro do AMY, nas oito vozes. Os coeficientes restantes
+são preservados, e Compare/Revert restauram os valores nativos capturados. A
+disponibilidade depende de filtro e faixa compatível. Os IDs novos não são
+persistentes: o encoder v1 os rejeita, e o codec v2 ainda não os admite.
+
+O teste host com AMY real no patch 4 verificou alteração PCM nos dois controles
+com uma e oito vozes, zero clipping nos cenários testados e valores nativos nas
+oito vozes. Ainda faltam C2/C4/C6, Harmony para esses controles, cobertura de
+outras topologias e Save/Recall. Não há qualificação de hardware ou deadlines.
+Gate B permanece incompleto. O núcleo AMY não foi alterado.

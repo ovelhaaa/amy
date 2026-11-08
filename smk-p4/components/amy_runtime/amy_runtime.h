@@ -47,7 +47,7 @@ private:
     void applyEdit();
     struct EditOsc {
         uint16_t wave=0;
-        float cutoff=0,resonance=0,amp=0,ratio=0;
+        float cutoff=0,resonance=0,amp=0,ratio=0,filter_env=0,filter_note=0;
         uint32_t attack_samples=0,decay_samples=0,release_samples=0;
         float sustain=0;
         uint8_t release_index=0;

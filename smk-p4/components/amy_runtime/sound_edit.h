@@ -5,7 +5,7 @@
 namespace smk::p4::edit {
 // Stable persisted IDs. Operator IDs follow materialized algo_source order.
 enum Param : uint8_t { Cutoff, Resonance, Attack, Release, OpLevel0, OpLevel5=9,
-    OpRatio0=10, OpRatio5=15, Depth=16, Decay=17, Sustain=18, Count=19 };
+    OpRatio0=10, OpRatio5=15, Depth=16, Decay=17, Sustain=18, FilterEnv=19, FilterKeytrack=20, Count=21 };
 constexpr unsigned kSlots=16;
 struct State {
     uint16_t patch=128;
@@ -24,6 +24,8 @@ inline bool valid(unsigned p,float v) {
     if(p==Decay)return v>=1 && v<=30000;
     if(p>=OpLevel0 && p<=OpLevel5)return v>=0 && v<=100;
     if(p>=OpRatio0 && p<=OpRatio5)return v>=0.5f && v<=16;
+    if(p==FilterEnv)return v>=-4 && v<=4;
+    if(p==FilterKeytrack)return v>=0 && v<=200;
     if(p==Sustain)return v>=0 && v<=100;
     return p==Depth && v>=0 && v<=1;
 }

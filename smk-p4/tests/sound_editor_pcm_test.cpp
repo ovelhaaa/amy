@@ -14,9 +14,9 @@ static std::vector<int16_t> run(unsigned patch,unsigned control,bool restore=fal
         std::printf("PCM patch=%u control=%u unavailable by topology/range\n",patch,control);runtime.end();return {};
     }
     if(control && restore){
-        edit::Request r;r.patch=patch;r.generation=runtime.snapshot().generation;r.request=1;const unsigned param=control==10?edit::Decay:control==11?edit::Sustain:edit::Cutoff;r.mask=1u<<param;r.values[param]=control==10?1500:control==11?10:500;
+        edit::Request r;r.patch=patch;r.generation=runtime.snapshot().generation;r.request=1;const unsigned param=control==10?edit::Decay:control==11?edit::Sustain:control==12?edit::FilterEnv:control==13?edit::FilterKeytrack:edit::Cutoff;r.mask=1u<<param;r.values[param]=control==10?1500:control==11?10:control==12?3:control==13?200:500;
         assert(runtime.commands().edits.push(r));runtime.apply(0);assert(runtime.snapshot().edit.errors==0);r.request=2;r.compare=restore;
-        if(control==9 || control==11){r.compare=false;r.mask=0;}
+        if(control==9 || control==11 || control==13){r.compare=false;r.mask=0;}
         assert(runtime.commands().edits.push(r));runtime.apply(0);
     }
     my_srand48(123);
@@ -25,8 +25,8 @@ static std::vector<int16_t> run(unsigned patch,unsigned control,bool restore=fal
     for(unsigned block=0;block<128;++block){
         if(block==32 && control && !restore){
             edit::Request r;r.patch=patch;r.generation=runtime.snapshot().generation;r.request=1;
-            const unsigned parameter=control==1?edit::Cutoff:control==2?edit::Resonance:control==3?edit::Attack:control==4?edit::Release:control==5?edit::Depth:control==6?edit::OpLevel0+1:control==7?edit::OpRatio0+1:control==10?edit::Decay:edit::Sustain;
-            r.mask=1u<<parameter;r.values[parameter]=control==1?500:control==2?1.8f:control==3?750:control==4?1200:control==5?0.5f:control==6?50:control==7?2:control==10?1500:10;
+            const unsigned parameter=control==1?edit::Cutoff:control==2?edit::Resonance:control==3?edit::Attack:control==4?edit::Release:control==5?edit::Depth:control==6?edit::OpLevel0+1:control==7?edit::OpRatio0+1:control==10?edit::Decay:control==11?edit::Sustain:control==12?edit::FilterEnv:edit::FilterKeytrack;
+            r.mask=1u<<parameter;r.values[parameter]=control==1?500:control==2?1.8f:control==3?750:control==4?1200:control==5?0.5f:control==6?50:control==7?2:control==10?1500:control==11?10:control==12?3:200;
             assert(runtime.commands().edits.push(r));
         }
         if(block==96){for(unsigned i=0;i<voices;++i){const uint8_t p[]={9,0x90,uint8_t(60+i),100};assert(runtime.usbInput().packet(p,0));}}
@@ -40,9 +40,10 @@ static std::vector<int16_t> run(unsigned patch,unsigned control,bool restore=fal
 int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     for(unsigned voices:{1u,8u}){
         auto original=run(4,0,false,voices);
-        for(unsigned control:{1u,2u,3u,4u,10u,11u})assert(run(4,control,false,voices)!=original);
+        for(unsigned control:{1u,2u,3u,4u,10u,11u,12u,13u})assert(run(4,control,false,voices)!=original);
         assert(run(4,8,true,voices)==original);assert(run(4,9,true,voices)==original);
         assert(run(4,10,true,voices)==original);assert(run(4,11,true,voices)==original);
+        assert(run(4,12,true,voices)==original);assert(run(4,13,true,voices)==original);
         for(unsigned patch:{0u,1u,2u,3u,8u,31u}){auto base=run(patch,0,false,voices);for(unsigned control:{10u,11u}){auto changed=run(patch,control,false,voices);if(!changed.empty())assert(changed!=base);}}
         auto fm=run(135,0,false,voices);
         for(unsigned control:{5u,6u,7u})assert(run(135,control,false,voices)!=fm);
