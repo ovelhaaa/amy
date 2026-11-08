@@ -22,7 +22,7 @@ inline bool validPreset(const Preset& p,bool v1){
 
     for(unsigned m=0;m<3;++m)if(p.macros[m]>127)return false;
     if(p.family==0 && (p.macros[1]!=64 || p.macros[2]!=64))return false;
-    const uint32_t allowed=p.family==1?(15u | (v1?0u:((1u<<Decay)|(1u<<Sustain)))):(((1u<<kV1Count)-1)&~15u);
+    const uint32_t allowed=p.family==1?(15u | (v1?0u:((1u<<Decay)|(1u<<Sustain)|(1u<<FilterEnv)|(1u<<FilterKeytrack)))):(((1u<<kV1Count)-1)&~15u);
     if(p.mask&~allowed)return false;
 
     for(unsigned i=0;i<Count;++i)if((p.mask&(1u<<i)) && !valid(i,p.values[i]))return false;
@@ -58,6 +58,7 @@ public:
     virtual ~PresetStore()=default;
     virtual bool read(unsigned slot,unsigned bank,uint8_t* data,unsigned& length)=0;
     virtual bool write(unsigned slot,unsigned bank,const uint8_t* data,unsigned length)=0;
+    virtual bool accepts(const Preset& p) const {return valid(p);}
     virtual bool load(unsigned slot,Preset& out){
         if(slot>=kSlots)return false;
         Preset a,b;const bool av=readPreset(slot,0,a),bv=readPreset(slot,1,b);

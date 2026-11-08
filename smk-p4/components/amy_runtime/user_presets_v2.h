@@ -1,7 +1,7 @@
 #pragma once
 #include "user_presets.h"
 namespace smk::p4::edit {
-// Codec only: storage admission and non-destructive separate keys are pending.
+// V2 sparse codec; V1 decoding and keys remain unchanged.
 constexpr unsigned kV2RecordBytes=160;
 inline bool encodeV2(const Preset& p,uint8_t* b){
     if(!validPreset(p,false))return false;
@@ -39,6 +39,7 @@ class VersionedPresetStore : public PresetStore {
 public:
     virtual BankRead readVersioned(unsigned version,unsigned slot,unsigned bank,uint8_t* data,unsigned& length)=0;
     virtual bool writeV2(unsigned slot,unsigned bank,const uint8_t* data,unsigned length)=0;
+    bool accepts(const Preset& p) const override {return validPreset(p,false);}
     bool load(unsigned slot,Preset& out) override {
         Scan scan{};if(!scanSlot(slot,scan) || !scan.found)return false;
         out=scan.latest;return true;

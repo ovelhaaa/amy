@@ -1,15 +1,23 @@
 #include "ui_blueprint_performance_adapter.h"
 #include "local_performance_backend.h"
+#include "user_presets_v2.h"
 #include "../ui-preview/preview_harness.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 using namespace smk::p4;
 using namespace smk::p4::ui;
-struct MemoryStore:edit::PresetStore {
-    uint8_t bytes[16][2][128]{};bool present[16][2]{};bool fail=false;
-    bool read(unsigned s,unsigned b,uint8_t* p,unsigned& n) override {if(!present[s][b] || n<128)return false;std::memcpy(p,bytes[s][b],128);n=128;return true;}
-    bool write(unsigned s,unsigned b,const uint8_t* p,unsigned n) override {if(fail)return false;assert(n==128);std::memcpy(bytes[s][b],p,n);present[s][b]=true;return true;}
+struct MemoryStore:edit::VersionedPresetStore {
+    uint8_t bytes[16][2][160]{};bool present[16][2]{};bool fail=false;
+    bool read(unsigned,unsigned,uint8_t*,unsigned&) override {return false;}
+    bool write(unsigned,unsigned,const uint8_t*,unsigned) override {return false;}
+    edit::BankRead readVersioned(unsigned version,unsigned s,unsigned b,uint8_t* p,unsigned& n) override {
+        if(version==1 || !present[s][b])return edit::BankRead::Missing;
+        if(n<160)return edit::BankRead::Error;
+        std::memcpy(p,bytes[s][b],160);n=160;return edit::BankRead::Present;
+    }
+    bool writeV2(unsigned s,unsigned b,const uint8_t* p,unsigned n) override {if(fail)return false;assert(n==160);std::memcpy(bytes[s][b],p,n);present[s][b]=true;return true;}
 };
 static lv_obj_t* button(lv_obj_t* root,const char* text){
     for(unsigned i=0;i<lv_obj_get_child_count(root);++i){auto* child=lv_obj_get_child(root,i);
@@ -31,6 +39,12 @@ int main(){
     assert(a.requestParameterFloat("filter.cutoff_hz",1000).state==UiCommandState::Requested);
     assert(a.model().getFloat("filter.cutoff_hz")!=1000);apply();
     assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getFloat("filter.cutoff_hz")==1000);
+    for(const char* id:{"filter.env_amount","filter.keytrack"}){
+        assert(a.parameterStatus(id)==FeatureStatus::Available);
+        const float value=std::strcmp(id,"filter.env_amount")==0?3.0f:150.0f;
+        assert(a.requestParameterFloat(id,value).state==UiCommandState::Requested);apply();
+        assert(a.model().getFloat(id)==value && a.lastCommandState()==UiCommandState::Confirmed);
+    }
     assert(!a.requestSelectPatch(135).accepted()); // no silent loss
     assert(a.requestParameterInt("perf.macro.2",32).accepted());apply();assert(a.model().getFloat("filter.cutoff_hz")==500);
     assert(a.requestParameterInt("perf.macro.2",64).accepted());apply();assert(a.model().getFloat("filter.cutoff_hz")==1000);
@@ -47,6 +61,7 @@ int main(){
     assert(a.requestSelectPatch(135).accepted());apply();
     assert(a.requestParameterInt("fm.selected_op",1).accepted());
     assert(a.parameterStatus("filter.cutoff_hz")==FeatureStatus::Unavailable);
+    assert(a.parameterStatus("filter.env_amount")==FeatureStatus::Unavailable && a.parameterStatus("filter.keytrack")==FeatureStatus::Unavailable);
     assert(a.requestParameterFloat("fm.depth",0.7f).accepted());apply();assert(r.snapshot().edit.applied[edit::Depth]==0.7f);
     assert(a.requestSoundAction(1).accepted());apply();
     assert(a.requestSoundAction(3,0).accepted());apply();apply();assert(r.snapshot().patch_id==4 && r.snapshot().edit.applied[edit::Cutoff]==1000);
@@ -54,6 +69,7 @@ int main(){
     app.shutdown();r.end();assert(r.begin());LocalAmyPerformanceBackend reboot(r.commands());reboot.presetStore(&store);
     reboot.publish(r.snapshot(),false,0,0);assert(reboot.editAction(3,0));r.apply(0);r.loadPendingPatch();reboot.publish(r.snapshot(),false,0,0);reboot.service(25);r.apply(1);reboot.publish(r.snapshot(),false,0,0);
     assert(r.snapshot().edit.applied[0]==1000 && r.snapshot().edit.user_slot==0);
+    assert(r.snapshot().edit.applied[edit::FilterEnv]==3 && r.snapshot().edit.applied[edit::FilterKeytrack]==150);
     UiBlueprintPerformanceAdapter next(reboot);next.service(preview::g_sim_tick_ms+=25);UiBlueprint ui(next);assert(ui.begin());
     for(unsigned tab=0;tab<7;++tab){assert(ui.navigation().navigateTo(ScreenId::SoundEditor,uint8_t(tab)));preview::pumpFrame(ui);}
     assert(ui.navigation().navigateTo(ScreenId::SoundEditor,2));preview::pumpFrame(ui);

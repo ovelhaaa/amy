@@ -116,7 +116,7 @@ public:
             std::snprintf(save_preset_.name,sizeof(save_preset_.name),"%s",name);save_preset_.mask=edit_.mask;
             for(unsigned m=0;m<3;++m)save_preset_.macros[m]=edit_.macros[m];
             for(unsigned p=0;p<edit::Count;++p)save_preset_.values[p]=edit_.manual[p];
-            if(!edit::valid(save_preset_))return false;
+            if(!store_->accepts(save_preset_))return false;
             save_slot_=slot;saving_=true;save_requested_ms_=last_service_ms_;notice_="SAVE REQUESTED; QUIET BARRIER";
             commands_.storage_requested.store(true,std::memory_order_release);return true;
         }
