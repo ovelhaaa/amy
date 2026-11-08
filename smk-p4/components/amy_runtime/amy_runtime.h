@@ -2,6 +2,7 @@
 #include "usb_input.h"
 #include "output_context.h"
 #include "harmony.h"
+#include "juno_components.h"
 namespace smk::p4::amy {
 enum class PatchState : uint8_t { Ready, Requested, Loading, Verifying, Failed };
 struct Snapshot {
@@ -49,13 +50,15 @@ private:
         uint16_t wave=0;
         float cutoff=0,resonance=0,amp=0,ratio=0,filter_env=0,filter_note=0;
         uint32_t attack_samples=0,decay_samples=0,release_samples=0;
-        float sustain=0;
+        float sustain=0,freq=0,duty=0,pan=0,velocity=0;
         uint8_t release_index=0,filter_env_coef=0;
         bool envelope=false;
     } edit_oscs_[8]{};
     uint16_t edit_map_[kVoices][8]{};
     uint8_t edit_count_=0,edit_ops_[6]{},edit_env_=255;
     bool edit_modulators_[6]{};
+    edit::JunoComponents edit_components_;
+    float edit_instrument_levels_[kVoices]{};
 #endif
     void silence();
     void publishOutput(OutputReason reason) { commands_.output_context.store(outputContext(state_.generation,reason,state_.active_notes!=0),std::memory_order_release); }

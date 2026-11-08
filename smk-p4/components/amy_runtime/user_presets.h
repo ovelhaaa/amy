@@ -5,7 +5,7 @@
 #include <limits>
 namespace smk::p4::edit {
 constexpr unsigned kRecordBytes=128;
-// V1 layout reserves exactly 17 floats; new RAM-only IDs are rejected.
+// V1 layout reserves exactly 17 floats; later IDs require V2.
 constexpr unsigned kV1Count=17;
 constexpr uint32_t kRomCompatibility=0x3e76efb6; // Qualified ROM SHA256 prefix.
 static_assert(sizeof(float)==4 && std::numeric_limits<float>::is_iec559);
@@ -22,7 +22,7 @@ inline bool validPreset(const Preset& p,bool v1){
 
     for(unsigned m=0;m<3;++m)if(p.macros[m]>127)return false;
     if(p.family==0 && (p.macros[1]!=64 || p.macros[2]!=64))return false;
-    const uint32_t allowed=p.family==1?(15u | (v1?0u:((1u<<Decay)|(1u<<Sustain)|(1u<<FilterEnv)|(1u<<FilterKeytrack)))):(((1u<<kV1Count)-1)&~15u);
+    const uint32_t allowed=p.family==1?(15u | (v1?0u:(((1u<<(unsigned(Velocity)+1))-1)&~((1u<<kV1Count)-1)))):((((1u<<kV1Count)-1)&~15u)|(v1?0u:(1u<<PatchLevel)));
     if(p.mask&~allowed)return false;
 
     for(unsigned i=0;i<Count;++i)if((p.mask&(1u<<i)) && !valid(i,p.values[i]))return false;

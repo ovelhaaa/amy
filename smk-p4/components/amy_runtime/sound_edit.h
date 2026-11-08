@@ -5,7 +5,8 @@
 namespace smk::p4::edit {
 // Stable persisted IDs. Operator IDs follow materialized algo_source order.
 enum Param : uint8_t { Cutoff, Resonance, Attack, Release, OpLevel0, OpLevel5=9,
-    OpRatio0=10, OpRatio5=15, Depth=16, Decay=17, Sustain=18, FilterEnv=19, FilterKeytrack=20, Count=21 };
+    OpRatio0=10, OpRatio5=15, Depth=16, Decay=17, Sustain=18, FilterEnv=19, FilterKeytrack=20, OscLevel=21, SubLevel=22, NoiseLevel=23, PulseWidth=24, Detune=25, PatchLevel=26, Pan=27, Velocity=28, Count=29 };
+static_assert(Count<32,"Widen edit masks before admitting 32 fields");
 constexpr unsigned kSlots=16;
 struct State {
     uint16_t patch=128;
@@ -26,6 +27,10 @@ inline bool valid(unsigned p,float v) {
     if(p>=OpRatio0 && p<=OpRatio5)return v>=0.5f && v<=16;
     if(p==FilterEnv)return v>=-11 && v<=11;
     if(p==FilterKeytrack)return v>=0 && v<=200;
+    if(p==OscLevel || p==SubLevel || p==NoiseLevel || p==PatchLevel || p==Velocity)return v>=0 && v<=100;
+    if(p==PulseWidth)return v>=5 && v<=95;
+    if(p==Detune)return v>=-100 && v<=100;
+    if(p==Pan)return v>=-64 && v<=63;
     if(p==Sustain)return v>=0 && v<=100;
     return p==Depth && v>=0 && v<=1;
 }

@@ -1,3 +1,10 @@
+# Sound Editor 0.11.1 - Gate C
+
+Native main/sub/noise mix, static pulse width where compatible, main detune,
+instrument gain, pan and velocity sensitivity now support eight-voice editing
+and V2 Save/Recall. [Gate C evidence and limitations](docs/editor_0111_gate_c.md).
+Gate D/FM expansion is next. Physical qualification and flashing remain separate.
+
 # Sound Editor 0.11.1 - Gate B
 
 Native Juno filter envelope/keytrack, eight-voice Harmony and V2 User Preset

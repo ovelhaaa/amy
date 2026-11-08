@@ -51,6 +51,17 @@ public:
         const int cell_h=backend.hasSoundEditor()?78:94;
         switch (tab) {
             case 0: // OSC
+                if(backend.hasSoundEditor()){
+                    createParameterCard(parent, backend, "osc.1.level", 8,82,256,cell_h);
+                    createParameterCard(parent, backend, "osc.sub_level",272,82,256,cell_h);
+                    createParameterCard(parent, backend, "osc.noise_level",536,82,256,cell_h);
+                    createParameterCard(parent, backend, "osc.1.detune_ct",8,row2,388,cell_h);
+                    createParameterCard(parent, backend, "osc.1.pulse_width",404,row2,388,cell_h);
+                    auto* note=lv_obj_create(parent);applyPanelStyle(note,false);lv_obj_set_pos(note,8,row3);lv_obj_set_size(note,784,cell_h);
+                    createLabel(note,"NATIVE COMPONENT MIX",8,6,740,&lv_font_montserrat_14,palette::kAccentPrimary);
+                    createLabel(note,"MAIN = % OF ROM MIX; SUB/NOISE = NATIVE LEVEL. N/A: INCOMPATIBLE TOPOLOGY / PWM.",8,34,756,&lv_font_montserrat_14,palette::kTextSecondary);
+                    break;
+                }
                 createParameterCard(parent, backend, "osc.1.wave",        8, 82, 256, cell_h);
                 createParameterCard(parent, backend, "osc.1.pitch_st",    272, 82, 256, cell_h);
                 createParameterCard(parent, backend, "osc.1.detune_ct",   536, 82, 256, cell_h);

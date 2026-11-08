@@ -25,6 +25,11 @@ static lv_obj_t* button(lv_obj_t* root,const char* text){
         if(auto* found=button(child,text))return found;
     }return nullptr;
 }
+static unsigned labels(lv_obj_t* root,const char* text){
+    unsigned n=lv_obj_check_type(root,&lv_label_class) && std::strcmp(lv_label_get_text(root),text)==0?1:0;
+    for(unsigned i=0;i<lv_obj_get_child_count(root);++i)n+=labels(lv_obj_get_child(root,i),text);
+    return n;
+}
 static amy::Runtime r;
 int main(){
     preview::initHostLvgl();assert(r.begin());MemoryStore store;
@@ -45,6 +50,13 @@ int main(){
         assert(a.requestParameterFloat(id,value).state==UiCommandState::Requested);apply();
         assert(a.model().getFloat(id)==value && a.lastCommandState()==UiCommandState::Confirmed);
     }
+    const char* component_ids[]={"osc.1.level","osc.sub_level","osc.noise_level","osc.1.pulse_width","osc.1.detune_ct","amp.level","amp.pan","amp.vel_sens"};
+    const float component_values[]={35,15,15,30,35,50,-48,30};
+    for(unsigned i=0;i<8;++i){
+        if(a.parameterStatus(component_ids[i])!=FeatureStatus::Available){assert(!a.requestParameterFloat(component_ids[i],component_values[i]).accepted());continue;}
+        assert(a.requestParameterFloat(component_ids[i],component_values[i]).state==UiCommandState::Requested);
+        apply();assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getFloat(component_ids[i])==component_values[i]);
+    }
     assert(!a.requestSelectPatch(135).accepted()); // no silent loss
     assert(a.requestParameterInt("perf.macro.2",32).accepted());apply();assert(a.model().getFloat("filter.cutoff_hz")==500);
     assert(a.requestParameterInt("perf.macro.2",64).accepted());apply();assert(a.model().getFloat("filter.cutoff_hz")==1000);
@@ -58,10 +70,17 @@ int main(){
     store.fail=true;assert(a.requestSoundAction(2,0,"MY STRINGS 01").accepted());
     r.apply(preview::g_sim_tick_ms);publish();r.apply(preview::g_sim_tick_ms);publish();
     assert(a.lastCommandState()==UiCommandState::Rejected);store.fail=false;
+    assert(a.requestSelectPatch(31).accepted());apply();
+    assert(a.parameterStatus("osc.1.pulse_width")==FeatureStatus::Available);
+    assert(a.requestParameterFloat("osc.1.pulse_width",30).state==UiCommandState::Requested);apply();
+    assert(a.model().getFloat("osc.1.pulse_width")==30 && a.lastCommandState()==UiCommandState::Confirmed);
+    assert(a.requestSoundAction(1).accepted());apply();
     assert(a.requestSelectPatch(135).accepted());apply();
     assert(a.requestParameterInt("fm.selected_op",1).accepted());
     assert(a.parameterStatus("filter.cutoff_hz")==FeatureStatus::Unavailable);
     assert(a.parameterStatus("filter.env_amount")==FeatureStatus::Unavailable && a.parameterStatus("filter.keytrack")==FeatureStatus::Unavailable);
+    assert(a.parameterStatus("amp.level")==FeatureStatus::Available);
+    assert(a.parameterStatus("amp.vel_sens")==FeatureStatus::Unavailable && a.parameterStatus("osc.sub_level")==FeatureStatus::Unavailable);
     assert(a.requestParameterFloat("fm.depth",0.7f).accepted());apply();assert(r.snapshot().edit.applied[edit::Depth]==0.7f);
     assert(a.requestSoundAction(1).accepted());apply();
     assert(a.requestSoundAction(3,0).accepted());apply();apply();assert(r.snapshot().patch_id==4 && r.snapshot().edit.applied[edit::Cutoff]==1000);
@@ -70,8 +89,14 @@ int main(){
     reboot.publish(r.snapshot(),false,0,0);assert(reboot.editAction(3,0));r.apply(0);r.loadPendingPatch();reboot.publish(r.snapshot(),false,0,0);reboot.service(25);r.apply(1);reboot.publish(r.snapshot(),false,0,0);
     assert(r.snapshot().edit.applied[0]==1000 && r.snapshot().edit.user_slot==0);
     assert(r.snapshot().edit.applied[edit::FilterEnv]==3 && r.snapshot().edit.applied[edit::FilterKeytrack]==150);
+    assert(r.snapshot().edit.applied[edit::OscLevel]==35 && r.snapshot().edit.applied[edit::SubLevel]==15 && r.snapshot().edit.applied[edit::NoiseLevel]==15);
+    assert(r.snapshot().edit.applied[edit::PatchLevel]==50 && r.snapshot().edit.applied[edit::Pan]==-48 && r.snapshot().edit.applied[edit::Velocity]==30);
     UiBlueprintPerformanceAdapter next(reboot);next.service(preview::g_sim_tick_ms+=25);UiBlueprint ui(next);assert(ui.begin());
     for(unsigned tab=0;tab<7;++tab){assert(ui.navigation().navigateTo(ScreenId::SoundEditor,uint8_t(tab)));preview::pumpFrame(ui);}
+    assert(ui.navigation().navigateTo(ScreenId::SoundEditor,0));preview::pumpFrame(ui);
+    assert(button(ui.contentObject(),"MAIN MIX"));
+    auto* pulse_card=button(ui.contentObject(),"PULSE WIDTH");assert(pulse_card && labels(pulse_card,"N/A")>=2 && labels(pulse_card,"PLAN")==0);
+    assert(preview::saveFramebufferPpm("build/editor011/osc.ppm"));
     assert(ui.navigation().navigateTo(ScreenId::SoundEditor,2));preview::pumpFrame(ui);
     assert(preview::saveFramebufferPpm("build/editor011/filter.ppm"));
     auto* open=button(ui.contentObject(),"USER / SAVE AS");assert(open);lv_obj_send_event(open,LV_EVENT_CLICKED,nullptr);preview::pumpFrame(ui);

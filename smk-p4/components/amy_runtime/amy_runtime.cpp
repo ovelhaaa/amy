@@ -1,4 +1,5 @@
 #include "amy_runtime.h"
+#include <initializer_list>
 #include <cstring>
 #include <cmath>
 #ifdef SMKP4_HARMONY

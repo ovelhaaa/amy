@@ -25,7 +25,7 @@ UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend&
 #endif
 #endif
 #if defined(SMKP4_SOUND_EDITOR) || defined(CONFIG_SMKP4_SOUND_EDITOR)
-    d.firmware_version="SMK-P4 EDITOR 0.11 EXPERIMENTAL";
+    d.firmware_version="SMK-P4 EDITOR 0.11.1 DEV";
 #endif
     d.amy_status="WAIT SNAPSHOT"; d.i2s_status="NOT LIVE"; d.usb_status="DISCONNECTED";
     model_.setBool("harmony.scale_enable",false);
@@ -54,6 +54,14 @@ int UiBlueprintPerformanceAdapter::editIndex(const char* id) const {
     if(eq(id,"env.amp.release_ms"))return edit::Release;
     if(eq(id,"env.amp.decay_ms"))return edit::Decay;
     if(eq(id,"env.amp.sustain"))return edit::Sustain;
+    if(eq(id,"osc.1.level"))return edit::OscLevel;
+    if(eq(id,"osc.sub_level"))return edit::SubLevel;
+    if(eq(id,"osc.noise_level"))return edit::NoiseLevel;
+    if(eq(id,"osc.1.pulse_width"))return edit::PulseWidth;
+    if(eq(id,"osc.1.detune_ct"))return edit::Detune;
+    if(eq(id,"amp.level"))return edit::PatchLevel;
+    if(eq(id,"amp.pan"))return edit::Pan;
+    if(eq(id,"amp.vel_sens"))return edit::Velocity;
     if(eq(id,"fm.depth"))return edit::Depth;
     if(eq(id,"fm.op.level"))return edit::OpLevel0+int(selected_op_);
     if(eq(id,"fm.op.ratio"))return edit::OpRatio0+int(selected_op_);
@@ -247,7 +255,7 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
                 edit_requested_=false;
                 result(edit->errors==edit_errors_ && !backend_.editError()?UiCommandState::Confirmed:UiCommandState::Rejected,edit_id_,backend_.editNotice());
             }
-            const char* ids[]={"filter.cutoff_hz","filter.resonance","filter.env_amount","filter.keytrack","env.amp.attack_ms","env.amp.release_ms","env.amp.decay_ms","env.amp.sustain","fm.depth","fm.op.level","fm.op.ratio"};
+            const char* ids[]={"osc.1.level","osc.sub_level","osc.noise_level","osc.1.pulse_width","osc.1.detune_ct","amp.level","amp.pan","amp.vel_sens","filter.cutoff_hz","filter.resonance","filter.env_amount","filter.keytrack","env.amp.attack_ms","env.amp.release_ms","env.amp.decay_ms","env.amp.sustain","fm.depth","fm.op.level","fm.op.ratio"};
             for(const char* id:ids){const int p=editIndex(id);if(edit->available&(1u<<p))model_.setFloat(id,edit->applied[p]);}
             model_.setInt("fm.selected_op",int(selected_op_)+1);
             model_.setInt("perf.macro.2",edit->macros[0]);model_.setInt("perf.macro.5",edit->macros[1]);model_.setInt("perf.macro.6",edit->macros[2]);

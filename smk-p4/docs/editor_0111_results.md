@@ -1,3 +1,13 @@
+# SMK-P4 0.11.1 - Gate C software acceptance: PASS
+
+Eight oscillator/amplitude controls are implemented, tested with real AMY and
+integrated into V2 Save/Recall. See [Gate C evidence](editor_0111_gate_c.md).
+Gate B remains qualified. Other 0.11.1 gates and physical qualification remain
+open. The sections below are chronological evidence, including superseded
+limitations from earlier increments.
+
+---
+
 # SMK-P4 0.11.1 - Gate B software qualification
 
 Gate B software acceptance: PASS. Current Gate B implementation and acceptance evidence are documented in

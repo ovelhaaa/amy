@@ -44,7 +44,7 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
     backend.model().getValue(param_id, pv);
     char vbuf[28];
     ParameterRegistry::formatValue(*desc, pv, vbuf, sizeof(vbuf));
-    if (!backend.isDemoMode() && status != FeatureStatus::Available) std::snprintf(vbuf,sizeof(vbuf),"PLAN");
+    if (!backend.isDemoMode() && status != FeatureStatus::Available) std::snprintf(vbuf,sizeof(vbuf),"%s",status==FeatureStatus::Unavailable?"N/A":"PLAN");
 
     lv_obj_t* vlbl = nullptr;
     if (level == PresentationLevel::StageMinimal) {
@@ -120,7 +120,7 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
             const auto* d=ParameterRegistry::findById(ctx->param_id);
             ParameterValue value{}; ctx->backend->model().getValue(ctx->param_id,value);
             char text[28]; ParameterRegistry::formatValue(*d,value,text,sizeof(text));
-            if(!ctx->backend->isDemoMode() && ctx->backend->parameterStatus(ctx->param_id)!=FeatureStatus::Available) std::snprintf(text,sizeof(text),"PLAN");
+            if(!ctx->backend->isDemoMode() && ctx->backend->parameterStatus(ctx->param_id)!=FeatureStatus::Available) std::snprintf(text,sizeof(text),"%s",ctx->backend->parameterStatus(ctx->param_id)==FeatureStatus::Unavailable?"N/A":"PLAN");
             if(ctx->val_label) lv_label_set_text(ctx->val_label,text);
             if(!lv_obj_has_state(obj,LV_STATE_PRESSED)) {
                 lv_slider_set_value(obj,sliderPercent(*d,value.asFloat()),LV_ANIM_OFF);
