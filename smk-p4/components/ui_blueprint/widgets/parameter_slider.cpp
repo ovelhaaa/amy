@@ -19,6 +19,7 @@ struct SliderCtx {
     IUiBackend* backend   = nullptr;
     const char* param_id  = nullptr;
     lv_obj_t*   val_label = nullptr;
+    lv_obj_t*   badge_box = nullptr;
 };
 } // namespace
 
@@ -47,6 +48,7 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
     if (!backend.isDemoMode() && status != FeatureStatus::Available) std::snprintf(vbuf,sizeof(vbuf),"%s",status==FeatureStatus::Unavailable?"N/A":"PLAN");
 
     lv_obj_t* vlbl = nullptr;
+    lv_obj_t* badge_box = nullptr;
     if (level == PresentationLevel::StageMinimal) {
         // StageMinimal: cleaner header with title on left and prominent value on right, no technical badge clutter
         createLabel(card, title, 8, 4, w - 96, &lv_font_montserrat_14,
@@ -59,7 +61,7 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
     } else {
         createLabel(card, title, 6, 4, w - 64, &lv_font_montserrat_14,
                     enabled ? palette::kTextPrimary : palette::kTextSecondary);
-        createStatusBadge(card, status, w - 62, 4);
+        badge_box = createStatusBadge(card, status, w - 62, 4);
         vlbl = createLabel(card, vbuf, 6, 24, w - 16, &lv_font_montserrat_14, palette::kAccentPrimary);
     }
 
@@ -85,7 +87,7 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
         }
 
         attachLvContext<SliderCtx>(
-            slider, SliderCtx{&backend, desc->id, vlbl},
+            slider, SliderCtx{&backend, desc->id, vlbl, badge_box},
             [](lv_event_t* e) {
                 if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
                 auto* ctx = static_cast<SliderCtx*>(lv_event_get_user_data(e));
@@ -114,14 +116,22 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
     }
 
     if (slider) {
-        attachLvContext<SliderCtx>(slider, SliderCtx{&backend, desc->id, vlbl}, [](lv_event_t* e) {
+        attachLvContext<SliderCtx>(slider, SliderCtx{&backend, desc->id, vlbl, badge_box}, [](lv_event_t* e) {
             auto* ctx=static_cast<SliderCtx*>(lv_event_get_user_data(e));
             auto* obj=static_cast<lv_obj_t*>(lv_event_get_target(e));
             const auto* d=ParameterRegistry::findById(ctx->param_id);
             ParameterValue value{}; ctx->backend->model().getValue(ctx->param_id,value);
             char text[28]; ParameterRegistry::formatValue(*d,value,text,sizeof(text));
-            if(!ctx->backend->isDemoMode() && ctx->backend->parameterStatus(ctx->param_id)!=FeatureStatus::Available) std::snprintf(text,sizeof(text),"%s",ctx->backend->parameterStatus(ctx->param_id)==FeatureStatus::Unavailable?"N/A":"PLAN");
+            const FeatureStatus st=ctx->backend->parameterStatus(ctx->param_id);
+            if(!ctx->backend->isDemoMode() && st!=FeatureStatus::Available) std::snprintf(text,sizeof(text),"%s",st==FeatureStatus::Unavailable?"N/A":"PLAN");
             if(ctx->val_label) lv_label_set_text(ctx->val_label,text);
+            if(ctx->badge_box){
+                lv_obj_set_style_bg_color(ctx->badge_box,lv_color_hex(featureStatusColor(st)),0);
+                if(lv_obj_t* blbl=lv_obj_get_child(ctx->badge_box,0)){
+                    lv_label_set_text_static(blbl,featureStatusLabel(st));
+                    lv_obj_set_style_text_color(blbl,lv_color_hex(st==FeatureStatus::Unavailable?palette::kTextPrimary:palette::kBackground),0);
+                }
+            }
             if(!lv_obj_has_state(obj,LV_STATE_PRESSED)) {
                 lv_slider_set_value(obj,sliderPercent(*d,value.asFloat()),LV_ANIM_OFF);
             }

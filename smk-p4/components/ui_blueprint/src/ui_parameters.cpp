@@ -8,14 +8,16 @@ namespace {
 
 #if defined(SMKP4_SOUND_EDITOR) || defined(CONFIG_SMKP4_SOUND_EDITOR)
 constexpr float kResonanceMaximum=2.0f;
+constexpr float kLfoRateMaximum=20.0f;
 #else
 constexpr float kResonanceMaximum=8.0f;
+constexpr float kLfoRateMaximum=30.0f;
 #endif
 constexpr const char* kLayerModes[] = {"SINGLE A", "SINGLE B", "DUAL LAYER", "SPLIT A/B"};
 constexpr const char* kWaveforms[] = {"SINE", "PULSE", "SAW DOWN", "SAW UP", "TRIANGLE", "NOISE", "KARPLUS", "PCM", "FM ALGO"};
 constexpr const char* kFilterTypes[] = {"PRESET", "NONE", "LPF 12dB", "BPF", "HPF", "LPF 24dB", "NOTCH", "PHASER", "MOOG 24", "TPT SVF"};
 constexpr const char* kEnvCurves[] = {"LINEAR", "EXP", "LOG", "S-CURVE"};
-constexpr const char* kLfoWaves[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "S&H"};
+constexpr const char* kLfoWaves[] = {"SINE", "TRIANGLE", "SAW DOWN", "SAW UP", "PULSE"};
 constexpr const char* kLfoDests[] = {"NONE", "PITCH", "CUTOFF", "AMP", "PWM", "PAN", "FM MOD"};
 constexpr const char* kModSources[] = {"OFF", "MOD WHEEL", "VELOCITY", "AFTERTOUCH", "LFO 1", "LFO 2", "ENV 2", "MACRO 1", "MACRO 2", "KEYTRACK"};
 constexpr const char* kModDests[] = {"NONE", "OSC PITCH", "OSC PWM", "FILTER CUT", "FILTER RES", "AMP LEVEL", "PAN", "LFO RATE", "FM INDEX", "FX SEND"};
@@ -165,11 +167,11 @@ const ParameterDescriptor kDescriptors[] = {
      ParameterScale::Linear, "Synthesis", "FM", nullptr, 0, kModTargetCtrl,
      FeatureStatus::Planned, "osc.1.wave", 8, "smk-s3/components/synth/include/macro_profile.h",
      "Operator feedback loop intensity"},
-    {"fm.op.attack", "fm", "OP ENV ATK", ParameterValueType::Float, 1.0f, 2000.0f, 15.0f, 5.0f, "ms",
+    {"fm.op.attack", "fm", "OP ENV ATK", ParameterValueType::Float, 0.0f, 2000.0f, 15.0f, 5.0f, "ms",
      ParameterScale::Logarithmic, "Synthesis", "FM", nullptr, 0, kStdCtrl,
      FeatureStatus::Planned, "osc.1.wave", 8, "src/envelope.c",
      "Per-operator envelope attack time"},
-    {"fm.op.decay", "fm", "OP ENV DEC", ParameterValueType::Float, 10.0f, 4000.0f, 350.0f, 10.0f, "ms",
+    {"fm.op.decay", "fm", "OP ENV DEC", ParameterValueType::Float, 0.0f, 4000.0f, 350.0f, 10.0f, "ms",
      ParameterScale::Logarithmic, "Synthesis", "FM", nullptr, 0, kStdCtrl,
      FeatureStatus::Planned, "osc.1.wave", 8, "src/envelope.c",
      "Per-operator envelope decay time"},
@@ -249,7 +251,7 @@ const ParameterDescriptor kDescriptors[] = {
      ParameterScale::Linear, "Synthesis", "LFO", kLfoWaves, 5, kStdCtrl,
      FeatureStatus::Planned, nullptr, -1, "src/amy.h",
      "Low-frequency oscillator waveform"},
-    {"lfo.1.rate_hz", "lfo", "LFO RATE", ParameterValueType::Float, 0.1f, 30.0f, 5.0f, 0.1f, "Hz",
+    {"lfo.1.rate_hz", "lfo", "LFO RATE", ParameterValueType::Float, 0.1f, kLfoRateMaximum, 5.0f, 0.1f, "Hz",
      ParameterScale::Logarithmic, "Synthesis", "LFO", nullptr, 0, kModTargetCtrl,
      FeatureStatus::Available, nullptr, -1, "smk-p4/components/amy_runtime/amy_runtime.cpp",
      "LFO frequency (5 Hz vibrato active via CC1 in P4 standalone)"},
@@ -271,6 +273,10 @@ const ParameterDescriptor kDescriptors[] = {
      "Primary LFO destination parameter"},
 
     // ── MODULATION MATRIX ────────────────────────────────────────────────
+    {"mod.slot1.enable", "mod", "SLOT 1 ON", ParameterValueType::Bool, 0.0f, 1.0f, 1.0f, 1.0f, "",
+     ParameterScale::Linear, "Modulation", "MATRIX", nullptr, 0, kStdCtrl,
+     FeatureStatus::Available, nullptr, -1, "smk-p4/components/amy_runtime/sound_edit.h",
+     "Enable modulation matrix slot 1"},
     {"mod.slot1.source", "mod", "SLOT 1 SRC", ParameterValueType::Enum, 0.0f, 9.0f, 1.0f, 1.0f, "",
      ParameterScale::Linear, "Modulation", "MATRIX", kModSources, 10, kStdCtrl,
      FeatureStatus::Available, nullptr, -1, "smk-p4/components/amy_runtime/amy_runtime.cpp",

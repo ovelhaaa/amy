@@ -76,17 +76,30 @@ public:
                 break;
 
             case 1: // FM
-                createParameterCard(parent, backend, "fm.algo",        8, 82, 190, cell_h);
+                createParameterCard(parent, backend, backend.hasSoundEditor()?"fm.depth":"fm.algo", 8, 82, 190, cell_h);
                 createParameterCard(parent, backend, "fm.selected_op", 206, 82, 190, cell_h);
                 createParameterCard(parent, backend, "fm.op.ratio",    404, 82, 190, cell_h);
                 createParameterCard(parent, backend, "fm.op.level",    602, 82, 190, cell_h);
 
-                createParameterCard(parent, backend, backend.hasSoundEditor()?"fm.depth":"fm.feedback",    8, row2, 190, cell_h);
+                createParameterCard(parent, backend, "fm.feedback",    8, row2, 190, cell_h);
                 createParameterCard(parent, backend, "fm.op.attack",   206, row2, 190, cell_h);
                 createParameterCard(parent, backend, "fm.op.decay",    404, row2, 190, cell_h);
                 createParameterCard(parent, backend, "fm.op.vel_sens", 602, row2, 190, cell_h);
 
-                {
+                if (backend.hasSoundEditor()) {
+                    createParameterCard(parent, backend, "fm.algo", 8, row3, 190, cell_h);
+                    lv_obj_t* algo_card = lv_obj_create(parent);
+                    applyPanelStyle(algo_card, true);
+                    lv_obj_set_pos(algo_card, 206, row3);
+                    lv_obj_set_size(algo_card, 586, cell_h);
+                    createLabel(algo_card, "DX7 6-OP: LEVEL/ATK/DEC/VEL & FBK LIVE; ALGO REBUILD PLANNED",
+                                8, 8, 566, &lv_font_montserrat_14, palette::kTextPrimary);
+                    createLabel(algo_card,
+                                patch.family == SynthFamily::FM
+                                    ? "Operators follow native algo_source order; fixed-freq ratio is N/A."
+                                    : "NON-FM PATCH SELECTED: FM operator controls marked UNAVAILABLE.",
+                                8, 38, 566, &lv_font_montserrat_14, palette::kTextSecondary);
+                } else {
                     lv_obj_t* algo_card = lv_obj_create(parent);
                     applyPanelStyle(algo_card, true);
                     lv_obj_set_pos(algo_card, 8, row3);
@@ -121,7 +134,7 @@ public:
                     createLabel(fcard, "BIQUAD / ZDF FILTER TOPOLOGY NOTES", 8, 6, 420,
                                 &lv_font_montserrat_14, palette::kAccentPrimary);
                     createLabel(fcard,
-                                "Cutoff/Q: native AMY controls when AVAILABLE. Topology and modulation remain PLANNED.",
+                                "Cutoff, Q, Keytrack & Env Amount: native AMY controls on Juno. Filter Type/Drive PLANNED.",
                                 8, 34, 756, &lv_font_montserrat_14, palette::kTextSecondary);
                 }
                 break;

@@ -256,6 +256,11 @@ bool UiModel::setValue(const char* id, const ParameterValue& val) {
     }
 
     values_[idx] = clamped;
+    if (std::strcmp(id, "mod.slot1.enable") == 0) mod_slots_[0].enabled = clamped.asBool();
+    else if (std::strcmp(id, "mod.slot1.source") == 0) mod_slots_[0].source = static_cast<uint8_t>(clamped.asInt());
+    else if (std::strcmp(id, "mod.slot1.dest") == 0) mod_slots_[0].dest = static_cast<uint8_t>(clamped.asInt());
+    else if (std::strcmp(id, "mod.slot1.amount") == 0) mod_slots_[0].amount = static_cast<int8_t>(std::lround(clamped.asFloat()));
+    else if (std::strcmp(id, "mod.slot1.polarity") == 0) mod_slots_[0].polarity = static_cast<uint8_t>(clamped.asInt());
     ++revision_;
     return true;
 }
@@ -472,6 +477,7 @@ void UiModel::setModSlot(size_t slot_idx, const ModSlot& slot) {
     if (slot_idx >= kModSlots) return;
     mod_slots_[slot_idx] = slot;
     if (slot_idx == 0) {
+        setBool("mod.slot1.enable", slot.enabled);
         setInt("mod.slot1.source", slot.source);
         setInt("mod.slot1.dest", slot.dest);
         setFloat("mod.slot1.amount", static_cast<float>(slot.amount));

@@ -63,8 +63,21 @@ int UiBlueprintPerformanceAdapter::editIndex(const char* id) const {
     if(eq(id,"amp.pan"))return edit::Pan;
     if(eq(id,"amp.vel_sens"))return edit::Velocity;
     if(eq(id,"fm.depth"))return edit::Depth;
+    if(eq(id,"fm.feedback"))return edit::FmFeedback;
     if(eq(id,"fm.op.level"))return edit::OpLevel0+int(selected_op_);
     if(eq(id,"fm.op.ratio"))return edit::OpRatio0+int(selected_op_);
+    if(eq(id,"fm.op.attack"))return edit::OpAttack0+int(selected_op_);
+    if(eq(id,"fm.op.decay"))return edit::OpDecay0+int(selected_op_);
+    if(eq(id,"fm.op.vel_sens"))return edit::OpVel0+int(selected_op_);
+    if(eq(id,"lfo.1.rate_hz"))return edit::LfoRate;
+    if(eq(id,"lfo.1.depth"))return edit::LfoDepth;
+    if(eq(id,"lfo.1.wave"))return edit::LfoWave;
+    if(eq(id,"lfo.1.dest"))return edit::LfoDest;
+    if(eq(id,"mod.slot1.enable"))return edit::ModEnable;
+    if(eq(id,"mod.slot1.source"))return edit::ModSource;
+    if(eq(id,"mod.slot1.dest"))return edit::ModDest;
+    if(eq(id,"mod.slot1.amount"))return edit::ModAmount;
+    if(eq(id,"mod.slot1.polarity"))return edit::ModPolarity;
     return -1;
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestSoundAction(unsigned action,unsigned slot,const char* name){
@@ -78,13 +91,20 @@ FeatureStatus UiBlueprintPerformanceAdapter::parameterStatus(const char* id) con
         if(eq(id,"perf.macro.5") || eq(id,"perf.macro.6"))return state->family==1 && (state->available&12)==12?FeatureStatus::Available:FeatureStatus::Unavailable;
         if(eq(id,"fm.selected_op"))return state->family==0?FeatureStatus::Available:FeatureStatus::Unavailable;
         const int p=editIndex(id);
-        if(p>=0)return state->available&(1u<<p)?FeatureStatus::Available:FeatureStatus::Unavailable;
+        if(p>=0)return (state->available&edit::bit(unsigned(p)))?FeatureStatus::Available:FeatureStatus::Unavailable;
     }
     if(backend_.harmonyState() && harmonyIndex(id)>=0)return FeatureStatus::Available;
     return eq(id,"perf.master_volume") || eq(id,"perf.octave_shift") || eq(id,"perf.patch_id")
         ? FeatureStatus::Available : FeatureStatus::Planned;
 }
 bool UiBlueprintPerformanceAdapter::isParameterValueSupported(const char* id,int32_t value) const {
+    if(const auto* state=backend_.soundEdit()){
+        if(eq(id,"lfo.1.wave"))return value>=0 && value<=4;
+        if(eq(id,"lfo.1.dest"))return value>=0 && value<=3 && (value!=2 || state->family==1);
+        if(eq(id,"mod.slot1.source"))return value==0 || value==1;
+        if(eq(id,"mod.slot1.dest"))return value==0 || value==1 || (value==3 && state->family==1);
+        if(eq(id,"mod.slot1.polarity"))return value>=0 && value<=2;
+    }
     if(!backend_.harmonyState())return true;
     if(eq(id,"harmony.chord_type"))return value!=10 && value!=11;
     if(eq(id,"harmony.voicing"))return value<=1;
@@ -129,12 +149,19 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterBool(const char* 
     return requestParameterInt(id,v?1:0);
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestParameterInt(const char* id,int32_t v) {
-    if(backend_.soundEdit() && editIndex(id)>=0)return requestParameterFloat(id,float(v));
+    if(backend_.soundEdit() && editIndex(id)>=0){
+        if(!isParameterValueSupported(id,v))return result(UiCommandState::Rejected,id,"EDIT REJECTED; UNSUPPORTED VALUE");
+        return requestParameterFloat(id,float(v));
+    }
     if(backend_.soundEdit() && eq(id,"fm.selected_op")){
         if(v<1 || v>6 || backend_.soundEdit()->family!=0)return result(UiCommandState::Rejected,id,"OPERATOR UNAVAILABLE");
         selected_op_=unsigned(v-1);model_.setInt(id,v);
-        model_.setFloat("fm.op.level",backend_.soundEdit()->applied[edit::OpLevel0+selected_op_]);
-        model_.setFloat("fm.op.ratio",backend_.soundEdit()->applied[edit::OpRatio0+selected_op_]);
+        const auto* edit=backend_.soundEdit();
+        model_.setFloat("fm.op.level",edit->applied[edit::OpLevel0+selected_op_]);
+        model_.setFloat("fm.op.ratio",edit->applied[edit::OpRatio0+selected_op_]);
+        model_.setFloat("fm.op.attack",edit->applied[edit::OpAttack0+selected_op_]);
+        model_.setFloat("fm.op.decay",edit->applied[edit::OpDecay0+selected_op_]);
+        model_.setFloat("fm.op.vel_sens",edit->applied[edit::OpVel0+selected_op_]);
         return result(UiCommandState::Confirmed,id,"OPERATOR SELECTED; LOCAL MAP VERIFIED");
     }
     if(parameterStatus(id)!=FeatureStatus::Available) return result(UiCommandState::Unsupported,id,"PLANNED; NO DSP COMMAND");
@@ -255,8 +282,19 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
                 edit_requested_=false;
                 result(edit->errors==edit_errors_ && !backend_.editError()?UiCommandState::Confirmed:UiCommandState::Rejected,edit_id_,backend_.editNotice());
             }
-            const char* ids[]={"osc.1.level","osc.sub_level","osc.noise_level","osc.1.pulse_width","osc.1.detune_ct","amp.level","amp.pan","amp.vel_sens","filter.cutoff_hz","filter.resonance","filter.env_amount","filter.keytrack","env.amp.attack_ms","env.amp.release_ms","env.amp.decay_ms","env.amp.sustain","fm.depth","fm.op.level","fm.op.ratio"};
-            for(const char* id:ids){const int p=editIndex(id);if(edit->available&(1u<<p))model_.setFloat(id,edit->applied[p]);}
+            const char* ids[]={
+                "osc.1.level","osc.sub_level","osc.noise_level","osc.1.pulse_width","osc.1.detune_ct",
+                "amp.level","amp.pan","amp.vel_sens",
+                "filter.cutoff_hz","filter.resonance","filter.env_amount","filter.keytrack",
+                "env.amp.attack_ms","env.amp.release_ms","env.amp.decay_ms","env.amp.sustain",
+                "fm.depth","fm.feedback","fm.op.level","fm.op.ratio","fm.op.attack","fm.op.decay","fm.op.vel_sens",
+                "lfo.1.rate_hz","lfo.1.depth","lfo.1.wave","lfo.1.dest",
+                "mod.slot1.enable","mod.slot1.source","mod.slot1.dest","mod.slot1.amount","mod.slot1.polarity"
+            };
+            for(const char* id:ids){
+                const int p=editIndex(id);
+                if(p>=0 && (edit->available & edit::bit(unsigned(p)))) model_.setFloat(id,edit->applied[p]);
+            }
             model_.setInt("fm.selected_op",int(selected_op_)+1);
             model_.setInt("perf.macro.2",edit->macros[0]);model_.setInt("perf.macro.5",edit->macros[1]);model_.setInt("perf.macro.6",edit->macros[2]);
         }

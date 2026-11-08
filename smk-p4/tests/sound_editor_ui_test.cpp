@@ -30,6 +30,39 @@ static unsigned labels(lv_obj_t* root,const char* text){
     for(unsigned i=0;i<lv_obj_get_child_count(root);++i)n+=labels(lv_obj_get_child(root,i),text);
     return n;
 }
+template <typename ApplyFn>
+static void auditInventory(UiBlueprintPerformanceAdapter& a, ApplyFn&& apply) {
+    size_t count = 0;
+    const ParameterDescriptor* all = ParameterRegistry::all(count);
+    assert(count >= 76);
+    for (size_t i = 0; i < count; ++i) {
+        const auto& d = all[i];
+        const FeatureStatus st = a.parameterStatus(d.id);
+        assert(st != FeatureStatus::Demo); // Real adapter never reports Demo status
+        if (st == FeatureStatus::Available) {
+            if (d.capabilities & kCapReadOnly) {
+                assert(!a.isParameterEditable(d.id));
+                continue;
+            }
+            assert(a.isParameterEditable(d.id));
+            ParameterValue pv{};
+            assert(a.model().getValue(d.id, pv));
+            const UiCommandResult res = a.requestParameterValue(d.id, pv);
+            assert(res.state == UiCommandState::Requested || res.state == UiCommandState::Confirmed);
+            apply();
+            assert(a.lastCommandState() == UiCommandState::Confirmed);
+        } else {
+            assert(!a.isParameterEditable(d.id));
+            ParameterValue pv{};
+            assert(a.model().getValue(d.id, pv));
+            const UiCommandResult res = a.requestParameterValue(d.id, pv);
+            assert(!res.accepted());
+            if (st == FeatureStatus::Planned) {
+                assert(res.state == UiCommandState::Unsupported || res.state == UiCommandState::Rejected);
+            }
+        }
+    }
+}
 static amy::Runtime r;
 int main(){
     preview::initHostLvgl();assert(r.begin());MemoryStore store;
@@ -37,10 +70,17 @@ int main(){
     auto publish=[&]{b.publish(r.snapshot(),false,0,0);a.service(preview::g_sim_tick_ms+=25);};
     auto apply=[&]{a.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);r.loadPendingPatch();assert(r.render());publish();};
     publish();UiBlueprint app(a);assert(app.begin());
+
+    // 1. Juno patch 4: Gate A, B, C, E parameters + Gate G0 inventory audit
     assert(a.requestSelectPatch(4).accepted());apply();
+    auditInventory(a, apply);
     assert(a.model().getFloat("filter.cutoff_hz")>3000);
     assert(a.parameterStatus("filter.cutoff_hz")==FeatureStatus::Available);
     assert(a.parameterStatus("fm.op.ratio")==FeatureStatus::Unavailable);
+    assert(a.parameterStatus("fm.feedback")==FeatureStatus::Unavailable);
+    assert(a.parameterStatus("fm.op.attack")==FeatureStatus::Unavailable);
+    assert(a.parameterStatus("fm.op.decay")==FeatureStatus::Unavailable);
+    assert(a.parameterStatus("fm.op.vel_sens")==FeatureStatus::Unavailable);
     assert(a.requestParameterFloat("filter.cutoff_hz",1000).state==UiCommandState::Requested);
     assert(a.model().getFloat("filter.cutoff_hz")!=1000);apply();
     assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getFloat("filter.cutoff_hz")==1000);
@@ -50,6 +90,10 @@ int main(){
         assert(a.requestParameterFloat(id,value).state==UiCommandState::Requested);apply();
         assert(a.model().getFloat(id)==value && a.lastCommandState()==UiCommandState::Confirmed);
     }
+    for(const char* id:{"env.amp.attack_ms","env.amp.decay_ms","env.amp.sustain","env.amp.release_ms"}){
+        assert(a.parameterStatus(id)==FeatureStatus::Available);
+    }
+    assert(a.parameterStatus("env.amp.curve")==FeatureStatus::Planned);
     const char* component_ids[]={"osc.1.level","osc.sub_level","osc.noise_level","osc.1.pulse_width","osc.1.detune_ct","amp.level","amp.pan","amp.vel_sens"};
     const float component_values[]={35,15,15,30,35,50,-48,30};
     for(unsigned i=0;i<8;++i){
@@ -57,7 +101,30 @@ int main(){
         assert(a.requestParameterFloat(component_ids[i],component_values[i]).state==UiCommandState::Requested);
         apply();assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getFloat(component_ids[i])==component_values[i]);
     }
-    assert(!a.requestSelectPatch(135).accepted()); // no silent loss
+    // Gate E LFO & Mod Matrix Slot 1 on Juno
+    for(const char* id:{"lfo.1.wave","lfo.1.rate_hz","lfo.1.depth","lfo.1.dest","mod.slot1.enable","mod.slot1.source","mod.slot1.dest","mod.slot1.amount","mod.slot1.polarity"}){
+        assert(a.parameterStatus(id)==FeatureStatus::Available);
+    }
+    assert(a.parameterStatus("lfo.1.phase_deg")==FeatureStatus::Planned && a.parameterStatus("lfo.1.sync")==FeatureStatus::Planned);
+    assert(a.isParameterValueSupported("lfo.1.dest",2) && !a.isParameterValueSupported("lfo.1.dest",4));
+    assert(a.isParameterValueSupported("mod.slot1.dest",3) && !a.isParameterValueSupported("mod.slot1.dest",2));
+    assert(a.requestParameterFloat("lfo.1.rate_hz",6.5f).state==UiCommandState::Requested);apply();
+    assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getFloat("lfo.1.rate_hz")==6.5f);
+    assert(a.requestParameterFloat("lfo.1.depth",45.0f).state==UiCommandState::Requested);apply();
+    assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getFloat("lfo.1.depth")==45.0f);
+    assert(a.requestParameterInt("lfo.1.wave",1).state==UiCommandState::Requested);apply();
+    assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getInt("lfo.1.wave")==1);
+    assert(a.requestParameterInt("lfo.1.dest",2).state==UiCommandState::Requested);apply();
+    assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getInt("lfo.1.dest")==2);
+    assert(!a.requestParameterInt("lfo.1.dest",4).accepted());
+    assert(a.requestParameterInt("mod.slot1.dest",3).state==UiCommandState::Requested);apply();
+    assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getInt("mod.slot1.dest")==3 && a.model().modSlot(0).dest==3);
+    assert(a.requestParameterFloat("mod.slot1.amount",60.0f).state==UiCommandState::Requested);apply();
+    assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getFloat("mod.slot1.amount")==60.0f && a.model().modSlot(0).amount==60);
+    assert(a.requestParameterInt("mod.slot1.polarity",0).state==UiCommandState::Requested);apply();
+    assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getInt("mod.slot1.polarity")==0 && a.model().modSlot(0).polarity==0);
+
+    assert(!a.requestSelectPatch(135).accepted()); // dirty guard: no silent loss
     assert(a.requestParameterInt("perf.macro.2",32).accepted());apply();assert(a.model().getFloat("filter.cutoff_hz")==500);
     assert(a.requestParameterInt("perf.macro.2",64).accepted());apply();assert(a.model().getFloat("filter.cutoff_hz")==1000);
     assert(a.requestSoundAction(0).accepted());apply();assert(r.snapshot().edit.compare);
@@ -70,39 +137,104 @@ int main(){
     store.fail=true;assert(a.requestSoundAction(2,0,"MY STRINGS 01").accepted());
     r.apply(preview::g_sim_tick_ms);publish();r.apply(preview::g_sim_tick_ms);publish();
     assert(a.lastCommandState()==UiCommandState::Rejected);store.fail=false;
+
+    // 2. Juno patch 31: contextual Pulse Width
     assert(a.requestSelectPatch(31).accepted());apply();
     assert(a.parameterStatus("osc.1.pulse_width")==FeatureStatus::Available);
     assert(a.requestParameterFloat("osc.1.pulse_width",30).state==UiCommandState::Requested);apply();
     assert(a.model().getFloat("osc.1.pulse_width")==30 && a.lastCommandState()==UiCommandState::Confirmed);
     assert(a.requestSoundAction(1).accepted());apply();
+
+    // 3. DX7 patch 135: Gate D advanced FM + Gate E contextual LFO/Mod + Gate G0 inventory audit
     assert(a.requestSelectPatch(135).accepted());apply();
+    auditInventory(a, apply);
     assert(a.requestParameterInt("fm.selected_op",1).accepted());
     assert(a.parameterStatus("filter.cutoff_hz")==FeatureStatus::Unavailable);
     assert(a.parameterStatus("filter.env_amount")==FeatureStatus::Unavailable && a.parameterStatus("filter.keytrack")==FeatureStatus::Unavailable);
     assert(a.parameterStatus("amp.level")==FeatureStatus::Available);
     assert(a.parameterStatus("amp.vel_sens")==FeatureStatus::Unavailable && a.parameterStatus("osc.sub_level")==FeatureStatus::Unavailable);
+    for(const char* id:{"fm.depth","fm.feedback","fm.selected_op","fm.op.level","fm.op.ratio","fm.op.attack","fm.op.decay","fm.op.vel_sens"}){
+        assert(a.parameterStatus(id)==FeatureStatus::Available);
+    }
+    assert(a.parameterStatus("fm.algo")==FeatureStatus::Planned);
+    assert(!a.isParameterValueSupported("lfo.1.dest",2) && a.isParameterValueSupported("lfo.1.dest",3));
+    assert(!a.isParameterValueSupported("mod.slot1.dest",3) && a.isParameterValueSupported("mod.slot1.dest",1));
+    assert(!a.requestParameterInt("lfo.1.dest",2).accepted());
+    assert(!a.requestParameterInt("mod.slot1.dest",3).accepted());
     assert(a.requestParameterFloat("fm.depth",0.7f).accepted());apply();assert(r.snapshot().edit.applied[edit::Depth]==0.7f);
+    assert(a.requestParameterFloat("fm.feedback",65.0f).accepted());apply();
+    assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getFloat("fm.feedback")==65.0f);
+    assert(a.requestParameterInt("fm.selected_op",1).accepted());
+    assert(a.requestParameterFloat("fm.op.attack",120.0f).accepted());apply();
+    assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getFloat("fm.op.attack")==120.0f && r.snapshot().edit.applied[edit::OpAttack0]==120.0f);
+    assert(a.requestParameterFloat("fm.op.decay",850.0f).accepted());apply();
+    assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getFloat("fm.op.decay")==850.0f && r.snapshot().edit.applied[edit::OpDecay0]==850.0f);
+    assert(a.requestParameterFloat("fm.op.vel_sens",75.0f).accepted());apply();
+    assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getFloat("fm.op.vel_sens")==75.0f && r.snapshot().edit.applied[edit::OpVel0]==75.0f);
+    // Verify per-operator independence and contextual N/A when OP2 decay exceeds simplified bounds
+    assert(a.requestParameterInt("fm.selected_op",2).accepted());
+    assert(a.parameterStatus("fm.op.attack")==FeatureStatus::Available && a.parameterStatus("fm.op.vel_sens")==FeatureStatus::Available);
+    assert(a.parameterStatus("fm.op.decay")==FeatureStatus::Unavailable && !a.requestParameterFloat("fm.op.decay",500.0f).accepted());
+    assert(a.model().getFloat("fm.op.attack")!=120.0f); // OP2 attack was not overwritten by OP1 edit
     assert(a.requestSoundAction(1).accepted());apply();
+
+    // 4. DX7 patch 153: fixed-frequency operator ratio contextual N/A vs ratio-mode AVAIL
+    assert(a.requestSelectPatch(153).accepted());apply();
+    unsigned na_ops=0, avail_ops=0;
+    for(int op=1;op<=6;++op){
+        assert(a.requestParameterInt("fm.selected_op",op).accepted());
+        if(a.parameterStatus("fm.op.ratio")==FeatureStatus::Unavailable)++na_ops;
+        else if(a.parameterStatus("fm.op.ratio")==FeatureStatus::Available)++avail_ops;
+    }
+    assert(na_ops>=1 && avail_ops>=1);
+    assert(a.requestParameterInt("fm.selected_op",1).accepted());
+
+    // 5. Recall slot 0 & reboot persistence across engine/backend lifecycle
     assert(a.requestSoundAction(3,0).accepted());apply();apply();assert(r.snapshot().patch_id==4 && r.snapshot().edit.applied[edit::Cutoff]==1000);
-    // Persisted bytes survive an engine/backend lifecycle, no pointer or map retained.
     app.shutdown();r.end();assert(r.begin());LocalAmyPerformanceBackend reboot(r.commands());reboot.presetStore(&store);
     reboot.publish(r.snapshot(),false,0,0);assert(reboot.editAction(3,0));r.apply(0);r.loadPendingPatch();reboot.publish(r.snapshot(),false,0,0);reboot.service(25);r.apply(1);reboot.publish(r.snapshot(),false,0,0);
     assert(r.snapshot().edit.applied[0]==1000 && r.snapshot().edit.user_slot==0);
     assert(r.snapshot().edit.applied[edit::FilterEnv]==3 && r.snapshot().edit.applied[edit::FilterKeytrack]==150);
     assert(r.snapshot().edit.applied[edit::OscLevel]==35 && r.snapshot().edit.applied[edit::SubLevel]==15 && r.snapshot().edit.applied[edit::NoiseLevel]==15);
     assert(r.snapshot().edit.applied[edit::PatchLevel]==50 && r.snapshot().edit.applied[edit::Pan]==-48 && r.snapshot().edit.applied[edit::Velocity]==30);
+    assert(r.snapshot().edit.applied[edit::LfoRate]==6.5f && r.snapshot().edit.applied[edit::LfoDepth]==45.0f && r.snapshot().edit.applied[edit::LfoWave]==1.0f && r.snapshot().edit.applied[edit::LfoDest]==2.0f);
+    assert(r.snapshot().edit.applied[edit::ModDest]==3.0f && r.snapshot().edit.applied[edit::ModAmount]==60.0f && r.snapshot().edit.applied[edit::ModPolarity]==0.0f);
+
+    // 6. All 7 SoundEditor tabs UI verification & screenshot capture
     UiBlueprintPerformanceAdapter next(reboot);next.service(preview::g_sim_tick_ms+=25);UiBlueprint ui(next);assert(ui.begin());
-    for(unsigned tab=0;tab<7;++tab){assert(ui.navigation().navigateTo(ScreenId::SoundEditor,uint8_t(tab)));preview::pumpFrame(ui);}
+    const char* tab_shots[7]={
+        "build/editor011/osc.ppm","build/editor011/fm.ppm","build/editor011/filter.ppm",
+        "build/editor011/amp.ppm","build/editor011/env.ppm","build/editor011/lfo.ppm","build/editor011/mod.ppm"
+    };
+    for(unsigned tab=0;tab<7;++tab){
+        assert(ui.navigation().navigateTo(ScreenId::SoundEditor,uint8_t(tab)));
+        preview::pumpFrame(ui);
+        assert(preview::saveFramebufferPpm(tab_shots[tab]));
+    }
+    // Check OSC tab contextual badges
     assert(ui.navigation().navigateTo(ScreenId::SoundEditor,0));preview::pumpFrame(ui);
     assert(button(ui.contentObject(),"MAIN MIX"));
     auto* pulse_card=button(ui.contentObject(),"PULSE WIDTH");assert(pulse_card && labels(pulse_card,"N/A")>=2 && labels(pulse_card,"PLAN")==0);
-    assert(preview::saveFramebufferPpm("build/editor011/osc.ppm"));
+    // Check FM tab shows both FM BRIGHTNESS and FM FEEDBACK and FM ALGORITHM (PLAN)
+    assert(ui.navigation().navigateTo(ScreenId::SoundEditor,1));preview::pumpFrame(ui);
+    assert(button(ui.contentObject(),"FM BRIGHTNESS") && button(ui.contentObject(),"FM FEEDBACK"));
+    auto* algo_card=button(ui.contentObject(),"FM ALGORITHM");assert(algo_card && labels(algo_card,"PLAN")>=2);
+    // Check MOD tab Slot 1 interactive button click -> owner confirmation
+    assert(ui.navigation().navigateTo(ScreenId::SoundEditor,6));preview::pumpFrame(ui);
+    auto* m1_btn=button(ui.contentObject(),"M1 ON");assert(m1_btn && !lv_obj_has_state(m1_btn,LV_STATE_DISABLED));
+    auto* m2_btn=button(ui.contentObject(),"M2 ON");assert(m2_btn && lv_obj_has_state(m2_btn,LV_STATE_DISABLED));
+    lv_obj_send_event(m1_btn,LV_EVENT_CLICKED,nullptr);
+    assert(next.lastCommandState()==UiCommandState::Requested && next.model().modSlot(0).enabled); // still ON until owner confirms
+    next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);reboot.publish(r.snapshot(),false,0,0);preview::pumpFrame(ui);
+    assert(next.lastCommandState()==UiCommandState::Confirmed && !next.model().modSlot(0).enabled);
+    assert(button(ui.contentObject(),"M1 OFF"));
+
+    // Check User Presets modal
     assert(ui.navigation().navigateTo(ScreenId::SoundEditor,2));preview::pumpFrame(ui);
-    assert(preview::saveFramebufferPpm("build/editor011/filter.ppm"));
     auto* open=button(ui.contentObject(),"USER / SAVE AS");assert(open);lv_obj_send_event(open,LV_EVENT_CLICKED,nullptr);preview::pumpFrame(ui);
     assert(preview::saveFramebufferPpm("build/editor011/presets.ppm"));
     auto* close=button(lv_screen_active(),"CLOSE");assert(close);lv_obj_send_event(close,LV_EVENT_CLICKED,nullptr);preview::pumpFrame(ui);
     assert(ui.navigation().navigateTo(ScreenId::PatchBrowser));preview::pumpFrame(ui);assert(button(ui.contentObject(),"USER PRESETS / SAVE AS"));
     assert(lv_mem_test()==LV_RESULT_OK);ui.shutdown();r.end();
-    puts("PASS LVGL9.3: editor tabs, owner confirmation, coalesced macros, dirty guard, Save/Recall/reboot simulation, User panel, heap integrity");
+    puts("PASS LVGL9.3: all 7 editor tabs, Gate G0 inventory audit, FM/LFO/Mod Slot 1 owner confirmation, dirty guard, Save/Recall/reboot simulation, heap integrity");
 }
