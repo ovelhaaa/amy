@@ -81,3 +81,14 @@ A classe ainda não é usada por NVS nem pela interface: a API booleana atual n�
 separa ausência de falha de leitura, e a admissão dos bancos adicionais e do GC
 não foi comprovada. Logo não se admite escrita real com ela. Teste host não
 comprova recuperação após perda de energia física.
+
+## Leitura segura dos bancos v2
+
+A interface experimental agora diferencia `Present`, `Missing` e `Error`.
+A seleção examina os dois bancos de cada versão em uma única passagem; qualquer
+erro de leitura aborta load e save antes de escrever. Um registro presente mas
+inválido pelo decoder é ignorado e pode ser substituído em um banco v2. O teste
+host injeta erro de leitura e verifica que nenhuma cópia é alterada. Readback
+continua comparando todos os bytes. A API ainda não está ligada à NVS: além da
+admissão de capacidade, falta mapear seus erros e tratar versões futuras sem
+sobrescrever dados desconhecidos. Save de Decay/Sustain permanece desabilitado.

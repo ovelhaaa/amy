@@ -16,10 +16,15 @@ struct MemoryStore:edit::PresetStore {
     bool write(unsigned s,unsigned b,const uint8_t* data,unsigned n) override {if(fail)return false;if(torn){std::memset(bytes[s][b],0,128);std::memcpy(bytes[s][b],data,63);present[s][b]=true;return false;}assert(n==128);std::memcpy(bytes[s][b],data,n);present[s][b]=true;return true;}
 };
 struct VersionedMemoryStore:edit::VersionedPresetStore {
-    uint8_t legacy[2][128]{},modern[2][160]{};bool hasOld[2]{},hasNew[2]{},fail=false,torn=false;
+    uint8_t legacy[2][128]{},modern[2][160]{};bool hasOld[2]{},hasNew[2]{},fail=false,torn=false,readError=false;
     bool read(unsigned, unsigned bank,uint8_t* out,unsigned& n) override {if(!hasOld[bank] || n<128)return false;std::memcpy(out,legacy[bank],128);n=128;return true;}
     bool write(unsigned, unsigned bank,const uint8_t* data,unsigned n) override {if(n!=128)return false;std::memcpy(legacy[bank],data,n);hasOld[bank]=true;return true;}
-    bool readV2(unsigned,unsigned bank,uint8_t* out,unsigned& n) override {if(!hasNew[bank] || n<160)return false;std::memcpy(out,modern[bank],160);n=160;return true;}
+    edit::BankRead readVersioned(unsigned version,unsigned,unsigned bank,uint8_t* out,unsigned& n) override {
+        if(readError)return edit::BankRead::Error;
+        if(version==1){if(!hasOld[bank])return edit::BankRead::Missing;if(n<128)return edit::BankRead::Error;std::memcpy(out,legacy[bank],128);n=128;}
+        else {if(!hasNew[bank])return edit::BankRead::Missing;if(n<160)return edit::BankRead::Error;std::memcpy(out,modern[bank],160);n=160;}
+        return edit::BankRead::Present;
+    }
     bool writeV2(unsigned,unsigned bank,const uint8_t* data,unsigned n) override {
         if(fail || n!=160)return false;
         std::memcpy(modern[bank],data,torn?70:n);hasNew[bank]=true;return !torn;
@@ -101,6 +106,12 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     versioned.torn=true;assert(!versioned.save(0,v2preset));versioned.torn=false;
     assert(versioned.load(0,decoded) && decoded.sequence==v1.sequence+1);
     versioned.fail=true;assert(!versioned.save(0,v2preset));versioned.fail=false;
+    uint8_t before[160];std::memcpy(before,versioned.modern[0],160);
+    versioned.readError=true;assert(!versioned.load(0,decoded));assert(!versioned.save(0,v2preset));versioned.readError=false;
+    assert(std::memcmp(before,versioned.modern[0],160)==0);
+    edit::put32(versioned.modern[1],0x31314553);edit::put32(versioned.modern[1]+4,3);versioned.hasNew[1]=true;
+    assert(!versioned.save(0,v2preset));assert(edit::get32(versioned.modern[1]+4)==3);
+    versioned.hasNew[1]=false;
     assert(versioned.load(0,decoded) && decoded.sequence==v1.sequence+1);
     assert(versioned.save(0,v2preset));assert(versioned.load(0,decoded) && decoded.sequence==v1.sequence+2);
     versioned.modern[1][30]^=1;assert(versioned.load(0,decoded) && decoded.sequence==v1.sequence+1);
