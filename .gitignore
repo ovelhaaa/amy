@@ -79,3 +79,4 @@ godot/src/*.os
 /sdkconfig
 /sdkconfig.old
 /build/
+smk-p4/nvs_backup_*.bin
