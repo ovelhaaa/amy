@@ -25,8 +25,11 @@ void PerformanceUi::enable(lv_obj_t* object,bool enabled) {
     else if(!enabled && !lv_obj_has_state(object,LV_STATE_DISABLED)) lv_obj_add_state(object,LV_STATE_DISABLED);
 }
 void PerformanceUi::text(lv_obj_t* object,char* buffer,size_t capacity,const char* value) {
-    if(!object || std::strncmp(buffer,value,capacity)==0) return;
-    std::snprintf(buffer,capacity,"%s",value); lv_label_set_text_static(object,buffer);
+    if(!object || capacity == 0 || std::strncmp(buffer,value,capacity)==0) return;
+    size_t i = 0;
+    while(i + 1 < capacity && value[i] != '\0') { buffer[i] = value[i]; ++i; }
+    buffer[i] = '\0';
+    lv_label_set_text_static(object,buffer);
 }
 PerformanceUi::Context* PerformanceUi::context(Action action,uint8_t index) {
     if(contexts_used_>=64) { failed_=true; return nullptr; }
