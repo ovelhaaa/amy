@@ -23,7 +23,31 @@
 
 ---
 
-## 3. Physical Smoke Test Procedure (Guition ESP32-P4 Hardware)
+## 4. Physical Flash Telemetry & Hardware Report
+
+- **Date / Time**: 2026-11-09 19:51:39
+- **Serial Port**: COM13 (ESP32-P4 revision v1.3 @ 400 MHz, MAC: `80:f1:b2:d3:cc:86`)
+- **Flashed Binary**: `smk-p4/.pio/build/guition-editor-8/firmware.bin` (SHA-256: `F7942C46C8A1BCC3255F7A50D04BF0589C3EA2A4E83EC9122959D95125B7E59C`)
+- **Pre-Flash Backup**: Secured at `build/backups/app_pre_012.bin` (SHA-256: `ADAA4E21EC98D52A92C4C6DA56A87FA2DA4B2B86C430445D1FFBA1A54AB3F5F3`)
+- **esptool Result**:
+  ```text
+  Auto-detected flash size: 16MB
+  Wrote 23120 bytes at 0x00002000 in 0.3s (bootloader)
+  Wrote 3072 bytes at 0x00008000 in 0.1s (partitions)
+  Wrote 1213728 bytes at 0x00010000 in 6.9s (firmware)
+  Hash of data verified. Hard resetting via RTS pin. SUCCESS.
+  ```
+- **Live Serial Boot Telemetry**:
+  ```text
+  P4_AMY: ADMISSION free=383011 largest=245760 required=376832 admitted=1
+  P4_AMY: AUDIO RAM_ONLY blocks_rendered=1064 render_avg_us=296 render_max_us=371 render_deadlines=0
+  P4_AMY: ENGINE ready=1 patch=128 notes=0 peak=0 clipped=0 oom=0 compute_deadlines=0
+  P4_AMY: EDIT011 patch=128 epoch=1 revision=1 available=e401fff0 errors=0
+  SMK_P4_GATE0: heap internal free=176175 min=176175 largest=102400; PSRAM free=30493192
+  DISPLAY_TEST: LVGL free=95432 touch_errors=0 flush_errors=0 refresh=895
+  ```
+- **Operational Verdict**: Hardware initialized normally, zero deadline misses, render headroom > 93% (371 µs max vs 5,333 µs budget), internal RAM and PSRAM headroom intact. Ready for physical smoke interaction by operator.
+
 
 > [!IMPORTANT]
 > **Operator Authorization Rule**: In strict compliance with project governance, firmware must NOT be flashed to the physical Guition hardware without explicit operator authorization for a designated binary path and matching SHA-256 hash.
