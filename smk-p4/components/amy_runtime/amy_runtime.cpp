@@ -85,10 +85,7 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
        !amy_global.bus[0]->reverb.rev->delay_1) {
         end(); return false;
     }
-    config_chorus(0, 0.0f, CHORUS_DEFAULT_MAX_DELAY, CHORUS_DEFAULT_LFO_FREQ, CHORUS_DEFAULT_MOD_DEPTH);
-    config_echo(0, 0.0f, 350.0f, 1000.0f, 0.0f, 0.0f);
-    config_reverb(0, 0.0f, REVERB_DEFAULT_LIVENESS, REVERB_DEFAULT_DAMPING, REVERB_DEFAULT_XOVER_HZ);
-    config_eq(0, F2S(1.0f), F2S(1.0f), F2S(1.0f));
+    fx::applyBusFx(state_.fx.config);
     for(size_t i=0;i<kAmyVoices;++i) {
         const auto synth_id=static_cast<uint8_t>(i+1);
         const auto patch_id=kPatches[i/kVoices].id;
@@ -308,6 +305,20 @@ void Runtime::applyUsb(uint32_t now_ms) {
     }
     if(q.generation()!=usb_generation_) { cancelUsb(); usb_generation_=q.generation(); }
 }
+void Runtime::applyFx() {
+    fx::FxRequest req;
+    if(commands_.fx.pop(req)) {
+        if(!fx::valid(req.config)) {
+            ++state_.fx.errors;
+        } else {
+            state_.fx.config = req.config;
+            state_.fx.request = req.request;
+            ++state_.fx.revision;
+            state_.fx.dirty = true;
+            fx::applyBusFx(state_.fx.config);
+        }
+    }
+}
 void Runtime::apply(uint32_t now_ms) {
 #ifdef SMKP4_SOUND_EDITOR
     if(commands_.storage_requested.load(std::memory_order_acquire)) {
@@ -396,6 +407,7 @@ void Runtime::apply(uint32_t now_ms) {
 #ifdef SMKP4_SOUND_EDITOR
     applyEdit();
 #endif
+    applyFx();
     if(commands_.generation()!=state_.generation) {
         silence(); state_.generation=commands_.generation();
         usb_.commands.panic(); usb_generation_=usb_.commands.generation();
@@ -497,10 +509,7 @@ bool Runtime::loadReusable(uint16_t patch_id) {
         if(result!=AMY_PATCH_RESOURCES_ASSIGNED) { state_.patch_error=result;return false; }
     }
     amy_execute_deltas();
-    config_chorus(0, 0.0f, CHORUS_DEFAULT_MAX_DELAY, CHORUS_DEFAULT_LFO_FREQ, CHORUS_DEFAULT_MOD_DEPTH);
-    config_echo(0, 0.0f, 350.0f, 1000.0f, 0.0f, 0.0f);
-    config_reverb(0, 0.0f, REVERB_DEFAULT_LIVENESS, REVERB_DEFAULT_DAMPING, REVERB_DEFAULT_XOVER_HZ);
-    config_eq(0, F2S(1.0f), F2S(1.0f), F2S(1.0f));
+    fx::applyBusFx(state_.fx.config);
     state_.patch_state=PatchState::Verifying;
     // Warm lazy DSP on the worker while output continues zero-filled PCM.
     amy_simple_fill_buffer();

@@ -2,6 +2,7 @@
 #include "runtime_config.h"
 #include "output_context.h"
 #include "sound_edit.h"
+#include "fx_state.h"
 #include <atomic>
 namespace smk::p4::amy {
 enum class CommandType : uint8_t { NoteOn, Patch, Master, NoteOff, Control, Bend, Harmony };
@@ -60,6 +61,7 @@ public:
     edit::Mailbox edits;
     std::atomic<bool> storage_requested{false};
 #endif
+    fx::Mailbox fx;
 };
 inline bool atOrAfter(uint32_t a,uint32_t b) { return static_cast<int32_t>(a-b)>=0; }
 // The owner samples its clock before draining. A concurrent producer can

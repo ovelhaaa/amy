@@ -10,6 +10,7 @@ struct Snapshot {
     edit::State edit;
     bool storage_quiet=false;
 #endif
+    fx::FxState fx;
     harmony::Config harmony;
     uint32_t harmony_revision=0,harmony_errors=0,groups_admitted=0,groups_rejected=0;
     uint32_t last_group=0,transform_max_us=0,admission_max_us=0;
@@ -43,6 +44,7 @@ public:
     UsbInput& usbInput() { return usb_; }
     const Snapshot& snapshot() const { return state_; }
 private:
+    void applyFx();
 #ifdef SMKP4_SOUND_EDITOR
     void captureEdit();
     void applyEdit();
