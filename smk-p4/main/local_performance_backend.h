@@ -40,6 +40,8 @@ public:
             }
         }
 #endif
+        if(snapshot.patch_id!=state_.patch_id){desired_fx_=original_fx_=snapshot.fx.config;}
+        fx_state_=snapshot.fx;
         ready_=snapshot.ready; state_.patch_id=state_.engine_patch=snapshot.patch_id;
         const int index=amy::patchIndex(snapshot.patch_id);
         std::snprintf(state_.patch_name,sizeof(state_.patch_name),"%s",index<0?"ERROR":amy::kPatches[index].name);
@@ -84,6 +86,10 @@ public:
             }else if(commands_.edits.push(desired_)){edit_pending_=false;last_edit_ms_=now_ms;}
         }
 #endif
+        if(fx_pending_ && !busy() && uint32_t(now_ms-last_fx_ms_)>=15){
+            fx::FxRequest req{};req.config=desired_fx_;req.request=++fx_token_;
+            if(commands_.fx.push(req)){fx_pending_=false;last_fx_ms_=now_ms;}
+        }
     }
 #ifdef SMKP4_SOUND_EDITOR
     void presetStore(edit::PresetStore* store){store_=store;}
@@ -107,8 +113,10 @@ public:
     bool editAction(unsigned action,unsigned slot=0,const char* name=nullptr) override {
         if(!ready_ || busy() || saving_)return false;
         if(action<2){prepareEdit();desired_.compare=action==0?!desired_.compare:false;
-            if(action==1){desired_.mask=0;desired_.slot=-1;for(auto& m:desired_.macros)m=64;}
-            desired_.request=newEditToken();edit_pending_=true;return true;}
+            if(action==1){desired_.mask=0;desired_.slot=-1;for(auto& m:desired_.macros)m=64;desired_fx_=original_fx_;}
+            desired_.request=newEditToken();edit_pending_=true;
+            fx::FxRequest req{};req.config=desired_.compare?original_fx_:desired_fx_;req.request=++fx_token_;commands_.fx.push(req);
+            return true;}
         if(slot>=edit::kSlots || !store_ || edit_pending_ || edit_.request!=edit_token_)return false;
         if(action==2){
             if(!name || !name[0] || std::strlen(name)>24 || state_.active_notes || edit_.compare)return false;
@@ -153,6 +161,37 @@ public:
 #endif
     }
     bool midiError() const override { return midi_error_; }
+    const fx::FxState* fxState() const override { return &fx_state_; }
+    bool setFxParameter(const char* id, float value, uint32_t now_ms) override {
+        if (!ready_ || busy()) return false;
+        if (!id) return false;
+        if (std::strcmp(id, "fx.chorus.mode") == 0) {
+            desired_fx_.chorus_mode = static_cast<uint8_t>(std::clamp(int(std::lround(value)), 0, 5));
+        } else if (std::strcmp(id, "fx.chorus.depth") == 0) {
+            desired_fx_.chorus_depth = std::clamp(value / 100.0f, 0.0f, 1.0f);
+        } else if (std::strcmp(id, "fx.delay.time_ms") == 0) {
+            desired_fx_.delay_time_ms = std::clamp(value, 10.0f, 1000.0f);
+        } else if (std::strcmp(id, "fx.delay.feedback") == 0) {
+            desired_fx_.delay_feedback = std::clamp(value / 100.0f, 0.0f, 0.95f);
+        } else if (std::strcmp(id, "fx.delay.mix") == 0) {
+            desired_fx_.delay_mix = std::clamp(value / 100.0f, 0.0f, 1.0f);
+        } else if (std::strcmp(id, "fx.reverb.size") == 0) {
+            desired_fx_.reverb_size = std::clamp(value / 100.0f, 0.0f, 1.0f);
+        } else if (std::strcmp(id, "fx.reverb.mix") == 0) {
+            desired_fx_.reverb_mix = std::clamp(value / 100.0f, 0.0f, 1.0f);
+        } else if (std::strcmp(id, "fx.master_tone") == 0) {
+            desired_fx_.master_tone = std::clamp(value / 100.0f, -1.0f, 1.0f);
+        } else {
+            return false;
+        }
+        fx_pending_ = true;
+        fx::FxRequest req{}; req.config = desired_fx_; req.request = ++fx_token_;
+        if (commands_.fx.push(req)) {
+            fx_pending_ = false;
+            last_fx_ms_ = now_ms;
+        }
+        return true;
+    }
     bool patchError() const override { return failed_; }
     bool connected() const override { return ready_; }
     bool busy() const override { return pending_ || loading_
@@ -256,5 +295,10 @@ private:
     bool midi_connected_=false,midi_error_=false;
     bool pending_=false,loading_=false,failed_=false;
     uint32_t changes_=0,failures_=0;
+    fx::FxState fx_state_{};
+    fx::FxConfig desired_fx_{};
+    fx::FxConfig original_fx_{};
+    bool fx_pending_=false;
+    uint32_t fx_token_=0,last_fx_ms_=0;
 };
 }

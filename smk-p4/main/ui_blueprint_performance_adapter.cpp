@@ -10,6 +10,11 @@ constexpr const char* kHarmonyIds[]={"harmony.scale_enable","harmony.chord_enabl
     "harmony.inversion","harmony.voicing","harmony.spread","harmony.usb_channel","harmony.preset"};
 int harmonyIndex(const char* id){if(id)for(unsigned i=0;i<12;++i)if(std::strcmp(id,kHarmonyIds[i])==0)return int(i);return -1;}
 bool eq(const char* a,const char* b) { return a && std::strcmp(a,b)==0; }
+bool isFxId(const char* id) {
+    return eq(id,"fx.chorus.mode") || eq(id,"fx.chorus.depth") ||
+           eq(id,"fx.delay.time_ms") || eq(id,"fx.delay.feedback") || eq(id,"fx.delay.mix") ||
+           eq(id,"fx.reverb.size") || eq(id,"fx.reverb.mix") || eq(id,"fx.master_tone");
+}
 }
 UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend& backend):backend_(backend) {
     meters_.is_simulated=false; // No amplitude measurement available: meters stay zero/N/A.
@@ -31,6 +36,14 @@ UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend&
     model_.setBool("harmony.scale_enable",false);
     model_.setBool("harmony.chord_enable",false);
     syncHarmony({});
+    model_.setInt("fx.chorus.mode",0);
+    model_.setFloat("fx.chorus.depth",0.0f);
+    model_.setFloat("fx.delay.time_ms",350.0f);
+    model_.setFloat("fx.delay.feedback",40.0f);
+    model_.setFloat("fx.delay.mix",0.0f);
+    model_.setFloat("fx.reverb.size",70.0f);
+    model_.setFloat("fx.reverb.mix",0.0f);
+    model_.setFloat("fx.master_tone",0.0f);
     model_.setNotice("WAIT OWNER SNAPSHOT; TOUCH LEASE 10s");
 }
 UiCommandResult UiBlueprintPerformanceAdapter::result(UiCommandState state,const char* id,const char* notice,uint32_t token) {
@@ -94,10 +107,12 @@ FeatureStatus UiBlueprintPerformanceAdapter::parameterStatus(const char* id) con
         if(p>=0)return (state->available&edit::bit(unsigned(p)))?FeatureStatus::Available:FeatureStatus::Unavailable;
     }
     if(backend_.harmonyState() && harmonyIndex(id)>=0)return FeatureStatus::Available;
+    if(backend_.fxState() && isFxId(id))return FeatureStatus::Available;
     return eq(id,"perf.master_volume") || eq(id,"perf.octave_shift") || eq(id,"perf.patch_id")
         ? FeatureStatus::Available : FeatureStatus::Planned;
 }
 bool UiBlueprintPerformanceAdapter::isParameterValueSupported(const char* id,int32_t value) const {
+    if(eq(id,"fx.chorus.mode"))return value>=0 && value<=5;
     if(const auto* state=backend_.soundEdit()){
         if(eq(id,"lfo.1.wave"))return value>=0 && value<=4;
         if(eq(id,"lfo.1.dest"))return value>=0 && value<=3 && (value!=2 || state->family==1);
@@ -142,6 +157,14 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterFloat(const char*
         edit_requested_=true;edit_errors_=backend_.soundEdit()->errors;edit_id_=ParameterRegistry::findById(id)->id;
         return result(UiCommandState::Requested,id,"EDIT REQUESTED; WAIT OWNER");
     }
+    if(backend_.fxState() && isFxId(id)){
+        if(!usable())return result(UiCommandState::Rejected,id,"ENGINE/SNAPSHOT UNAVAILABLE");
+        if(!backend_.setFxParameter(id,v,now_ms_))return result(UiCommandState::Rejected,id,"FX REJECTED; SEE CONFIRMED VALUE");
+        fx_requested_=true;fx_requested_ms_=now_ms_;
+        const auto* desc=ParameterRegistry::findById(id);
+        fx_id_=desc?desc->id:"fx";
+        return result(UiCommandState::Requested,id,"FX REQUESTED; WAIT OWNER");
+    }
     if(!std::isfinite(v) || v < -32768 || v > 65535) return result(UiCommandState::Rejected,id,"INVALID VALUE");
     return requestParameterInt(id,static_cast<int32_t>(std::lround(v)));
 }
@@ -151,6 +174,10 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterBool(const char* 
 UiCommandResult UiBlueprintPerformanceAdapter::requestParameterInt(const char* id,int32_t v) {
     if(backend_.soundEdit() && editIndex(id)>=0){
         if(!isParameterValueSupported(id,v))return result(UiCommandState::Rejected,id,"EDIT REJECTED; UNSUPPORTED VALUE");
+        return requestParameterFloat(id,float(v));
+    }
+    if(backend_.fxState() && isFxId(id)){
+        if(!isParameterValueSupported(id,v))return result(UiCommandState::Rejected,id,"FX REJECTED; UNSUPPORTED VALUE");
         return requestParameterFloat(id,float(v));
     }
     if(backend_.soundEdit() && eq(id,"fm.selected_op")){
@@ -298,6 +325,20 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
             model_.setInt("fm.selected_op",int(selected_op_)+1);
             model_.setInt("perf.macro.2",edit->macros[0]);model_.setInt("perf.macro.5",edit->macros[1]);model_.setInt("perf.macro.6",edit->macros[2]);
         }
+        if(const auto* fx=backend_.fxState()){
+            if(fx_requested_ && !backend_.busy()){
+                fx_requested_=false;
+                result(UiCommandState::Confirmed,fx_id_,"FX CONFIRMED BY OWNER");
+            }
+            model_.setInt("fx.chorus.mode",fx->config.chorus_mode);
+            model_.setFloat("fx.chorus.depth",fx->config.chorus_depth*100.0f);
+            model_.setFloat("fx.delay.time_ms",fx->config.delay_time_ms);
+            model_.setFloat("fx.delay.feedback",fx->config.delay_feedback*100.0f);
+            model_.setFloat("fx.delay.mix",fx->config.delay_mix*100.0f);
+            model_.setFloat("fx.reverb.size",fx->config.reverb_size*100.0f);
+            model_.setFloat("fx.reverb.mix",fx->config.reverb_mix*100.0f);
+            model_.setFloat("fx.master_tone",fx->config.master_tone*100.0f);
+        }
         const auto& s=backend_.state();
         if(isPatchSelectable(s.patch_id)) {
             if(model_.getInt("perf.patch_id")!=s.patch_id) model_.setInt("perf.patch_id",s.patch_id);
@@ -320,6 +361,10 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     if(patch_.active && uint32_t(now_ms-patch_.requested_ms)>=kPatchConfirmationTimeoutMs) {
         patch_.active=false;
         result(UiCommandState::Rejected,"perf.patch_id","PATCH NOT CONFIRMED; OWNER STATE RETAINED");
+    }
+    if(fx_requested_ && uint32_t(now_ms-fx_requested_ms_)>=kPatchConfirmationTimeoutMs) {
+        fx_requested_=false;
+        result(UiCommandState::Rejected,fx_id_,"FX NOT CONFIRMED; OWNER STATE RETAINED");
     }
     if(const auto* h=backend_.harmonyState()) {
         model_.live_harmony=*h;model_.live_harmony.pending=harmony_pending_;

@@ -18,7 +18,7 @@ public:
         lv_obj_set_size(banner, 784, 38);
         lv_obj_set_style_pad_all(banner, 4, 0);
         createLabel(banner,
-                    "AMY DSP: CHORUS, ECHO/DELAY, REVERB, 3-BAND EQ (PLANNED FOR P4)  |  DRIVE: APP DSP PLANNED",
+                    "NATIVE AMY FX CHAIN: EQ -> CHORUS -> DELAY -> REVERB  |  HARD REAL-TIME BUS 0",
                     6, 4, 768, &lv_font_montserrat_14, palette::kAccentPrimary);
 
         // 2. Row 1: Chorus & Delay (y = 46..156)

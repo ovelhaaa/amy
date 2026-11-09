@@ -10,6 +10,16 @@ extern "C" {
 void config_eq(uint8_t bus, SAMPLE eq_l, SAMPLE eq_m, SAMPLE eq_h);
 }
 
+#ifdef true
+#undef true
+#endif
+#ifdef false
+#undef false
+#endif
+#ifdef PCM
+#undef PCM
+#endif
+
 namespace smk::p4::fx {
 
 constexpr uint32_t kFxMagic = 0x32315846; // "FX12"

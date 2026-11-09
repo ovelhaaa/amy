@@ -2,6 +2,7 @@
 #include "smk_state.h"
 #include "../components/amy_runtime/sound_edit.h"
 #include "../components/amy_runtime/harmony.h"
+#include "../components/amy_runtime/fx_state.h"
 namespace smk::p4 {
 // Shared presentation DTO; local state is owner-applied AMY state, never a
 // simulated S3 session. No transport frames in the widget/backend contract.
@@ -20,6 +21,8 @@ public:
     virtual uint8_t voiceCapacity() const { return 4; }
     virtual const harmony::State* harmonyState() const { return nullptr; }
     virtual bool setHarmony(harmony::Config,uint32_t) { return false; }
+    virtual const fx::FxState* fxState() const { return nullptr; }
+    virtual bool setFxParameter(const char*, float, uint32_t) { return false; }
     virtual const edit::State* soundEdit() const { return nullptr; }
     virtual bool editError() const {return false;}
     virtual bool editPending() const {return false;}

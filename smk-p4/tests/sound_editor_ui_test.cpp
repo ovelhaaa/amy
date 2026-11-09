@@ -235,6 +235,33 @@ int main(){
     assert(preview::saveFramebufferPpm("build/editor011/presets.ppm"));
     auto* close=button(lv_screen_active(),"CLOSE");assert(close);lv_obj_send_event(close,LV_EVENT_CLICKED,nullptr);preview::pumpFrame(ui);
     assert(ui.navigation().navigateTo(ScreenId::PatchBrowser));preview::pumpFrame(ui);assert(button(ui.contentObject(),"USER PRESETS / SAVE AS"));
+    // 7. Effects Screen UI verification, interactive parameter edit & screenshot capture
+    assert(ui.navigation().navigateTo(ScreenId::Effects));preview::pumpFrame(ui);
+    assert(preview::saveFramebufferPpm("build/editor011/effects.ppm"));
+    assert(button(ui.contentObject(),"CHORUS MODE") && button(ui.contentObject(),"CHORUS DEPTH"));
+    assert(button(ui.contentObject(),"DELAY TIME") && button(ui.contentObject(),"DELAY FDBK") && button(ui.contentObject(),"DELAY MIX"));
+    assert(button(ui.contentObject(),"REVERB SIZE") && button(ui.contentObject(),"REVERB MIX"));
+    assert(button(ui.contentObject(),"TILT TONE"));
+    auto* drive_card=button(ui.contentObject(),"BUS DRIVE");assert(drive_card && labels(drive_card,"PLAN")>=1);
+    auto* routing_card=button(ui.contentObject(),"FX CHAIN");assert(routing_card && labels(routing_card,"PLAN")>=1);
+
+    // Interactive FX edits with owner round-trip confirmation
+    assert(next.requestParameterInt("fx.chorus.mode",2).accepted());
+    next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);reboot.publish(r.snapshot(),false,0,0);next.service(preview::g_sim_tick_ms+=25);preview::pumpFrame(ui);
+    assert(next.lastCommandState()==UiCommandState::Confirmed && r.snapshot().fx.config.chorus_mode==2);
+
+    assert(next.requestParameterFloat("fx.delay.time_ms",500.0f).accepted());
+    next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);reboot.publish(r.snapshot(),false,0,0);next.service(preview::g_sim_tick_ms+=25);preview::pumpFrame(ui);
+    assert(next.lastCommandState()==UiCommandState::Confirmed && r.snapshot().fx.config.delay_time_ms==500.0f);
+
+    assert(next.requestParameterFloat("fx.reverb.mix",50.0f).accepted());
+    next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);reboot.publish(r.snapshot(),false,0,0);next.service(preview::g_sim_tick_ms+=25);preview::pumpFrame(ui);
+    assert(next.lastCommandState()==UiCommandState::Confirmed && std::fabs(r.snapshot().fx.config.reverb_mix-0.5f)<0.01f);
+
+    assert(next.requestParameterFloat("fx.master_tone",30.0f).accepted());
+    next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);reboot.publish(r.snapshot(),false,0,0);next.service(preview::g_sim_tick_ms+=25);preview::pumpFrame(ui);
+    assert(next.lastCommandState()==UiCommandState::Confirmed && std::fabs(r.snapshot().fx.config.master_tone-0.3f)<0.01f);
+
     assert(lv_mem_test()==LV_RESULT_OK);ui.shutdown();r.end();
-    puts("PASS LVGL9.3: all 7 editor tabs, Gate G0 inventory audit, FM/LFO/Mod Slot 1 owner confirmation, dirty guard, Save/Recall/reboot simulation, heap integrity");
+    puts("PASS LVGL9.3: all 7 editor tabs, Effects screen, Gate G0 inventory audit, FM/LFO/Mod/FX owner confirmation, dirty guard, Save/Recall/reboot simulation, heap integrity");
 }
