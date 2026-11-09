@@ -267,4 +267,11 @@ inline bool decodeRecord(const uint8_t* in, unsigned len, FxConfig& cfg, uint32_
     return true;
 }
 
+class FxPresetStore {
+public:
+    virtual ~FxPresetStore() = default;
+    virtual bool loadFx(unsigned slot, FxConfig& out) = 0;
+    virtual bool saveFx(unsigned slot, const FxConfig& cfg) = 0;
+};
+
 } // namespace smk::p4::fx

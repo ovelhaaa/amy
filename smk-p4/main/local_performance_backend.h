@@ -63,6 +63,9 @@ public:
         last_service_ms_=now_ms;
         if(saving_ && quiet_ && store_){
             const bool saved=store_->save(save_slot_,save_preset_);edit_error_=!saved;
+            if(saved && fx_store_){
+                fx_store_->saveFx(save_slot_,save_fx_);
+            }
             notice_=saved?"SAVED; RECALL TO VERIFY":"SAVE FAILED; PREVIOUS RECORD RETAINED";
             if(saved){saved_edit_=edit_;saved_valid_=true;std::snprintf(user_name_,sizeof(user_name_),"%s",save_preset_.name);}
             saving_=false;commands_.storage_requested.store(false,std::memory_order_release);
@@ -73,6 +76,10 @@ public:
             desired_.mask=recall_.mask;desired_.slot=int8_t(recall_slot_);
             for(unsigned p=0;p<edit::Count;++p)desired_.values[p]=recall_.values[p];
             desired_.request=newEditToken();edit_pending_=true;recalling_=false;recall_wait_=true;recall_token_=edit_token_;recall_errors_=edit_.errors;
+            desired_fx_=original_fx_=recall_fx_;
+            fx_pending_=true;
+            fx::FxRequest req{};req.config=desired_fx_;req.request=++fx_token_;
+            if(commands_.fx.push(req)){fx_pending_=false;last_fx_ms_=now_ms;}
         }
         if(!edit_pending_ && edit_.request!=edit_token_ && !edit_timeout_ && uint32_t(now_ms-last_edit_ms_)>2000){
             edit_timeout_=edit_error_=true;notice_="EDIT TIMEOUT; PANIC; RETRY AFTER SNAPSHOT";commands_.panic();
@@ -93,6 +100,11 @@ public:
     }
 #ifdef SMKP4_SOUND_EDITOR
     void presetStore(edit::PresetStore* store){store_=store;}
+    void fxPresetStore(fx::FxPresetStore* store){fx_store_=store;}
+    bool userPresetFx(unsigned slot,fx::FxConfig& out){
+        if(!fx_store_ || !fx_store_->loadFx(slot,out)){out=fx::FxConfig{};return false;}
+        return true;
+    }
     const edit::State* soundEdit() const override { return &edit_; }
     uint32_t editCoalesced() const {return coalesced_;}
     bool editError() const override {return edit_error_;}
@@ -125,11 +137,15 @@ public:
             for(unsigned m=0;m<3;++m)save_preset_.macros[m]=edit_.macros[m];
             for(unsigned p=0;p<edit::Count;++p)save_preset_.values[p]=edit_.manual[p];
             if(!store_->accepts(save_preset_))return false;
+            save_fx_=desired_fx_;
             save_slot_=slot;saving_=true;save_requested_ms_=last_service_ms_;notice_="SAVE REQUESTED; QUIET BARRIER";
             commands_.storage_requested.store(true,std::memory_order_release);return true;
         }
         if(action==3){
             if(unsaved() || !store_->load(slot,recall_) || amy::patchIndex(recall_.patch)<0)return false;
+            if(fx_store_){
+                if(!fx_store_->loadFx(slot,recall_fx_)){recall_fx_=fx::FxConfig{};}
+            }else{recall_fx_=fx::FxConfig{};}
             recalling_=true;recall_slot_=slot;
             if(!setPatch(recall_.patch,0)){recalling_=false;return false;}return true;
         }
@@ -298,6 +314,8 @@ private:
     fx::FxState fx_state_{};
     fx::FxConfig desired_fx_{};
     fx::FxConfig original_fx_{};
+    fx::FxPresetStore* fx_store_=nullptr;
+    fx::FxConfig save_fx_{}, recall_fx_{};
     bool fx_pending_=false;
     uint32_t fx_token_=0,last_fx_ms_=0;
 };

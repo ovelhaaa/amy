@@ -24,6 +24,7 @@ try {
     if ($TestName -eq "all" -or $TestName -eq "reverb") { $testsToRun += "reverb_test" }
     if ($TestName -eq "all" -or $TestName -eq "delay")  { $testsToRun += "delay_test" }
     if ($TestName -eq "all" -or $TestName -eq "eq")     { $testsToRun += "eq_test" }
+    if ($TestName -eq "all" -or $TestName -eq "persistence") { $testsToRun += "fx_preset_persistence_test" }
 
     foreach ($t in $testsToRun) {
         $srcPath = "smk-p4/tests/$t.cpp"
