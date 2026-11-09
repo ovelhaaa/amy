@@ -17,6 +17,13 @@ void delay_ms(uint32_t) {}
 void amy_update_tasks() {}
 int16_t* amy_render_audio() { return amy_simple_fill_buffer(); }
 size_t amy_i2s_write(const uint8_t*,size_t bytes) { return bytes; }
+void alloc_chorus_delay_lines(uint8_t bus);
+void dealloc_chorus_delay_lines(uint8_t bus);
+bool alloc_echo_delay_lines(uint8_t bus, uint32_t max_delay_samples);
+void dealloc_echo_delay_lines(uint8_t bus);
+bool alloc_reverb_delay_lines(uint8_t bus);
+void dealloc_reverb_delay_lines(uint8_t bus);
+void config_eq(uint8_t bus, SAMPLE eq_l, SAMPLE eq_m, SAMPLE eq_h);
 }
 namespace smk::p4::amy {
 #ifdef SMKP4_HARMONY
@@ -52,7 +59,7 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
     publishOutput(OutputReason::Boot);
     auto config=amy_default_config();
     config.features.default_synths=config.features.startup_bleep=0;
-    config.features.reverb=config.features.chorus=config.features.echo=0;
+    config.features.reverb=config.features.chorus=config.features.echo=1;
     config.features.partials=config.features.custom=0;
     config.platform.multicore=config.platform.multithread=0;
     config.ks_oscs=0; config.max_oscs=kOscillators;
@@ -64,6 +71,24 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
     config.ram_caps_delay=config.ram_caps_sample=config.ram_caps_sysex=MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT;
 #endif
     amy_start(config); started_=true;
+    // Gate B: Safe FX preallocation outside the audio render path
+    if(!ensure_osc_allocd(CHORUS_MOD_SOURCE + 0, nullptr)) { end(); return false; }
+    alloc_chorus_delay_lines(0);
+    if(!alloc_echo_delay_lines(0, 65536)) { end(); return false; }
+    if(!alloc_reverb_delay_lines(0)) { end(); return false; }
+    if(!amy_global.bus[0]->chorus.chorus_delay_lines[0] ||
+       !amy_global.bus[0]->chorus.chorus_delay_lines[1] ||
+       !amy_global.bus[0]->chorus.delay_mod ||
+       !amy_global.bus[0]->echo.echo_delay_lines[0] ||
+       !amy_global.bus[0]->echo.echo_delay_lines[1] ||
+       !amy_global.bus[0]->reverb.rev ||
+       !amy_global.bus[0]->reverb.rev->delay_1) {
+        end(); return false;
+    }
+    config_chorus(0, 0.0f, CHORUS_DEFAULT_MAX_DELAY, CHORUS_DEFAULT_LFO_FREQ, CHORUS_DEFAULT_MOD_DEPTH);
+    config_echo(0, 0.0f, 350.0f, 1000.0f, 0.0f, 0.0f);
+    config_reverb(0, 0.0f, REVERB_DEFAULT_LIVENESS, REVERB_DEFAULT_DAMPING, REVERB_DEFAULT_XOVER_HZ);
+    config_eq(0, F2S(1.0f), F2S(1.0f), F2S(1.0f));
     for(size_t i=0;i<kAmyVoices;++i) {
         const auto synth_id=static_cast<uint8_t>(i+1);
         const auto patch_id=kPatches[i/kVoices].id;
@@ -472,6 +497,10 @@ bool Runtime::loadReusable(uint16_t patch_id) {
         if(result!=AMY_PATCH_RESOURCES_ASSIGNED) { state_.patch_error=result;return false; }
     }
     amy_execute_deltas();
+    config_chorus(0, 0.0f, CHORUS_DEFAULT_MAX_DELAY, CHORUS_DEFAULT_LFO_FREQ, CHORUS_DEFAULT_MOD_DEPTH);
+    config_echo(0, 0.0f, 350.0f, 1000.0f, 0.0f, 0.0f);
+    config_reverb(0, 0.0f, REVERB_DEFAULT_LIVENESS, REVERB_DEFAULT_DAMPING, REVERB_DEFAULT_XOVER_HZ);
+    config_eq(0, F2S(1.0f), F2S(1.0f), F2S(1.0f));
     state_.patch_state=PatchState::Verifying;
     // Warm lazy DSP on the worker while output continues zero-filled PCM.
     amy_simple_fill_buffer();
