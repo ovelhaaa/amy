@@ -159,8 +159,13 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterFloat(const char*
     }
     if(backend_.fxState() && isFxId(id)){
         if(!usable())return result(UiCommandState::Rejected,id,"ENGINE/SNAPSHOT UNAVAILABLE");
+        const auto* initial = backend_.fxState();
+        fx_initial_errors_ = initial ? initial->errors : 0;
+        fx_initial_rejected_ = initial ? initial->rejected : 0;
         if(!backend_.setFxParameter(id,v,now_ms_))return result(UiCommandState::Rejected,id,"FX REJECTED; SEE CONFIRMED VALUE");
-        fx_requested_=true;fx_requested_ms_=now_ms_;
+        fx_requested_=true;
+        fx_requested_ms_=now_ms_;
+        fx_pending_token_=backend_.fxToken();
         const auto* desc=ParameterRegistry::findById(id);
         fx_id_=desc?desc->id:"fx";
         return result(UiCommandState::Requested,id,"FX REQUESTED; WAIT OWNER");
@@ -326,9 +331,14 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
             model_.setInt("perf.macro.2",edit->macros[0]);model_.setInt("perf.macro.5",edit->macros[1]);model_.setInt("perf.macro.6",edit->macros[2]);
         }
         if(const auto* fx=backend_.fxState()){
-            if(fx_requested_ && !backend_.busy()){
-                fx_requested_=false;
-                result(UiCommandState::Confirmed,fx_id_,"FX CONFIRMED BY OWNER");
+            if(fx_requested_){
+                if(fx->errors > fx_initial_errors_ || fx->rejected > fx_initial_rejected_){
+                    fx_requested_=false;
+                    result(UiCommandState::Rejected,fx_id_,"FX REJECTED; CONFIRMED VALUES RESTORED");
+                } else if(fx->request >= fx_pending_token_ && !backend_.busy()){
+                    fx_requested_=false;
+                    result(UiCommandState::Confirmed,fx_id_,"FX CONFIRMED BY OWNER");
+                }
             }
             model_.setInt("fx.chorus.mode",fx->config.chorus_mode);
             model_.setFloat("fx.chorus.depth",fx->config.chorus_depth*100.0f);
@@ -364,6 +374,16 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     }
     if(fx_requested_ && uint32_t(now_ms-fx_requested_ms_)>=kPatchConfirmationTimeoutMs) {
         fx_requested_=false;
+        if(const auto* fx=backend_.fxState()){
+            model_.setInt("fx.chorus.mode",fx->config.chorus_mode);
+            model_.setFloat("fx.chorus.depth",fx->config.chorus_depth*100.0f);
+            model_.setFloat("fx.delay.time_ms",fx->config.delay_time_ms);
+            model_.setFloat("fx.delay.feedback",fx->config.delay_feedback*100.0f);
+            model_.setFloat("fx.delay.mix",fx->config.delay_mix*100.0f);
+            model_.setFloat("fx.reverb.size",fx->config.reverb_size*100.0f);
+            model_.setFloat("fx.reverb.mix",fx->config.reverb_mix*100.0f);
+            model_.setFloat("fx.master_tone",fx->config.master_tone*100.0f);
+        }
         result(UiCommandState::Rejected,fx_id_,"FX NOT CONFIRMED; OWNER STATE RETAINED");
     }
     if(const auto* h=backend_.harmonyState()) {

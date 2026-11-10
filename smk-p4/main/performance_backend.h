@@ -23,6 +23,7 @@ public:
     virtual bool setHarmony(harmony::Config,uint32_t) { return false; }
     virtual const fx::FxState* fxState() const { return nullptr; }
     virtual bool setFxParameter(const char*, float, uint32_t) { return false; }
+    virtual uint32_t fxToken() const { return 0; }
     virtual const edit::State* soundEdit() const { return nullptr; }
     virtual bool editError() const {return false;}
     virtual bool editPending() const {return false;}

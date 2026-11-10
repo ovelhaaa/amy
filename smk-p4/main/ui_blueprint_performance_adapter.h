@@ -69,6 +69,9 @@ private:
     bool fx_requested_=false;
     const char* fx_id_="fx";
     uint32_t fx_requested_ms_=0;
+    uint32_t fx_pending_token_=0;
+    uint32_t fx_initial_errors_=0;
+    uint32_t fx_initial_rejected_=0;
     uint32_t next_token_=0, now_ms_=0, revision_=0;
     bool have_snapshot_=false, was_connected_=false;
     ui::UiCommandState last_state_=ui::UiCommandState::Rejected;

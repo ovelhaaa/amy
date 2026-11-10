@@ -227,6 +227,7 @@ public:
     }
     bool midiError() const override { return midi_error_; }
     const fx::FxState* fxState() const override { return &fx_state_; }
+    uint32_t fxToken() const override { return fx_token_; }
     bool setFxParameter(const char* id, float value, uint32_t now_ms) override {
         if (!ready_ || busy()) return false;
         if (!id) return false;
