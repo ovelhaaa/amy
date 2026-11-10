@@ -100,8 +100,12 @@ public:
         read_.store(r_idx + 1, std::memory_order_release);
         return true;
     }
-    void clear() {
-        read_.store(write_.load(std::memory_order_relaxed), std::memory_order_release);
+    // SPSC discipline: ONLY the consumer (audio task) advances read_.
+    // Producer invalidates obsolete requests via generation stamping;
+    // applyFx() discards requests with mismatched generations without race.
+    void drain() {
+        FxRequest req;
+        while (pop(req)) {}
     }
 private:
     static_assert(std::atomic<uint32_t>::is_always_lock_free, "32-bit atomics required");

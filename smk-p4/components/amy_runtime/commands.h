@@ -67,7 +67,8 @@ public:
 #ifdef SMKP4_SOUND_EDITOR
         edits.clear();
 #endif
-        fx.clear();
+        // SPSC discipline: do NOT mutate fx read_ cursor from producer task!
+        // Incrementing generation_ in CommandQueue::panic invalidates stale requests.
     }
 };
 inline bool atOrAfter(uint32_t a,uint32_t b) { return static_cast<int32_t>(a-b)>=0; }
