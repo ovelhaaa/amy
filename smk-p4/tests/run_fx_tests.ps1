@@ -20,6 +20,7 @@ try {
 
     $testsToRun = @()
     if ($TestName -eq "all" -or $TestName -eq "gate_a") { $testsToRun += "gate_a_fx_init_test" }
+    if ($TestName -eq "all" -or $TestName -eq "gate_b_tx") { $testsToRun += "gate_b_transaction_test" }
     if ($TestName -eq "all" -or $TestName -eq "gate_b") { $testsToRun += "gate_b_fx_test" }
     if ($TestName -eq "all" -or $TestName -eq "chorus") { $testsToRun += "chorus_test" }
     if ($TestName -eq "all" -or $TestName -eq "reverb") { $testsToRun += "reverb_test" }

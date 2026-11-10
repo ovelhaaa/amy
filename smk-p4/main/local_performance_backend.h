@@ -3,6 +3,9 @@
 #include "amy_runtime.h"
 #include <cstdio>
 #include "user_presets.h"
+#ifdef SMKP4_SOUND_EDITOR
+#include "preset_transaction.h"
+#endif
 namespace smk::p4 {
 // UI task only. publish() receives a copied single-element owner mailbox.
 class LocalAmyPerformanceBackend final : public PerformanceBackend {
@@ -61,13 +64,16 @@ public:
         (void)now_ms;
 #ifdef SMKP4_SOUND_EDITOR
         last_service_ms_=now_ms;
-        if(saving_ && quiet_ && store_){
-            const bool saved=store_->save(save_slot_,save_preset_);edit_error_=!saved;
-            if(saved && fx_store_){
-                fx_store_->saveFx(save_slot_,save_fx_);
+        if(saving_ && quiet_){
+            const auto res=coordinator_.save(save_slot_,save_preset_,save_fx_);
+            edit_error_=(res.status!=preset::SaveResult::Status::Success);
+            notice_=res.message;
+            if(!edit_error_){
+                saved_edit_=edit_;
+                saved_fx_=save_fx_;
+                saved_valid_=true;
+                std::snprintf(user_name_,sizeof(user_name_),"%s",save_preset_.name);
             }
-            notice_=saved?"SAVED; RECALL TO VERIFY":"SAVE FAILED; PREVIOUS RECORD RETAINED";
-            if(saved){saved_edit_=edit_;saved_valid_=true;std::snprintf(user_name_,sizeof(user_name_),"%s",save_preset_.name);}
             saving_=false;commands_.storage_requested.store(false,std::memory_order_release);
         }
         if(recalling_ && !busy() && !failed_ && edit_.patch==recall_.patch){
@@ -99,12 +105,20 @@ public:
         }
     }
 #ifdef SMKP4_SOUND_EDITOR
-    void presetStore(edit::PresetStore* store){store_=store;}
-    void fxPresetStore(fx::FxPresetStore* store){fx_store_=store;}
+    void presetStore(edit::PresetStore* store){
+        store_=store;
+        coordinator_.setSynthStore(static_cast<edit::VersionedPresetStore*>(store));
+    }
+    void fxPresetStore(fx::FxPresetStore* store){
+        fx_store_=store;
+        coordinator_.setFxStore(static_cast<fx::NvsFxPresets*>(store));
+    }
+    preset::PresetTransactionCoordinator& transactionCoordinator() { return coordinator_; }
     bool presetStorageReady() const { return store_ != nullptr && fx_store_ != nullptr; }
     bool fxStorageReady() const { return fx_store_ != nullptr; }
     bool userPresetFx(unsigned slot,fx::FxConfig& out){
-        if(!fx_store_ || !fx_store_->loadFx(slot,out)){out=fx::FxConfig{};return false;}
+        edit::Preset dummy_p;
+        if(!coordinator_.load(slot,dummy_p,out)){out=fx::FxConfig{};return false;}
         return true;
     }
     const edit::State* soundEdit() const override { return &edit_; }
@@ -149,17 +163,17 @@ public:
             commands_.storage_requested.store(true,std::memory_order_release);return true;
         }
         if(action==3){
-            if(unsaved() || !store_->load(slot,recall_) || amy::patchIndex(recall_.patch)<0)return false;
-            if(fx_store_){
-                if(!fx_store_->loadFx(slot,recall_fx_)){recall_fx_=fx::FxConfig{};}
-            }else{recall_fx_=fx::FxConfig{};}
+            if(unsaved()) return false;
+            if(!coordinator_.load(slot,recall_,recall_fx_)) return false;
+            if(amy::patchIndex(recall_.patch)<0) return false;
             recalling_=true;recall_slot_=slot;
             if(!setPatch(recall_.patch,0)){recalling_=false;return false;}return true;
         }
         return false;
     }
     bool userPreset(unsigned slot,char* name,unsigned capacity,uint16_t& origin) override {
-        edit::Preset preset;if(!store_ || !store_->load(slot,preset))return false;
+        edit::Preset preset;fx::FxConfig dummy_fx{};
+        if(!coordinator_.load(slot,preset,dummy_fx))return false;
         std::snprintf(name,capacity,"%s",preset.name);origin=preset.patch;return true;
     }
 #endif
@@ -309,6 +323,7 @@ private:
     uint32_t recall_token_=0,recall_errors_=0;
     char user_name_[25]{};
     const char* notice_="FACTORY ORIGINAL";
+    preset::PresetTransactionCoordinator coordinator_;
 #endif
     void clearTokens() { for(auto& token:tokens_) token=0; }
     amy::Commands& commands_; PerformanceState state_;
@@ -322,7 +337,7 @@ private:
     fx::FxConfig desired_fx_{};
     fx::FxConfig original_fx_{};
     fx::FxPresetStore* fx_store_=nullptr;
-    fx::FxConfig save_fx_{}, recall_fx_{};
+    fx::FxConfig save_fx_{}, saved_fx_{}, recall_fx_{};
     bool fx_pending_=false;
     uint32_t fx_token_=0,last_fx_ms_=0;
 };
