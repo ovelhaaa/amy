@@ -1,10 +1,13 @@
 #pragma once
 #include <cstdint>
+#include <cstdio>
 
 extern "C" {
 #include "amy.h"
-// FmAlgorithm ABI from algorithms.c
-struct FmAlgorithm;
+#ifndef FM_ALGORITHM_STRUCT_DEFINED
+#define FM_ALGORITHM_STRUCT_DEFINED
+struct FmAlgorithm { uint8_t ops[MAX_ALGO_OPS]; };
+#endif
 extern const struct FmAlgorithm algorithms[33];
 }
 
@@ -107,6 +110,54 @@ inline Topology deriveTopology(unsigned algorithm) {
         }
     }
     return topo;
+}
+
+inline void formatRoutingFormula(const Topology& topo, char* buf, size_t cap) {
+    if (!buf || cap == 0) return;
+    buf[0] = '\0';
+    if (topo.carrierCount() == 6) {
+        std::snprintf(buf, cap, "OP1..OP6 [ADDITIVE / 6 CARRIERS]  FB: OP%u", topo.feedback_in ? topo.feedback_in : 6);
+        return;
+    }
+    size_t pos = 0;
+    bool first_carrier = true;
+
+    for (unsigned c = 1; c <= 6; ++c) {
+        if (!topo.isCarrier(c)) continue;
+        if (!first_carrier && pos + 4 < cap) {
+            pos += std::snprintf(buf + pos, cap - pos, " | ");
+        }
+        first_carrier = false;
+
+        char chain[64];
+        chain[0] = '\0';
+        size_t cpos = 0;
+
+        for (unsigned m = 6; m >= 1; --m) {
+            if (topo.connectsTo(m, c)) {
+                for (unsigned m2 = 6; m2 >= 1; --m2) {
+                    if (topo.connectsTo(m2, m)) {
+                        for (unsigned m3 = 6; m3 >= 1; --m3) {
+                            if (topo.connectsTo(m3, m2)) {
+                                cpos += std::snprintf(chain + cpos, sizeof(chain) - cpos,
+                                    (topo.hasFeedback(m3) ? "%u[FB]->" : "%u->"), m3);
+                            }
+                        }
+                        cpos += std::snprintf(chain + cpos, sizeof(chain) - cpos,
+                            (topo.hasFeedback(m2) ? "%u[FB]->" : "%u->"), m2);
+                    }
+                }
+                cpos += std::snprintf(chain + cpos, sizeof(chain) - cpos,
+                    (topo.hasFeedback(m) ? "%u[FB]->" : "%u->"), m);
+            }
+        }
+        if (cpos > 0) {
+            pos += std::snprintf(buf + pos, cap - pos, "%s%u", chain, c);
+        } else {
+            pos += std::snprintf(buf + pos, cap - pos, (topo.hasFeedback(c) ? "%u[FB]" : "%u"), c);
+        }
+        pos += std::snprintf(buf + pos, cap - pos, "->OUT");
+    }
 }
 
 } // namespace smk::p4::fm
