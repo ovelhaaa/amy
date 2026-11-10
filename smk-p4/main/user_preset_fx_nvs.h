@@ -32,12 +32,13 @@ public:
     bool checkNvsBudget(size_t required_entries = 4) {
         nvs_stats_t stats{};
         error_ = nvs_get_stats(nullptr, &stats);
-        if (error_ == ESP_OK) {
-            constexpr size_t gc_entries = 126;
-            if (stats.free_entries < gc_entries + required_entries) {
-                error_ = ESP_ERR_NVS_NOT_ENOUGH_SPACE;
-                return false;
-            }
+        if (error_ != ESP_OK) {
+            return false;
+        }
+        constexpr size_t gc_entries = 126;
+        if (stats.free_entries < gc_entries + required_entries) {
+            error_ = ESP_ERR_NVS_NOT_ENOUGH_SPACE;
+            return false;
         }
         return true;
     }
