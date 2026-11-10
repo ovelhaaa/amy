@@ -37,7 +37,7 @@ public:
                 notice_=edit_.errors!=last_edit_errors_?"EDIT REJECTED; CONFIRMED VALUES RESTORED":"EDIT CONFIRMED";
                 edit_error_=edit_.errors!=last_edit_errors_;last_edit_errors_=edit_.errors;
                 if(recall_wait_ && edit_.request==recall_token_){
-                    if(edit_.errors==recall_errors_){saved_edit_=edit_;saved_valid_=true;std::snprintf(user_name_,sizeof(user_name_),"%s",recall_.name);}
+                    if(edit_.errors==recall_errors_){saved_edit_=edit_;saved_fx_=recall_fx_;saved_valid_=true;std::snprintf(user_name_,sizeof(user_name_),"%s",recall_.name);}
                     recall_wait_=false;
                 }
             }
@@ -126,9 +126,17 @@ public:
     bool editError() const override {return edit_error_;}
     bool editPending() const override {return edit_pending_ || (!edit_timeout_ && edit_.request!=edit_token_) || recalling_ || recall_wait_;}
     const char* editNotice() const override {
-        if(saving_ || edit_pending_ || edit_.request!=edit_token_ || edit_error_)return notice_;
+        if(saving_)return notice_;
+        if(edit_error_)return notice_;
+        if(edit_pending_ || fx_pending_ || (!edit_timeout_ && edit_.request!=edit_token_))return "WAIT OWNER";
+        if(notice_ && std::strcmp(notice_,"SAVED")==0 && !unsaved())return "SAVED";
         if(edit_.compare)return "ORIGINAL / EDITS RETAINED";
-        return unsaved()?"EDITED / UNSAVED":edit_.dirty?"EDITED / SAVED":"FACTORY ORIGINAL";
+        if(unsaved()){
+            if(synthUnsaved() && fxUnsaved())return "EDITED / UNSAVED";
+            if(fxUnsaved())return "FX EDITED / UNSAVED";
+            return "EDITED / UNSAVED";
+        }
+        return (edit_.dirty || !fxEquivalent(desired_fx_,original_fx_))?"EDITED / SAVED":"FACTORY ORIGINAL";
     }
     bool editParameter(unsigned p,float value) override {
         if(!ready_ || busy() || saving_ || edit_.compare || p>=edit::Count || !(edit_.available&edit::bit(p)) || !edit::valid(p,value))return false;
@@ -292,13 +300,39 @@ private:
         if(m>=3 || value>127 || busy() || !ready_ || edit_.compare || (edit_.family==0 && m>0))return false;
         prepareEdit();desired_.macros[m]=value;desired_.request=newEditToken();edit_pending_=true;return true;
     }
-    bool unsaved() const {
-        if(edit_pending_ || edit_.request!=edit_token_)return true;
+    static bool fxEquivalent(const fx::FxConfig& a, const fx::FxConfig& b) {
+        if (a.chorus_mode != b.chorus_mode) return false;
+        if (std::lround(a.chorus_depth * 100.0f) != std::lround(b.chorus_depth * 100.0f)) return false;
+        if (std::lround(a.delay_time_ms) != std::lround(b.delay_time_ms)) return false;
+        if (std::lround(a.delay_feedback * 100.0f) != std::lround(b.delay_feedback * 100.0f)) return false;
+        if (std::lround(a.delay_mix * 100.0f) != std::lround(b.delay_mix * 100.0f)) return false;
+        if (std::lround(a.reverb_size * 100.0f) != std::lround(b.reverb_size * 100.0f)) return false;
+        if (std::lround(a.reverb_mix * 100.0f) != std::lround(b.reverb_mix * 100.0f)) return false;
+        if (std::lround(a.master_tone * 100.0f) != std::lround(b.master_tone * 100.0f)) return false;
+        if (std::lround(a.eq_low_db) != std::lround(b.eq_low_db)) return false;
+        if (std::lround(a.eq_mid_db) != std::lround(b.eq_mid_db)) return false;
+        if (std::lround(a.eq_high_db) != std::lround(b.eq_high_db)) return false;
+        if (a.bypass_all != b.bypass_all) return false;
+        return true;
+    }
+    bool synthUnsaved() const {
+        if(edit_pending_ || (!edit_timeout_ && edit_.request!=edit_token_))return true;
         if(!edit_.dirty)return false;
         if(!saved_valid_ || saved_edit_.patch!=edit_.patch || saved_edit_.mask!=edit_.mask)return true;
         for(unsigned m=0;m<3;++m)if(saved_edit_.macros[m]!=edit_.macros[m])return true;
         for(unsigned p=0;p<edit::Count;++p)if((edit_.mask&edit::bit(p)) && saved_edit_.manual[p]!=edit_.manual[p])return true;
         return false;
+    }
+    bool fxUnsaved() const {
+        if(fx_pending_)return true;
+        const bool fx_dirty = !fxEquivalent(desired_fx_, original_fx_);
+        if(!fx_dirty)return false;
+        if(!saved_valid_)return true;
+        return !fxEquivalent(desired_fx_, saved_fx_);
+    }
+    bool unsaved() const {
+        if(saving_ || edit_pending_ || (!edit_timeout_ && edit_.request!=edit_token_) || fx_pending_)return true;
+        return synthUnsaved() || fxUnsaved();
     }
     uint32_t newEditToken(){edit_error_=edit_timeout_=false;edit_token_=++edit_serial_;return edit_token_;}
     void prepareEdit(){
