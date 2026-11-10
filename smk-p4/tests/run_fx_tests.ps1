@@ -27,6 +27,7 @@ try {
     if ($TestName -eq "all" -or $TestName -eq "gate_d_unsaved") { $testsToRun += "gate_d_unsaved_fx_test" }
     if ($TestName -eq "all" -or $TestName -eq "gate_f_stale") { $testsToRun += "gate_f_stale_fx_test" }
     if ($TestName -eq "all" -or $TestName -eq "gate_g_ui") { $testsToRun += "gate_g_ui_confirmation_test" }
+    if ($TestName -eq "all" -or $TestName -eq "gate_h_codec") { $testsToRun += "gate_h_codec_hardening_test" }
     if ($TestName -eq "all" -or $TestName -eq "gate_b") { $testsToRun += "gate_b_fx_test" }
     if ($TestName -eq "all" -or $TestName -eq "chorus") { $testsToRun += "chorus_test" }
     if ($TestName -eq "all" -or $TestName -eq "reverb") { $testsToRun += "reverb_test" }
