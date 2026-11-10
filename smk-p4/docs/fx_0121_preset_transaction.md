@@ -31,12 +31,20 @@ struct CommitMarker {
 #pragma pack(pop)
 ```
 
-### Commit Protocol Flow
-1. **Target Bank Selection**: Inspect slot scan for both synthesis and FX to identify non-active/older banks in both namespaces (`target_synth_bank`, `target_fx_bank`).
+### Commit Protocol Flow & Logical Commit Boundary
+1. **Legacy Slot Inspection (Gate A)**:
+   - Before writing any candidate bank, `inspectLegacySlot()` scans `sound011` (V1 64B, V2 128B) and `sound012fx` (FX 32B).
+   - If no `CommitMarker` exists but a valid legacy preset is present, a baseline marker pointing to the active legacy revision is written first, guaranteeing that any aborted candidate write rolls back cleanly to the legacy preset.
+   - Candidate writes target inactive banks without assuming Bank A is free.
 2. **Phase 1A: Write Candidate FX**: Write FX configuration blob to `target_fx_bank` with incremented sequence number. Readback verify.
 3. **Phase 1B: Write Candidate Synth**: Write synthesis preset blob to `target_synth_bank` with incremented sequence number. Readback verify.
-4. **Phase 2: Commit Marker**: Write `CommitMarker` binding `synth_seq` and `fx_seq` to marker ping-pong bank (`c<slot>a` or `c<slot>b`). Readback verify.
-5. **Success Confirmation**: Only when Phase 2 succeeds is `SaveResult::Status::Success` reported to the caller.
+4. **Phase 2: Commit Marker (Commit Boundary)**:
+   - Write `CommitMarker` binding `synth_seq` and `fx_seq` to marker ping-pong bank (`c<slot>a` or `c<slot>b`).
+   - The valid write of the marker constitutes the formal logical commit point.
+5. **Phase 3: Readback Verification & Outcome Semantics (Gate B)**:
+   - If a failure occurs before the marker write: status is `SaveResult::Status::FailedBeforeCommit` (`"SAVE FAILED: PRE-COMMIT"`). The previous committed revision is active.
+   - If marker write succeeds and readback confirms it: status is `SaveResult::Status::Success` (`"SAVED"`).
+   - If readback encounters hardware I/O errors preventing verification: status is `SaveResult::Status::CommitOutcomeUnknown` (`"SAVE INDETERMINATE: VERIFY PRESET"`). UI and backend prevent destructive patch changes until resolved.
 
 ### Recovery Protocol
 On recall or reboot:
@@ -46,21 +54,13 @@ On recall or reboot:
    - Read synthesis bank specified by marker (`synth_bank`). Verify sequence matches `marker.synth_seq`.
    - Read FX bank specified by marker (`fx_bank`). Verify sequence matches `marker.fx_seq`.
    - If both match and are intact: return committed pair.
-4. If marker is missing or invalid (e.g. legacy 0.11 or 0.12 preset before coordinator was used):
-   - Gracefully fallback to latest valid synthesis preset and latest valid FX preset.
+   - If candidate write was interrupted during Phase 1, the prior marker cleanly points to the undisturbed prior banks.
+4. If marker is missing (unmigrated legacy preset):
+   - Gracefully fallback to latest valid synthesis preset (V2 or V1) and latest valid FX preset.
    - If FX preset is absent, synthesize default neutral FX config.
-5. If an interrupted write corrupted the candidate banks during Phase 1 or Phase 2:
-   - The coordinator selects the previous valid marker, rolling back cleanly to the prior committed revision.
 
 ### Fault Injection Verification
-All 10 failure points are verified under automated testing (`smk-p4/tests/gate_b_transaction_test.cpp`):
-1. `BeforeFxWrite`: Clean rollback to previous pair.
-2. `DuringFxWrite`: Clean rollback to previous pair.
-3. `AfterFxWrite`: Clean rollback to previous pair.
-4. `BeforeSynthWrite`: Clean rollback to previous pair.
-5. `DuringSynthWrite`: Clean rollback to previous pair.
-6. `AfterSynthWrite`: Clean rollback to previous pair.
-7. `BeforeMarkerWrite`: Clean rollback to previous pair.
-8. `DuringMarkerWrite`: Clean rollback to previous pair.
-9. `AfterMarkerWrite`: Clean rollback to previous pair.
-10. `DuringReadback`: Clean rollback to previous pair.
+All failure points verified across automated test suites:
+- `gate_b_transaction_test`: Basic 2-phase coordinator rollback across 10 injection points.
+- `gate_j_legacy_migration_test`: 10 real legacy scenarios across all 8 fault injection points with reboot verification.
+- `gate_k_commit_semantics_test`: Strict pre-commit vs post-commit vs indeterminate boundary matrix with reboot and patch switch protection.
