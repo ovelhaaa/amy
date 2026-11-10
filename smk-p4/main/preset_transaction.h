@@ -62,15 +62,19 @@ enum class FaultInjection : uint8_t {
 struct SaveResult {
     enum class Status : uint8_t {
         Success,
-        FxStorageUnavailable,
-        SynthStorageUnavailable,
+        FailedBeforeCommit,
+        CommitOutcomeUnknown,
         NvsFull,
         InvalidPreset,
-        FxWriteError,
-        SynthWriteError,
-        CommitMarkerError,
-        ReadbackError,
-        TransactionIncomplete
+        StorageUnavailable,
+        // Backward-compatible aliases
+        FxStorageUnavailable = StorageUnavailable,
+        SynthStorageUnavailable = StorageUnavailable,
+        FxWriteError = FailedBeforeCommit,
+        SynthWriteError = FailedBeforeCommit,
+        CommitMarkerError = FailedBeforeCommit,
+        ReadbackError = CommitOutcomeUnknown,
+        TransactionIncomplete = FailedBeforeCommit
     };
     Status status = Status::Success;
     const char* message = "SAVED";
@@ -84,18 +88,18 @@ public:
 
     SaveResult save(unsigned slot, const edit::Preset& preset, const fx::FxConfig& fx) {
         if (slot >= 16) return { SaveResult::Status::InvalidPreset, "SAVE FAILED: INVALID SLOT" };
-        if (!synth_store_) return { SaveResult::Status::SynthStorageUnavailable, "SAVE FAILED: STORAGE UNAVAILABLE" };
-        if (!fx_store_) return { SaveResult::Status::FxStorageUnavailable, "SAVE FAILED: FX STORAGE UNAVAILABLE" };
+        if (!synth_store_) return { SaveResult::Status::StorageUnavailable, "SAVE FAILED: STORAGE UNAVAILABLE" };
+        if (!fx_store_) return { SaveResult::Status::StorageUnavailable, "SAVE FAILED: FX STORAGE UNAVAILABLE" };
         if (!edit::validPreset(preset, false)) return { SaveResult::Status::InvalidPreset, "SAVE FAILED: INVALID SYNTH" };
         if (!fx::valid(fx)) return { SaveResult::Status::InvalidPreset, "SAVE FAILED: INVALID FX" };
 
-        if (!fx_store_->checkNvsBudget(8)) {
+        if (!fx_store_->checkNvsBudget(12)) {
             return { SaveResult::Status::NvsFull, "SAVE FAILED: NVS FULL" };
         }
 
         // Fault injection check 1
         if (fault_ == FaultInjection::BeforeFxWrite) {
-            return { SaveResult::Status::FxWriteError, "SAVE FAILED: FX WRITE ERROR" };
+            return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
         }
 
         // 1. Identify active commit marker or fallback state
@@ -103,6 +107,39 @@ public:
         unsigned cur_marker_bank = 0;
         bool marker_found = false;
         scanMarkers(slot, cur_marker, cur_marker_bank, marker_found);
+
+        if (!marker_found) {
+            LegacySlotInspection insp{};
+            if (!inspectLegacySlot(slot, insp)) {
+                return { SaveResult::Status::StorageUnavailable, "SAVE FAILED: NVS READ ERROR" };
+            }
+
+            if (insp.synth_found) {
+                // Establish baseline commit marker for legacy preset to guarantee rollback
+                CommitMarker base_marker{};
+                base_marker.magic = kMarkerMagic;
+                base_marker.version = kMarkerVersion;
+                base_marker.slot = static_cast<uint16_t>(slot);
+                base_marker.commit_seq = 1;
+                base_marker.synth_seq = insp.synth_seq;
+                base_marker.synth_bank = static_cast<uint8_t>(insp.synth_bank);
+                base_marker.synth_version = static_cast<uint8_t>(insp.synth_version);
+                base_marker.patch_id = insp.patch_id;
+                base_marker.fx_seq = insp.fx_found ? insp.fx_seq : 0;
+                base_marker.fx_bank = insp.fx_found ? static_cast<uint8_t>(insp.fx_bank) : 0;
+                base_marker.reserved = 0;
+                base_marker.rom_compat = fx::kRomCompatibility;
+                base_marker.crc32 = fx::calcCrc(reinterpret_cast<const uint8_t*>(&base_marker), 28);
+
+                if (!fx_store_->writeMarkerBank(slot, 0, reinterpret_cast<const uint8_t*>(&base_marker), sizeof(base_marker))) {
+                    return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
+                }
+
+                cur_marker = base_marker;
+                cur_marker_bank = 0;
+                marker_found = true;
+            }
+        }
 
         // Ping-pong targets (always target the alternate / inactive bank)
         const unsigned target_marker_bank = marker_found ? (1 - cur_marker_bank) : 0;
@@ -124,15 +161,15 @@ public:
             fx::FxConfig corrupt_fx = fx;
             corrupt_fx.chorus_mode = 99; // invalid
             fx_store_->writeFxBank(slot, target_fx_bank, corrupt_fx, next_fx_seq);
-            return { SaveResult::Status::FxWriteError, "SAVE FAILED: FX WRITE ERROR" };
+            return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
         }
         if (!fx_store_->writeFxBank(slot, target_fx_bank, fx, next_fx_seq)) {
-            return { SaveResult::Status::FxWriteError, "SAVE FAILED: FX WRITE ERROR" };
+            return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
         }
 
         // Fault injection check 3
         if (fault_ == FaultInjection::AfterFxWrite || fault_ == FaultInjection::BeforeSynthWrite) {
-            return { SaveResult::Status::SynthWriteError, "SAVE FAILED: SYNTH WRITE ERROR" };
+            return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
         }
 
         // 3. Write candidate Synth to inactive Synth bank
@@ -145,10 +182,10 @@ public:
         if (fault_ == FaultInjection::DuringSynthWrite) {
             synth_bytes[10] ^= 0xff; // corrupt
             synth_store_->writeV2(slot, target_synth_bank, synth_bytes, sizeof(synth_bytes));
-            return { SaveResult::Status::SynthWriteError, "SAVE FAILED: SYNTH WRITE ERROR" };
+            return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
         }
         if (!synth_store_->writeV2(slot, target_synth_bank, synth_bytes, sizeof(synth_bytes))) {
-            return { SaveResult::Status::SynthWriteError, "SAVE FAILED: SYNTH WRITE ERROR" };
+            return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
         }
 
         // Readback verify candidate synth
@@ -157,12 +194,12 @@ public:
         if (synth_store_->readVersioned(2, slot, target_synth_bank, synth_check, synth_check_len) != edit::BankRead::Present ||
             synth_check_len != sizeof(synth_check) ||
             std::memcmp(synth_check, synth_bytes, sizeof(synth_check)) != 0) {
-            return { SaveResult::Status::ReadbackError, "SAVE FAILED: READBACK ERROR" };
+            return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
         }
 
         // Fault injection check 6
         if (fault_ == FaultInjection::AfterSynthWrite || fault_ == FaultInjection::BeforeMarkerWrite) {
-            return { SaveResult::Status::CommitMarkerError, "SAVE FAILED: TRANSACTION INCOMPLETE" };
+            return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
         }
 
         // 4. Form and write Commit Marker to inactive Marker bank
@@ -184,26 +221,55 @@ public:
         if (fault_ == FaultInjection::DuringMarkerWrite) {
             marker.crc32 ^= 0xff; // Corrupt marker CRC
             fx_store_->writeMarkerBank(slot, target_marker_bank, reinterpret_cast<const uint8_t*>(&marker), sizeof(marker));
-            return { SaveResult::Status::CommitMarkerError, "SAVE FAILED: TRANSACTION INCOMPLETE" };
+            CommitMarker verify_m{};
+            unsigned verify_bank = 0;
+            bool verify_found = false;
+            scanMarkers(slot, verify_m, verify_bank, verify_found);
+            if (verify_found && verify_m.commit_seq == next_commit_seq && verify_bank == target_marker_bank) {
+                edit::Preset check_p{};
+                fx::FxConfig check_fx{};
+                if (load(slot, check_p, check_fx) && check_p.sequence == next_synth_seq) {
+                    return { SaveResult::Status::Success, "SAVED" };
+                }
+                return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET" };
+            }
+            return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
         }
         if (!fx_store_->writeMarkerBank(slot, target_marker_bank, reinterpret_cast<const uint8_t*>(&marker), sizeof(marker))) {
-            return { SaveResult::Status::CommitMarkerError, "SAVE FAILED: TRANSACTION INCOMPLETE" };
+            CommitMarker verify_m{};
+            unsigned verify_bank = 0;
+            bool verify_found = false;
+            scanMarkers(slot, verify_m, verify_bank, verify_found);
+            if (verify_found && verify_m.commit_seq == next_commit_seq && verify_bank == target_marker_bank) {
+                edit::Preset check_p{};
+                fx::FxConfig check_fx{};
+                if (load(slot, check_p, check_fx) && check_p.sequence == next_synth_seq) {
+                    return { SaveResult::Status::Success, "SAVED" };
+                }
+                return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET" };
+            }
+            return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
         }
 
-        // Fault injection check 8
+        // Fault injection check: AfterMarkerWrite (marker committed!)
         if (fault_ == FaultInjection::AfterMarkerWrite) {
-            return { SaveResult::Status::TransactionIncomplete, "SAVE FAILED: TRANSACTION INCOMPLETE" };
+            edit::Preset check_preset{};
+            fx::FxConfig check_fx{};
+            if (load(slot, check_preset, check_fx) && check_preset.sequence == next_synth_seq) {
+                return { SaveResult::Status::Success, "SAVED" };
+            }
+            return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET" };
         }
 
         // 5. Final Transaction Readback Verification
         if (fault_ == FaultInjection::DuringReadback) {
-            return { SaveResult::Status::ReadbackError, "SAVE FAILED: READBACK ERROR" };
+            return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET" };
         }
 
         edit::Preset check_preset{};
         fx::FxConfig check_fx{};
-        if (!load(slot, check_preset, check_fx)) {
-            return { SaveResult::Status::TransactionIncomplete, "SAVE FAILED: TRANSACTION INCOMPLETE" };
+        if (!load(slot, check_preset, check_fx) || check_preset.sequence != next_synth_seq) {
+            return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET" };
         }
 
         return { SaveResult::Status::Success, "SAVED" };
@@ -256,8 +322,12 @@ public:
                 // Verify FX Record
                 fx::FxConfig fx_cfg{};
                 uint16_t fx_seq = 0;
-                if (!fx_store_ || !fx_store_->readFxBank(slot, m.fx_bank, fx_cfg, fx_seq) || fx_seq != m.fx_seq) {
-                    continue;
+                if (m.fx_seq == 0) {
+                    fx_cfg = fx::FxConfig{};
+                } else {
+                    if (!fx_store_ || !fx_store_->readFxBank(slot, m.fx_bank, fx_cfg, fx_seq) || fx_seq != m.fx_seq) {
+                        continue;
+                    }
                 }
 
                 // Both verified and paired!
@@ -283,6 +353,71 @@ public:
     }
 
 private:
+    struct LegacySlotInspection {
+        bool synth_found = false;
+        unsigned synth_version = 0; // 1 or 2
+        unsigned synth_bank = 0;    // 0 or 1
+        uint32_t synth_seq = 0;
+        uint16_t patch_id = 0;
+        edit::Preset synth_preset{};
+
+        bool fx_found = false;
+        unsigned fx_bank = 0;       // 0 or 1
+        uint16_t fx_seq = 0;
+        fx::FxConfig fx_config{};
+    };
+
+    bool inspectLegacySlot(unsigned slot, LegacySlotInspection& insp) {
+        insp = LegacySlotInspection{};
+        if (!synth_store_ || slot >= 16) return false;
+
+        // 1. Scan Synth V1 and V2 in accordance with VersionedPresetStore rules:
+        // scan version 1 (banks 0, 1), then version 2 (banks 0, 1).
+        // If p.sequence > insp.synth_seq, update.
+        // If sequences are equal, V1 bank 0 is retained unless a strictly newer sequence appears.
+        for (unsigned version = 1; version <= 2; ++version) {
+            for (unsigned bank = 0; bank < 2; ++bank) {
+                uint8_t bytes[edit::kV2RecordBytes];
+                unsigned len = sizeof(bytes);
+                auto res = synth_store_->readVersioned(version, slot, bank, bytes, len);
+                if (res == edit::BankRead::Error) return false;
+                if (res == edit::BankRead::Missing) continue;
+                if (len >= 8 && edit::get32(bytes) == 0x31314553 && edit::get32(bytes + 4) > 2) {
+                    return false; // Future incompatible version
+                }
+                edit::Preset p{};
+                bool valid = (version == 1) ? edit::decode(bytes, len, p) : edit::decodeV2(bytes, len, p);
+                if (!valid) continue;
+
+                if (!insp.synth_found || p.sequence > insp.synth_seq) {
+                    insp.synth_found = true;
+                    insp.synth_version = version;
+                    insp.synth_bank = bank;
+                    insp.synth_seq = p.sequence;
+                    insp.patch_id = p.patch;
+                    insp.synth_preset = p;
+                }
+            }
+        }
+
+        // 2. Scan FX (sound012fx)
+        if (fx_store_) {
+            for (unsigned bank = 0; bank < 2; ++bank) {
+                fx::FxConfig cfg{};
+                uint16_t seq = 0;
+                if (fx_store_->readFxBank(slot, bank, cfg, seq)) {
+                    if (!insp.fx_found || fx::seqAfter16(seq, insp.fx_seq)) {
+                        insp.fx_found = true;
+                        insp.fx_bank = bank;
+                        insp.fx_seq = seq;
+                        insp.fx_config = cfg;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
     void scanMarkers(unsigned slot, CommitMarker& latest, unsigned& active_bank, bool& found) {
         found = false;
         if (!fx_store_) return;
