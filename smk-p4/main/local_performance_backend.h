@@ -101,6 +101,8 @@ public:
 #ifdef SMKP4_SOUND_EDITOR
     void presetStore(edit::PresetStore* store){store_=store;}
     void fxPresetStore(fx::FxPresetStore* store){fx_store_=store;}
+    bool presetStorageReady() const { return store_ != nullptr && fx_store_ != nullptr; }
+    bool fxStorageReady() const { return fx_store_ != nullptr; }
     bool userPresetFx(unsigned slot,fx::FxConfig& out){
         if(!fx_store_ || !fx_store_->loadFx(slot,out)){out=fx::FxConfig{};return false;}
         return true;
@@ -131,6 +133,11 @@ public:
             return true;}
         if(slot>=edit::kSlots || !store_ || edit_pending_ || edit_.request!=edit_token_)return false;
         if(action==2){
+            if(!fx_store_){
+                edit_error_=true;
+                notice_="SAVE FAILED: FX STORAGE UNAVAILABLE";
+                return false;
+            }
             if(!name || !name[0] || std::strlen(name)>24 || state_.active_notes || edit_.compare)return false;
             save_preset_={};save_preset_.sequence=1;save_preset_.patch=edit_.patch;save_preset_.family=edit_.family;
             std::snprintf(save_preset_.name,sizeof(save_preset_.name),"%s",name);save_preset_.mask=edit_.mask;

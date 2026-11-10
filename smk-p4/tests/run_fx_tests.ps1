@@ -19,6 +19,7 @@ try {
     $wrap = @('-Wl,--wrap=malloc', '-Wl,--wrap=calloc', '-Wl,--wrap=realloc', '-Wl,--wrap=free')
 
     $testsToRun = @()
+    if ($TestName -eq "all" -or $TestName -eq "gate_a") { $testsToRun += "gate_a_fx_init_test" }
     if ($TestName -eq "all" -or $TestName -eq "gate_b") { $testsToRun += "gate_b_fx_test" }
     if ($TestName -eq "all" -or $TestName -eq "chorus") { $testsToRun += "chorus_test" }
     if ($TestName -eq "all" -or $TestName -eq "reverb") { $testsToRun += "reverb_test" }

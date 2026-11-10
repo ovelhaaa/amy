@@ -12,6 +12,7 @@
 #include "local_performance_backend.h"
 #ifdef SMKP4_SOUND_EDITOR
 #include "user_preset_nvs.h"
+#include "user_preset_fx_nvs.h"
 #endif
 #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
 #include "ui_blueprint.h"
@@ -298,10 +299,14 @@ extern "C" void app_main() {
     static smk::p4::NvsUserPresets user_presets;
     const bool presets_ready=user_presets.begin();
     if(!presets_ready)ESP_LOGE(kTag,"User Presets unavailable: %s; factory audio continues",esp_err_to_name(user_presets.error()));
+    static smk::p4::fx::NvsFxPresets fx_presets;
+    const bool fx_ready=fx_presets.begin();
+    if(!fx_ready)ESP_LOGE(kTag,"User FX Presets unavailable: %s; live FX continues without persistence",esp_err_to_name(fx_presets.error()));
 #endif
     static smk::p4::LocalAmyPerformanceBackend backend(runtime.commands());
 #ifdef SMKP4_SOUND_EDITOR
     if(presets_ready)backend.presetStore(&user_presets);
+    if(fx_ready)backend.fxPresetStore(&fx_presets);
 #endif
     #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
     if(snapshot_received) backend.publish(initial.engine,initial.running && initial.physical,initial.render_max_us,initial.render_deadlines);
