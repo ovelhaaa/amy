@@ -27,26 +27,25 @@
 
 - **Date / Time**: 2026-11-09 19:51:39
 - **Serial Port**: COM13 (ESP32-P4 revision v1.3 @ 400 MHz, MAC: `80:f1:b2:d3:cc:86`)
-- **Flashed Binary**: `smk-p4/.pio/build/guition-editor-8/firmware.bin` (SHA-256: `F7942C46C8A1BCC3255F7A50D04BF0589C3EA2A4E83EC9122959D95125B7E59C`)
+- **Flashed Binary**: `smk-p4/.pio/build/guition-editor-8-bench/firmware.bin` (SHA-256: `873F4FE93376D361DF1EBECE8032EC57EC2995636609D4DD964FE631F0E0564A`)
 - **Pre-Flash Backup**: Secured at `build/backups/app_pre_012.bin` (SHA-256: `ADAA4E21EC98D52A92C4C6DA56A87FA2DA4B2B86C430445D1FFBA1A54AB3F5F3`)
 - **esptool Result**:
   ```text
   Auto-detected flash size: 16MB
   Wrote 23120 bytes at 0x00002000 in 0.3s (bootloader)
   Wrote 3072 bytes at 0x00008000 in 0.1s (partitions)
-  Wrote 1213728 bytes at 0x00010000 in 6.9s (firmware)
+  Wrote 1314336 bytes at 0x00010000 in 6.8s (firmware)
   Hash of data verified. Hard resetting via RTS pin. SUCCESS.
   ```
 - **Live Serial Boot Telemetry**:
   ```text
-  P4_AMY: ADMISSION free=383011 largest=245760 required=376832 admitted=1
-  P4_AMY: AUDIO RAM_ONLY blocks_rendered=1064 render_avg_us=296 render_max_us=371 render_deadlines=0
-  P4_AMY: ENGINE ready=1 patch=128 notes=0 peak=0 clipped=0 oom=0 compute_deadlines=0
-  P4_AMY: EDIT011 patch=128 epoch=1 revision=1 available=e401fff0 errors=0
-  SMK_P4_GATE0: heap internal free=176175 min=176175 largest=102400; PSRAM free=30493192
-  DISPLAY_TEST: LVGL free=95432 touch_errors=0 flush_errors=0 refresh=895
+  P4_AMY: ADMISSION free=377475 largest=245760 required=376832 admitted=1
+  P4_AMY: AUDIO I2S_PRODUCING frames_written=505600 blocks_rendered=1978 render_deadlines=0
+  P4_AMY: ENGINE ready=1 patch=128 notes=4 peak=614 clipped=0 compute_deadlines=0
+  P4_AMY: USB state=2 connects=1 disconnects=0 events=20
+  P4_AMY: MIDI_TRACE t_ms=4549 bytes=4 cable=0 channel=1 packet=09 90 3e 24
   ```
-- **Operational Verdict**: Hardware initialized normally, zero deadline misses, render headroom > 93% (371 µs max vs 5,333 µs budget), internal RAM and PSRAM headroom intact. Ready for physical smoke interaction by operator.
+- **Operational Verdict**: Audio I²S ativo (`AUDIO I2S_PRODUCING`), USB MIDI Host conectado (`state=2`), pacotes de notas processados em tempo real sem deadlines.
 
 
 > [!IMPORTANT]
