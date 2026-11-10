@@ -81,6 +81,11 @@ lv_obj_t* createSubTabBar(lv_obj_t* parent, const char* const* tab_names, uint8_
 
 // ── Parameter Widgets (bound to IUiBackend by canonical parameter ID) ────
 void showUserPresetPanel(lv_obj_t* anchor,IUiBackend& backend);
+void showFmAlgorithmPicker(lv_obj_t* anchor,IUiBackend& backend);
+lv_obj_t* createFmAlgorithmSelector(lv_obj_t* parent, IUiBackend& backend,
+                                    int32_t x, int32_t y, int32_t w, int32_t h);
+lv_obj_t* createFmTopologyDiagram(lv_obj_t* parent, IUiBackend& backend,
+                                  int32_t x, int32_t y, int32_t w, int32_t h);
 
 lv_obj_t* createParameterKnob(lv_obj_t* parent, IUiBackend& backend, const char* param_id,
                               int32_t x, int32_t y, int32_t w = 122, int32_t h = 114,

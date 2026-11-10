@@ -87,35 +87,8 @@ public:
                 createParameterCard(parent, backend, "fm.op.decay",    404, row2, 190, cell_h);
                 createParameterCard(parent, backend, "fm.op.vel_sens", 602, row2, 190, cell_h);
 
-                if (backend.hasSoundEditor()) {
-                    createParameterCard(parent, backend, "fm.algo", 8, row3, 190, cell_h);
-                    lv_obj_t* algo_card = lv_obj_create(parent);
-                    applyPanelStyle(algo_card, true);
-                    lv_obj_set_pos(algo_card, 206, row3);
-                    lv_obj_set_size(algo_card, 586, cell_h);
-                    createLabel(algo_card, "DX7 6-OP: LEVEL/ATK/DEC/VEL & FBK LIVE; ALGO REBUILD PLANNED",
-                                8, 8, 566, &lv_font_montserrat_14, palette::kTextPrimary);
-                    createLabel(algo_card,
-                                patch.family == SynthFamily::FM
-                                    ? "Operators follow native algo_source order; fixed-freq ratio is N/A."
-                                    : "NON-FM PATCH SELECTED: FM operator controls marked UNAVAILABLE.",
-                                8, 38, 566, &lv_font_montserrat_14, palette::kTextSecondary);
-                } else {
-                    lv_obj_t* algo_card = lv_obj_create(parent);
-                    applyPanelStyle(algo_card, true);
-                    lv_obj_set_pos(algo_card, 8, row3);
-                    lv_obj_set_size(algo_card, 784, cell_h);
-                    char atxt[120];
-                    std::snprintf(atxt, sizeof(atxt),
-                                  "DX7 6-OP: LEVEL = %% OF ORIGINAL GAIN; ROUTING PRESERVED (ALGO DISPLAY PLANNED) %ld",
-                                  static_cast<long>(backend.model().getInt("fm.algo", 1)));
-                    createLabel(algo_card, atxt, 8, 8, 756, &lv_font_montserrat_14, palette::kTextPrimary);
-                    createLabel(algo_card,
-                                patch.family == SynthFamily::FM
-                                    ? "FM: enable only owner-verified controls. Operators follow native algo_source order."
-                                    : "NON-FM PATCH SELECTED: FM operator controls marked UNAVAILABLE for this patch.",
-                                8, 38, 756, &lv_font_montserrat_14, palette::kTextSecondary);
-                }
+                createFmAlgorithmSelector(parent, backend, 8, row3, 200, cell_h);
+                createFmTopologyDiagram(parent, backend, 216, row3, 576, cell_h);
                 break;
 
             case 2: // FILTER

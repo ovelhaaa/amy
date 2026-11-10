@@ -156,10 +156,11 @@ int main(){
     assert(a.parameterStatus("filter.env_amount")==FeatureStatus::Unavailable && a.parameterStatus("filter.keytrack")==FeatureStatus::Unavailable);
     assert(a.parameterStatus("amp.level")==FeatureStatus::Available);
     assert(a.parameterStatus("amp.vel_sens")==FeatureStatus::Unavailable && a.parameterStatus("osc.sub_level")==FeatureStatus::Unavailable);
-    for(const char* id:{"fm.depth","fm.feedback","fm.selected_op","fm.op.level","fm.op.ratio","fm.op.attack","fm.op.decay","fm.op.vel_sens"}){
+    for(const char* id:{"fm.depth","fm.algo","fm.feedback","fm.selected_op","fm.op.level","fm.op.ratio","fm.op.attack","fm.op.decay","fm.op.vel_sens"}){
         assert(a.parameterStatus(id)==FeatureStatus::Available);
     }
-    assert(a.parameterStatus("fm.algo")==FeatureStatus::Planned);
+    assert(a.requestParameterInt("fm.algo",5).accepted());apply();
+    assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getInt("fm.algo")==5 && r.snapshot().edit.applied[edit::FmAlgorithm]==5.0f);
     assert(!a.isParameterValueSupported("lfo.1.dest",2) && a.isParameterValueSupported("lfo.1.dest",3));
     assert(!a.isParameterValueSupported("mod.slot1.dest",3) && a.isParameterValueSupported("mod.slot1.dest",1));
     assert(!a.requestParameterInt("lfo.1.dest",2).accepted());
@@ -218,10 +219,19 @@ int main(){
     assert(ui.navigation().navigateTo(ScreenId::SoundEditor,0));preview::pumpFrame(ui);
     assert(button(ui.contentObject(),"MAIN MIX"));
     auto* pulse_card=button(ui.contentObject(),"PULSE WIDTH");assert(pulse_card && labels(pulse_card,"N/A")>=2 && labels(pulse_card,"PLAN")==0);
-    // Check FM tab shows both FM BRIGHTNESS and FM FEEDBACK and FM ALGORITHM (PLAN)
+    // Check FM tab shows both FM BRIGHTNESS and FM FEEDBACK and FM ALGORITHM
     assert(ui.navigation().navigateTo(ScreenId::SoundEditor,1));preview::pumpFrame(ui);
     assert(button(ui.contentObject(),"FM BRIGHTNESS") && button(ui.contentObject(),"FM FEEDBACK"));
-    auto* algo_card=button(ui.contentObject(),"FM ALGORITHM");assert(algo_card && labels(algo_card,"PLAN")>=2);
+    auto* algo_card=button(ui.contentObject(),"FM ALGORITHM");assert(algo_card);
+    auto* op1_btn=button(ui.contentObject(),"OP 1");assert(op1_btn);
+    auto* op3_btn=button(ui.contentObject(),"OP 3");assert(op3_btn);
+    // Switch to DX7 FM patch 135 to test live interactive FM topology and operator switching
+    auto next_apply=[&]{next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);r.loadPendingPatch();assert(r.render());reboot.publish(r.snapshot(),false,0,0);next.service(preview::g_sim_tick_ms+=25);preview::pumpFrame(ui);};
+    assert(next.requestSelectPatch(135).accepted());next_apply();
+    assert(ui.navigation().navigateTo(ScreenId::SoundEditor,1));preview::pumpFrame(ui);
+    auto* live_op3=button(ui.contentObject(),"OP 3");assert(live_op3 && !lv_obj_has_state(live_op3,LV_STATE_DISABLED));
+    lv_obj_send_event(live_op3,LV_EVENT_CLICKED,nullptr);next_apply();
+    assert(next.model().getInt("fm.selected_op",1)==3);
     // Check MOD tab Slot 1 interactive button click -> owner confirmation
     assert(ui.navigation().navigateTo(ScreenId::SoundEditor,6));preview::pumpFrame(ui);
     auto* m1_btn=button(ui.contentObject(),"M1 ON");assert(m1_btn && !lv_obj_has_state(m1_btn,LV_STATE_DISABLED));
