@@ -29,6 +29,10 @@ try {
     if ($TestName -eq "all" -or $TestName -eq "gate_g_ui") { $testsToRun += "gate_g_ui_confirmation_test" }
     if ($TestName -eq "all" -or $TestName -eq "gate_h_codec") { $testsToRun += "gate_h_codec_hardening_test" }
     if ($TestName -eq "all" -or $TestName -eq "gate_i_e2e") { $testsToRun += "gate_i_e2e_reboot_test" }
+    if ($TestName -eq "all" -or $TestName -eq "gate_j_legacy") { $testsToRun += "gate_j_legacy_migration_test" }
+    if ($TestName -eq "all" -or $TestName -eq "gate_k_commit") { $testsToRun += "gate_k_commit_semantics_test" }
+    if ($TestName -eq "all" -or $TestName -eq "gate_l_concurrency") { $testsToRun += "gate_l_fx_queue_concurrency_test" }
+    if ($TestName -eq "all" -or $TestName -eq "gate_m_budget") { $testsToRun += "gate_m_nvs_budget_failclosed_test" }
     if ($TestName -eq "all" -or $TestName -eq "gate_b") { $testsToRun += "gate_b_fx_test" }
     if ($TestName -eq "all" -or $TestName -eq "chorus") { $testsToRun += "chorus_test" }
     if ($TestName -eq "all" -or $TestName -eq "reverb") { $testsToRun += "reverb_test" }
