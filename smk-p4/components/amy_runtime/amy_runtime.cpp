@@ -413,6 +413,9 @@ void Runtime::apply(uint32_t now_ms) {
     applyUsb(now_ms);
 #endif
 #ifdef SMKP4_SOUND_EDITOR
+    bool any_sustain=false;
+    for(unsigned i=0;i<16;++i)if(sustain_[i])any_sustain=true;
+    state_.sustain_active=any_sustain;
     applyEdit();
 #endif
     applyFx();

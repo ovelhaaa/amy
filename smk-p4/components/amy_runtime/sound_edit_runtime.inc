@@ -38,6 +38,15 @@ void Runtime::updateModWheelFilter() {
     }
     if(queued) amy_execute_deltas();
 }
+bool Runtime::updateFmAlgorithmTopology(unsigned algorithm) {
+    if(algorithm < 1 || algorithm > 32 || state_.edit.family != 0) return false;
+    for(unsigned op = 0; op < 6; ++op) {
+        const unsigned native_op = 5 - op;
+        const uint8_t flags = algorithms[algorithm].ops[native_op];
+        edit_modulators_[op] = ((flags & 3) != 0);
+    }
+    return true;
+}
 void Runtime::captureEdit() {
     const uint32_t revision=state_.edit.revision+1,epoch=state_.edit.epoch+1;
     edit_components_=edit::JunoComponents{};
@@ -189,10 +198,14 @@ void Runtime::captureEdit() {
                 out.available|=edit::bit(edit::Decay)|edit::bit(edit::Sustain);}
     } else if(patch->family==library::SynthFamily::FM){
         const auto* algo=synth[edit_map_[0][0]];
-        if(algo->wave!=ALGO || algo->algorithm>32)return;
+        if(algo->wave!=ALGO || algo->algorithm>32 || algo->algorithm<1)return;
+        for(unsigned v=1;v<kVoices;++v){
+            const auto* va=synth[edit_map_[v][0]];
+            if(!va || va->wave!=ALGO || va->algorithm!=algo->algorithm)return;
+        }
+        updateFmAlgorithmTopology(algo->algorithm);
         for(unsigned op=0;op<6;++op){
             const unsigned native_op=5-op; // Native render order is DX7 OP6..OP1.
-            edit_modulators_[op]=(algorithms[algo->algorithm].ops[native_op]&3)!=0;
             const int physical=algo->algo_source[native_op];int local=-1;
             for(unsigned o=0;o<edit_count_;++o)if(edit_map_[0][o]==physical)local=int(o);
             if(local<0)return;
@@ -312,6 +325,31 @@ void Runtime::applyEdit() {
     };
     const edit::Mask previous=out.compare?0:(out.mask|macroMask(out.macros));
     const edit::Mask touched=previous|effective;
+    if(out.family == 0 && (touched & edit::bit(edit::FmAlgorithm))) {
+        const unsigned target_algo = unsigned(std::lround(value(edit::FmAlgorithm)));
+        if(target_algo < 1 || target_algo > 32) { ++out.errors; return; }
+        if(state_.active_notes > 0 || state_.sustain_active) { ++out.errors; return; }
+        for(unsigned v = 0; v < kVoices; ++v) {
+            const uint16_t parent_osc = edit_map_[v][0];
+            if(parent_osc >= kOscillators || !synth[parent_osc] || synth[parent_osc]->wave != ALGO) {
+                ++out.errors; return;
+            }
+            for(unsigned op = 0; op < 6; ++op) {
+                const uint16_t op_osc = edit_map_[v][edit_ops_[op]];
+                if(op_osc >= kOscillators || !synth[op_osc] || synth[op_osc]->role != SYNTH_IS_ALGO_SOURCE) {
+                    ++out.errors; return;
+                }
+            }
+        }
+        updateFmAlgorithmTopology(target_algo);
+        for(unsigned v = 0; v < kVoices; ++v) {
+            struct delta d{};
+            d.osc = edit_map_[v][0];
+            d.param = ALGORITHM;
+            d.data.i = target_algo;
+            add_delta_to_queue(&d, &amy_global.delta_queue);
+        }
+    }
     if(touched&edit::bit(edit::PatchLevel))for(unsigned v=0;v<kVoices;++v)
         instrument_set_level(v+1,edit_instrument_levels_[v]*((effective&edit::bit(edit::PatchLevel))?value(edit::PatchLevel)/100.0f:1.0f));
     for(unsigned v=0;v<kVoices;++v)for(unsigned o=0;o<edit_count_;++o){
@@ -418,7 +456,7 @@ void Runtime::applyEdit() {
                 add_delta_to_queue(&d,&amy_global.delta_queue);
             }
             for(unsigned op=0;op<6;++op)if(edit_ops_[op]==o){
-                if(touched&(edit::bit(edit::OpLevel0+op)|edit::bit(edit::Depth))){
+                if(touched&(edit::bit(edit::OpLevel0+op)|edit::bit(edit::Depth)|edit::bit(edit::FmAlgorithm))){
                     e.amp_coefs[COEF_CONST]=b.amp*(value(edit::OpLevel0+op)/100.0f)*(edit_modulators_[op]?value(edit::Depth):1.0f);emit=true;
                 }
                 if(touched&edit::bit(edit::OpRatio0+op)){

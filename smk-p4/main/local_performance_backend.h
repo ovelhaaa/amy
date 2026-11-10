@@ -52,6 +52,7 @@ public:
         if(user_name_[0])std::snprintf(state_.patch_name,sizeof(state_.patch_name),"%s",user_name_);
 #endif
         state_.master=snapshot.master; state_.active_notes=snapshot.active_notes;
+        sustain_active_=snapshot.sustain_active;
         state_.sample_rate_hz=amy::kSampleRateHz; state_.block_frames=amy::kBlockFrames;
         state_.flags=(output_live?link::kAudioLive:0)|(midi_connected_?link::kUsbConnected:0);
         state_.max_render_us=max_render_us; state_.deadline_misses=deadlines;
@@ -160,6 +161,10 @@ public:
     }
     bool editParameter(unsigned p,float value) override {
         if(!ready_ || busy() || saving_ || edit_.compare || p>=edit::Count || !(edit_.available&edit::bit(p)) || !edit::valid(p,value))return false;
+        if(p == edit::FmAlgorithm && (state_.active_notes > 0 || sustain_active_)) {
+            notice_ = "RELEASE NOTES TO CHANGE FM ALGORITHM";
+            return false;
+        }
         if(edit_pending_)++coalesced_;
         prepareEdit();desired_.values[p]=value;
         if(value==edit_.original[p])desired_.mask&=~edit::bit(p);else desired_.mask|=edit::bit(p);
@@ -372,7 +377,7 @@ private:
     harmony::State harmony_;
     uint32_t tokens_[128]{},revision_=0,generation_=0;
     bool ready_=false;
-    bool midi_connected_=false,midi_error_=false;
+    bool midi_connected_=false,midi_error_=false,sustain_active_=false;
     bool pending_=false,loading_=false,failed_=false;
     uint32_t changes_=0,failures_=0;
     fx::FxState fx_state_{};

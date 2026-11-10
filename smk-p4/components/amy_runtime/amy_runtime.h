@@ -20,6 +20,7 @@ struct Snapshot {
     uint16_t patch_id=kPatches[0].id;
     uint8_t master=64;
     uint32_t active_notes=0, blocks=0, peak=0, clipped=0, queue_high_water=0;
+    bool sustain_active=false;
     uint32_t generation=0, invalid_commands=0, expired_notes=0, command_latency_max_ms=0;
     uint32_t oom_count=0;
     uint32_t polyphony_rejected=0;
@@ -49,6 +50,7 @@ private:
     void captureEdit();
     void applyEdit();
     void updateModWheelFilter();
+    bool updateFmAlgorithmTopology(unsigned algorithm);
     struct EditOsc {
         uint16_t wave=0;
         float cutoff=0,resonance=0,amp=0,ratio=0,filter_env=0,filter_note=0;
