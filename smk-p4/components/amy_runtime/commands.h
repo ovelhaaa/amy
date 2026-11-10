@@ -62,6 +62,13 @@ public:
     std::atomic<bool> storage_requested{false};
 #endif
     fx::Mailbox fx;
+    void panic(OutputReason reason=OutputReason::Panic) {
+        CommandQueue<kCommandCapacity>::panic(reason);
+#ifdef SMKP4_SOUND_EDITOR
+        edits.clear();
+#endif
+        fx.clear();
+    }
 };
 inline bool atOrAfter(uint32_t a,uint32_t b) { return static_cast<int32_t>(a-b)>=0; }
 // The owner samples its clock before draining. A concurrent producer can

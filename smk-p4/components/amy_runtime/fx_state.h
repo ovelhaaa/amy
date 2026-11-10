@@ -72,6 +72,7 @@ struct FxState {
     uint32_t revision = 0;
     uint32_t request = 0;
     uint32_t errors = 0;
+    uint32_t rejected = 0;
     bool enabled = true;
     bool dirty = false;
 };
@@ -82,24 +83,33 @@ struct FxRequest {
     uint32_t request = 0;
 };
 
-class Mailbox {
+template<unsigned Capacity = 8>
+class FxQueue {
 public:
     bool push(const FxRequest& r) {
-        if (full_.load(std::memory_order_acquire)) return false;
-        request_ = r;
-        full_.store(true, std::memory_order_release);
+        const uint32_t w = write_.load(std::memory_order_relaxed);
+        if (w - read_.load(std::memory_order_acquire) >= Capacity) return false;
+        slots_[w % Capacity] = r;
+        write_.store(w + 1, std::memory_order_release);
         return true;
     }
     bool pop(FxRequest& r) {
-        if (!full_.load(std::memory_order_acquire)) return false;
-        r = request_;
-        full_.store(false, std::memory_order_release);
+        const uint32_t r_idx = read_.load(std::memory_order_relaxed);
+        if (r_idx == write_.load(std::memory_order_acquire)) return false;
+        r = slots_[r_idx % Capacity];
+        read_.store(r_idx + 1, std::memory_order_release);
         return true;
     }
+    void clear() {
+        read_.store(write_.load(std::memory_order_relaxed), std::memory_order_release);
+    }
 private:
-    FxRequest request_{};
-    std::atomic<bool> full_{false};
+    static_assert(std::atomic<uint32_t>::is_always_lock_free, "32-bit atomics required");
+    FxRequest slots_[Capacity]{};
+    std::atomic<uint32_t> read_{0}, write_{0};
 };
+
+using Mailbox = FxQueue<8>;
 
 // Applies an FxConfig directly to AMY Bus 0.
 // Hard real-time safe: Zero heap allocations, bounded execution time.

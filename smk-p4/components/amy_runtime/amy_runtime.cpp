@@ -307,7 +307,12 @@ void Runtime::applyUsb(uint32_t now_ms) {
 }
 void Runtime::applyFx() {
     fx::FxRequest req;
-    if(commands_.fx.pop(req)) {
+    bool updated = false;
+    while(commands_.fx.pop(req)) {
+        if(req.generation != 0 && (req.generation != state_.generation || req.generation != commands_.generation())) {
+            ++state_.fx.rejected;
+            continue;
+        }
         if(!fx::valid(req.config)) {
             ++state_.fx.errors;
         } else {
@@ -315,8 +320,11 @@ void Runtime::applyFx() {
             state_.fx.request = req.request;
             ++state_.fx.revision;
             state_.fx.dirty = true;
-            fx::applyBusFx(state_.fx.config);
+            updated = true;
         }
+    }
+    if(updated) {
+        fx::applyBusFx(state_.fx.config);
     }
 }
 void Runtime::apply(uint32_t now_ms) {
@@ -536,6 +544,9 @@ void Runtime::loadPendingPatch() {
     } else {
         state_.patch_id=state_.requested_patch_id;bank_=0;
         state_.patch_state=PatchState::Ready;++state_.patch_changes;
+        state_.fx.config=fx::FxConfig{};
+        state_.fx.dirty=false;
+        fx::applyBusFx(state_.fx.config);
 #ifdef SMKP4_SOUND_EDITOR
         captureEdit();
 #endif

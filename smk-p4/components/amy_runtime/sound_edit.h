@@ -96,6 +96,9 @@ public:
         full_.store(false, std::memory_order_release);
         return true;
     }
+    void clear() {
+        full_.store(false, std::memory_order_release);
+    }
 private:
     Request request_{};
     std::atomic<bool> full_{false};
