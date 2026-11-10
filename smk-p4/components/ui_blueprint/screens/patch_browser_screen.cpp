@@ -73,7 +73,7 @@ public:
                     g_browser.target_layer = (g_browser.target_layer == 0) ? 1 : 0;
                     break;
                 case 7: {
-                    if(ctx->backend->hasSoundEditor()){showUserPresetPanel(static_cast<lv_obj_t*>(lv_event_get_target(e)),*ctx->backend);return;}
+                    if(ctx->backend->hasSoundEditor()){showUserPresetPanel(static_cast<lv_obj_t*>(lv_event_get_current_target(e)),*ctx->backend);return;}
                     if (!ctx->backend->isDemoMode()) break;
                     const UiCommandResult r = ctx->backend->requestNoteOn(60, 100);
                     if (r.accepted()) {

@@ -1,6 +1,7 @@
 #include "ui_screens.h"
 #include "ui_widgets.h"
 #include <cstdio>
+#include <cstring>
 
 namespace smk::p4::ui {
 
@@ -41,7 +42,7 @@ public:
                     if(lv_event_get_code(e)!=LV_EVENT_CLICKED)return;
                     auto* c=static_cast<Action*>(lv_event_get_user_data(e));
                     if(c->action<2)c->backend->requestSoundAction(c->action);
-                    else showPresets(static_cast<lv_obj_t*>(lv_event_get_target(e)),*c->backend);
+                    else showPresets(static_cast<lv_obj_t*>(lv_event_get_current_target(e)),*c->backend);
                 },LV_EVENT_CLICKED);
             }
         }
@@ -184,18 +185,27 @@ private:
     struct PresetPanel { IUiBackend* backend;lv_obj_t* root;lv_obj_t* slot;lv_obj_t* name;lv_obj_t* info;bool overwrite=false; };
 public:
     static void showPresets(lv_obj_t* button,IUiBackend& backend){
-        auto* root=lv_obj_create(lv_obj_get_screen(button));applyPanelStyle(root,true);
+        lv_obj_t* screen = button ? lv_obj_get_screen(button) : lv_screen_active();
+        if(!screen) screen = lv_screen_active();
+        if(!screen) return;
+        auto* root=lv_obj_create(screen);
+        if(!root) return;
+        applyPanelStyle(root,true);
         lv_obj_set_pos(root,40,50);lv_obj_set_size(root,720,380);
         createLabel(root,"USER PRESETS | SAVE ONLY WITH NOTES RELEASED",12,8,680);
         auto* slot=lv_dropdown_create(root);lv_obj_set_pos(slot,12,42);lv_obj_set_size(slot,260,40);
-        char options[800]{};unsigned used=0;
+        char* options = static_cast<char*>(lv_malloc(800));
+        if(!options){lv_obj_delete(root);return;}
+        std::memset(options,0,800);
+        unsigned used=0;
         for(unsigned i=0;i<16;++i){char name[25]{};uint16_t origin=0;
             const bool valid=backend.userPreset(i,name,sizeof(name),origin);
-            const int n=std::snprintf(options+used,sizeof(options)-used,"%s%02u %s",i?"\n":"",i+1,valid?name:"EMPTY / INVALID");
-            if(n<0 || unsigned(n)>=sizeof(options)-used)break;
+            const int n=std::snprintf(options+used,800-used,"%s%02u %s",i?"\n":"",i+1,valid?name:"EMPTY / INVALID");
+            if(n<0 || unsigned(n)>=800-used)break;
             used+=unsigned(n);
         }
         lv_dropdown_set_options(slot,options);
+        lv_free(options);
         auto* name=lv_textarea_create(root);lv_obj_set_pos(name,284,42);lv_obj_set_size(name,396,42);
         lv_textarea_set_one_line(name,true);lv_textarea_set_max_length(name,24);lv_textarea_set_text(name,"MY SOUND 01");
         auto* info=createLabel(root,"SELECT SLOT; SAVE AS ALSO RENAMES. OCCUPIED SLOT REQUIRES TWO PRESSES.",12,88,680);

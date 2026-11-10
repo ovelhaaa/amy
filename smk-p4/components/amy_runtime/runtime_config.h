@@ -43,12 +43,20 @@ constexpr unsigned kOwnerPriority = 5;
 // Conservative admission, not a measured P4 allocation size. Preserve the
 // original four-voice reserve and allow extra patch/delta/oscillator storage.
 // Runtime adds the expanded delta blocks using the actual engine ABI size.
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+constexpr size_t kBootBaseFreeInternalBytes = 196608 + (kVoices - 4) * 18432;
+#else
 constexpr size_t kBootBaseFreeInternalBytes = 196608 + (kVoices - 4) * 24576;
+#endif
 constexpr unsigned kDeltaBlockSize = 2048; // Pinned AMY DELTA_BLOCK_SIZE.
 constexpr size_t kBootLargestInternalBytes = 196608; // Preserve the baseline contiguous reserve.
 // Whole-engine budget: measured x86-64 peak <286650 B (larger ABI), plus
 // >20 KiB for allocator bookkeeping/margin. Keep historical guards as floors.
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+constexpr size_t kLibraryEngineHeapBudgetBytes = 240 * 1024;
+#else
 constexpr size_t kLibraryEngineHeapBudgetBytes = 300 * 1024;
+#endif
 constexpr size_t kPostBootFreeInternalBytes = 65536;
 constexpr size_t kPostBootLargestInternalBytes = 32768;
 constexpr uint32_t kSampleRateHz = 48000, kBlockFrames = 256;

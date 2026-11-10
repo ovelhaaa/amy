@@ -1,3 +1,5 @@
+#include "fake_nvs.h"
+#include "user_preset_fx_nvs.h"
 #include "ui_blueprint_performance_adapter.h"
 #include "local_performance_backend.h"
 #include "user_presets_v2.h"
@@ -66,7 +68,8 @@ static void auditInventory(UiBlueprintPerformanceAdapter& a, ApplyFn&& apply) {
 static amy::Runtime r;
 int main(){
     preview::initHostLvgl();assert(r.begin());MemoryStore store;
-    LocalAmyPerformanceBackend b(r.commands());b.presetStore(&store);UiBlueprintPerformanceAdapter a(b);
+    fx::NvsFxPresets fx_store;assert(fx_store.begin());
+    LocalAmyPerformanceBackend b(r.commands());b.presetStore(&store);b.fxPresetStore(&fx_store);UiBlueprintPerformanceAdapter a(b);
     auto publish=[&]{b.publish(r.snapshot(),false,0,0);a.service(preview::g_sim_tick_ms+=25);};
     auto apply=[&]{a.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);r.loadPendingPatch();assert(r.render());publish();};
     publish();UiBlueprint app(a);assert(app.begin());
@@ -191,7 +194,7 @@ int main(){
 
     // 5. Recall slot 0 & reboot persistence across engine/backend lifecycle
     assert(a.requestSoundAction(3,0).accepted());apply();apply();assert(r.snapshot().patch_id==4 && r.snapshot().edit.applied[edit::Cutoff]==1000);
-    app.shutdown();r.end();assert(r.begin());LocalAmyPerformanceBackend reboot(r.commands());reboot.presetStore(&store);
+    app.shutdown();r.end();assert(r.begin());LocalAmyPerformanceBackend reboot(r.commands());reboot.presetStore(&store);reboot.fxPresetStore(&fx_store);
     reboot.publish(r.snapshot(),false,0,0);assert(reboot.editAction(3,0));r.apply(0);r.loadPendingPatch();reboot.publish(r.snapshot(),false,0,0);reboot.service(25);r.apply(1);reboot.publish(r.snapshot(),false,0,0);
     assert(r.snapshot().edit.applied[0]==1000 && r.snapshot().edit.user_slot==0);
     assert(r.snapshot().edit.applied[edit::FilterEnv]==3 && r.snapshot().edit.applied[edit::FilterKeytrack]==150);
@@ -235,6 +238,14 @@ int main(){
     assert(preview::saveFramebufferPpm("build/editor011/presets.ppm"));
     auto* close=button(lv_screen_active(),"CLOSE");assert(close);lv_obj_send_event(close,LV_EVENT_CLICKED,nullptr);preview::pumpFrame(ui);
     assert(ui.navigation().navigateTo(ScreenId::PatchBrowser));preview::pumpFrame(ui);assert(button(ui.contentObject(),"USER PRESETS / SAVE AS"));
+    auto* browser_open=button(ui.contentObject(),"USER PRESETS / SAVE AS");
+    assert(browser_open);
+    lv_obj_send_event(browser_open,LV_EVENT_CLICKED,nullptr);
+    preview::pumpFrame(ui);
+    auto* browser_close=button(lv_screen_active(),"CLOSE");
+    assert(browser_close);
+    lv_obj_send_event(browser_close,LV_EVENT_CLICKED,nullptr);
+    preview::pumpFrame(ui);
     // 7. Effects Screen UI verification, interactive parameter edit & screenshot capture
     assert(ui.navigation().navigateTo(ScreenId::Effects));preview::pumpFrame(ui);
     assert(preview::saveFramebufferPpm("build/editor011/effects.ppm"));
