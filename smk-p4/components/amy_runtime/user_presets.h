@@ -48,7 +48,7 @@ constexpr Mask allowedMask(uint8_t family, bool v1) {
         return v1_juno | juno_v2 | shared;
     }
     const Mask fm_v2 = (bit(OpVel5 + 1) - 1ULL) & ~(bit(FmFeedback) - 1ULL);
-    return v1_fm | fm_v2 | shared;
+    return v1_fm | fm_v2 | shared | bit(FmAlgorithm);
 }
 
 inline bool validPreset(const Preset& p, bool v1) {

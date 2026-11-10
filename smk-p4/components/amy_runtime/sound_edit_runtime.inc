@@ -227,6 +227,9 @@ void Runtime::captureEdit() {
         out.original[edit::Depth]=1;out.available|=edit::bit(edit::Depth);
         out.original[edit::FmFeedback]=std::fmin(100.0f,std::fmax(0.0f,edit_oscs_[0].feedback*625.0f));
         if(edit::valid(edit::FmFeedback,out.original[edit::FmFeedback]))out.available|=edit::bit(edit::FmFeedback);
+        out.original[edit::FmAlgorithm]=float(algo->algorithm);
+        if(edit::valid(edit::FmAlgorithm,out.original[edit::FmAlgorithm]))
+            out.available|=edit::bit(edit::FmAlgorithm);
     }
     if(edit_lfo_<edit_count_){
         const float rate_hz=freq_of_logfreq(edit_oscs_[edit_lfo_].freq);

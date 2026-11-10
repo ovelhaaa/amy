@@ -22,7 +22,8 @@ enum Param : uint8_t {
     OpVel0 = 42, OpVel5 = 47,
     LfoRate = 48, LfoDepth = 49, LfoWave = 50, LfoDest = 51,
     ModEnable = 52, ModSource = 53, ModDest = 54, ModAmount = 55, ModPolarity = 56,
-    Count = 57
+    FmAlgorithm = 57,
+    Count = 58
 };
 static_assert(Count <= 64, "Widen edit::Mask before admitting more than 64 fields");
 constexpr unsigned kSlots = 16;
@@ -67,6 +68,7 @@ inline bool valid(unsigned p, float v) {
     if (p == ModDest) return v == 0.0f || v == 1.0f || v == 3.0f;
     if (p == ModAmount) return v >= -100.0f && v <= 100.0f;
     if (p == ModPolarity) return v >= 0.0f && v <= 2.0f && std::floor(v) == v;
+    if (p == FmAlgorithm) return v >= 1.0f && v <= 32.0f && std::floor(v) == v;
     return false;
 }
 

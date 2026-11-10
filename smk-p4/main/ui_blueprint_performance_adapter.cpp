@@ -76,6 +76,7 @@ int UiBlueprintPerformanceAdapter::editIndex(const char* id) const {
     if(eq(id,"amp.pan"))return edit::Pan;
     if(eq(id,"amp.vel_sens"))return edit::Velocity;
     if(eq(id,"fm.depth"))return edit::Depth;
+    if(eq(id,"fm.algo"))return edit::FmAlgorithm;
     if(eq(id,"fm.feedback"))return edit::FmFeedback;
     if(eq(id,"fm.op.level"))return edit::OpLevel0+int(selected_op_);
     if(eq(id,"fm.op.ratio"))return edit::OpRatio0+int(selected_op_);
@@ -113,6 +114,7 @@ FeatureStatus UiBlueprintPerformanceAdapter::parameterStatus(const char* id) con
 }
 bool UiBlueprintPerformanceAdapter::isParameterValueSupported(const char* id,int32_t value) const {
     if(eq(id,"fx.chorus.mode"))return value>=0 && value<=5;
+    if(eq(id,"fm.algo"))return value>=1 && value<=32;
     if(const auto* state=backend_.soundEdit()){
         if(eq(id,"lfo.1.wave"))return value>=0 && value<=4;
         if(eq(id,"lfo.1.dest"))return value>=0 && value<=3 && (value!=2 || state->family==1);
@@ -319,7 +321,7 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
                 "amp.level","amp.pan","amp.vel_sens",
                 "filter.cutoff_hz","filter.resonance","filter.env_amount","filter.keytrack",
                 "env.amp.attack_ms","env.amp.release_ms","env.amp.decay_ms","env.amp.sustain",
-                "fm.depth","fm.feedback","fm.op.level","fm.op.ratio","fm.op.attack","fm.op.decay","fm.op.vel_sens",
+                "fm.depth","fm.algo","fm.feedback","fm.op.level","fm.op.ratio","fm.op.attack","fm.op.decay","fm.op.vel_sens",
                 "lfo.1.rate_hz","lfo.1.depth","lfo.1.wave","lfo.1.dest",
                 "mod.slot1.enable","mod.slot1.source","mod.slot1.dest","mod.slot1.amount","mod.slot1.polarity"
             };

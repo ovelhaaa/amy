@@ -10,7 +10,7 @@ inline bool isFloatParamV2(unsigned i){
     return i==Depth || (i>=OpRatio0 && i<=OpRatio5) || i==LfoRate;
 }
 inline bool isByteParamV2(unsigned i){
-    return (i>=LfoWave && i<=ModDest) || i==ModPolarity;
+    return (i>=LfoWave && i<=ModDest) || i==ModPolarity || i==FmAlgorithm;
 }
 inline bool isTimeParamV2(unsigned i){
     return i>=OpAttack0 && i<=OpDecay5;
