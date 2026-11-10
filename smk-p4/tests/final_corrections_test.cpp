@@ -2,6 +2,7 @@
 #include "local_performance_backend.h"
 #include "user_presets_v2.h"
 #include "user_preset_nvs_v2.h"
+#include "user_preset_fx_nvs.h"
 #include "fake_nvs.h"
 #include <cassert>
 #include <cmath>
@@ -143,8 +144,12 @@ static void testModSourceOff() {
         runtime.apply(0);
         runtime.loadPendingPatch();
 
+        fx::NvsFxPresets fx_store;
+        assert(fx_store.begin());
+
         LocalAmyPerformanceBackend backend(runtime.commands());
         backend.presetStore(&store);
+        backend.fxPresetStore(&fx_store);
         backend.publish(runtime.snapshot(), false, 0, 0);
 
         assert(backend.editParameter(edit::ModSource, 0.0f));
@@ -171,6 +176,7 @@ static void testModSourceOff() {
 
         LocalAmyPerformanceBackend backend2(runtime.commands());
         backend2.presetStore(&store);
+        backend2.fxPresetStore(&fx_store);
         backend2.publish(runtime.snapshot(), false, 0, 0);
 
         // Recall slot 0

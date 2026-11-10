@@ -43,7 +43,7 @@ public:
             }
         }
 #endif
-        if(snapshot.patch_id!=state_.patch_id){desired_fx_=original_fx_=snapshot.fx.config;}
+        if(snapshot.patch_id!=state_.patch_id && !recalling_){desired_fx_=original_fx_=snapshot.fx.config;}
         fx_state_=snapshot.fx;
         ready_=snapshot.ready; state_.patch_id=state_.engine_patch=snapshot.patch_id;
         const int index=amy::patchIndex(snapshot.patch_id);
@@ -84,7 +84,7 @@ public:
             desired_.request=newEditToken();edit_pending_=true;recalling_=false;recall_wait_=true;recall_token_=edit_token_;recall_errors_=edit_.errors;
             desired_fx_=original_fx_=recall_fx_;
             fx_pending_=true;
-            fx::FxRequest req{};req.config=desired_fx_;req.request=++fx_token_;
+            fx::FxRequest req{};req.config=desired_fx_;req.generation=commands_.generation();req.request=++fx_token_;
             if(commands_.fx.push(req)){fx_pending_=false;last_fx_ms_=now_ms;}
         }
         if(!edit_pending_ && edit_.request!=edit_token_ && !edit_timeout_ && uint32_t(now_ms-last_edit_ms_)>2000){
@@ -100,7 +100,7 @@ public:
         }
 #endif
         if(fx_pending_ && !busy() && uint32_t(now_ms-last_fx_ms_)>=15){
-            fx::FxRequest req{};req.config=desired_fx_;req.request=++fx_token_;
+            fx::FxRequest req{};req.config=desired_fx_;req.generation=commands_.generation();req.request=++fx_token_;
             if(commands_.fx.push(req)){fx_pending_=false;last_fx_ms_=now_ms;}
         }
     }
@@ -125,6 +125,26 @@ public:
     uint32_t editCoalesced() const {return coalesced_;}
     bool editError() const override {return edit_error_;}
     bool editPending() const override {return edit_pending_ || (!edit_timeout_ && edit_.request!=edit_token_) || recalling_ || recall_wait_;}
+    bool fxPending() const { return fx_pending_; }
+    bool unsaved() const {
+        if(saving_ || edit_pending_ || (!edit_timeout_ && edit_.request!=edit_token_) || fx_pending_)return true;
+        return synthUnsaved() || fxUnsaved();
+    }
+    bool synthUnsaved() const {
+        if(edit_pending_ || (!edit_timeout_ && edit_.request!=edit_token_))return true;
+        if(!edit_.dirty)return false;
+        if(!saved_valid_ || saved_edit_.patch!=edit_.patch || saved_edit_.mask!=edit_.mask)return true;
+        for(unsigned m=0;m<3;++m)if(saved_edit_.macros[m]!=edit_.macros[m])return true;
+        for(unsigned p=0;p<edit::Count;++p)if((edit_.mask&edit::bit(p)) && saved_edit_.manual[p]!=edit_.manual[p])return true;
+        return false;
+    }
+    bool fxUnsaved() const {
+        if(fx_pending_)return true;
+        const bool fx_dirty = !fxEquivalent(desired_fx_, original_fx_);
+        if(!fx_dirty)return false;
+        if(!saved_valid_)return true;
+        return !fxEquivalent(desired_fx_, saved_fx_);
+    }
     const char* editNotice() const override {
         if(saving_)return notice_;
         if(edit_error_)return notice_;
@@ -151,7 +171,7 @@ public:
         if(action<2){prepareEdit();desired_.compare=action==0?!desired_.compare:false;
             if(action==1){desired_.mask=0;desired_.slot=-1;for(auto& m:desired_.macros)m=64;desired_fx_=original_fx_;}
             desired_.request=newEditToken();edit_pending_=true;
-            fx::FxRequest req{};req.config=desired_.compare?original_fx_:desired_fx_;req.request=++fx_token_;commands_.fx.push(req);
+            fx::FxRequest req{};req.config=desired_.compare?original_fx_:desired_fx_;req.generation=commands_.generation();req.request=++fx_token_;commands_.fx.push(req);
             return true;}
         if(slot>=edit::kSlots || !store_ || edit_pending_ || edit_.request!=edit_token_)return false;
         if(action==2){
@@ -230,7 +250,7 @@ public:
             return false;
         }
         fx_pending_ = true;
-        fx::FxRequest req{}; req.config = desired_fx_; req.request = ++fx_token_;
+        fx::FxRequest req{}; req.config = desired_fx_; req.generation = commands_.generation(); req.request = ++fx_token_;
         if (commands_.fx.push(req)) {
             fx_pending_ = false;
             last_fx_ms_ = now_ms;
@@ -261,7 +281,13 @@ public:
         if(!recalling_ && unsaved())return false;
 #endif
         if(!ready_ || busy() || amy::patchIndex(id)<0) return false;
-        panic(); const bool accepted=commands_.push({amy::CommandType::Patch,id,0,0,0,now_ms});
+        panic();
+#ifdef SMKP4_SOUND_EDITOR
+        if(!recalling_){
+            desired_fx_=original_fx_=fx::FxConfig{};
+        }
+#endif
+        const bool accepted=commands_.push({amy::CommandType::Patch,id,0,0,0,now_ms});
 #ifdef SMKP4_UNIFIED_ENGINE
         pending_=accepted;
 #endif
@@ -293,7 +319,7 @@ public:
         if(note<128 && tokens_[note]) { commands_.release(note,tokens_[note]); tokens_[note]=0; }
     }
     void heldNote(uint8_t) override {} // Owner enforces a fixed independent lease.
-    void panic() override { commands_.panic(); generation_=commands_.generation(); clearTokens();pending_=false; }
+    void panic() override { commands_.panic(); generation_=commands_.generation(); clearTokens();pending_=false;fx_pending_=false; }
 private:
 #ifdef SMKP4_SOUND_EDITOR
     bool macroParameter(unsigned m,uint8_t value){
@@ -314,25 +340,6 @@ private:
         if (std::lround(a.eq_high_db) != std::lround(b.eq_high_db)) return false;
         if (a.bypass_all != b.bypass_all) return false;
         return true;
-    }
-    bool synthUnsaved() const {
-        if(edit_pending_ || (!edit_timeout_ && edit_.request!=edit_token_))return true;
-        if(!edit_.dirty)return false;
-        if(!saved_valid_ || saved_edit_.patch!=edit_.patch || saved_edit_.mask!=edit_.mask)return true;
-        for(unsigned m=0;m<3;++m)if(saved_edit_.macros[m]!=edit_.macros[m])return true;
-        for(unsigned p=0;p<edit::Count;++p)if((edit_.mask&edit::bit(p)) && saved_edit_.manual[p]!=edit_.manual[p])return true;
-        return false;
-    }
-    bool fxUnsaved() const {
-        if(fx_pending_)return true;
-        const bool fx_dirty = !fxEquivalent(desired_fx_, original_fx_);
-        if(!fx_dirty)return false;
-        if(!saved_valid_)return true;
-        return !fxEquivalent(desired_fx_, saved_fx_);
-    }
-    bool unsaved() const {
-        if(saving_ || edit_pending_ || (!edit_timeout_ && edit_.request!=edit_token_) || fx_pending_)return true;
-        return synthUnsaved() || fxUnsaved();
     }
     uint32_t newEditToken(){edit_error_=edit_timeout_=false;edit_token_=++edit_serial_;return edit_token_;}
     void prepareEdit(){

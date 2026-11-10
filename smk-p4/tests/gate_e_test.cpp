@@ -1,5 +1,6 @@
 #include "local_performance_backend.h"
 #include "user_preset_nvs.h"
+#include "user_preset_fx_nvs.h"
 #include "fake_nvs.h"
 #include <cassert>
 #include <cmath>
@@ -124,8 +125,11 @@ static std::vector<int16_t> renderLfoScenario(
 
     NvsUserPresets store;
     assert(store.begin());
+    fx::NvsFxPresets fx_store;
+    assert(fx_store.begin());
     LocalAmyPerformanceBackend backend(runtime.commands());
     backend.presetStore(&store);
+    backend.fxPresetStore(&fx_store);
     unsigned now = 20;
     auto publish = [&] { backend.publish(runtime.snapshot(), false, 0, 0); };
     auto flush = [&] {
@@ -316,8 +320,11 @@ static void testModMatrixAndCc1Composition() {
         runtime.loadPendingPatch();
         NvsUserPresets store;
         assert(store.begin());
+        fx::NvsFxPresets fx_store;
+        assert(fx_store.begin());
         LocalAmyPerformanceBackend backend(runtime.commands());
         backend.presetStore(&store);
+        backend.fxPresetStore(&fx_store);
         unsigned now = 20;
         auto publish = [&] { backend.publish(runtime.snapshot(), false, 0, 0); };
         auto flush = [&] {

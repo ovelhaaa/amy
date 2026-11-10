@@ -1,5 +1,6 @@
 #include "local_performance_backend.h"
 #include "user_preset_nvs.h"
+#include "user_preset_fx_nvs.h"
 #include "fake_nvs.h"
 #include <cassert>
 #include <cstdio>
@@ -16,7 +17,7 @@ enum Mode {Original,Edited,Compared,Reverted,Recalled};
 static void midi(uint8_t status,uint8_t a,uint8_t b=0){const uint8_t packet[]={uint8_t(status>>4),status,a,b};assert(runtime.usbInput().packet(packet,0));}
 static std::vector<int16_t> render(unsigned param,unsigned note,bool harmony_on,Mode mode,unsigned patch,uint8_t velocity=64){
     assert(runtime.begin());assert(runtime.commands().push({amy::CommandType::Patch,uint16_t(patch)}));runtime.apply(0);runtime.loadPendingPatch();
-    NvsUserPresets store;assert(store.begin());LocalAmyPerformanceBackend backend(runtime.commands());backend.presetStore(&store);
+    NvsUserPresets store;assert(store.begin());fx::NvsFxPresets fx_store;assert(fx_store.begin());LocalAmyPerformanceBackend backend(runtime.commands());backend.presetStore(&store);backend.fxPresetStore(&fx_store);
     auto publish=[&]{backend.publish(runtime.snapshot(),false,0,0);};publish();
     unsigned now=20;
     auto flush=[&]{backend.service(now);runtime.apply(now);publish();now+=20;assert(!backend.editError());};

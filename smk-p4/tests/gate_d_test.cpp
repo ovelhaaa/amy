@@ -1,5 +1,6 @@
 #include "local_performance_backend.h"
 #include "user_preset_nvs.h"
+#include "user_preset_fx_nvs.h"
 #include "fake_nvs.h"
 #include <cassert>
 #include <cmath>
@@ -62,8 +63,11 @@ static std::vector<int16_t> renderDx7Scenario(
 
     NvsUserPresets store;
     assert(store.begin());
+    fx::NvsFxPresets fx_store;
+    assert(fx_store.begin());
     LocalAmyPerformanceBackend backend(runtime.commands());
     backend.presetStore(&store);
+    backend.fxPresetStore(&fx_store);
     auto publish = [&] { backend.publish(runtime.snapshot(), false, 0, 0); };
     publish();
     unsigned now = 20;

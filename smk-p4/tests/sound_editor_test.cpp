@@ -2,6 +2,7 @@
 #include "local_performance_backend.h"
 #include "user_presets.h"
 #include "user_presets_v2.h"
+#include "fake_nvs.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>

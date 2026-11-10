@@ -1,4 +1,5 @@
 #include "local_performance_backend.h"
+#include "fake_nvs.h"
 #include <cassert>
 #include <cstdio>
 #include <initializer_list>
