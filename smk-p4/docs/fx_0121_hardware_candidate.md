@@ -15,32 +15,46 @@
 #### 1. Production Firmware: `guition-editor-8`
 - **Configuration**: 8 voices polyphony, 64 oscillators, Sound Editor, Factory Library (687 patches), Native Stereo FX Suite, Touch UI Blueprint 1.1, USB MIDI Host, I²S PCM5102A.
 - **Binary Path**: `smk-p4/.pio/build/guition-editor-8/firmware.bin`
-- **File Size**: 1,222,288 bytes (~1.17 MB)
-- **Flash Consumption**: 7.3% of 16 MB
-- **RAM Consumption**: 12.2% of 320 KB
+- **File Size**: 1,223,776 bytes (~1.17 MB)
+- **Flash Consumption**: 7.3% of 16 MB (1,223,042 / 16,777,216 bytes)
+- **RAM Consumption**: 12.2% of 320 KB (39,828 / 327,680 bytes)
 - **SHA-256**:
   ```
-  62C19A06756E6F39D65030285A4BF7E40E61164BAE43C13FA6A80D0B037DC522
+  5271035298494895626C1C88764967635126DC33650EEC9E9CDD324DFB823A98
   ```
 
 #### 2. Benchmark Firmware: `guition-editor-8-bench`
 - **Configuration**: Production build with automated DSP / render cycle diagnostic counters and performance benchmark instrumentation.
 - **Binary Path**: `smk-p4/.pio/build/guition-editor-8-bench/firmware.bin`
-- **File Size**: 1,322,912 bytes (~1.26 MB)
-- **Flash Consumption**: 7.9% of 16 MB
-- **RAM Consumption**: 12.1% of 320 KB
+- **File Size**: 1,324,400 bytes (~1.26 MB)
+- **Flash Consumption**: 7.9% of 16 MB (1,323,686 / 16,777,216 bytes)
+- **RAM Consumption**: 12.3% of 320 KB (40,216 / 327,680 bytes)
 - **SHA-256**:
   ```
-  6667A8F7FCB215CCE2795F78BFC306CA26395CC75B5EB97B3455C9AE3B65348C
+  96A009E33F8AE37ED0D226956AC9FAACB6774B3FB5F63F5371C051DE866DDDB4
   ```
 
-### Physical Verification Instructions
+#### 3. System Images
+- **Bootloader**: `smk-p4/.pio/build/guition-editor-8/bootloader.bin`
+  - SHA-256: `9779A6E6E7C9423B88A98AFC87C20A8C3527DC73293E1C9FB9C3C4C718EDDA90`
+- **Partitions**: `smk-p4/.pio/build/guition-editor-8/partitions.bin`
+  - SHA-256: `73C0B5C3E5FCBA3A151CC70C453C93DD5F4798899E7F2F8CCA76DA1F32FFC501`
+
+### Rollback Plan
+- **Baseline Hardware-Approved Commit**: `27a87865cf2e6b939e2cf5a5884e7e61046183bf` (SMK-P4 0.12)
+- In the event of any hardware regression, the operator can immediately re-flash the 0.12 release image:
+  ```powershell
+  git checkout 27a87865cf2e6b939e2cf5a5884e7e61046183bf
+  pio run -d smk-p4 -e guition-editor-8-bench -t upload
+  ```
+
+### Physical Verification Instructions (Gate H / Smoke Test)
 *Notice: Under project rules, the automated agent does NOT flash or upload to physical hardware.*
 
-To flash the binary manually via PlatformIO:
+To flash the binary manually via PlatformIO once operator authorization is granted:
 ```powershell
-# Flash production candidate
-pio run -d smk-p4 -e guition-editor-8 -t upload
+# Flash benchmark candidate for diagnostic observation
+pio run -d smk-p4 -e guition-editor-8-bench -t upload
 
 # Monitor diagnostic output
 pio device monitor -b 115200
