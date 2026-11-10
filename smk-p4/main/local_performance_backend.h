@@ -162,6 +162,7 @@ public:
     bool editParameter(unsigned p,float value) override {
         if(!ready_ || busy() || saving_ || edit_.compare || p>=edit::Count || !(edit_.available&edit::bit(p)) || !edit::valid(p,value))return false;
         if(p == edit::FmAlgorithm && (state_.active_notes > 0 || sustain_active_)) {
+            edit_error_ = true;
             notice_ = "RELEASE NOTES TO CHANGE FM ALGORITHM";
             return false;
         }
