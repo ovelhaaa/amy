@@ -133,6 +133,7 @@ jobs:
           ./smk-p4/tests/run_unified_ui.ps1
           ./smk-p4/tests/run_harmony.ps1
           ./smk-p4/tests/run_harmony_ui.ps1
+          ./smk-p4/tests/run_sound_editor_ui.ps1
           python smk-p4/tests/generate_factory_library.py --check
           python -m unittest discover -s smk-p4/tests -p test_factory_library.py
           ./smk-p4/tests/run_factory_runtime.ps1
