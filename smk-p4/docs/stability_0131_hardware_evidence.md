@@ -1,6 +1,12 @@
 # SMK-P4 0.13.1 — Evidência de hardware
 
-**SMK-P4 0.13.1 HARDWARE: NOT RUN** para os candidatos deste hardening. Os builds, digests e regressões de host constam no [relatório final](stability_0131_final_hardening.md). SRAM e PSRAM livres, render, underruns e saída PCM5102A na placa dependem do smoke físico.
+**Gravação e boot: PASS. Smoke musical: NOT RUN.**
+
+O operador autorizou a gravação do perfil `guition-editor-8` com SHA-256 `6BB85D5115CC340BA782C390494EB019CE8E6FC4D0CD012338793C9927DBBC9B` pela COM13. O esptool 5.1.0 identificou o ESP32-P4 rev. 1.3, leu e conferiu a tabela de partições existente e gravou 1.245.472 bytes no endereço `0x10000`, com verificação de hash e reset. A operação gravou somente a partição de aplicação.
+
+A captura serial de 8 segundos registrou engine AMY pronta com patch 128, zero deadlines de render, 354 µs de render máximo observado, 158.155 B de RAM interna livre e 30.493.192 B de PSRAM livre. O display reportou zero erros de flush. O perfil estava em `RAM_ONLY`, com zero frames de saída, `DMA_underruns=UNMEASURED` e nenhum evento USB MIDI. Esses dados qualificam o boot em repouso. A escuta pelo PCM5102A, o USB MIDI, os controles e os fluxos de preset ainda precisam de teste físico.
+
+Logs locais: `build/editor011/guition_com13_flash.log` e `build/editor011/guition_com13_boot.log`.
 
 ## Registro histórico
 
@@ -8,7 +14,7 @@ O commit `08a430fb8cdd7ea96b141b1d66969586389813d2` descreve telemetria da 0.13.
 
 ## Smoke físico pendente
 
-Depois de o operador autorizar e instalar o SHA-256 específico:
+Para o smoke musical, usar um perfil com saída física habilitada após autorização específica para o SHA-256:
 
 1. Conectar o PCM5102A a uma entrada estéreo e o SMK25 V2 à porta USB Host. Capturar o log serial de boot a 115200 baud e registrar o hash, SRAM e PSRAM livres, sample rate e tamanho de bloco.
 2. Tocar oito notas, acionar e soltar sustain, desconectar o controlador com notas ativas e reconectar. Esperar áudio nos dois canais, liberação das notas e retomada sem reboot. Registrar underruns e tempo máximo de render.

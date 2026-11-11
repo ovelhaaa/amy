@@ -11,7 +11,7 @@
 | F | PASS | Comparação PCM byte a byte e suítes host de editor, FX, Harmony e USB. |
 | G | PASS | Dois builds PlatformIO e auditorias da configuração concluídos com código 0. |
 | H | PASS | Relatórios de resultado, estado, UI, catálogo e evidência física atualizados. |
-| Hardware | NOT RUN | Smoke físico do candidato pendente. |
+| Hardware | PASS (gravação e boot) / NOT RUN (smoke musical) | Perfil `guition-editor-8` autorizado e verificado na COM13, com telemetria `RAM_ONLY`. |
 
 ## Regressões executadas
 
@@ -45,6 +45,6 @@ Binários em `smk-p4/.pio/build/<perfil>/`. O SHA-256 de `partitions.bin` (3.072
 
 O prazo de Recall invalida comandos ainda na fila. Uma carga de patch já iniciada pode terminar após o prazo. A reconciliação de um Save incerto exige que o marcador esperado aponte para registros íntegros de síntese e FX. Enquanto essa prova faltar, o slot permanece protegido contra gravações na sessão.
 
-SRAM e PSRAM livres, áudio PCM5102A, underruns, touchscreen e reconexão no hardware permanecem **MANUAL / NOT RUN**. Consulte a [evidência física](stability_0131_hardware_evidence.md).
+O boot em repouso registrou 158.155 B de RAM interna livre e 30.493.192 B de PSRAM livre. Áudio PCM5102A, underruns, interação com touchscreen e reconexão USB permanecem **MANUAL / NOT RUN**. Consulte a [evidência física](stability_0131_hardware_evidence.md).
 
 **GO para iniciar a 0.14 sobre a base de software validada.** A qualificação física continua pendente.
