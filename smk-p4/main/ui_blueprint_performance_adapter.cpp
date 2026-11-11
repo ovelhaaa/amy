@@ -95,7 +95,10 @@ int UiBlueprintPerformanceAdapter::editIndex(const char* id) const {
     return -1;
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestSoundAction(unsigned action,unsigned slot,const char* name){
-    if(!backend_.editAction(action,slot,name))return result(UiCommandState::Rejected,"editor","REJECTED: UNSAVED/BUSY/ACTIVE/INVALID");
+    if(!backend_.editAction(action,slot,name)){
+        const char* notice = backend_.presetRejectNotice();
+        return result(UiCommandState::Rejected,"editor",(notice && notice[0])?notice:"COMMAND REJECTED");
+    }
     edit_requested_=true;edit_errors_=backend_.soundEdit()?backend_.soundEdit()->errors:0;edit_id_="editor";
     return result(UiCommandState::Requested,"editor",backend_.editNotice());
 }

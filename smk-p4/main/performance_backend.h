@@ -8,6 +8,30 @@ namespace smk::p4 {
 // simulated S3 session. No transport frames in the widget/backend contract.
 using PerformanceState = link::State;
 struct PatchInfo { uint16_t id=0; char name[25]{}; bool available=false; };
+
+enum class PresetRejectReason : uint8_t {
+    None = 0,
+    EngineUnavailable,
+    Busy,
+    SaveInProgress,
+    QuietBarrier,
+    PendingEdit,
+    ActiveNotes,
+    SustainActive,
+    CompareActive,
+    UnsavedSynth,
+    UnsavedFx,
+    InvalidSlot,
+    InvalidName,
+    InvalidPreset,
+    StorageUnavailable,
+    StorageReadError,
+    StorageWriteError,
+    CommitUncertain,
+    OwnerTimeout,
+    StaleGeneration
+};
+
 class PerformanceBackend {
 public:
     virtual ~PerformanceBackend() = default;
@@ -31,6 +55,8 @@ public:
     virtual bool editAction(unsigned,unsigned=0,const char* =nullptr) { return false; }
     virtual bool userPreset(unsigned,char*,unsigned,uint16_t&) { return false; }
     virtual const char* editNotice() const { return "EDITOR UNAVAILABLE"; }
+    virtual PresetRejectReason lastPresetRejectReason() const { return PresetRejectReason::None; }
+    virtual const char* presetRejectNotice() const { return nullptr; }
     virtual bool local() const { return false; }
     virtual bool midiError() const { return false; }
     virtual bool patchError() const { return false; }
