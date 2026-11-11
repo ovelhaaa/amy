@@ -11,7 +11,7 @@ Os runners PowerShell da árvore são executados na raiz do repositório. Harmon
 | powershell -File smk-p4/tests/run_harmony.ps1 -ReuseObjects | PASS | Harmony, sustentação, CC1, pitch bend, retrigger e perda segura de eventos |
 | powershell -File smk-p4/tests/run_usb.ps1 | PASS | Enumeração, descritores, RX, falhas e reconexão com IDF simulado |
 
-A auditoria estática python smk-p4/tests/audit_patch_library.py --check também passou.
+A auditoria estática python smk-p4/tests/audit_patch_library.py --check também passou. O benchmark FM run_sound_editor.ps1 -BenchOnly verificou 32/32 algoritmos. A regressão de fábrica executou 687 trocas, três passagens pelos 229 patches admitidos, e verificou a rejeição das 27 entradas bloqueadas.
 
 ## Benchmark de host
 
@@ -19,8 +19,8 @@ O teste PERF014_HOST aplica e renderiza 200 blocos de 256 frames por cenário, c
 
 | Cenário | Média serviço + render | Máximo |
 |---|---:|---:|
-| Oito vozes, macro parado | 81,71 µs | 359,20 µs |
-| Oito vozes, oito macros alternando | 107,35 µs | 779,40 µs |
+| Oito vozes, macro parado | 45,63 µs | 185,90 µs |
+| Oito vozes, oito macros alternando | 63,73 µs | 83,60 µs |
 
 O teste de heap verificou ausência de alocação durante apply/render nessa sequência. Os números são de uma execução em Windows e incluem variação de agendamento do host.
 
