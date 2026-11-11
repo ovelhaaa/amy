@@ -305,10 +305,11 @@ void Runtime::applyUsb(uint32_t now_ms) {
     }
     if(q.generation()!=usb_generation_) { cancelUsb(); usb_generation_=q.generation(); }
 }
-void Runtime::applyFx() {
+void Runtime::applyFx(uint32_t now_ms) {
     fx::FxRequest req;
     bool updated = false;
     while(commands_.fx.pop(req)) {
+        if(req.preset_recall && eventAgeMs(now_ms,req.recall_started_ms)>=kRecallTimeoutMs) continue;
         if(req.generation != 0 && (req.generation != state_.generation || req.generation != commands_.generation())) {
             ++state_.fx.rejected;
             continue;
@@ -388,6 +389,7 @@ void Runtime::apply(uint32_t now_ms) {
             ++state_.invalid_commands;
 #endif
         } else if(c.type==CommandType::Patch) {
+            if(c.preset_recall && eventAgeMs(now_ms,c.timestamp_ms)>=kRecallTimeoutMs) continue;
             const int index=patchIndex(c.id);
             if(index<0) { ++state_.invalid_commands; continue; }
 #ifdef SMKP4_UNIFIED_ENGINE
@@ -416,9 +418,9 @@ void Runtime::apply(uint32_t now_ms) {
     bool any_sustain=false;
     for(unsigned i=0;i<16;++i)if(sustain_[i])any_sustain=true;
     state_.sustain_active=any_sustain;
-    applyEdit();
+    applyEdit(now_ms);
 #endif
-    applyFx();
+    applyFx(now_ms);
     if(commands_.generation()!=state_.generation) {
         silence(); state_.generation=commands_.generation();
         usb_.commands.panic(); usb_generation_=usb_.commands.generation();

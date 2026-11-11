@@ -280,8 +280,9 @@ void Runtime::captureEdit() {
     if(levels_valid){out.original[edit::PatchLevel]=100;out.available|=edit::bit(edit::PatchLevel);}
     for(unsigned p=0;p<edit::Count;++p)out.manual[p]=out.applied[p]=out.original[p];
 }
-void Runtime::applyEdit() {
+void Runtime::applyEdit(uint32_t now_ms) {
     edit::Request request;if(!commands_.edits.pop(request))return;
+    if(request.preset_recall && eventAgeMs(now_ms,request.recall_started_ms)>=kRecallTimeoutMs)return;
     auto& out=state_.edit;
 #ifdef SMKP4_HARMONY
     AdmissionTimer edit_timer(out.apply_max_us);

@@ -81,6 +81,8 @@ struct FxRequest {
     FxConfig config;
     uint32_t generation = 0;
     uint32_t request = 0;
+    uint32_t recall_started_ms = 0;
+    bool preset_recall = false;
 };
 
 template<unsigned Capacity = 8>

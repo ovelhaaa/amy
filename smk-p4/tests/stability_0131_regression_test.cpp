@@ -345,8 +345,24 @@ int main() {
     assert(std::strcmp(backend.presetOperationStatus().message,
                        "RECALL NOT CONFIRMED: OWNER TIMEOUT") == 0);
 
-    // Consume the timed-out patch command before starting another recall.
+    // The owner can drain the expired request without loading its patch.
+    const auto changes_before_expired_patch = runtime.snapshot().patch_changes;
     tick(current_time_ms + 2035);
+    assert(runtime.snapshot().patch_changes == changes_before_expired_patch);
+
+    assert(backend.editAction(3, 0));
+    runtime.apply(current_time_ms);
+    runtime.loadPendingPatch();
+    assert(runtime.render());
+    backend.publish(runtime.snapshot(), false, 0, 0);
+    backend.service(current_time_ms + 35);
+    assert(backend.presetOperationStatus().state == smk::p4::PresetOperationState::Verifying);
+    const auto before_expired_edit = runtime.snapshot();
+    tick(current_time_ms + 2035);
+    assert(runtime.snapshot().edit.request == before_expired_edit.edit.request);
+    assert(runtime.snapshot().fx.request == before_expired_edit.fx.request);
+    assert(!backend.editPending());
+
     assert(backend.editAction(3, 0));
     runtime.commands().panic();
     backend.service(current_time_ms + 1);

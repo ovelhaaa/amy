@@ -12,6 +12,7 @@ struct Command {
     uint8_t value=0;
     uint32_t generation=0, token=0, timestamp_ms=0;
     uint8_t channel=0;
+    bool preset_recall=false;
 };
 // Exactly one producer per queue (UI or USB client), and one AMY owner.
 // Touch Off and every Panic use independent atomic latches.
@@ -71,6 +72,7 @@ public:
         // Incrementing generation_ in CommandQueue::panic invalidates stale requests.
     }
 };
+inline constexpr uint32_t kRecallTimeoutMs=2000;
 inline bool atOrAfter(uint32_t a,uint32_t b) { return static_cast<int32_t>(a-b)>=0; }
 // The owner samples its clock before draining. A concurrent producer can
 // timestamp a command just after that sample; it is fresh, not UINT32_MAX ms

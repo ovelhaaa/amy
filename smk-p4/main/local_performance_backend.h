@@ -122,7 +122,7 @@ public:
             failRecall("RECALL FAILED: PATCH LOAD ERROR", PresetRejectReason::InvalidPreset);
         }else if((recall_wait_ && owner_generation!=recall_generation_) || recall_patch_interrupted){
             failRecall("RECALL CANCELED: STALE GENERATION", PresetRejectReason::StaleGeneration);
-        }else if((recalling_ || recall_wait_) && uint32_t(now_ms-recall_started_ms_)>=2000){
+        }else if((recalling_ || recall_wait_) && amy::eventAgeMs(now_ms,recall_started_ms_)>=amy::kRecallTimeoutMs){
             failRecall("RECALL NOT CONFIRMED: OWNER TIMEOUT", PresetRejectReason::OwnerTimeout);
         }
         // The owner advances the generation at patch admission and load completion.
@@ -134,10 +134,12 @@ public:
             for(unsigned m=0;m<3;++m)desired_.macros[m]=recall_.macros[m];
             desired_.mask=recall_.mask;desired_.slot=int8_t(recall_slot_);
             for(unsigned p=0;p<edit::Count;++p)desired_.values[p]=recall_.values[p];
+            desired_.preset_recall=true;desired_.recall_started_ms=recall_started_ms_;
             desired_.request=newEditToken();edit_pending_=true;recalling_=false;recall_wait_=true;recall_token_=edit_token_;recall_errors_=edit_.errors;
             recall_generation_=desired_.generation;
             recall_fx_errors_=fx_state_.errors;
             recall_fx_token_=0;
+            original_fx_=fx_state_.config;
             desired_fx_=recall_fx_;
             fx_pending_=true;
         }
@@ -158,6 +160,9 @@ public:
 #endif
         if(fx_pending_ && !busy() && uint32_t(now_ms-last_fx_ms_)>=15){
             fx::FxRequest req{};req.config=desired_fx_;req.generation=commands_.generation();req.request=++fx_token_;
+#ifdef SMKP4_SOUND_EDITOR
+            req.preset_recall=recall_wait_;req.recall_started_ms=recall_started_ms_;
+#endif
             if(commands_.fx.push(req)){
                 fx_pending_=false;last_fx_ms_=now_ms;
 #ifdef SMKP4_SOUND_EDITOR
@@ -405,14 +410,14 @@ public:
             recalling_=true;recall_slot_=slot;
             std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "RECALL REQUESTED: SLOT %02u", slot + 1);
             preset_op_status_ = { PresetOperationState::Requested, 3, uint8_t(slot), preset_op_msg_ };
-            if(!setPatch(recall_.patch,0)){
+            recall_started_ms_=last_service_ms_;
+            if(!setPatch(recall_.patch,recall_started_ms_)){
                 recalling_=false;
                 setRejectNotice(PresetRejectReason::Busy, "RECALL BLOCKED: ENGINE BUSY");
                 preset_op_status_ = { PresetOperationState::Rejected, 3, uint8_t(slot), reject_notice_ };
                 logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::Busy);
                 return false;
             }
-            recall_started_ms_=last_service_ms_;
             recall_generation_=commands_.generation();
             recall_patch_changes_=changes_;
             recall_patch_failures_=failures_;
@@ -517,7 +522,11 @@ public:
             desired_fx_=original_fx_=fx::FxConfig{};
         }
 #endif
-        const bool accepted=commands_.push({amy::CommandType::Patch,id,0,0,0,now_ms});
+        amy::Command request{amy::CommandType::Patch,id,0,0,0,now_ms};
+#ifdef SMKP4_SOUND_EDITOR
+        request.preset_recall=recalling_;
+#endif
+        const bool accepted=commands_.push(request);
 #ifdef SMKP4_UNIFIED_ENGINE
         pending_=accepted;
 #endif

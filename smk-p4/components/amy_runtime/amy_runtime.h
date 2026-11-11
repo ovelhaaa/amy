@@ -45,10 +45,10 @@ public:
     UsbInput& usbInput() { return usb_; }
     const Snapshot& snapshot() const { return state_; }
 private:
-    void applyFx();
+    void applyFx(uint32_t now_ms);
 #ifdef SMKP4_SOUND_EDITOR
     void captureEdit();
-    void applyEdit();
+    void applyEdit(uint32_t now_ms);
     void updateModWheelFilter();
     bool updateFmAlgorithmTopology(unsigned algorithm);
     struct EditOsc {

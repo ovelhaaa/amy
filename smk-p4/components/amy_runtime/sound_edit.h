@@ -80,6 +80,8 @@ struct Request {
     float values[Count]{};
     bool compare = false;
     int8_t slot = -1;
+    uint32_t recall_started_ms = 0;
+    bool preset_recall = false;
 };
 
 // Single UI producer, AMY owner consumer. One request in flight; producer keeps
