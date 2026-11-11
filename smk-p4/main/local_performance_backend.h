@@ -39,7 +39,7 @@ public:
                 if(edit_.family == 0){
                     const unsigned cur_algo = unsigned(std::lround(edit_.applied[edit::FmAlgorithm]));
                     std::printf("FM_ALGO_DIAG requested=%u confirmed=%u token=%u generation=%u state=%s\n",
-                        cur_algo, cur_algo, edit_.request, commands_.generation(),
+                        cur_algo, cur_algo, unsigned(edit_.request), unsigned(commands_.generation()),
                         edit_error_ ? "REJECTED" : "CONFIRMED");
                 }
                 if(recall_wait_ && edit_.request==recall_token_){
@@ -207,7 +207,7 @@ public:
                 const auto reason = state_.active_notes > 0 ? PresetRejectReason::ActiveNotes : PresetRejectReason::SustainActive;
                 setRejectNotice(reason, notice_);
                 std::printf("FM_ALGO_DIAG requested=%u confirmed=%u token=%u generation=%u state=REJECTED\n",
-                    target_algo, current_algo, edit_token_, commands_.generation());
+                    target_algo, current_algo, unsigned(edit_token_), unsigned(commands_.generation()));
                 return false;
             }
         }
@@ -219,7 +219,7 @@ public:
             const unsigned target_algo = unsigned(std::lround(value));
             const unsigned current_algo = unsigned(std::lround(edit_.applied[edit::FmAlgorithm]));
             std::printf("FM_ALGO_DIAG requested=%u confirmed=%u token=%u generation=%u state=PENDING\n",
-                target_algo, current_algo, desired_.request, commands_.generation());
+                target_algo, current_algo, unsigned(desired_.request), unsigned(commands_.generation()));
         }
         return true;
     }
@@ -597,7 +597,7 @@ private:
             synthUnsaved() ? 1 : 0,
             fxUnsaved() ? 1 : 0,
             edit_.compare ? 1 : 0,
-            commands_.generation());
+            unsigned(commands_.generation()));
     }
     preset::PresetTransactionCoordinator coordinator_;
 #endif
