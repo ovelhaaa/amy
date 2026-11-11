@@ -82,9 +82,9 @@ The implementation derives topology directly from AMY's native `algorithms[1..32
 
 | Target | Binary Output Path | Size (Bytes) | SHA-256 Checksum |
 |:-------|:-------------------|:------------:|:-----------------|
-| **`guition-editor-8`** | `smk-p4/.pio/build/guition-editor-8/firmware.bin` | 1,229,328 | `9EE04DF4CDD542F68D4D405037E68791E3A6D6DEE5D7FDF983892B0A33990EC3` |
-| **`guition-editor-8-bench`** | `smk-p4/.pio/build/guition-editor-8-bench/firmware.bin` | 1,329,968 | `D1A4AEF87655927D500FFEC0B4813586C2FBE267C263A8E329F3077CA786E3AD` |
-| **Bootloader** | `smk-p4/.pio/build/guition-editor-8/bootloader.bin` | 31,568 | `9779A6E6E7C9423B88A98AFC87C20A8C3527DC73293E1C9FB9C3C4C718EDDA90` |
+| **`guition-editor-8`** | `smk-p4/.pio/build/guition-editor-8/firmware.bin` | 1,234,016 | `B33A8CF17F38A9752DAE06A91AB116BBA880893EB93C50222EA32F7F8464117F` |
+| **`guition-editor-8-bench`** | `smk-p4/.pio/build/guition-editor-8-bench/firmware.bin` | 1,334,656 | `DC41479E5A2E33F7E3FAD436505D00080FB96B52A31A53A3C1F0E96B313FB1E5` |
+| **Bootloader** | `smk-p4/.pio/build/guition-editor-8/bootloader.bin` | 23,120 | `9779A6E6E7C9423B88A98AFC87C20A8C3527DC73293E1C9FB9C3C4C718EDDA90` |
 | **Partition Table** | `smk-p4/.pio/build/guition-editor-8/partitions.bin` | 3,072 | `73C0B5C3E5FCBA3A151CC70C453C93DD5F4798899E7F2F8CCA76DA1F32FFC501` |
 
 ---

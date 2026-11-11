@@ -1,6 +1,7 @@
 # SMK-P4 0.13: FM Audio Benchmarks and DSP Performance Report
 
-**Target:** Guition ESP32-P4 Dual Core RISC-V @ 400 MHz  
+**Target Hardware:** Guition ESP32-P4 Dual Core RISC-V @ 400 MHz (Physical)  
+**Host Simulation Target:** x86_64 @ 48 kHz / 256 frames (Host DSP Qualification)  
 **Sample Rate:** 48,000 Hz  
 **Block Size:** 256 frames (5.333 ms per block)  
 **Polyphony:** 8 musical voices, 6 FM operators per voice (48 oscillators)  
@@ -18,22 +19,39 @@ To guarantee zero audio underruns or buffer starvation, the total audio task exe
 
 ---
 
-## 2. Benchmark Summary Across Topologies
+## 2. Host x86_64 DSP Qualification Benchmark (Executed & Verified)
 
-Measurements were taken during sustained 8-voice polyphonic playback (48 active oscillators) across all 32 FM topologies:
+Host execution verifies the DSP equations, phase bus accumulation, clipping bounds, and real-time heap isolation under strict linker wraps (`-Wl,--wrap=malloc`, `calloc`, `realloc`, `free`).
 
-| Metric | Measured Value | Real-Time Limit | Headroom Margin |
-|:-------|:--------------:|:---------------:|:---------------:|
-| **Minimum Average Render Time** | **121.0 µs** (Algo 31) | 5,333 µs | **97.7% Headroom** |
-| **Maximum Average Render Time** | **196.8 µs** (Algo 1) | 5,333 µs | **96.3% Headroom** |
-| **Worst-Case Peak Render Time** | **400.1 µs** (Algo 3) | 5,333 µs | **92.5% Headroom** |
-| **Average CPU Load (8 Voices FM)** | **~2.8% – 3.7%** | 100.0% | **> 96% Available CPU** |
-| **Audio Underruns** | **0** | 0 | Deterministic |
-| **Real-time Allocations (malloc/free)** | **0** | 0 | Strict Zero Policy |
+Measurements taken during sustained 8-voice polyphonic playback (48 active oscillators) across all 32 FM topologies:
+
+| Metric | Host Measured Value | Real-Time Deadline | Margin / Headroom | Gate Status |
+|:-------|:-------------------:|:------------------:|:-----------------:|:-----------:|
+| **Minimum Average Render Time** | **50.6 µs** (Algo 32) | 5,333 µs | **99.0% Headroom** | `PASS` |
+| **Maximum Average Render Time** | **64.0 µs** (Algo 1)  | 5,333 µs | **98.8% Headroom** | `PASS` |
+| **Worst-Case Peak Render Time** | **105.9 µs** (Algo 1) | 5,333 µs | **98.0% Headroom** | `PASS` |
+| **Audio Underruns** | **0** | 0 | Deterministic | `PASS` |
+| **Real-time Allocations (malloc/free)** | **0** | 0 | Strict Zero Policy | `PASS` |
+| **PCM Clipping (Max Sample <= 32767)** | **0** (Max 6,120) | <= 32,767 | Clean Dynamic Range | `PASS` |
 
 ---
 
-## 3. Structural Comparison: Additive vs. Serial Cascades
+## 3. Physical Guition ESP32-P4 Target Benchmark Status
+
+| Metric | Target ESP32-P4 Expected Budget | Physical Measured Value | Status |
+|:-------|:-------------------------------:|:-----------------------:|:------:|
+| **Target CPU Frequency** | 400 MHz Dual-Core RISC-V | 400 MHz (Confirmed in sdkconfig) | `PASS` |
+| **Expected Average Render Time** | 180 µs – 260 µs (8 voices FM) | *Pending Hardware Run* | `NOT RUN — MANUAL HARDWARE GATE` |
+| **Expected Worst-Case Render Time** | < 450 µs | *Pending Hardware Run* | `NOT RUN — MANUAL HARDWARE GATE` |
+| **Expected CPU Load** | ~3.5% – 5.0% of Audio Core | *Pending Hardware Run* | `NOT RUN — MANUAL HARDWARE GATE` |
+| **DMA Underruns** | 0 | *Pending Hardware Run* | `NOT RUN — MANUAL HARDWARE GATE` |
+
+> [!NOTE]
+> Physical on-target metrics require flashing the candidate firmware `guition-editor-8-bench` to physical Guition ESP32-P4 hardware. Per repository policy, no flashing is performed autonomously.
+
+---
+
+## 4. Structural Comparison: Additive vs. Serial Cascades
 
 ### 3.1 Long Serial Cascades (Algorithms 16, 17, 18)
 - **Topology:** Single carrier with 5-operator linear modulation chain:

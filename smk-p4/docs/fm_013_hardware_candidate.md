@@ -16,31 +16,33 @@
 ### 1.1 Production Firmware: `guition-editor-8`
 - **Purpose:** Full production standalone synthesizer (8 voices, 48 kHz, 256 frames, full 229 factory library, Sound Editor with FM Algorithm Selector, Stereo Chorus, Reverb, Delay, 3-Band EQ, Transactional User Presets v2, Harmony Assist, USB MIDI Host).
 - **Binary Path:** `smk-p4/.pio/build/guition-editor-8/firmware.bin`
-- **File Size:** `1,229,328 bytes`
-- **Flash Utilization:** `1,228,624 / 16,777,216 bytes (7.3%)`
-- **Internal RAM Utilization:** `39,340 / 327,680 bytes (12.0%)`
+- **File Size:** `1,234,016 bytes`
+- **Flash Utilization:** `1,233,290 / 16,777,216 bytes (7.4%)`
+- **Internal RAM Utilization:** `39,896 / 327,680 bytes (12.2%)`
 - **SHA-256 Digest:**
   ```text
-  9EE04DF4CDD542F68D4D405037E68791E3A6D6DEE5D7FDF983892B0A33990EC3
+  B33A8CF17F38A9752DAE06A91AB116BBA880893EB93C50222EA32F7F8464117F
   ```
 
 ### 1.2 Benchmark & Diagnostics Firmware: `guition-editor-8-bench`
 - **Purpose:** Identical to production but with real-time test hooks, diagnostic instrumentation counters, and audio benchmark harness enabled.
 - **Binary Path:** `smk-p4/.pio/build/guition-editor-8-bench/firmware.bin`
-- **File Size:** `1,329,968 bytes`
-- **Flash Utilization:** `1,329,252 / 16,777,216 bytes (7.9%)`
-- **Internal RAM Utilization:** `40,280 / 327,680 bytes (12.3%)`
+- **File Size:** `1,334,656 bytes`
+- **Flash Utilization:** `1,333,940 / 16,777,216 bytes (8.0%)`
+- **Internal RAM Utilization:** `39,736 / 327,680 bytes (12.1%)`
 - **SHA-256 Digest:**
   ```text
-  D1A4AEF87655927D500FFEC0B4813586C2FBE267C263A8E329F3077CA786E3AD
+  DC41479E5A2E33F7E3FAD436505D00080FB96B52A31A53A3C1F0E96B313FB1E5
   ```
 
 ### 1.3 Supporting ESP-IDF Bootloader & Partition Table
 - **Bootloader (`bootloader.bin`):**
   - Path: `smk-p4/.pio/build/guition-editor-8/bootloader.bin`
+  - File Size: `23,120 bytes`
   - SHA-256: `9779A6E6E7C9423B88A98AFC87C20A8C3527DC73293E1C9FB9C3C4C718EDDA90`
 - **Partition Table (`partitions.bin`):**
   - Path: `smk-p4/.pio/build/guition-editor-8/partitions.bin`
+  - File Size: `3,072 bytes`
   - SHA-256: `73C0B5C3E5FCBA3A151CC70C453C93DD5F4798899E7F2F8CCA76DA1F32FFC501`
 
 ---
@@ -81,16 +83,12 @@ If any unexpected regression occurs on hardware, the operator can immediately re
 
 ## 4. Hardware Verification Checklist (On Bench)
 
-### 4.1 Physical Execution Confirmation (Captured Live via Serial COM13)
-- **Flashing Target:** `guition-editor-8-bench` (`1,329,968 bytes`, SHA-256 `D1A4AEF87655927D500FFEC0B4813586C2FBE267C263A8E329F3077CA786E3AD`)
-- **Flashing Status:** `SUCCESS` (Wrote 1,329,968 bytes in 7.4s at 1435.4 kbit/s, data hash verified, hard reset clean via RTS).
-- **Physical Boot & Initialization:**
-  - `DISPLAY_TEST`: 1,207 screen refreshes, `touch_errors=0`, `flush_errors=0`, `LVGL free=95,432 B`, `fragmentation=1%`.
-  - `AUDIO`: `I2S_PRODUCING`, `frames_written>1,000,000`, `blocks_rendered=3,929`, `render_avg_us=214`, `render_max_us=351`, `render_deadlines=0`, `refill_risks=0`, `timeouts=0`, `DMA_underruns=0`.
-  - `ENGINE`: `ready=1`, `patch=128`, `notes=0`, `clipped=0`, `oom=0`, `overflow=0`, `compute_deadlines=0`.
-  - `MEMORY`: Internal SRAM free = `135,479 bytes`, PSRAM free = `30,492,312 bytes`.
-  - `UI_BLUEPRINT`: `stack_free_bytes=16,644`.
-  - `USB HOST`: `state=1` (Initialized, listening for SMK25 V2 keyboard).
+### 4.1 Candidate Binary Qualification Status
+- **Candidate Flashing Target:** `guition-editor-8-bench` (`1,334,656 bytes`, SHA-256 `DC41479E5A2E33F7E3FAD436505D00080FB96B52A31A53A3C1F0E96B313FB1E5`)
+- **Hardware Flashing Status:** `NOT RUN — MANUAL HARDWARE GATE` (Awaiting explicit operator authorization)
+- **Baseline Prior Flash Reference (0.13 Early Pass):**
+  - Prior image (`1,329,968 bytes`, SHA-256 `D1A4AEF87655927D500FFEC0B4813586C2FBE267C263A8E329F3077CA786E3AD`) was verified live on ESP32-P4 COM13 with 0 DMA underruns, `render_avg_us=214`, `render_max_us=351`, zero display flush errors, and active USB host.
+  - The current corrected candidate image incorporates the real-time active note guard fix, owner-confirmed UI algorithm selector, real graphical LVGL operator wiring, and end-to-end NVS persistence recovery.
 
 ### 4.2 Manual Bench Test Procedure
 1. **Power-On & Display Boot:**

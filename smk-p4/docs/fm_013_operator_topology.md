@@ -88,3 +88,19 @@ This guarantees no stale gain remains on any operator when topology changes.
 
 Every algorithm satisfies `carriers + modulators == 6`.
 Derivation matches AMY's DSP loop identically.
+
+---
+
+## 6. Graphical Connection Engine & LVGL Visualization (Gate C)
+
+In addition to textual routing formulas, release 0.13 introduces real graphical line routing in LVGL 9.3:
+- **Topology Engine (`fm_topology.h`)**:
+  - `generateLayout(topo, width, height)` computes fixed 2D coordinates for all 6 operator boxes and output bus.
+  - Generates discrete connection edges:
+    - **Modulation Routes (`EdgeType::Modulation`)**: Displayed in bright Amber (`#F59E0B`), connecting modulator operator output to carrier/modulator phase input.
+    - **Audio Routes (`EdgeType::AudioOut`)**: Displayed in bright Cyan (`#06B6D4`), routing carriers directly to the audio output terminal (`OUT`).
+    - **Feedback Loops (`EdgeType::Feedback`)**: Displayed in vivid Orange (`#FF5722`), drawing a 4-point loop indicating operator self-feedback.
+- **Real-Time Display Safety**:
+  - Exactly 20 reusable `lv_line` objects and point arrays are preallocated in `TopologyDiagramCtx`.
+  - Coordinates are updated in place upon topology refresh with zero dynamic heap allocations per frame (`malloc` count = 0).
+  - Operator nodes display real-time selection border, carrier vs. modulator color coding, and feedback badge.
