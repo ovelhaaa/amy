@@ -75,7 +75,7 @@ int main() {
     runtime.apply(90);
     backend.publish(runtime.snapshot(), false, 0, 0);
 
-    assert(std::strcmp(backend.editNotice(), "ORIGINAL / EDITS RETAINED") == 0);
+    assert(std::strcmp(backend.editNotice(), "COMPARE ACTIVE") == 0);
     // Owner should receive original neutral chorus mode (0 = Off)
     assert(runtime.snapshot().fx.config.chorus_mode == 0);
 

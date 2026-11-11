@@ -182,13 +182,14 @@ public:
         return !fxEquivalent(desired_fx_, saved_fx_);
     }
     const char* editNotice() const override {
-        if(saving_)return notice_;
+        if(saving_)return "SAVE IN PROGRESS";
         if(edit_error_)return notice_;
         if(edit_pending_ || fx_pending_ || (!edit_timeout_ && edit_.request!=edit_token_))return "WAIT OWNER";
         if(notice_ && std::strcmp(notice_,"SAVED")==0 && !unsaved())return "SAVED";
-        if(edit_.compare)return "ORIGINAL / EDITS RETAINED";
+        if(edit_.compare)return "COMPARE ACTIVE";
         if(unsaved()){
-            if(synthUnsaved() && fxUnsaved())return "EDITED / UNSAVED";
+            if(synthUnsaved() && fxUnsaved())return "SYNTH + FX UNSAVED";
+            if(synthUnsaved())return "EDITED / UNSAVED";
             if(fxUnsaved())return "FX EDITED / UNSAVED";
             return "EDITED / UNSAVED";
         }
