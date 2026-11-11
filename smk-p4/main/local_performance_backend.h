@@ -37,7 +37,17 @@ public:
                 notice_=edit_.errors!=last_edit_errors_?"EDIT REJECTED; CONFIRMED VALUES RESTORED":"EDIT CONFIRMED";
                 edit_error_=edit_.errors!=last_edit_errors_;last_edit_errors_=edit_.errors;
                 if(recall_wait_ && edit_.request==recall_token_){
-                    if(edit_.errors==recall_errors_){saved_edit_=edit_;saved_fx_=recall_fx_;saved_valid_=true;std::snprintf(user_name_,sizeof(user_name_),"%s",recall_.name);}
+                    if(edit_.errors==recall_errors_){
+                        saved_edit_=edit_;saved_fx_=recall_fx_;saved_valid_=true;
+                        std::snprintf(user_name_,sizeof(user_name_),"%s",recall_.name);
+                        std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "SLOT %02u RECALLED", recall_slot_ + 1);
+                        preset_op_status_ = { PresetOperationState::Confirmed, 3, uint8_t(recall_slot_), preset_op_msg_ };
+                        logPresetDiag("RECALL", recall_slot_, "CONFIRMED", PresetRejectReason::None);
+                    } else {
+                        std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "RECALL REJECTED: OWNER ERROR");
+                        preset_op_status_ = { PresetOperationState::Failed, 3, uint8_t(recall_slot_), preset_op_msg_ };
+                        logPresetDiag("RECALL", recall_slot_, "REJECTED", PresetRejectReason::OwnerTimeout);
+                    }
                     recall_wait_=false;
                 }
             }
@@ -66,6 +76,9 @@ public:
 #ifdef SMKP4_SOUND_EDITOR
         last_service_ms_=now_ms;
         if(saving_ && quiet_){
+            preset_op_status_.state = PresetOperationState::Writing;
+            std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "WRITING PRESET...");
+            preset_op_status_.message = preset_op_msg_;
             const auto res=coordinator_.save(save_slot_,save_preset_,save_fx_);
             edit_error_=(res.status!=preset::SaveResult::Status::Success);
             notice_=res.message;
@@ -74,10 +87,23 @@ public:
                 saved_fx_=save_fx_;
                 saved_valid_=true;
                 std::snprintf(user_name_,sizeof(user_name_),"%s",save_preset_.name);
+                std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "SAVED TO SLOT %02u", save_slot_ + 1);
+                preset_op_status_ = { PresetOperationState::Confirmed, 2, uint8_t(save_slot_), preset_op_msg_ };
+                logPresetDiag("SAVE", save_slot_, "CONFIRMED", PresetRejectReason::None);
+            } else if(res.status == preset::SaveResult::Status::CommitOutcomeUnknown){
+                std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "SAVE UNCERTAIN: CHECK SLOT %02u", save_slot_ + 1);
+                preset_op_status_ = { PresetOperationState::OutcomeUnknown, 2, uint8_t(save_slot_), preset_op_msg_ };
+                logPresetDiag("SAVE", save_slot_, "OUTCOME_UNKNOWN", PresetRejectReason::CommitUncertain);
+            } else {
+                std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "%s", res.message ? res.message : "SAVE FAILED: STORAGE ERROR");
+                preset_op_status_ = { PresetOperationState::Failed, 2, uint8_t(save_slot_), preset_op_msg_ };
+                logPresetDiag("SAVE", save_slot_, "FAILED", PresetRejectReason::StorageWriteError);
             }
             saving_=false;commands_.storage_requested.store(false,std::memory_order_release);
         }
         if(recalling_ && !busy() && !failed_ && edit_.patch==recall_.patch){
+            std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "VERIFYING SLOT %02u...", recall_slot_ + 1);
+            preset_op_status_ = { PresetOperationState::Verifying, 3, uint8_t(recall_slot_), preset_op_msg_ };
             desired_={};desired_.patch=edit_.patch;desired_.generation=commands_.generation();
             for(unsigned m=0;m<3;++m)desired_.macros[m]=recall_.macros[m];
             desired_.mask=recall_.mask;desired_.slot=int8_t(recall_slot_);
@@ -93,6 +119,9 @@ public:
         }
         if(saving_ && !quiet_ && uint32_t(now_ms-save_requested_ms_)>2000){
             saving_=false;edit_error_=true;notice_="SAVE QUIET BARRIER TIMEOUT";commands_.storage_requested.store(false,std::memory_order_release);
+            std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "SAVE QUIET BARRIER TIMEOUT");
+            preset_op_status_ = { PresetOperationState::Failed, 2, uint8_t(save_slot_), preset_op_msg_ };
+            logPresetDiag("SAVE", save_slot_, "TIMEOUT", PresetRejectReason::QuietBarrier);
         }
         if(edit_pending_ && !saving_ && !busy() && uint32_t(now_ms-last_edit_ms_)>=20){
             if(desired_.patch!=edit_.patch || desired_.generation!=commands_.generation()){
@@ -177,21 +206,25 @@ public:
     }
     PresetRejectReason lastPresetRejectReason() const override { return last_reject_reason_; }
     const char* presetRejectNotice() const override { return reject_notice_[0] ? reject_notice_ : nullptr; }
+    PresetOperationStatus presetOperationStatus() const override { return preset_op_status_; }
     // 0 Compare,1 Revert,2 Save As,3 Recall. Overwrite/rename uses explicit Save As.
     bool editAction(unsigned action,unsigned slot=0,const char* name=nullptr) override {
         const char* act_name = (action == 0) ? "COMPARE" : (action == 1) ? "REVERT" : (action == 2) ? "SAVE" : (action == 3) ? "RECALL" : "UNKNOWN";
         if(!ready_){
             setRejectNotice(PresetRejectReason::EngineUnavailable, "PRESET ENGINE UNAVAILABLE");
+            preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
             logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::EngineUnavailable);
             return false;
         }
         if(busy()){
             setRejectNotice(PresetRejectReason::Busy, "PRESET BLOCKED: ENGINE BUSY");
+            preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
             logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::Busy);
             return false;
         }
         if(saving_){
             setRejectNotice(PresetRejectReason::SaveInProgress, "PRESET BLOCKED: SAVE IN PROGRESS");
+            preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
             logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::SaveInProgress);
             return false;
         }
@@ -213,6 +246,7 @@ public:
                     notice_ = "RELEASE NOTES TO CHANGE FM ALGORITHM";
                     const auto reason = state_.active_notes > 0 ? PresetRejectReason::ActiveNotes : PresetRejectReason::SustainActive;
                     setRejectNotice(reason, "RELEASE NOTES TO CHANGE FM ALGORITHM");
+                    preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
                     logPresetDiag(act_name, slot, "REJECTED", reason);
                     return false;
                 }
@@ -227,37 +261,44 @@ public:
         }
         if(slot>=edit::kSlots){
             setRejectNotice(PresetRejectReason::InvalidSlot, "PRESET INVALID: SLOT RANGE");
+            preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
             logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::InvalidSlot);
             return false;
         }
         if(!store_ || !fx_store_){
             setRejectNotice(PresetRejectReason::StorageUnavailable, "PRESET STORAGE UNAVAILABLE");
+            preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
             logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::StorageUnavailable);
             return false;
         }
         if(edit_pending_ || edit_.request!=edit_token_){
             setRejectNotice(PresetRejectReason::PendingEdit, "SAVE BLOCKED: WAITING FOR EDIT OWNER");
+            preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
             logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::PendingEdit);
             return false;
         }
         if(action==2){
             if(edit_.compare){
                 setRejectNotice(PresetRejectReason::CompareActive, "OVERWRITE BLOCKED: COMPARE ACTIVE");
+                preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
                 logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::CompareActive);
                 return false;
             }
             if(state_.active_notes > 0){
                 setRejectNotice(PresetRejectReason::ActiveNotes, "SAVE BLOCKED: NOTES STILL ACTIVE");
+                preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
                 logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::ActiveNotes);
                 return false;
             }
             if(sustain_active_){
                 setRejectNotice(PresetRejectReason::SustainActive, "SAVE BLOCKED: SUSTAIN ACTIVE");
+                preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
                 logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::SustainActive);
                 return false;
             }
             if(!name || !name[0] || std::strlen(name)>24){
                 setRejectNotice(PresetRejectReason::InvalidName, "SAVE BLOCKED: INVALID PRESET NAME");
+                preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
                 logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::InvalidName);
                 return false;
             }
@@ -267,11 +308,15 @@ public:
             for(unsigned p=0;p<edit::Count;++p)save_preset_.values[p]=edit_.manual[p];
             if(!store_->accepts(save_preset_)){
                 setRejectNotice(PresetRejectReason::InvalidPreset, "SAVE BLOCKED: INVALID PRESET");
+                preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
                 logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::InvalidPreset);
                 return false;
             }
             save_fx_=desired_fx_;
             save_slot_=slot;saving_=true;save_requested_ms_=last_service_ms_;notice_="SAVE REQUESTED; QUIET BARRIER";
+            const auto st = quiet_ ? PresetOperationState::Writing : PresetOperationState::WaitingForQuiet;
+            std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "%s", quiet_ ? "WRITING PRESET..." : "WAITING FOR QUIET");
+            preset_op_status_ = { st, 2, uint8_t(slot), preset_op_msg_ };
             commands_.storage_requested.store(true,std::memory_order_release);
             setRejectNotice(PresetRejectReason::None, nullptr);
             logPresetDiag(act_name, slot, "ACCEPTED", PresetRejectReason::None);
@@ -281,12 +326,15 @@ public:
             if(unsaved()){
                 if(synthUnsaved()){
                     setRejectNotice(PresetRejectReason::UnsavedSynth, "RECALL BLOCKED: UNSAVED SYNTH EDITS");
+                    preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
                     logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::UnsavedSynth);
                 } else if(fxUnsaved()){
                     setRejectNotice(PresetRejectReason::UnsavedFx, "RECALL BLOCKED: UNSAVED FX EDITS");
+                    preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
                     logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::UnsavedFx);
                 } else {
                     setRejectNotice(PresetRejectReason::PendingEdit, "RECALL BLOCKED: PENDING EDITS");
+                    preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
                     logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::PendingEdit);
                 }
                 return false;
@@ -294,18 +342,23 @@ public:
             if(!coordinator_.load(slot,recall_,recall_fx_)){
                 char emsg[48]; std::snprintf(emsg, sizeof(emsg), "PRESET INVALID: SLOT %02u", slot + 1);
                 setRejectNotice(PresetRejectReason::StorageReadError, emsg);
+                preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
                 logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::StorageReadError);
                 return false;
             }
             if(amy::patchIndex(recall_.patch)<0){
                 setRejectNotice(PresetRejectReason::InvalidPreset, "RECALL FAILED: UNKNOWN PATCH ROM");
+                preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
                 logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::InvalidPreset);
                 return false;
             }
             recalling_=true;recall_slot_=slot;
+            std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "RECALL REQUESTED: SLOT %02u", slot + 1);
+            preset_op_status_ = { PresetOperationState::Requested, 3, uint8_t(slot), preset_op_msg_ };
             if(!setPatch(recall_.patch,0)){
                 recalling_=false;
                 setRejectNotice(PresetRejectReason::Busy, "RECALL BLOCKED: ENGINE BUSY");
+                preset_op_status_ = { PresetOperationState::Rejected, 3, uint8_t(slot), reject_notice_ };
                 logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::Busy);
                 return false;
             }
@@ -314,6 +367,7 @@ public:
             return true;
         }
         setRejectNotice(PresetRejectReason::InvalidPreset, "UNKNOWN PRESET ACTION");
+        preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
         logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::InvalidPreset);
         return false;
     }
@@ -483,6 +537,8 @@ private:
     uint32_t recall_token_=0,recall_errors_=0;
     char user_name_[25]{};
     const char* notice_="FACTORY ORIGINAL";
+    PresetOperationStatus preset_op_status_{};
+    char preset_op_msg_[64]{};
     PresetRejectReason last_reject_reason_ = PresetRejectReason::None;
     char reject_notice_[64]{};
     void setRejectNotice(PresetRejectReason reason, const char* msg) {

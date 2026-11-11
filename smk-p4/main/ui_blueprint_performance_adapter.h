@@ -44,6 +44,7 @@ public:
     const char* soundEditStatus() const override { return backend_.editNotice(); }
     ui::UiCommandResult requestSoundAction(unsigned action,unsigned slot=0,const char* name=nullptr) override;
     bool userPreset(unsigned slot,char* name,unsigned capacity,uint16_t& origin) override {return backend_.userPreset(slot,name,capacity,origin);}
+    ui::PresetOperationStatus presetOperationStatus() const override;
 
 private:
     struct Gesture { uint32_t token=0, start_ms=0; uint8_t note=0; };

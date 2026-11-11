@@ -17,6 +17,25 @@ enum class UiCommandState : uint8_t {
 
 const char* commandStateLabel(UiCommandState state);
 
+enum class PresetOperationState : uint8_t {
+    Idle = 0,
+    Requested,
+    WaitingForQuiet,
+    Writing,
+    Verifying,
+    Confirmed,
+    Rejected,
+    Failed,
+    OutcomeUnknown
+};
+
+struct PresetOperationStatus {
+    PresetOperationState state = PresetOperationState::Idle;
+    uint8_t action = 0; // 0=None, 2=Save, 3=Recall
+    uint8_t slot = 0;
+    const char* message = nullptr;
+};
+
 struct UiCommandResult {
     UiCommandState state  = UiCommandState::Rejected;
     uint32_t       token  = 0;       // Non-zero note/request token when applicable
@@ -96,6 +115,7 @@ public:
     virtual const char* soundEditStatus() const { return "EDITOR PLANNED"; }
     virtual UiCommandResult requestSoundAction(unsigned,unsigned=0,const char* =nullptr) { return {}; }
     virtual bool userPreset(unsigned,char*,unsigned,uint16_t&) { return false; }
+    virtual PresetOperationStatus presetOperationStatus() const { return {}; }
 
     // 5. Note lifecycle with explicit token/pitch pairing (prevents stuck notes on octave shift)
     virtual UiCommandResult requestNoteOn(uint8_t note, uint8_t velocity) = 0;

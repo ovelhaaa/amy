@@ -102,6 +102,10 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestSoundAction(unsigned actio
     edit_requested_=true;edit_errors_=backend_.soundEdit()?backend_.soundEdit()->errors:0;edit_id_="editor";
     return result(UiCommandState::Requested,"editor",backend_.editNotice());
 }
+ui::PresetOperationStatus UiBlueprintPerformanceAdapter::presetOperationStatus() const {
+    const auto s = backend_.presetOperationStatus();
+    return { static_cast<ui::PresetOperationState>(s.state), s.action, s.slot, s.message };
+}
 FeatureStatus UiBlueprintPerformanceAdapter::parameterStatus(const char* id) const {
     if(const auto* state=backend_.soundEdit()){
         if(eq(id,"perf.macro.2"))return state->available?FeatureStatus::Available:FeatureStatus::Unavailable;

@@ -32,6 +32,25 @@ enum class PresetRejectReason : uint8_t {
     StaleGeneration
 };
 
+enum class PresetOperationState : uint8_t {
+    Idle = 0,
+    Requested,
+    WaitingForQuiet,
+    Writing,
+    Verifying,
+    Confirmed,
+    Rejected,
+    Failed,
+    OutcomeUnknown
+};
+
+struct PresetOperationStatus {
+    PresetOperationState state = PresetOperationState::Idle;
+    uint8_t action = 0; // 0=None, 2=Save, 3=Recall
+    uint8_t slot = 0;
+    const char* message = nullptr;
+};
+
 class PerformanceBackend {
 public:
     virtual ~PerformanceBackend() = default;
@@ -57,6 +76,7 @@ public:
     virtual const char* editNotice() const { return "EDITOR UNAVAILABLE"; }
     virtual PresetRejectReason lastPresetRejectReason() const { return PresetRejectReason::None; }
     virtual const char* presetRejectNotice() const { return nullptr; }
+    virtual PresetOperationStatus presetOperationStatus() const { return {}; }
     virtual bool local() const { return false; }
     virtual bool midiError() const { return false; }
     virtual bool patchError() const { return false; }
