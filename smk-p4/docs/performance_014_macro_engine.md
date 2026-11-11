@@ -5,11 +5,11 @@ O owner recebe as oito posições junto com a edição de síntese. A UI prepara
 | Macro | Neutro | Juno | DX7 | FX |
 |---|---:|---|---|---|
 | Character | 64 | Detune, envelope do filtro | Profundidade dos moduladores, feedback | |
-| Brightness | 64 | Cutoff, ressonância | Profundidade dos moduladores | |
+| Brightness | 64 | Cutoff, ressonância | Profundidade dos moduladores | Tilt EQ no DX7 |
 | Motion | 24 | | | Chorus depth, delay feedback e mix |
 | Shape | 64 | Decay, sustain | Decay dos operadores 1 e 2 quando disponível | |
-| Attack | 32 | Ataque | Ataque dos operadores 1 e 2 quando disponível | |
-| Release | 52 | Release | | Reverb mix no DX7 |
+| Attack | 32 | Ataque e envelope do filtro | Ataque dos operadores 1 e 2 quando disponível | |
+| Release | 52 | Release | | Reverb mix em ambas as famílias, reverb size no DX7 |
 | Space | 36 | | | Reverb mix e size, delay mix |
 | Edge | 16 | Ressonância | Feedback | Tilt EQ |
 
