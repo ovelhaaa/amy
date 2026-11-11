@@ -32,7 +32,7 @@ UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend&
 #endif
 #endif
 #if defined(SMKP4_SOUND_EDITOR) || defined(CONFIG_SMKP4_SOUND_EDITOR)
-    d.firmware_version="SMK-P4 EDITOR 0.11.1 DEV";
+    d.firmware_version="SMK-P4 PERFORMANCE 0.14 DEV";
 #endif
     d.amy_status="WAIT SNAPSHOT"; d.i2s_status="NOT LIVE"; d.usb_status="DISCONNECTED";
     model_.setBool("harmony.scale_enable",false);

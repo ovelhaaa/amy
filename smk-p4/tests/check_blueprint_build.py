@@ -58,7 +58,7 @@ def main():
     require((build / "firmware.bin").stat().st_size > 0, "missing firmware")
     if args.sound_editor:
         require(args.full_factory and args.harmony and args.unified_engine and args.voices==8, "editor requires qualified factory baseline")
-        require(b"SMK-P4 EDITOR 0.11.1 DEV" in (build / "firmware.bin").read_bytes(), "missing0.11.1 development identity")
+        require(b"SMK-P4 PERFORMANCE 0.14 DEV" in (build / "firmware.bin").read_bytes(), "missing 0.14 development identity")
     elif args.full_factory:
         require(args.harmony and args.unified_engine and args.voices==8, "factory requires harmony and reusable eight voices")
         require(b"SMK-P4 FACTORY 0.10 EXPERIMENTAL" in (build / "firmware.bin").read_bytes(), "missing0.10 identity")

@@ -81,7 +81,9 @@ public:
                         "AVAILABLE IN P4: Note On/Off, Vel 0->Off, Sustain CC64, All Notes Off, Pitch Bend, Mod Wheel CC1.",
                         8, 32, 760, &lv_font_montserrat_14, palette::kTextPrimary);
             createLabel(info,
-                        "PLANNED FOR P4: Data-driven MIDI Learn & Controller Profile persistence (implemented in smk-s3).",
+                        backend.hasMidiPerformance() ?
+                            "Use the mapping tab for MIDI Learn, controller banks and Save Profile." :
+                            "PLANNED: MIDI Learn and controller profiles.",
                         8, 58, 760, &lv_font_montserrat_14, palette::kTextSecondary);
         } else if(backend.hasMidiPerformance()) {
             using Action=IUiBackend::MidiAction;
