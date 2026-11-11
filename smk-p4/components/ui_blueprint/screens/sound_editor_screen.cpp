@@ -152,10 +152,45 @@ public:
         if(banner_ && backend.hasSoundEditor()){
             char text[96];std::snprintf(text,sizeof(text),"%s | %s",backend.soundEditName(),backend.soundEditStatus());lv_label_set_text(banner_,text);
         }
+        if(s_active_preset_modal_){
+            lv_obj_send_event(s_active_preset_modal_, LV_EVENT_REFRESH, nullptr);
+        }
     }
 private:
     lv_obj_t* banner_=nullptr;
-    struct PresetPanel { IUiBackend* backend;lv_obj_t* root;lv_obj_t* slot;lv_obj_t* name;lv_obj_t* info;bool overwrite=false; };
+    static inline lv_obj_t* s_active_preset_modal_ = nullptr;
+    struct PresetPanel {
+        IUiBackend* backend = nullptr;
+        lv_obj_t* root = nullptr;
+        lv_obj_t* slot = nullptr;
+        lv_obj_t* name = nullptr;
+        lv_obj_t* info = nullptr;
+        lv_obj_t* save_btn = nullptr;
+        lv_obj_t* recall_btn = nullptr;
+        lv_obj_t* close_btn = nullptr;
+        bool overwrite = false;
+        unsigned overwrite_slot = 0;
+        char overwrite_cur_name[25]{};
+        char overwrite_new_name[25]{};
+        PresetOperationState last_seen_op_state = PresetOperationState::Idle;
+    };
+
+    static void updateSlotDropdown(lv_obj_t* slot, IUiBackend& backend) {
+        if(!slot) return;
+        char* options = static_cast<char*>(lv_malloc(800));
+        if(!options) return;
+        std::memset(options,0,800);
+        unsigned used=0;
+        for(unsigned i=0;i<16;++i){
+            char name[25]{};uint16_t origin=0;
+            const bool valid=backend.userPreset(i,name,sizeof(name),origin);
+            const int n=std::snprintf(options+used,800-used,"%s%02u %s",i?"\n":"",i+1,valid?name:"EMPTY / INVALID");
+            if(n<0 || unsigned(n)>=800-used)break;
+            used+=unsigned(n);
+        }
+        lv_dropdown_set_options(slot,options);
+        lv_free(options);
+    }
 public:
     static void showPresets(lv_obj_t* button,IUiBackend& backend){
         lv_obj_t* screen = button ? lv_obj_get_screen(button) : lv_screen_active();
@@ -167,40 +202,114 @@ public:
         lv_obj_set_pos(root,40,50);lv_obj_set_size(root,720,380);
         createLabel(root,"USER PRESETS | SAVE ONLY WITH NOTES RELEASED",12,8,680);
         auto* slot=lv_dropdown_create(root);lv_obj_set_pos(slot,12,42);lv_obj_set_size(slot,260,40);
-        char* options = static_cast<char*>(lv_malloc(800));
-        if(!options){lv_obj_delete(root);return;}
-        std::memset(options,0,800);
-        unsigned used=0;
-        for(unsigned i=0;i<16;++i){char name[25]{};uint16_t origin=0;
-            const bool valid=backend.userPreset(i,name,sizeof(name),origin);
-            const int n=std::snprintf(options+used,800-used,"%s%02u %s",i?"\n":"",i+1,valid?name:"EMPTY / INVALID");
-            if(n<0 || unsigned(n)>=800-used)break;
-            used+=unsigned(n);
-        }
-        lv_dropdown_set_options(slot,options);
-        lv_free(options);
+        updateSlotDropdown(slot, backend);
         auto* name=lv_textarea_create(root);lv_obj_set_pos(name,284,42);lv_obj_set_size(name,396,42);
         lv_textarea_set_one_line(name,true);lv_textarea_set_max_length(name,24);lv_textarea_set_text(name,"MY SOUND 01");
         auto* info=createLabel(root,"SELECT SLOT; SAVE AS ALSO RENAMES. OCCUPIED SLOT REQUIRES TWO PRESSES.",12,88,680);
         auto* keyboard=lv_keyboard_create(root);lv_obj_set_align(keyboard,LV_ALIGN_TOP_LEFT);lv_obj_set_pos(keyboard,12,166);lv_obj_set_size(keyboard,680,190);lv_keyboard_set_textarea(keyboard,name);
-        auto* context=attachLvContext<PresetPanel>(root,PresetPanel{&backend,root,slot,name,info,false},nullptr);
+        auto* save=createActionButton(root,"SAVE AS",12,118,210,40,nullptr,nullptr);
+        auto* recall=createActionButton(root,"RECALL",244,118,210,40,nullptr,nullptr);
+        auto* close=createActionButton(root,"CLOSE",476,118,204,40,nullptr,nullptr);
+        auto* context=attachLvContext<PresetPanel>(root,PresetPanel{&backend,root,slot,name,info,save,recall,close,false,0,{},{},PresetOperationState::Idle},nullptr);
         if(!context){lv_obj_delete(root);return;}
+        s_active_preset_modal_ = root;
+        lv_obj_add_event_cb(root, [](lv_event_t* e){
+            (void)e;
+            s_active_preset_modal_ = nullptr;
+        }, LV_EVENT_DELETE, nullptr);
+        lv_obj_add_event_cb(root, [](lv_event_t* e){
+            auto* c = static_cast<PresetPanel*>(lv_event_get_user_data(e));
+            if(!c || !c->backend) return;
+            const auto op = c->backend->presetOperationStatus();
+            const bool pending = (op.state == PresetOperationState::Requested ||
+                                  op.state == PresetOperationState::WaitingForQuiet ||
+                                  op.state == PresetOperationState::Writing ||
+                                  op.state == PresetOperationState::Verifying);
+            if(pending){
+                if(c->save_btn) lv_obj_add_state(c->save_btn, LV_STATE_DISABLED);
+                if(c->recall_btn) lv_obj_add_state(c->recall_btn, LV_STATE_DISABLED);
+                if(c->info && op.message && op.message[0]){
+                    lv_label_set_text(c->info, op.message);
+                    lv_obj_set_style_text_color(c->info, lv_color_hex(palette::kAccentPrimary), 0);
+                }
+            } else {
+                if(c->save_btn) lv_obj_clear_state(c->save_btn, LV_STATE_DISABLED);
+                if(c->recall_btn) lv_obj_clear_state(c->recall_btn, LV_STATE_DISABLED);
+                if(op.state != c->last_seen_op_state){
+                    if(op.state == PresetOperationState::Confirmed){
+                        if(op.action == 2 && c->slot){
+                            updateSlotDropdown(c->slot, *c->backend);
+                        }
+                        if(c->info && op.message && op.message[0]){
+                            lv_label_set_text(c->info, op.message);
+                            lv_obj_set_style_text_color(c->info, lv_color_hex(palette::kActive), 0);
+                        }
+                    } else if(op.state == PresetOperationState::Failed ||
+                              op.state == PresetOperationState::OutcomeUnknown ||
+                              op.state == PresetOperationState::Rejected){
+                        if(c->info && op.message && op.message[0]){
+                            lv_label_set_text(c->info, op.message);
+                            lv_obj_set_style_text_color(c->info, lv_color_hex(palette::kWarning), 0);
+                        }
+                    }
+                }
+            }
+            c->last_seen_op_state = op.state;
+        }, LV_EVENT_REFRESH, context);
+
         lv_obj_add_event_cb(slot,[](lv_event_t* e){auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));
-            c->overwrite=false;char name[25];uint16_t origin=0;
+            if(!c || !c->backend) return;
+            c->overwrite=false;char name[25]{};uint16_t origin=0;
             if(c->backend->userPreset(lv_dropdown_get_selected(c->slot),name,sizeof(name),origin)){
                 char text[80];std::snprintf(text,sizeof(text),"%s | FACTORY %03u",name,origin);lv_label_set_text(c->info,text);lv_textarea_set_text(c->name,name);
             }else lv_label_set_text(c->info,"EMPTY OR INVALID SLOT");
+            lv_obj_set_style_text_color(c->info, lv_color_hex(palette::kTextSecondary), 0);
         },LV_EVENT_VALUE_CHANGED,context);
-        auto* save=createActionButton(root,"SAVE AS",12,118,210,40,nullptr,nullptr);
+
+        lv_obj_add_event_cb(name,[](lv_event_t* e){
+            auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));
+            if(c) c->overwrite = false;
+        },LV_EVENT_VALUE_CHANGED,context);
+
         lv_obj_add_event_cb(save,[](lv_event_t* e){auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));
-            char name[25];uint16_t origin=0;const unsigned slot=lv_dropdown_get_selected(c->slot);
-            if(c->backend->userPreset(slot,name,sizeof(name),origin) && !c->overwrite){c->overwrite=true;lv_label_set_text(c->info,"PRESS SAVE AS AGAIN TO REPLACE THIS SLOT");return;}
-            const auto r=c->backend->requestSoundAction(2,slot,lv_textarea_get_text(c->name));c->overwrite=false;lv_label_set_text(c->info,r.notice?r.notice:"SAVE REJECTED");
+            if(!c || !c->backend) return;
+            const unsigned slot=lv_dropdown_get_selected(c->slot);
+            const char* new_name = lv_textarea_get_text(c->name);
+            char cur_name[25]{};uint16_t origin=0;
+            const bool occupied = c->backend->userPreset(slot,cur_name,sizeof(cur_name),origin);
+            if(occupied && (!c->overwrite || c->overwrite_slot != slot || std::strcmp(c->overwrite_new_name, new_name) != 0)){
+                c->overwrite=true;
+                c->overwrite_slot = slot;
+                std::snprintf(c->overwrite_cur_name, sizeof(c->overwrite_cur_name), "%s", cur_name);
+                std::snprintf(c->overwrite_new_name, sizeof(c->overwrite_new_name), "%s", new_name);
+                char conf_msg[160];
+                std::snprintf(conf_msg, sizeof(conf_msg),
+                    "OVERWRITE SLOT %02u?\nCURRENT: %s | NEW: %s\nPRESS SAVE AS AGAIN TO CONFIRM",
+                    slot + 1, cur_name, new_name);
+                lv_label_set_text(c->info, conf_msg);
+                lv_obj_set_style_text_color(c->info, lv_color_hex(palette::kWarning), 0);
+                return;
+            }
+            c->overwrite=false;
+            const auto r=c->backend->requestSoundAction(2,slot,new_name);
+            if(r.notice) lv_label_set_text(c->info, r.notice);
+            else lv_label_set_text(c->info, r.accepted() ? "SAVE REQUESTED" : "SAVE REJECTED");
+            lv_obj_set_style_text_color(c->info, lv_color_hex(r.accepted() ? palette::kAccentPrimary : palette::kWarning), 0);
         },LV_EVENT_CLICKED,context);
-        auto* recall=createActionButton(root,"RECALL",244,118,210,40,nullptr,nullptr);
-        lv_obj_add_event_cb(recall,[](lv_event_t* e){auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));const auto r=c->backend->requestSoundAction(3,lv_dropdown_get_selected(c->slot));lv_label_set_text(c->info,r.notice?r.notice:"RECALL REJECTED; SAVE/REVERT FIRST");},LV_EVENT_CLICKED,context);
-        auto* close=createActionButton(root,"CLOSE",476,118,204,40,nullptr,nullptr);
-        lv_obj_add_event_cb(close,[](lv_event_t* e){auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));lv_obj_delete(c->root);},LV_EVENT_CLICKED,context);
+
+        lv_obj_add_event_cb(recall,[](lv_event_t* e){auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));
+            if(!c || !c->backend) return;
+            c->overwrite = false;
+            const auto r=c->backend->requestSoundAction(3,lv_dropdown_get_selected(c->slot));
+            if(r.notice) lv_label_set_text(c->info, r.notice);
+            else lv_label_set_text(c->info, r.accepted() ? "RECALL REQUESTED" : "RECALL REJECTED");
+            lv_obj_set_style_text_color(c->info, lv_color_hex(r.accepted() ? palette::kAccentPrimary : palette::kWarning), 0);
+        },LV_EVENT_CLICKED,context);
+
+        lv_obj_add_event_cb(close,[](lv_event_t* e){auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));
+            if(c && c->root) lv_obj_delete(c->root);
+        },LV_EVENT_CLICKED,context);
+
         lv_obj_send_event(slot,LV_EVENT_VALUE_CHANGED,nullptr);
     }
 };
