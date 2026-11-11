@@ -155,7 +155,10 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterValue(const char*
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestParameterFloat(const char* id,float v) {
     if(backend_.soundEdit() && editIndex(id)>=0){
-        if(!usable() || !backend_.editParameter(unsigned(editIndex(id)),v))return result(UiCommandState::Rejected,id,"EDIT REJECTED; SEE CONFIRMED VALUE");
+        if(!usable() || !backend_.editParameter(unsigned(editIndex(id)),v)) {
+            const char* notice = backend_.editNotice();
+            return result(UiCommandState::Rejected,id,(notice && notice[0])?notice:"EDIT REJECTED; SEE CONFIRMED VALUE");
+        }
         edit_requested_=true;edit_errors_=backend_.soundEdit()->errors;edit_id_=ParameterRegistry::findById(id)->id;
         return result(UiCommandState::Requested,id,"EDIT REQUESTED; WAIT OWNER");
     }

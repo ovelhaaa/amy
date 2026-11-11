@@ -325,14 +325,22 @@ void Runtime::applyEdit() {
     };
     const edit::Mask previous=out.compare?0:(out.mask|macroMask(out.macros));
     const edit::Mask touched=previous|effective;
-    if(out.family == 0 && (touched & edit::bit(edit::FmAlgorithm))) {
-        const unsigned target_algo = unsigned(std::lround(value(edit::FmAlgorithm)));
-        if(target_algo < 1 || target_algo > 32) { ++out.errors; return; }
-        if(state_.active_notes > 0 || state_.sustain_active) { ++out.errors; return; }
+    const bool algorithm_present_in_edit = (out.family == 0) && ((touched & edit::bit(edit::FmAlgorithm)) != 0);
+    if(algorithm_present_in_edit) {
+        const unsigned algorithm_target = unsigned(std::lround(value(edit::FmAlgorithm)));
+        if(algorithm_target < 1 || algorithm_target > 32) { ++out.errors; return; }
+
+        bool algorithm_change_required = false;
+        unsigned algorithm_current = 0;
+
         for(unsigned v = 0; v < kVoices; ++v) {
             const uint16_t parent_osc = edit_map_[v][0];
             if(parent_osc >= kOscillators || !synth[parent_osc] || synth[parent_osc]->wave != ALGO) {
                 ++out.errors; return;
+            }
+            if(v == 0) algorithm_current = synth[parent_osc]->algorithm;
+            if(synth[parent_osc]->algorithm != algorithm_target) {
+                algorithm_change_required = true;
             }
             for(unsigned op = 0; op < 6; ++op) {
                 const uint16_t op_osc = edit_map_[v][edit_ops_[op]];
@@ -341,14 +349,22 @@ void Runtime::applyEdit() {
                 }
             }
         }
-        updateFmAlgorithmTopology(target_algo);
-        for(unsigned v = 0; v < kVoices; ++v) {
-            struct delta d{};
-            d.osc = edit_map_[v][0];
-            d.param = ALGORITHM;
-            d.data.i = target_algo;
-            add_delta_to_queue(&d, &amy_global.delta_queue);
+
+        if(algorithm_change_required) {
+            if(state_.active_notes > 0 || state_.sustain_active) {
+                ++out.errors;
+                return;
+            }
+            updateFmAlgorithmTopology(algorithm_target);
+            for(unsigned v = 0; v < kVoices; ++v) {
+                struct delta d{};
+                d.osc = edit_map_[v][0];
+                d.param = ALGORITHM;
+                d.data.i = algorithm_target;
+                add_delta_to_queue(&d, &amy_global.delta_queue);
+            }
         }
+        (void)algorithm_current;
     }
     if(touched&edit::bit(edit::PatchLevel))for(unsigned v=0;v<kVoices;++v)
         instrument_set_level(v+1,edit_instrument_levels_[v]*((effective&edit::bit(edit::PatchLevel))?value(edit::PatchLevel)/100.0f:1.0f));

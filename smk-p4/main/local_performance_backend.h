@@ -161,10 +161,14 @@ public:
     }
     bool editParameter(unsigned p,float value) override {
         if(!ready_ || busy() || saving_ || edit_.compare || p>=edit::Count || !(edit_.available&edit::bit(p)) || !edit::valid(p,value))return false;
-        if(p == edit::FmAlgorithm && (state_.active_notes > 0 || sustain_active_)) {
-            edit_error_ = true;
-            notice_ = "RELEASE NOTES TO CHANGE FM ALGORITHM";
-            return false;
+        if(p == edit::FmAlgorithm) {
+            const unsigned target_algo = unsigned(std::lround(value));
+            const unsigned current_algo = unsigned(std::lround(edit_.applied[edit::FmAlgorithm]));
+            if(target_algo != current_algo && (state_.active_notes > 0 || sustain_active_)) {
+                edit_error_ = true;
+                notice_ = "RELEASE NOTES TO CHANGE FM ALGORITHM";
+                return false;
+            }
         }
         if(edit_pending_)++coalesced_;
         prepareEdit();desired_.values[p]=value;
@@ -174,7 +178,26 @@ public:
     // 0 Compare,1 Revert,2 Save As,3 Recall. Overwrite/rename uses explicit Save As.
     bool editAction(unsigned action,unsigned slot=0,const char* name=nullptr) override {
         if(!ready_ || busy() || saving_)return false;
-        if(action<2){prepareEdit();desired_.compare=action==0?!desired_.compare:false;
+        if(action<2){
+            if(edit_.family == 0 && (state_.active_notes > 0 || sustain_active_)) {
+                const unsigned current_algo = unsigned(std::lround(edit_.applied[edit::FmAlgorithm]));
+                unsigned target_algo = current_algo;
+                if(action == 0) { // Compare
+                    target_algo = (!edit_.compare)
+                        ? unsigned(std::lround(edit_.original[edit::FmAlgorithm]))
+                        : ((edit_.mask & edit::bit(edit::FmAlgorithm))
+                            ? unsigned(std::lround(edit_.manual[edit::FmAlgorithm]))
+                            : unsigned(std::lround(edit_.original[edit::FmAlgorithm])));
+                } else if(action == 1) { // Revert
+                    target_algo = unsigned(std::lround(edit_.original[edit::FmAlgorithm]));
+                }
+                if(target_algo != current_algo) {
+                    edit_error_ = true;
+                    notice_ = "RELEASE NOTES TO CHANGE FM ALGORITHM";
+                    return false;
+                }
+            }
+            prepareEdit();desired_.compare=action==0?!desired_.compare:false;
             if(action==1){desired_.mask=0;desired_.slot=-1;for(auto& m:desired_.macros)m=64;desired_fx_=original_fx_;}
             desired_.request=newEditToken();edit_pending_=true;
             fx::FxRequest req{};req.config=desired_.compare?original_fx_:desired_fx_;req.generation=commands_.generation();req.request=++fx_token_;commands_.fx.push(req);
