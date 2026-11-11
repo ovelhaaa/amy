@@ -13,6 +13,7 @@
 #ifdef SMKP4_SOUND_EDITOR
 #include "user_preset_nvs.h"
 #include "user_preset_fx_nvs.h"
+#include "controller_profile_nvs.h"
 #endif
 #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
 #include "ui_blueprint.h"
@@ -285,6 +286,9 @@ extern "C" void app_main() {
     runtime.usbInput().enableTrace();
 #endif
     if(usb_start==smk::p4::boot::UsbStart::Ready) {
+#if defined(SMKP4_SOUND_EDITOR) && defined(CONFIG_SMKP4_UI_BLUEPRINT)
+        runtime.usbInput().enableControls();
+#endif
         ESP_LOGI(kTag,"Starting qualified USB Host controller=%d",CONFIG_SMKP4_USB_CONTROLLER);
         if(!usb_host.begin(CONFIG_SMKP4_USB_CONTROLLER)) ESP_LOGE(kTag,"USB Host initialization failed; Touch remains available");
     } else ESP_LOGE(kTag,"USB Host not started: %s",smk::p4::boot::reason(usb_start));
@@ -311,6 +315,11 @@ extern "C" void app_main() {
     #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
     if(snapshot_received) backend.publish(initial.engine,initial.running && initial.physical,initial.render_max_us,initial.render_deadlines);
     static smk::p4::UiBlueprintPerformanceAdapter adapter(backend);
+    adapter.setMidiInput(runtime.usbInput());
+#ifdef SMKP4_SOUND_EDITOR
+    static smk::p4::performance::NvsControllerProfile controller_profile;
+    adapter.setControllerProfileStore(controller_profile);
+#endif
     adapter.service(static_cast<uint32_t>(esp_timer_get_time()/1000));
     static smk::p4::ui::UiBlueprint ui(adapter);
 #else
@@ -412,12 +421,13 @@ extern "C" void app_main() {
                     (unsigned long)trace.timestamp_ms,unsigned(trace.valid_bytes),unsigned(trace.packet[0]>>4),unsigned((trace.packet[1]&15)+1),
                     trace.packet[0],trace.packet[1],trace.packet[2],trace.packet[3],(unsigned long)runtime.usbInput().trace_dropped.load());
 #endif
-            ESP_LOGI(kTag,"USB state=%u connects=%lu disconnects=%lu errors=%lu events=%lu parse_errors=%lu ignored_cable_packets=%lu dropped=%lu queue=%lu overflow=%lu stack_free=%lu polyphony_rejected=%lu",
+            ESP_LOGI(kTag,"USB state=%u connects=%lu disconnects=%lu errors=%lu events=%lu parse_errors=%lu ignored_cable_packets=%lu dropped=%lu queue=%lu overflow=%lu control_dropped=%lu stack_free=%lu polyphony_rejected=%lu",
                 unsigned(usb_host.state()),(unsigned long)usb_host.connects(),(unsigned long)usb_host.disconnects(),
                 (unsigned long)usb_host.errors(),(unsigned long)runtime.usbInput().events.load(),
                 (unsigned long)runtime.usbInput().parse_errors.load(),(unsigned long)runtime.usbInput().ignored_cable_packets.load(),
                 (unsigned long)runtime.usbInput().dropped.load(),
                 (unsigned long)runtime.usbInput().commands.depth(),(unsigned long)runtime.usbInput().commands.overflows(),
+                (unsigned long)runtime.usbInput().controlDrops(),
                 (unsigned long)usb_host.stackFree(),(unsigned long)state.engine.polyphony_rejected);
         }
         vTaskDelay(pdMS_TO_TICKS(10));

@@ -1,5 +1,7 @@
 #include "ui_blueprint_performance_adapter.h"
+#include "performance_factory_routes.h"
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 namespace smk::p4 {
@@ -47,6 +49,7 @@ UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend&
     model_.setNotice("WAIT OWNER SNAPSHOT; TOUCH LEASE 10s");
 }
 UiCommandResult UiBlueprintPerformanceAdapter::result(UiCommandState state,const char* id,const char* notice,uint32_t token) {
+    if(state==UiCommandState::Requested && id) resetPickup(id);
     last_state_=state;
     last_token_=token;
     // Retain canonical/static IDs, never a caller-owned temporary string.
@@ -103,6 +106,7 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestSoundAction(unsigned actio
         return result(UiCommandState::Rejected,"editor",(notice && notice[0])?notice:"COMMAND REJECTED");
     }
     edit_requested_=true;edit_errors_=backend_.soundEdit()?backend_.soundEdit()->errors:0;edit_id_="editor";
+    if(action<=1)resetPickup();
     return result(UiCommandState::Requested,"editor",backend_.editNotice());
 }
 ui::PresetOperationStatus UiBlueprintPerformanceAdapter::presetOperationStatus() const {
@@ -111,8 +115,8 @@ ui::PresetOperationStatus UiBlueprintPerformanceAdapter::presetOperationStatus()
 }
 FeatureStatus UiBlueprintPerformanceAdapter::parameterStatus(const char* id) const {
     if(const auto* state=backend_.soundEdit()){
-        if(eq(id,"perf.macro.2"))return state->available?FeatureStatus::Available:FeatureStatus::Unavailable;
-        if(eq(id,"perf.macro.5") || eq(id,"perf.macro.6"))return state->family==1 && (state->available&12)==12?FeatureStatus::Available:FeatureStatus::Unavailable;
+        if(id && std::strncmp(id,"perf.macro.",11)==0 && id[11]>='1' && id[11]<='8' && !id[12])
+            return performance::available(unsigned(id[11]-'1'),*state)?FeatureStatus::Available:FeatureStatus::Unavailable;
         if(eq(id,"fm.selected_op"))return state->family==0?FeatureStatus::Available:FeatureStatus::Unavailable;
         const int p=editIndex(id);
         if(p>=0)return (state->available&edit::bit(unsigned(p)))?FeatureStatus::Available:FeatureStatus::Unavailable;
@@ -217,6 +221,7 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterInt(const char* i
     if(backend_.soundEdit() && eq(id,"fm.selected_op")){
         if(v<1 || v>6 || backend_.soundEdit()->family!=0)return result(UiCommandState::Rejected,id,"OPERATOR UNAVAILABLE");
         selected_op_=unsigned(v-1);model_.setInt(id,v);
+        resetPickup();
         const auto* edit=backend_.soundEdit();
         model_.setFloat("fm.op.level",edit->applied[edit::OpLevel0+selected_op_]);
         model_.setFloat("fm.op.ratio",edit->applied[edit::OpRatio0+selected_op_]);
@@ -227,13 +232,20 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterInt(const char* i
     }
     if(parameterStatus(id)!=FeatureStatus::Available) return result(UiCommandState::Unsupported,id,"PLANNED; NO DSP COMMAND");
     if(!usable()) return result(UiCommandState::Rejected,id,"ENGINE/SNAPSHOT UNAVAILABLE");
-    if(backend_.soundEdit() && (eq(id,"perf.macro.2") || eq(id,"perf.macro.5") || eq(id,"perf.macro.6"))){
+    if(backend_.soundEdit() && std::strncmp(id,"perf.macro.",11)==0){
         if(pending_edit_.active && pending_edit_.param==edit::FmAlgorithm)
             return result(UiCommandState::Rejected,id,"ALGORITHM CHANGE PENDING");
-        const unsigned m=eq(id,"perf.macro.2")?1:eq(id,"perf.macro.5")?4:5;
+        const unsigned m=unsigned(id[11]-'1');
         if(v<0 || v>127 || !backend_.setMacro(uint8_t(m),uint8_t(v),now_ms_))return result(UiCommandState::Rejected,id,"MACRO REJECTED");
         edit_requested_=true;edit_errors_=backend_.soundEdit()->errors;edit_id_=ParameterRegistry::findById(id)->id;
-        return result(UiCommandState::Requested,id,"MACRO REQUESTED; WAIT OWNER");
+        pending_edit_={};
+        pending_edit_.active=true;
+        pending_edit_.param=edit::Count;
+        pending_edit_.patch_id=backend_.state().patch_id;
+        pending_edit_.token=backend_.editToken();
+        pending_edit_.generation=backend_.editGeneration();
+        pending_edit_.requested_ms=now_ms_;
+        return result(UiCommandState::Requested,id,"MACRO REQUESTED; WAIT OWNER",pending_edit_.token);
     }
     const int hi=harmonyIndex(id);
     if(hi>=0 && backend_.harmonyState()) {
@@ -324,6 +336,216 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestPanic() {
     patch_.active=master_.active=false;
     return result(UiCommandState::Requested,"panic","PANIC REQUESTED; OWNER CANCELS ALL SOURCES");
 }
+const char* UiBlueprintPerformanceAdapter::midiBankName() const {
+    static constexpr const char* names[]{"A / MACROS", "B / OSC-FM", "C / ENVELOPES", "D / FX"};
+    return names[midi_bank_];
+}
+
+void UiBlueprintPerformanceAdapter::setControllerProfileStore(performance::ControllerProfileStore& store) {
+    midi_store_=&store;
+    performance::ControllerProfile profile;
+    if(!store.load(profile) || !performance::validProfile(profile)) return;
+    midi_bank_=profile.bank;
+    for(unsigned i=0;i<8;++i){
+        midi_knobs_[i]={};
+        midi_knobs_[i].source=profile.knobs[i];
+    }
+    midi_learn_.cancel();
+}
+
+const char* UiBlueprintPerformanceAdapter::midiDestination(unsigned knob) const {
+    const auto* state=backend_.soundEdit();
+    if(!state || knob>=8) return nullptr;
+    static constexpr const char* destinations[6][8]{
+        {"perf.macro.1","perf.macro.2","perf.macro.3","perf.macro.4","perf.macro.5","perf.macro.6","perf.macro.7","perf.macro.8"},
+        {"osc.1.level","osc.sub_level","osc.noise_level","osc.1.pulse_width","osc.1.detune_ct","amp.level","amp.pan","amp.vel_sens"},
+        {"fm.depth","fm.feedback","fm.op.level","fm.op.ratio","amp.level",nullptr,nullptr,nullptr},
+        {"filter.cutoff_hz","filter.resonance","filter.env_amount","env.amp.attack_ms","env.amp.decay_ms","env.amp.sustain","env.amp.release_ms","filter.keytrack"},
+        {"fm.op.attack","fm.op.decay","fm.op.vel_sens","lfo.1.rate_hz","lfo.1.depth",nullptr,nullptr,nullptr},
+        {"fx.chorus.depth","fx.delay.time_ms","fx.delay.feedback","fx.delay.mix","fx.reverb.size","fx.reverb.mix","fx.master_tone",nullptr}
+    };
+    const bool fm=state->family==0;
+    const unsigned row=midi_bank_==0?0:midi_bank_==1?1+fm:midi_bank_==2?3+fm:5;
+    return destinations[row][knob];
+}
+
+bool UiBlueprintPerformanceAdapter::midiTarget(unsigned knob,uint8_t& target) const {
+    const char* id=midiDestination(knob);
+    const auto* desc=id?ParameterRegistry::findById(id):nullptr;
+    if(!desc || parameterStatus(id)!=FeatureStatus::Available) return false;
+    const int p=editIndex(id);
+    const float manual=p>=0?backend_.soundEdit()->manual[p]:model_.getFloat(id,desc->default_value);
+    if(!std::isfinite(manual) || desc->maximum<=desc->minimum) return false;
+    const float bounded=std::clamp(manual,desc->minimum,desc->maximum);
+    const bool logarithmic=desc->scale==ParameterScale::Logarithmic && desc->minimum>0;
+    const float position=logarithmic?std::log(bounded/desc->minimum)/std::log(desc->maximum/desc->minimum):
+        (bounded-desc->minimum)/(desc->maximum-desc->minimum);
+    target=uint8_t(std::lround(127*std::clamp(position,0.0f,1.0f)));
+    return true;
+}
+
+void UiBlueprintPerformanceAdapter::resetPickup(const char* id) {
+    if(midi_dispatch_) return;
+    for(unsigned i=0;i<8;++i){
+        const auto* destination=midiDestination(i);
+        if(!id || (destination && eq(id,destination))) midi_knobs_[i].pickup.reset();
+    }
+}
+
+void UiBlueprintPerformanceAdapter::midiKnobText(unsigned knob,char* text,unsigned size) const {
+    if(!size || knob>=8) return;
+    const char* id=midiDestination(knob);
+    const auto* desc=id?ParameterRegistry::findById(id):nullptr;
+    uint8_t target=0;
+    if(!desc || !midiTarget(knob,target)){
+        std::snprintf(text,size,"K%u  N/A",knob+1);
+        return;
+    }
+    const auto& k=midi_knobs_[knob];
+    if(k.source.channel>=16){
+        std::snprintf(text,size,"K%u  %s | UNBOUND",knob+1,desc->name);
+        return;
+    }
+    const auto state=k.pickup.state();
+    const char* pickup=state==performance::PickupState::Captured?"PICKED UP":
+        state==performance::PickupState::ApproachingFromBelow?"TURN RIGHT":
+        state==performance::PickupState::ApproachingFromAbove?"TURN LEFT":"WAITING";
+    if(k.observed) std::snprintf(text,size,"K%u %s | CH%u CC%u | %u / %u %s",knob+1,desc->name,
+                                 k.source.channel+1,k.source.controller,target,k.physical,pickup);
+    else std::snprintf(text,size,"K%u %s | CH%u CC%u | %u %s",knob+1,desc->name,
+                       k.source.channel+1,k.source.controller,target,pickup);
+}
+
+void UiBlueprintPerformanceAdapter::midiPerformanceAction(MidiAction action,unsigned knob) {
+    if(!hasMidiPerformance() || knob>=8) return;
+    const auto generation=midi_input_->deviceGeneration();
+    switch(action){
+        case MidiAction::NextBank:
+            midi_bank_=(midi_bank_+1)%4;
+            resetPickup();
+            midi_learn_.cancel();
+            std::snprintf(midi_status_,sizeof(midi_status_),"%s",midiBankName());
+            break;
+        case MidiAction::Learn:
+        case MidiAction::LearnModWheel:
+            if(!model_.diagnostics().midi_connected){
+                std::snprintf(midi_status_,sizeof(midi_status_),"CONNECT A USB MIDI CONTROLLER");
+                break;
+            }
+            midi_learn_knob_=knob;
+            midi_learn_.arm(now_ms_,generation,16,action==MidiAction::LearnModWheel);
+            std::snprintf(midi_status_,sizeof(midi_status_),"K%u: MOVE A MIDI CONTROL",knob+1);
+            break;
+        case MidiAction::Confirm:
+        case MidiAction::Replace: {
+            if(!midi_learn_.confirm(now_ms_,generation)) break;
+            const auto source=midi_learn_.candidate();
+            int conflict=-1;
+            for(unsigned i=0;i<8;++i) if(i!=midi_learn_knob_ && midi_knobs_[i].source==source) conflict=int(i);
+            if(conflict>=0 && action!=MidiAction::Replace){
+                midi_learn_.resolve(false,now_ms_,generation);
+                std::snprintf(midi_status_,sizeof(midi_status_),"CH%u CC%u IN USE BY K%d. REPLACE OR CANCEL",
+                              source.channel+1,source.controller,conflict+1);
+                break;
+            }
+            if(conflict>=0) midi_knobs_[conflict]={};
+            midi_knobs_[midi_learn_knob_]={};
+            midi_knobs_[midi_learn_knob_].source=source;
+            midi_learn_.resolve(true,now_ms_,generation);
+            std::snprintf(midi_status_,sizeof(midi_status_),"K%u BOUND TO CH%u CC%u",midi_learn_knob_+1,
+                          source.channel+1,source.controller);
+            break;
+        }
+        case MidiAction::Cancel:
+            midi_learn_.cancel();
+            std::snprintf(midi_status_,sizeof(midi_status_),"LEARN CANCELLED");
+            break;
+        case MidiAction::SaveProfile:
+            if(midi_save_pending_) break;
+            if(!midi_store_ || !backend_.requestStorageQuiet()){
+                std::snprintf(midi_status_,sizeof(midi_status_),"PROFILE SAVE UNAVAILABLE OR ENGINE BUSY");
+                break;
+            }
+            midi_learn_.cancel();
+            midi_saved_profile_.bank=uint8_t(midi_bank_);
+            for(unsigned i=0;i<8;++i) midi_saved_profile_.knobs[i]=midi_knobs_[i].source;
+            midi_save_started_ms_=now_ms_;
+            midi_save_pending_=true;
+            std::snprintf(midi_status_,sizeof(midi_status_),"WAITING FOR QUIET TO SAVE PROFILE");
+            break;
+    }
+    model_.bumpRevision();
+}
+
+void UiBlueprintPerformanceAdapter::serviceMidi() {
+    if(!hasMidiPerformance()) return;
+    if(midi_save_pending_ && (backend_.storageQuiet() || now_ms_-midi_save_started_ms_>=2000)){
+        const bool saved=backend_.storageQuiet() && midi_store_->save(midi_saved_profile_);
+        backend_.releaseStorageQuiet();
+        midi_save_pending_=false;
+        std::snprintf(midi_status_,sizeof(midi_status_),"%s",saved?"PROFILE SAVED":"PROFILE SAVE FAILED");
+        model_.bumpRevision();
+    }
+    const auto& edit=*backend_.soundEdit();
+    const auto device=midi_input_->deviceGeneration();
+    const auto owner=backend_.editGeneration();
+    if(device!=midi_device_generation_ || owner!=midi_owner_generation_ ||
+       edit.epoch!=midi_edit_epoch_ || edit.compare!=midi_compare_){
+        resetPickup();
+        midi_device_generation_=device;
+        midi_owner_generation_=owner;
+        midi_edit_epoch_=edit.epoch;
+        midi_compare_=edit.compare;
+    }
+    const auto learn_before=midi_learn_.state();
+    midi_learn_.service(now_ms_,device);
+    if(midi_learn_.state()!=learn_before){
+        std::snprintf(midi_status_,sizeof(midi_status_),"%s",
+                      midi_learn_.state()==performance::LearnState::Timeout?"LEARN TIMEOUT":"LEARN CANCELLED: USB CHANGED");
+        model_.bumpRevision();
+    }
+    // Keep only the latest value per knob for this UI cycle.
+    bool changed[8]{};
+    uint8_t values[8]{};
+    amy::MidiControlEvent event;
+    for(unsigned i=0;i<amy::MidiControlEvents::kCapacity && midi_input_->popControl(event);++i){
+        if(!midi_input_->currentControl(event)) continue;
+        if(midi_learn_.capture(event,now_ms_,device)){
+            std::snprintf(midi_status_,sizeof(midi_status_),"K%u: CH%u CC%u. CONFIRM OR CANCEL",
+                          midi_learn_knob_+1,event.channel+1,event.controller);
+            model_.bumpRevision();
+            continue;
+        }
+        const auto learning=midi_learn_.state();
+        if(learning==performance::LearnState::Armed || learning==performance::LearnState::Captured) continue;
+        const performance::MidiSource source{event.cable,event.channel,event.controller};
+        for(unsigned k=0;k<8;++k) if(midi_knobs_[k].source==source){
+            auto& knob=midi_knobs_[k];
+            uint8_t target=0,output=0;
+            knob.physical=event.value;
+            knob.observed=true;
+            if(usable() && !edit.compare && midiTarget(k,target) && knob.pickup.update(event.value,target,output)){
+                changed[k]=output!=target;
+                values[k]=output;
+            }
+            model_.bumpRevision();
+        }
+    }
+    if(device!=midi_input_->deviceGeneration() || owner!=backend_.editGeneration()) return;
+    for(unsigned k=0;k<8;++k) if(changed[k]){
+        const auto* id=midiDestination(k);
+        const auto* desc=ParameterRegistry::findById(id);
+        if(!desc) continue;
+        const float position=values[k]/127.0f;
+        const float value=desc->scale==ParameterScale::Logarithmic && desc->minimum>0?
+            std::clamp(desc->minimum*std::pow(desc->maximum/desc->minimum,position),desc->minimum,desc->maximum):
+            desc->minimum+(desc->maximum-desc->minimum)*position;
+        midi_dispatch_=true;
+        const auto result=requestParameterFloat(id,value);
+        midi_dispatch_=false;
+        if(!result.accepted()) midi_knobs_[k].pickup.reset();
+    }
+}
 void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     now_ms_=now_ms; backend_.service(now_ms);
     if(was_connected_ && !backend_.connected()) {
@@ -343,7 +565,9 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
         if(const auto* edit=backend_.soundEdit()){
             if(edit_requested_ && !(pending_edit_.active && pending_edit_.param==edit::FmAlgorithm) && !backend_.editPending() && !backend_.busy()){
                 edit_requested_=false;
-                if(pending_edit_.active && backend_.state().patch_id != pending_edit_.patch_id){
+                if(pending_edit_.active && (backend_.state().patch_id != pending_edit_.patch_id ||
+                   (pending_edit_.param==edit::Count && (edit->request!=pending_edit_.token ||
+                    backend_.editSnapshotGeneration()!=pending_edit_.generation)))){
                     pending_edit_.active = false;
                     result(UiCommandState::Rejected, edit_id_, "PATCH CHANGED; EDIT CANCELED");
                 } else {
@@ -366,7 +590,11 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
                 if(p>=0 && (edit->available & edit::bit(unsigned(p)))) model_.setFloat(id,edit->applied[p]);
             }
             model_.setInt("fm.selected_op",int(selected_op_)+1);
-            model_.setInt("perf.macro.2",edit->macros[0]);model_.setInt("perf.macro.5",edit->macros[1]);model_.setInt("perf.macro.6",edit->macros[2]);
+            char macro_id[]="perf.macro.1";
+            for(unsigned m=0;m<performance::kMacroCount;++m){
+                macro_id[11]=char('1'+m);
+                model_.setInt(macro_id,edit->performance_macros[m]);
+            }
         }
         if(const auto* fx=backend_.fxState()){
             if(fx_requested_){
@@ -477,5 +705,6 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     d.amy_status=backend_.status(); d.i2s_status=audio?"RUN":"NOT LIVE";
     d.usb_status=usb_status;
     d.uptime_ms=now_ms;
+    serviceMidi();
 }
 }

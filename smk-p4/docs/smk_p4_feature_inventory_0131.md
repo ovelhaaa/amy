@@ -76,3 +76,9 @@ Os seguintes módulos permanecem com interface gráfica blueprint pronta, aguard
 3. **Layers A/B e Split Zones:** Execução simultânea de duas camadas timbrais divididas por zonas de teclado.
 4. **Sequenciador e Arpeggiador de Performance:** Execução de sequências de 16 passos com probabilidade, ratchet e arpeggios sincronizados.
 5. **Cenas (Scenes):** Troca de contexto de performance completa (patches de layers, FX, macros e sequências).
+
+## Performance Control 0.14
+
+A tela Performance usa oito controles ligados ao owner. O mapa MIDI permite Learn, confirmação, substituição de conflitos, pickup e seleção de quatro bancos. O perfil salvo e o preset de performance têm registros versionados próprios. Edição de rotas pela touchscreen, bindings adicionais e captura física do KNOB-B permanecem pendentes.
+
+[Motor e destinos](performance_014_macro_engine.md) · [MIDI Learn](performance_014_midi_learn.md) · [Persistência](performance_014_persistence.md)

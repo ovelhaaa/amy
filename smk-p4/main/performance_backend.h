@@ -74,6 +74,9 @@ public:
     virtual uint32_t editGeneration() const { return 0; }
     virtual uint32_t editSnapshotGeneration() const { return 0; }
     virtual uint32_t editToken() const { return 0; }
+    virtual bool requestStorageQuiet() { return false; }
+    virtual bool storageQuiet() const { return false; }
+    virtual void releaseStorageQuiet() {}
     virtual bool editParameter(unsigned,float) { return false; }
     virtual bool editAction(unsigned,unsigned=0,const char* =nullptr) { return false; }
     virtual bool userPreset(unsigned,char*,unsigned,uint16_t&) { return false; }

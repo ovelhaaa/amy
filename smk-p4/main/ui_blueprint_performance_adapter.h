@@ -1,6 +1,9 @@
 #pragma once
 #include "performance_backend.h"
 #include "ui_backend.h"
+#include "performance_midi.h"
+#include "usb_input.h"
+#include "controller_profile.h"
 
 namespace smk::p4 {
 // Single UI-task owner. Fixed gesture ledger; tokens never alias backend tokens.
@@ -50,8 +53,37 @@ public:
     }
     bool userPreset(unsigned slot,char* name,unsigned capacity,uint16_t& origin) override {return backend_.userPreset(slot,name,capacity,origin);}
     ui::PresetOperationStatus presetOperationStatus() const override;
+    void setMidiInput(amy::UsbInput& input) { midi_input_=&input; }
+    void setControllerProfileStore(performance::ControllerProfileStore& store);
+    bool hasMidiPerformance() const override { return midi_input_ && hasSoundEditor(); }
+    void midiPerformanceAction(MidiAction action,unsigned knob) override;
+    const char* midiBankName() const override;
+    const char* midiLearnStatus() const override { return midi_status_; }
+    void midiKnobText(unsigned knob,char* text,unsigned size) const override;
 
 private:
+    void serviceMidi();
+    const char* midiDestination(unsigned knob) const;
+    bool midiTarget(unsigned knob,uint8_t& target) const;
+    void resetPickup(const char* id=nullptr);
+    struct MidiKnob {
+        performance::MidiSource source{0,16,0};
+        performance::Pickup pickup;
+        uint8_t physical=0;
+        bool observed=false;
+    };
+    amy::UsbInput* midi_input_=nullptr;
+    MidiKnob midi_knobs_[8]{};
+    performance::MidiLearn midi_learn_;
+    uint32_t midi_device_generation_=0,midi_owner_generation_=0,midi_edit_epoch_=0;
+    bool midi_compare_=false;
+    bool midi_dispatch_=false;
+    performance::ControllerProfileStore* midi_store_=nullptr;
+    performance::ControllerProfile midi_saved_profile_;
+    uint32_t midi_save_started_ms_=0;
+    bool midi_save_pending_=false;
+    unsigned midi_bank_=0,midi_learn_knob_=0;
+    char midi_status_[72]="SELECT A KNOB TO LEARN";
     struct Gesture { uint32_t token=0, start_ms=0; uint8_t note=0; };
     struct Pending { bool active=false; uint16_t value=0; uint32_t revision=0, requested_ms=0; };
     ui::UiCommandResult result(ui::UiCommandState, const char*, const char*, uint32_t token=0);

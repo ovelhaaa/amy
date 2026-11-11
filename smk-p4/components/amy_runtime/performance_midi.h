@@ -89,12 +89,14 @@ public:
     bool update(uint8_t physical, uint8_t target, uint8_t& output) {
         if (physical > 127 || target > 127) return false;
         if (state_ == PickupState::Captured) {
+            if (physical == extreme_) return false;
+            extreme_ = physical;
             output = physical;
             return true;
         }
         const int difference = int(physical) - int(target);
         if (state_ == PickupState::Waiting) {
-            if (difference == 0) return capture(target, output);
+            if (difference == 0) return capture(physical, target, output);
             state_ = difference < 0 ? PickupState::ApproachingFromBelow : PickupState::ApproachingFromAbove;
             extreme_ = physical;
             return false;
@@ -103,7 +105,7 @@ public:
         const bool crossing = below ? difference >= 0 : difference <= 0;
         const bool approaching = below ? difference >= -kTolerance && int(physical) - extreme_ >= kTolerance
                                        : difference <= kTolerance && extreme_ - int(physical) >= kTolerance;
-        if (crossing || approaching) return capture(target, output);
+        if (crossing || approaching) return capture(physical, target, output);
         if (below ? physical < extreme_ : physical > extreme_) extreme_ = physical;
         return false;
     }
@@ -111,8 +113,9 @@ public:
     PickupState state() const { return state_; }
 
 private:
-    bool capture(uint8_t target, uint8_t& output) {
+    bool capture(uint8_t physical, uint8_t target, uint8_t& output) {
         state_ = PickupState::Captured;
+        extreme_ = physical;
         output = target;
         return true;
     }

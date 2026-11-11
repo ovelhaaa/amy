@@ -5,6 +5,7 @@
 #include "user_presets.h"
 #ifdef SMKP4_SOUND_EDITOR
 #include "preset_transaction.h"
+#include "performance_factory_routes.h"
 #endif
 namespace smk::p4 {
 // UI task only. publish() receives a copied single-element owner mailbox.
@@ -140,6 +141,7 @@ public:
             preset_op_status_ = { PresetOperationState::Verifying, 3, uint8_t(recall_slot_), preset_op_msg_ };
             desired_={};desired_.patch=edit_.patch;desired_.generation=commands_.generation();
             for(unsigned m=0;m<3;++m)desired_.macros[m]=recall_.macros[m];
+            desired_.performance_macros=recall_.performance_macros;
             desired_.mask=recall_.mask;desired_.slot=int8_t(recall_slot_);
             for(unsigned p=0;p<edit::Count;++p)desired_.values[p]=recall_.values[p];
             desired_.preset_recall=true;desired_.recall_started_ms=recall_started_ms_;
@@ -210,6 +212,7 @@ public:
         if(!edit_.dirty)return false;
         if(!saved_valid_ || saved_edit_.patch!=edit_.patch || saved_edit_.mask!=edit_.mask)return true;
         for(unsigned m=0;m<3;++m)if(saved_edit_.macros[m]!=edit_.macros[m])return true;
+        if(saved_edit_.performance_macros!=edit_.performance_macros)return true;
         for(unsigned p=0;p<edit::Count;++p)if((edit_.mask&edit::bit(p)) && saved_edit_.manual[p]!=edit_.manual[p])return true;
         return false;
     }
@@ -321,7 +324,7 @@ public:
                 }
             }
             prepareEdit();desired_.compare=action==0?!desired_.compare:false;
-            if(action==1){desired_.mask=0;desired_.slot=-1;for(auto& m:desired_.macros)m=64;desired_fx_=original_fx_;}
+            if(action==1){desired_.mask=0;desired_.slot=-1;for(auto& m:desired_.macros)m=64;desired_.performance_macros=performance::kNeutral;desired_fx_=original_fx_;}
             desired_.request=newEditToken();edit_pending_=true;
             fx::FxRequest req{};req.config=desired_.compare?original_fx_:desired_fx_;req.generation=commands_.generation();req.request=++fx_token_;commands_.fx.push(req);
             setRejectNotice(PresetRejectReason::None, nullptr);
@@ -398,6 +401,7 @@ public:
             save_preset_={};save_preset_.sequence=1;save_preset_.patch=edit_.patch;save_preset_.family=edit_.family;
             std::snprintf(save_preset_.name,sizeof(save_preset_.name),"%s",name);save_preset_.mask=edit_.mask;
             for(unsigned m=0;m<3;++m)save_preset_.macros[m]=edit_.macros[m];
+            save_preset_.performance_macros=edit_.performance_macros;
             for(unsigned p=0;p<edit::Count;++p)save_preset_.values[p]=edit_.manual[p];
             if(!store_->accepts(save_preset_)){
                 setRejectNotice(PresetRejectReason::InvalidPreset, "SAVE BLOCKED: INVALID PRESET");
@@ -540,9 +544,23 @@ public:
     bool connected() const override { return ready_; }
     bool busy() const override { return pending_ || loading_
 #ifdef SMKP4_SOUND_EDITOR
- || saving_ || quiet_
+ || saving_ || quiet_ || profile_quiet_requested_
 #endif
 ; }
+#ifdef SMKP4_SOUND_EDITOR
+    bool requestStorageQuiet() override {
+        if(!ready_ || busy() || editPending() || fx_pending_ || state_.active_notes || sustain_active_)return false;
+        profile_quiet_requested_=true;
+        commands_.storage_requested.store(true,std::memory_order_release);
+        return true;
+    }
+    bool storageQuiet() const override {return profile_quiet_requested_ && quiet_;}
+    void releaseStorageQuiet() override {
+        if(!profile_quiet_requested_)return;
+        profile_quiet_requested_=false;
+        commands_.storage_requested.store(false,std::memory_order_release);
+    }
+#endif
     uint8_t voiceCapacity() const override { return amy::kVoices; }
     bool local() const override { return true; }
     const PerformanceState& state() const override { return state_; }
@@ -578,8 +596,14 @@ public:
     }
     bool setMacro(uint8_t index,uint8_t value,uint32_t) override {
 #ifdef SMKP4_SOUND_EDITOR
-        const int m=index==1?0:index==4?1:index==5?2:-1;
-        return m>=0 && macroParameter(unsigned(m),value);
+        if(index>=performance::kMacroCount || value>127 || saving_ || recalling_ || recall_wait_ ||
+           busy() || !ready_ || edit_.compare || !performance::available(index,edit_)) return false;
+        prepareEdit();
+        if(desired_.compare)return false;
+        desired_.performance_macros[index]=value;
+        desired_.request=newEditToken();
+        edit_pending_=true;
+        return true;
 #else
         (void)index;(void)value;return false;
 #endif
@@ -605,10 +629,6 @@ public:
     void panic() override { commands_.panic(); generation_=commands_.generation(); clearTokens();pending_=false;fx_pending_=false; }
 private:
 #ifdef SMKP4_SOUND_EDITOR
-    bool macroParameter(unsigned m,uint8_t value){
-        if(m>=3 || value>127 || recalling_ || recall_wait_ || busy() || !ready_ || edit_.compare || (edit_.family==0 && m>0))return false;
-        prepareEdit();desired_.macros[m]=value;desired_.request=newEditToken();edit_pending_=true;return true;
-    }
     static bool fxEquivalent(const fx::FxConfig& a, const fx::FxConfig& b) {
         if (a.chorus_mode != b.chorus_mode) return false;
         if (std::lround(a.chorus_depth * 100.0f) != std::lround(b.chorus_depth * 100.0f)) return false;
@@ -630,6 +650,7 @@ private:
         if(edit_pending_ || (desired_.request==edit_token_ && edit_.request!=edit_token_))return;
         desired_={};desired_.patch=edit_.patch;desired_.generation=commands_.generation();desired_.mask=edit_.mask;
         for(unsigned m=0;m<3;++m)desired_.macros[m]=edit_.macros[m];
+        desired_.performance_macros=edit_.performance_macros;
         desired_.compare=edit_.compare;desired_.slot=edit_.user_slot;
         for(unsigned p=0;p<edit::Count;++p)desired_.values[p]=edit_.manual[p];
     }
@@ -638,7 +659,7 @@ private:
     edit::PresetStore* store_=nullptr;
     edit::Preset save_preset_,recall_;
     unsigned save_slot_=0,recall_slot_=0;
-    bool edit_pending_=false,saving_=false,quiet_=false,recalling_=false;
+    bool edit_pending_=false,saving_=false,quiet_=false,recalling_=false,profile_quiet_requested_=false;
     uint32_t edit_snapshot_generation_=0;
     uint32_t coalesced_=0,save_requested_ms_=0,last_service_ms_=0,edit_serial_=0;
     bool edit_error_=false,edit_timeout_=false;

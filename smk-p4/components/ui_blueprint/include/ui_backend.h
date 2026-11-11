@@ -123,6 +123,12 @@ public:
         return userPreset(slot,name,size,patch);
     }
     virtual PresetOperationStatus presetOperationStatus() const { return {}; }
+    virtual bool hasMidiPerformance() const { return false; }
+    enum class MidiAction : uint8_t { Learn, Confirm, Replace, Cancel, NextBank, SaveProfile, LearnModWheel };
+    virtual void midiPerformanceAction(MidiAction, unsigned) {}
+    virtual const char* midiBankName() const { return ""; }
+    virtual const char* midiLearnStatus() const { return ""; }
+    virtual void midiKnobText(unsigned, char*, unsigned) const {}
 
     // 5. Note lifecycle with explicit token/pitch pairing (prevents stuck notes on octave shift)
     virtual UiCommandResult requestNoteOn(uint8_t note, uint8_t velocity) = 0;

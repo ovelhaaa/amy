@@ -12,14 +12,33 @@ using namespace smk::p4;
 using namespace smk::p4::ui;
 struct MemoryStore:edit::VersionedPresetStore {
     uint8_t bytes[16][2][160]{};bool present[16][2]{};bool fail=false;
+    uint8_t v3[16][2][edit::kV3RecordBytes]{};bool has_v3[16][2]{};
     bool read(unsigned,unsigned,uint8_t*,unsigned&) override {return false;}
     bool write(unsigned,unsigned,const uint8_t*,unsigned) override {return false;}
     edit::BankRead readVersioned(unsigned version,unsigned s,unsigned b,uint8_t* p,unsigned& n) override {
+        if(version==3){
+            if(!has_v3[s][b])return edit::BankRead::Missing;
+            if(n<sizeof(v3[s][b]))return edit::BankRead::Error;
+            n=sizeof(v3[s][b]);std::memcpy(p,v3[s][b],n);return edit::BankRead::Present;
+        }
         if(version==1 || !present[s][b])return edit::BankRead::Missing;
         if(n<160)return edit::BankRead::Error;
         std::memcpy(p,bytes[s][b],160);n=160;return edit::BankRead::Present;
     }
     bool writeV2(unsigned s,unsigned b,const uint8_t* p,unsigned n) override {if(fail)return false;assert(n==160);std::memcpy(bytes[s][b],p,n);present[s][b]=true;return true;}
+    bool writeV3(unsigned s,unsigned b,const uint8_t* p,unsigned n) override {
+        if(fail || n!=sizeof(v3[s][b]))return false;
+        std::memcpy(v3[s][b],p,n);has_v3[s][b]=true;return true;
+    }
+};
+struct ProfileStore:performance::ControllerProfileStore {
+    uint8_t bytes[performance::kProfileBytes]{};
+    bool load(performance::ControllerProfile& profile) override {
+        return performance::decodeProfile(bytes,sizeof(bytes),profile);
+    }
+    bool save(const performance::ControllerProfile& profile) override {
+        return performance::encodeProfile(profile,bytes);
+    }
 };
 static lv_obj_t* button(lv_obj_t* root,const char* text){
     for(unsigned i=0;i<lv_obj_get_child_count(root);++i){auto* child=lv_obj_get_child(root,i);
@@ -128,7 +147,11 @@ int main(){
     assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getInt("mod.slot1.polarity")==0 && a.model().modSlot(0).polarity==0);
 
     assert(!a.requestSelectPatch(135).accepted()); // dirty guard: no silent loss
-    assert(a.requestParameterInt("perf.macro.2",32).accepted());apply();assert(a.model().getFloat("filter.cutoff_hz")==500);
+    assert(a.requestParameterInt("perf.macro.2",32).accepted());
+    assert(a.model().getInt("perf.macro.2")==64);
+    apply();
+    assert(a.lastCommandState()==UiCommandState::Confirmed && a.model().getInt("perf.macro.2")==32);
+    assert(a.model().getFloat("filter.cutoff_hz")==125);
     assert(a.requestParameterInt("perf.macro.2",64).accepted());apply();assert(a.model().getFloat("filter.cutoff_hz")==1000);
     assert(a.requestSoundAction(0).accepted());apply();assert(r.snapshot().edit.compare);
     assert(a.requestSoundAction(0).accepted());apply();assert(a.model().getFloat("filter.cutoff_hz")==1000);
@@ -301,6 +324,54 @@ int main(){
     assert(next.requestParameterFloat("fx.master_tone",30.0f).accepted());
     next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);reboot.publish(r.snapshot(),false,0,0);next.service(preview::g_sim_tick_ms+=25);preview::pumpFrame(ui);
     assert(next.lastCommandState()==UiCommandState::Confirmed && std::fabs(r.snapshot().fx.config.master_tone-0.3f)<0.01f);
+
+    // The real USB packet parser, UI learn actions and audio owner in one loop.
+    using MidiAction=IUiBackend::MidiAction;
+    r.usbInput().enableControls();
+    next.setMidiInput(r.usbInput());
+    ProfileStore profile_store;
+    next.setControllerProfileStore(profile_store);
+    reboot.publishMidi(true,false,0);
+    const auto service=[&]{
+        next.service(preview::g_sim_tick_ms+=25);
+        r.apply(preview::g_sim_tick_ms);
+        r.loadPendingPatch();
+        reboot.publish(r.snapshot(),false,0,0);
+        next.service(preview::g_sim_tick_ms+=25);
+    };
+    service();
+    assert(ui.navigation().navigateTo(ScreenId::MidiSettings,1));preview::pumpFrame(ui);
+    assert(button(ui.contentObject(),"SAVE PROFILE"));
+    next.midiPerformanceAction(MidiAction::Learn,6);
+    const auto cc=[&](uint8_t value){
+        const uint8_t packet[]{0x0b,0xb0,74,value};
+        assert(r.usbInput().transfer(packet,sizeof(packet),preview::g_sim_tick_ms));
+        service();
+    };
+    cc(20);
+    assert(std::strstr(next.midiLearnStatus(),"CC74"));
+    next.midiPerformanceAction(MidiAction::Confirm,0);
+    const auto target=r.snapshot().edit.performance_macros[6];
+    cc(10);cc(80);
+    assert(r.snapshot().edit.performance_macros[6]==target);
+    cc(81);service();
+    assert(r.snapshot().edit.performance_macros[6]==81);
+    next.midiPerformanceAction(MidiAction::SaveProfile,0);
+    service();service();
+    performance::ControllerProfile stored_profile;
+    assert(profile_store.load(stored_profile) && stored_profile.knobs[6].controller==74);
+    assert(std::strcmp(next.midiLearnStatus(),"PROFILE SAVED")==0);
+    const auto positions=r.snapshot().edit.performance_macros;
+    assert(next.requestSoundAction(2,15,"PERFORMANCE V3").accepted());
+    service();service();
+    edit::Preset saved_performance;
+    fx::FxConfig saved_manual_fx;
+    assert(reboot.transactionCoordinator().load(15,saved_performance,saved_manual_fx));
+    assert(saved_performance.performance_macros==positions);
+    assert(next.requestSoundAction(3,15).accepted());
+    for(unsigned i=0;i<5;++i)service();
+    assert(r.snapshot().edit.performance_macros==positions);
+    assert(next.presetOperationStatus().state==ui::PresetOperationState::Confirmed);
 
     assert(lv_mem_test()==LV_RESULT_OK);ui.shutdown();r.end();
     puts("PASS LVGL9.3: all 7 editor tabs, Effects screen, Gate G0 inventory audit, FM/LFO/Mod/FX owner confirmation, dirty guard, Save/Recall/reboot simulation, heap integrity");
