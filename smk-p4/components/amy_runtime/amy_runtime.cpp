@@ -325,7 +325,11 @@ void Runtime::applyFx(uint32_t now_ms) {
         }
     }
     if(updated) {
+#ifdef SMKP4_SOUND_EDITOR
+        applyPerformanceFx();
+#else
         fx::applyBusFx(state_.fx.config);
+#endif
     }
 }
 void Runtime::apply(uint32_t now_ms) {

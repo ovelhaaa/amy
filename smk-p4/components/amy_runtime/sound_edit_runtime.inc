@@ -1,4 +1,5 @@
 // Included inside the platform adapter translation unit; never part of AMY core.
+#include "performance_factory_routes.h"
 extern "C" {
 // Native routing table ABI from algorithms.c; no copied algorithms or AMY patch.
 struct FmAlgorithm { uint8_t ops[MAX_ALGO_OPS]; };
@@ -14,7 +15,7 @@ static int lfoIndexFromWave(uint16_t w) {
 void Runtime::updateModWheelFilter() {
     if(state_.edit.family!=uint8_t(library::SynthFamily::Subtractive) || edit_filter_>=edit_count_) return;
     const auto& out=state_.edit;
-    const bool cutoff_edited=!out.compare && ((out.mask&edit::bit(edit::Cutoff)) || out.macros[0]!=64);
+    const bool cutoff_edited=!out.compare && (((out.mask|out.performance_mask)&edit::bit(edit::Cutoff)) || out.macros[0]!=64);
     const float base_logfreq=cutoff_edited?logfreq_of_freq(out.applied[edit::Cutoff]):edit_oscs_[edit_filter_].cutoff;
     const bool mod_flt=!out.compare && (out.available&edit::bit(edit::ModEnable)) &&
         std::lround(out.applied[edit::ModEnable])==1 &&
@@ -280,6 +281,10 @@ void Runtime::captureEdit() {
     if(levels_valid){out.original[edit::PatchLevel]=100;out.available|=edit::bit(edit::PatchLevel);}
     for(unsigned p=0;p<edit::Count;++p)out.manual[p]=out.applied[p]=out.original[p];
 }
+void Runtime::applyPerformanceFx() {
+    fx::applyBusFx(performance::effectiveFx(state_.fx.config, state_.edit));
+}
+
 void Runtime::applyEdit(uint32_t now_ms) {
     edit::Request request;if(!commands_.edits.pop(request))return;
     if(request.preset_recall && eventAgeMs(now_ms,request.recall_started_ms)>=kRecallTimeoutMs)return;
@@ -289,7 +294,8 @@ void Runtime::applyEdit(uint32_t now_ms) {
 #endif
     out.request=request.request;++out.revision;
     if(!state_.ready || state_.patch_state!=PatchState::Ready || request.patch!=out.patch ||
-       request.generation!=state_.generation || (request.mask&~out.available)) {++out.errors;return;}
+       request.generation!=state_.generation || (request.mask&~out.available) ||
+       !performance::valid(request.performance_macros)) {++out.errors;return;}
     for(unsigned p=0;p<edit::Count;++p)
         if((request.mask&edit::bit(p)) && !edit::valid(p,request.values[p])){++out.errors;return;}
     if((request.mask&edit::bit(edit::LfoDest)) && std::lround(request.values[edit::LfoDest])==2 &&
@@ -310,11 +316,10 @@ void Runtime::applyEdit(uint32_t now_ms) {
         return mask&out.available;
     };
     if(out.family==0 && (request.macros[1]!=64 || request.macros[2]!=64)){++out.errors;return;}
-    const edit::Mask effective=request.compare?0:(request.mask|macroMask(request.macros));
     // Preflight the complete eight-voice topology before issuing any event.
     for(unsigned v=0;v<kVoices;++v)for(unsigned o=0;o<edit_count_;++o)
         if(!synth[edit_map_[v][o]] || (o!=edit_lfo_ && synth[edit_map_[v][o]]->wave!=edit_oscs_[o].wave)){++out.errors;return;}
-    const auto value=[&](unsigned p){
+    const auto legacyValue=[&](unsigned p){
         float v=!request.compare && (request.mask&edit::bit(p))?request.values[p]:out.original[p];
         if(!request.compare){
             if(p==edit::Cutoff && request.macros[0]!=64)v=std::fmax(20.0f,std::fmin(18000.0f,v*std::exp2((int(request.macros[0])-64)/32.0f)));
@@ -324,7 +329,28 @@ void Runtime::applyEdit(uint32_t now_ms) {
         }
         return v;
     };
-    const edit::Mask previous=out.compare?0:(out.mask|macroMask(out.macros));
+    float composed[edit::Count]{};
+    edit::Mask performance_mask=0, evaluated=0;
+    if(!request.compare && request.performance_macros!=performance::kNeutral){
+        const auto family=performance::familyMask(out.family);
+        for(unsigned m=0;m<performance::kMacroCount;++m){
+            if(request.performance_macros[m]==performance::kNeutral[m])continue;
+            for(const auto& route:performance::kFactoryRoutes[m]){
+                const unsigned p=route.destination;
+                if(!route.enabled || !(route.families&family) || p>=edit::Count ||
+                   !(out.available&edit::bit(p)) || (evaluated&edit::bit(p)))continue;
+                evaluated|=edit::bit(p);
+                const auto result=performance::compose(performance::kFactoryRoutes,request.performance_macros,
+                    family,p,legacyValue(p),route.minimum,route.maximum);
+                if(result.active){performance_mask|=edit::bit(p);composed[p]=result.value;}
+            }
+        }
+    }
+    const auto value=[&](unsigned p){
+        return performance_mask&edit::bit(p)?composed[p]:legacyValue(p);
+    };
+    const edit::Mask effective=request.compare?0:(request.mask|macroMask(request.macros)|performance_mask);
+    const edit::Mask previous=out.compare?0:(out.mask|macroMask(out.macros)|out.performance_mask);
     const edit::Mask touched=previous|effective;
     const bool algorithm_present_in_edit = (out.family == 0) && ((touched & edit::bit(edit::FmAlgorithm)) != 0);
     if(algorithm_present_in_edit) {
@@ -503,7 +529,12 @@ void Runtime::applyEdit(uint32_t now_ms) {
     }
     amy_execute_deltas();
     if(amy_get_oom_count()!=state_.oom_count){++out.errors;failRendering();return;}
-    out.mask=request.mask;out.compare=request.compare;out.dirty=request.mask!=0 || request.macros[0]!=64 || request.macros[1]!=64 || request.macros[2]!=64;out.user_slot=request.slot;
+    const bool update_fx=performance::fxRoutesChanged(out,request);
+    out.mask=request.mask;out.compare=request.compare;out.dirty=request.mask!=0 || request.macros[0]!=64 || request.macros[1]!=64 || request.macros[2]!=64 ||
+        request.performance_macros!=performance::kNeutral;out.user_slot=request.slot;
+    out.performance_macros=request.performance_macros;
+    out.performance_mask=performance_mask;
+    if(update_fx)applyPerformanceFx();
     for(unsigned m=0;m<3;++m)out.macros[m]=request.macros[m];
     for(unsigned p=0;p<edit::Count;++p){out.manual[p]=request.mask&edit::bit(p)?request.values[p]:out.original[p];out.applied[p]=value(p);}
     const edit::Mask mod_mask=edit::bit(edit::Cutoff)|edit::bit(edit::LfoRate)|edit::bit(edit::ModEnable)|

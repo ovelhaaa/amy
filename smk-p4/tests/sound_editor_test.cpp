@@ -47,6 +47,25 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     tick();assert(runtime.snapshot().active_notes==8);
     uint32_t clocks[64]{};for(unsigned o=0;o<64;++o)if(synth[o])clocks[o]=synth[o]->note_on_clock;
     const auto allocations=probe_calls();const auto memory=probe_bytes();
+    auto macro=request();macro.mask=edit::bit(edit::Cutoff);macro.values[edit::Cutoff]=2000;
+    for(uint8_t position:{64,100,64,100,64}){
+        macro.request=runtime.snapshot().edit.request+1;
+        macro.performance_macros[1]=position;
+        submit(macro);
+        const auto& confirmed=runtime.snapshot().edit;
+        assert(confirmed.manual[edit::Cutoff]==2000);
+        assert(position==64?confirmed.applied[edit::Cutoff]==2000:confirmed.applied[edit::Cutoff]>2000);
+    }
+    macro.request=runtime.snapshot().edit.request+1;macro.performance_macros[1]=100;
+    macro.values[edit::Cutoff]=1600;macro.performance_macros[6]=127;submit(macro);
+    assert(runtime.snapshot().edit.manual[edit::Cutoff]==1600);
+    assert(runtime.snapshot().fx.config.delay_mix==0 && amy_global.bus[0]->echo.level>0);
+    macro.request=runtime.snapshot().edit.request+1;macro.compare=true;submit(macro);
+    assert(amy_global.bus[0]->echo.level==0);
+    macro.request=runtime.snapshot().edit.request+1;macro.compare=false;
+    macro.performance_macros=performance::kNeutral;submit(macro);
+    assert(runtime.snapshot().edit.applied[edit::Cutoff]==1600);
+    assert(amy_global.bus[0]->echo.level==0);
     auto r=request();r.mask=1;r.values[0]=500;submit(r);
     for(unsigned o=0;o<48;++o){assert(synth[o]->note_on_clock==clocks[o]);if(synth[o]->filter_type!=FILTER_NONE)assert(std::fabs(freq_of_logfreq(synth[o]->filter_logfreq_coefs[0])-500)<0.1f);}
     assert(runtime.snapshot().active_notes==8);

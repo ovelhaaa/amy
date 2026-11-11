@@ -2,6 +2,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include "performance_macros.h"
 namespace smk::p4::edit {
 using Mask = uint64_t;
 constexpr Mask bit(unsigned p) { return Mask(1) << p; }
@@ -34,6 +35,8 @@ struct State {
     Mask available = 0, mask = 0;
     uint32_t revision = 0, request = 0, errors = 0, epoch = 0, apply_max_us = 0;
     uint8_t macros[3]{64, 64, 64};
+    performance::Positions performance_macros = performance::kNeutral;
+    Mask performance_mask = 0;
     float original[Count]{}, manual[Count]{}, applied[Count]{};
     bool compare = false, dirty = false;
     int8_t user_slot = -1;
@@ -77,6 +80,7 @@ struct Request {
     uint32_t generation = 0, request = 0;
     Mask mask = 0;
     uint8_t macros[3]{64, 64, 64};
+    performance::Positions performance_macros = performance::kNeutral;
     float values[Count]{};
     bool compare = false;
     int8_t slot = -1;

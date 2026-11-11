@@ -49,6 +49,7 @@ private:
 #ifdef SMKP4_SOUND_EDITOR
     void captureEdit();
     void applyEdit(uint32_t now_ms);
+    void applyPerformanceFx();
     void updateModWheelFilter();
     bool updateFmAlgorithmTopology(unsigned algorithm);
     struct EditOsc {
