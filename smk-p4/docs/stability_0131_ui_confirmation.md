@@ -1,5 +1,7 @@
 # SMK-P4 0.13.1 — Confirmação Robusta de Comandos e Interface Touchscreen
 
+The FM selector reads its dedicated result and checks the owner token. The adapter checks current and snapshot generation, patch, token, applied algorithm and error count. User Presets keeps one modal. Overwrite expires after 10 seconds and rechecks the name, source patch and synth sequence. The modal tracks the operation revision to distinguish consecutive completions.
+
 ## 1. Princípios de Confirmação na UI
 
 Na versão 0.13.1, nenhuma alteração crítica de parâmetros na interface gráfica assume sucesso de forma otimista ou meramente local em RAM:

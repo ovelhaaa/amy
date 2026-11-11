@@ -43,7 +43,7 @@ This report documents the resolution and qualification of the four code review d
 | **Gate F** | Audio benchmarks with clear host vs. target hardware distinction | `PASS` | `smk-p4/docs/fm_013_audio_benchmarks.md`, `run_sound_editor.ps1 -BenchOnly` |
 | **Gate G** | Full regression suite (Sound Editor, UI Blueprint, FX All) | `PASS` | `run_sound_editor.ps1`, `run_sound_editor_ui.ps1`, `run_fx_tests.ps1 all` (all exit code 0) |
 | **Gate H** | PlatformIO firmware candidate build (`guition-editor-8` & `guition-editor-8-bench`) | `PASS` | `smk-p4/docs/fm_013_hardware_candidate.md` |
-| **Hardware** | Physical flashing and live bench telemetry verification (COM13) | `PASS` | Authorized by operator; `render_avg_us=213`, `render_max_us=462`, `flush_errors=0` |
+| **Hardware** | Physical flashing and live bench telemetry verification (COM13) | Historical report | Git records cite COM13 telemetry. See the evidence note below. |
 
 ---
 
@@ -64,4 +64,6 @@ Both candidate firmware environments compiled cleanly using PlatformIO with ESP-
 
 1. **Upstream AMY Core:** Zero modifications. `src/algorithms.c`, `src/oscillators.c`, `src/amy.c`, and all public headers remain 100% upstream pristine.
 2. **Preset Safety:** NVS partition tables and user presets v1/v2 remain intact. Legacy presets retain their patch's native ROM algorithm.
-3. **Flashing Prohibition:** In strict compliance with repository safety rules, no firmware was flashed to physical hardware. Hardware execution remains explicitly designated as `NOT RUN — MANUAL HARDWARE GATE`.
+3. **Hardware evidence:** The 0.13 COM13 report is historical. See the evidence note below.
+
+Historical 0.13 figures are scoped to the artifacts cited in this document. See the [hardware evidence record](stability_0131_hardware_evidence.md) for provenance and the current 0.13.1 smoke status.

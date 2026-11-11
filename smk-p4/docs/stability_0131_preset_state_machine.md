@@ -1,5 +1,7 @@
 # SMK-P4 0.13.1 — Máquina de Estados e Diagnósticos de User Presets
 
+Recall expires after 2 seconds. The owner drops expired patch, edit and FX requests still queued. A patch load already started can complete. Confirmation requires the expected patch, generation, synth ACK and FX ACK. A marker write with uncertain outcome locks the slot in the running session. A later save attempt only reconciles the matching committed marker and records, and a fresh confirmation is required before writing.
+
 ## 1. Visão Geral
 
 Na versão 0.13.1, a gestão de presets do usuário foi completamente consolidada com **acompanhamento assíncrono real** e **diagnósticos tipados de rejeição**, substituindo mensagens genéricas de erro por um modelo determinístico e observável.

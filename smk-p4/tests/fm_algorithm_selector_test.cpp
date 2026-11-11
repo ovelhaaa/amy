@@ -497,6 +497,7 @@ static void testEndToEndSaveRebootRecall() {
         assert(origin_patch == 128);
 
         // Recall Slot 3
+        b.service(g_now_ms);
         assert(b.editAction(3, 3)); // Action 3 is Recall
         for (int step = 0; step < 5; ++step) {
             g_now_ms += 50;
@@ -558,6 +559,7 @@ static void testEndToEndSaveRebootRecall() {
         b.publish(r.snapshot(), true, 0, 0);
 
         // Recall legacy preset
+        b.service(g_now_ms);
         assert(b.editAction(3, 7));
         for (int step = 0; step < 5; ++step) {
             g_now_ms += 50;

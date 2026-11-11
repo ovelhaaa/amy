@@ -14,9 +14,10 @@
 
 ### 2.1 Síntese e Áudio
 - **Oito Vozes Polifônicas:** Alocação dinâmica com roubo de voz LRU e liberação imediata.
-- **Biblioteca Factory Dupla:**
-  - 32 Patches Juno-106 analógicos modelados (`0..31`).
-  - 32 Patches Yamaha DX7 6-Operadores FM autênticos (`128..159`).
+- **Biblioteca Factory expandida** (`SMKP4_FULL_FACTORY_LIBRARY`). A ROM tem 256 patches: 128 Juno (`0–127`) e 128 DX7 (`128–255`). O firmware admite 229 (106 Juno e 123 DX7) pela lista `factory_supported.inc`.
+  - IDs bloqueados: 6, 10, 14, 15, 17, 32, 47, 51, 54, 59, 61, 69, 71, 72, 81, 98, 99, 103, 105, 106, 112, 118, 144, 158, 232, 248, 254. Os demais IDs da ROM estão admitidos.
+  - Categorias admitidas: FX 74, Plucks 36, Percussion 28, Brass 22, Strings 17, Organ 16, Piano 12, Bass 12, Leads 7, ElectricPiano 4 e Pads 1.
+  - A admissão usa a matriz de qualificação em host. As exclusões registradas são 24 por clipping e três por cauda de release. Consulte [a análise da biblioteca](factory_library_010_audio_analysis.md).
 - **Sound Editor Completo:**
   - Juno: Sub, Noise, Pulse Width, Cutoff, Ressonância, Keytrack, Envelope ADSR.
   - DX7: 6 Operadores individuais (Nível, Razão, Attack, Decay, Vel Sens), Depth (Brilho), Feedback.
@@ -58,15 +59,11 @@
 
 ## 3. Impacto de Recursos e Orçamento de Sistema
 
-| Métrica | Orçamento Nominal | Medição Real 0.13.1 | Margem / Headroom |
-|---|---|---|---|
-| **Taxa de Amostragem** | 48.000 Hz | 48.000 Hz | 0% jitter (DMA travado por cristal) |
-| **Tamanho de Bloco** | 256 amostras | 256 amostras (5,33 ms) | — |
-| **Tempo de Render DSP (Médio)** | < 1.500 µs | **39,4 µs** | **97,3% de folga** |
-| **Tempo de Render DSP (Pico)** | < 3.000 µs | **84,1 µs** | **94,4% de folga** |
-| **Alocação de Heap no Áudio** | 0 bytes | **0 bytes** (`heap_probe` auditado) | 100% determinístico |
-| **Uso de RAM Interna (SRAM)** | 768 KB máx | ~210 KB | > 500 KB livres |
-| **Uso de PSRAM Externa (16MB)**| 16 MB máx | ~1,8 MB (buffers LVGL + AMY) | > 14 MB livres |
+| Item | Evidência |
+|---|---|
+| Sample rate e bloco | Configuração de 48.000 Hz e 256 amostras |
+| Alocações durante render | As suítes host usam `heap_probe` |
+| Render, SRAM e PSRAM livres na Guition | **NOT RUN** para este candidato |
 
 ---
 

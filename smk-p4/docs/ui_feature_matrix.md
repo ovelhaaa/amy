@@ -29,7 +29,7 @@ Esta matriz classifica todas as funcionalidades e parâmetros do SMK-P4 na vers�
 | **Catálogo Factory (Juno 0..31, DX7 128..159)** | `AVAILABLE` | `AVAILABLE` | `AVAILABLE` | **`AVAILABLE`** | `patch_library.h`, `kPatches[]` |
 | **Editor Síntese Juno (`osc.*`, `filter.*`, `env.*`)** | `AVAILABLE` | `AVAILABLE` | `AVAILABLE` | **`AVAILABLE`** | `sound_edit_runtime.inc`, `sound_editor_screen.cpp` |
 | **Editor Síntese FM 6-Op (`fm.op.*`, `fm.depth`, `feedback`)**| `AVAILABLE` | `AVAILABLE` | `AVAILABLE` | **`AVAILABLE`** | `sound_edit_runtime.inc`, `sound_editor_screen.cpp` |
-| **Seletor de Algoritmo FM (32 Algoritmos + Diagrama)** | `AVAILABLE` | `AVAILABLE` | `AVAILABLE` | **`AVAILABLE`** | `fm_algorithm_selector.cpp`, `fm_topology_diagram.cpp` |
+| **Seletor de Algoritmo FM (32 Algoritmos + Diagrama)** | `AVAILABLE` | `AVAILABLE` | `AVAILABLE` | **`AVAILABLE`** | `fm_algorithm_selector.cpp`, `fm_topology.h` |
 | **Compare & Revert** | `AVAILABLE` | `AVAILABLE` | `AVAILABLE` | **`AVAILABLE`** | `local_performance_backend.h`, `sound_editor_screen.cpp` |
 | **User Presets (16 slots V1/V2 transacionais)** | N/A | `AVAILABLE` | `AVAILABLE` | **`AVAILABLE`** | `preset_transaction.h`, `user_preset_nvs_v2.h` |
 | **Diagnósticos Tipados de Presets** | N/A | `AVAILABLE` | `AVAILABLE` | **`AVAILABLE`** | `PresetRejectReason`, `local_performance_backend.h` |

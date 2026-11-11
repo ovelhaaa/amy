@@ -1,5 +1,7 @@
 # SMK-P4 0.13.1 — Relatório de Consolidação e Qualificação
 
+The prior artifacts and physical execution below are historical. The final hardening candidate and verification status are tracked in [the final report](stability_0131_final_hardening.md).
+
 ## 1. Sumário Executivo
 
 A versão **SMK-P4 0.13.1** consolida a estabilização final e o polimento da experiência do usuário sobre a base de síntese do SMK-P4, preparando o sintetizador para a futura versão 0.14 (Performance Control).

@@ -124,3 +124,5 @@ If any unexpected regression occurs on hardware, the operator can immediately re
    - Save custom patch with edited algorithm to Slot 01.
    - Reboot hardware; recall Slot 01.
    - Verify algorithm, operator levels, ratios, envelopes, and topology are restored identically.
+
+Historical 0.13 figures are scoped to the artifacts cited in this document. See the [hardware evidence record](stability_0131_hardware_evidence.md) for provenance and the current 0.13.1 smoke status.
