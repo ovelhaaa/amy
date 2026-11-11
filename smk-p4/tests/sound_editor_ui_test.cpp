@@ -361,6 +361,10 @@ int main(){
     performance::ControllerProfile stored_profile;
     assert(profile_store.load(stored_profile) && stored_profile.knobs[6].controller==74);
     assert(std::strcmp(next.midiLearnStatus(),"PROFILE SAVED")==0);
+    auto corrupt_profile=profile_store;
+    corrupt_profile.bytes[10]^=1;
+    assert(!corrupt_profile.load(stored_profile));
+    assert(stored_profile.knobs[6].controller==74);
     const auto positions=r.snapshot().edit.performance_macros;
     assert(next.requestSoundAction(2,15,"PERFORMANCE V3").accepted());
     service();service();
@@ -372,6 +376,18 @@ int main(){
     for(unsigned i=0;i<5;++i)service();
     assert(r.snapshot().edit.performance_macros==positions);
     assert(next.presetOperationStatus().state==ui::PresetOperationState::Confirmed);
+    next.midiPerformanceAction(MidiAction::Learn,0);
+    cc(50);
+    next.midiPerformanceAction(MidiAction::Confirm,0);
+    assert(std::strstr(next.midiLearnStatus(),"IN USE BY K7"));
+    next.midiPerformanceAction(MidiAction::Replace,0);
+    assert(std::strstr(next.midiLearnStatus(),"K1 BOUND"));
+    for(unsigned i=0;i<4;++i)next.midiPerformanceAction(MidiAction::NextBank,0);
+    cc(20);cc(100);
+    assert(r.snapshot().edit.performance_macros==positions);
+    cc(101);service();
+    assert(r.snapshot().edit.performance_macros[0]==101);
+    assert(r.snapshot().edit.performance_macros[6]==positions[6]);
 
     assert(lv_mem_test()==LV_RESULT_OK);ui.shutdown();r.end();
     puts("PASS LVGL9.3: all 7 editor tabs, Effects screen, Gate G0 inventory audit, FM/LFO/Mod/FX owner confirmation, dirty guard, Save/Recall/reboot simulation, heap integrity");
