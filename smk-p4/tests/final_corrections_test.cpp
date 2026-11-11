@@ -347,6 +347,7 @@ static void testCodecPrecisionAndLimits() {
         fm.sequence = 2;
         fm.patch = 135;
         fm.family = 0;
+        fm.macros[0] = 64; fm.macros[1] = 64; fm.macros[2] = 64;
         std::strcpy(fm.name, "PRECISION FM");
         const edit::Mask allowed = edit::allowedMask(0, false);
         for (unsigned i = 0; i < edit::Count; ++i) if (allowed & edit::bit(i)) {
@@ -358,7 +359,8 @@ static void testCodecPrecisionAndLimits() {
                 (i >= edit::OpVel0 && i <= edit::OpVel5) ? 50.0f :
                 i == edit::LfoRate ? 5.0f : i == edit::LfoDepth ? 50.0f : i == edit::LfoWave ? 0.0f :
                 i == edit::LfoDest ? 1.0f : i == edit::ModEnable ? 1.0f : i == edit::ModSource ? 1.0f :
-                i == edit::ModDest ? 1.0f : i == edit::ModAmount ? 50.0f : i == edit::ModPolarity ? 1.0f : 50.0f;
+                i == edit::ModDest ? 1.0f : i == edit::ModAmount ? 50.0f : i == edit::ModPolarity ? 1.0f :
+                i == edit::FmAlgorithm ? 5.0f : 50.0f;
         }
         fm.values[edit::FmFeedback] = 37.777f;
         fm.values[edit::OpLevel0] = 63.333f;
@@ -455,12 +457,13 @@ static void testCodecPrecisionAndLimits() {
         assert(edit::decodeV2(bytes, sizeof(bytes), juno_dec));
         assert(juno_dec.mask == juno.mask);
 
-        // FM 42 parameters
+        // FM 43 parameters
         edit::Preset fm{};
         fm.sequence = 1;
         fm.patch = 135;
         fm.family = 0;
-        std::strcpy(fm.name, "FULL FM 42");
+        fm.macros[0] = 64; fm.macros[1] = 64; fm.macros[2] = 64;
+        std::strcpy(fm.name, "FULL FM 43");
         const edit::Mask fm_mask = edit::allowedMask(0, false);
         for (unsigned i = 0; i < edit::Count; ++i) if (fm_mask & edit::bit(i)) {
             fm.mask |= edit::bit(i);
@@ -471,9 +474,10 @@ static void testCodecPrecisionAndLimits() {
                 (i >= edit::OpVel0 && i <= edit::OpVel5) ? 50.0f :
                 i == edit::LfoRate ? 5.0f : i == edit::LfoDepth ? 50.0f : i == edit::LfoWave ? 0.0f :
                 i == edit::LfoDest ? 1.0f : i == edit::ModEnable ? 1.0f : i == edit::ModSource ? 1.0f :
-                i == edit::ModDest ? 1.0f : i == edit::ModAmount ? 50.0f : i == edit::ModPolarity ? 1.0f : 50.0f;
+                i == edit::ModDest ? 1.0f : i == edit::ModAmount ? 50.0f : i == edit::ModPolarity ? 1.0f :
+                i == edit::FmAlgorithm ? 5.0f : 50.0f;
         }
-        assert(edit::maskPopcount(fm.mask) == 42);
+        assert(edit::maskPopcount(fm.mask) == 43);
         assert(edit::encodeV2(fm, bytes));
         assert(bytes[15] == 2);
         edit::Preset fm_dec{};

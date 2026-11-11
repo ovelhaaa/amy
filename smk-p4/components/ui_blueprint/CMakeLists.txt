@@ -17,6 +17,7 @@ set(blueprint_sources
         "widgets/envelope_editor.cpp"
         "widgets/modulation_matrix.cpp"
         "widgets/signal_meter.cpp"
+        "widgets/fm_algorithm_selector.cpp"
         "screens/performance_screen.cpp"
         "screens/patch_browser_screen.cpp"
         "screens/sound_editor_screen.cpp"
@@ -35,7 +36,7 @@ set(blueprint_sources
 endif()
 idf_component_register(SRCS ${blueprint_sources}
     INCLUDE_DIRS "include"
-    REQUIRES lvgl
+    REQUIRES lvgl amy_runtime
 )
 if(blueprint_sources)
     target_compile_options(${COMPONENT_LIB} PRIVATE -Wall -Wextra -Werror)

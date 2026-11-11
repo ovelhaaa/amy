@@ -73,9 +73,10 @@ static void testCodecExtendedCapacity() {
                 (i >= edit::OpVel0 && i <= edit::OpVel5) ? 70.0f :
                 i == edit::LfoRate ? 4.5f : i == edit::LfoDepth ? 45.0f : i == edit::LfoWave ? 0.0f :
                 i == edit::LfoDest ? 1.0f : i == edit::ModEnable ? 1.0f : i == edit::ModSource ? 1.0f :
-                i == edit::ModDest ? 1.0f : i == edit::ModAmount ? 80.0f : i == edit::ModPolarity ? 1.0f : 90.0f;
+                i == edit::ModDest ? 1.0f : i == edit::ModAmount ? 80.0f : i == edit::ModPolarity ? 1.0f :
+                i == edit::FmAlgorithm ? 5.0f : 90.0f;
         }
-        assert(count == 42);
+        assert(count == 43);
         uint8_t bytes[edit::kV2RecordBytes]{};
         assert(edit::encodeV2(p, bytes));
         edit::Preset decoded{};
@@ -85,7 +86,7 @@ static void testCodecExtendedCapacity() {
             assert(std::fabs(decoded.values[i] - p.values[i]) < 1e-4f);
         }
     }
-    std::puts("PASS Gate D0/F extended codec: 25 Juno+LFO+MOD and 42 FM+LFO+MOD parameters roundtrip in 160B V2 record");
+    std::puts("PASS Gate D0/F extended codec: 25 Juno+LFO+MOD and 43 FM+LFO+MOD+ALGO parameters roundtrip in 160B V2 record");
 }
 
 static std::vector<int16_t> renderBlocks(unsigned now, unsigned blocks = 48) {
