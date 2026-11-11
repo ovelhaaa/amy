@@ -16,6 +16,7 @@ struct Preset {
     uint8_t family = 0;
     char name[25]{};
     uint8_t macros[3]{64, 64, 64};
+    performance::Positions performance_macros = performance::kNeutral;
     Mask mask = 0;
     float values[Count]{};
 };

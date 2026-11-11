@@ -60,6 +60,27 @@ int main() {
     assert(loaded_fx.chorus_mode == 2);
     assert(approx(loaded_fx.delay_time_ms, 400.0f));
     assert(approx(loaded_fx.reverb_mix, 0.35f));
+    assert(loaded_p.performance_macros == performance::kNeutral);
+
+    auto performance_preset = p1;
+    performance_preset.performance_macros = {10, 20, 30, 40, 50, 60, 70, 80};
+    assert(coordinator.save(15, performance_preset, fx1).status == SaveResult::Status::Success);
+    assert(coordinator.load(15, loaded_p, loaded_fx));
+    assert(loaded_p.performance_macros == performance_preset.performance_macros);
+    auto next = performance_preset;
+    next.performance_macros[7] = 127;
+    auto next_fx = fx1;
+    next_fx.delay_time_ms = 900;
+    coordinator.setFaultInjection(FaultInjection::AfterSynthWrite);
+    assert(coordinator.save(15, next, next_fx).status != SaveResult::Status::Success);
+    assert(coordinator.load(15, loaded_p, loaded_fx));
+    assert(loaded_p.performance_macros == performance_preset.performance_macros);
+    assert(loaded_fx.delay_time_ms == fx1.delay_time_ms);
+    coordinator.setFaultInjection(FaultInjection::None);
+    assert(coordinator.save(15, next, next_fx).status == SaveResult::Status::Success);
+    assert(coordinator.load(15, loaded_p, loaded_fx));
+    assert(loaded_p.performance_macros == next.performance_macros);
+    assert(loaded_fx.delay_time_ms == next_fx.delay_time_ms);
 
     // ── 2. Fault Injection Across All Transaction Steps ─────────────────────
     // Target: Updating Slot 0 with Preset 2

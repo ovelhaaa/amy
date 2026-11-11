@@ -19,7 +19,7 @@ struct CommitMarker {
     uint32_t commit_seq = 0;         // 8..11: logical generation
     uint32_t synth_seq = 0;          // 12..15: synth sequence
     uint8_t  synth_bank = 0;         // 16: 0 or 1
-    uint8_t  synth_version = 2;      // 17: 1 or 2
+    uint8_t  synth_version = 2;      // 17: Synth codec version
     uint16_t patch_id = 0;           // 18..19: patch ROM ID
     uint16_t fx_seq = 0;             // 20..21: fx sequence
     uint8_t  fx_bank = 0;            // 22: 0 or 1
@@ -33,7 +33,7 @@ static_assert(sizeof(CommitMarker) == kMarkerRecordBytes, "CommitMarker must be 
 inline bool validMarker(const CommitMarker& m) {
     if (m.magic != kMarkerMagic || m.version != kMarkerVersion) return false;
     if (m.slot >= 16) return false;
-    if (m.synth_bank > 1 || (m.synth_version != 1 && m.synth_version != 2)) return false;
+    if (m.synth_bank > 1 || m.synth_version < 1 || m.synth_version > 3) return false;
     if (m.fx_bank > 1) return false;
     if (m.reserved != 0) return false;
     if (m.rom_compat != fx::kRomCompatibility) return false;
@@ -177,25 +177,31 @@ public:
         // 3. Write candidate Synth to inactive Synth bank
         edit::Preset p_to_save = preset;
         p_to_save.sequence = next_synth_seq;
-        uint8_t synth_bytes[edit::kV2RecordBytes];
-        if (!edit::encodeV2(p_to_save, synth_bytes)) {
+        const unsigned synth_version = p_to_save.performance_macros == performance::kNeutral ? 2 : 3;
+        const unsigned synth_size = synth_version == 3 ? edit::kV3RecordBytes : edit::kV2RecordBytes;
+        uint8_t synth_bytes[edit::kV3RecordBytes];
+        if (!(synth_version == 3 ? edit::encodeV3(p_to_save, synth_bytes) : edit::encodeV2(p_to_save, synth_bytes))) {
             return { SaveResult::Status::InvalidPreset, "SAVE FAILED: SYNTH ENCODE ERROR" };
         }
+        const auto writeSynth = [&]() {
+            return synth_version == 3 ? synth_store_->writeV3(slot, target_synth_bank, synth_bytes, synth_size)
+                                      : synth_store_->writeV2(slot, target_synth_bank, synth_bytes, synth_size);
+        };
         if (fault_ == FaultInjection::DuringSynthWrite) {
             synth_bytes[10] ^= 0xff; // corrupt
-            synth_store_->writeV2(slot, target_synth_bank, synth_bytes, sizeof(synth_bytes));
+            writeSynth();
             return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
         }
-        if (!synth_store_->writeV2(slot, target_synth_bank, synth_bytes, sizeof(synth_bytes))) {
+        if (!writeSynth()) {
             return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
         }
 
         // Readback verify candidate synth
-        uint8_t synth_check[edit::kV2RecordBytes];
+        uint8_t synth_check[edit::kV3RecordBytes];
         unsigned synth_check_len = sizeof(synth_check);
-        if (synth_store_->readVersioned(2, slot, target_synth_bank, synth_check, synth_check_len) != edit::BankRead::Present ||
-            synth_check_len != sizeof(synth_check) ||
-            std::memcmp(synth_check, synth_bytes, sizeof(synth_check)) != 0) {
+        if (synth_store_->readVersioned(synth_version, slot, target_synth_bank, synth_check, synth_check_len) != edit::BankRead::Present ||
+            synth_check_len != synth_size ||
+            std::memcmp(synth_check, synth_bytes, synth_size) != 0) {
             return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
         }
 
@@ -212,7 +218,7 @@ public:
         marker.commit_seq = next_commit_seq;
         marker.synth_seq = next_synth_seq;
         marker.synth_bank = static_cast<uint8_t>(target_synth_bank);
-        marker.synth_version = 2;
+        marker.synth_version = static_cast<uint8_t>(synth_version);
         marker.patch_id = preset.patch;
         marker.fx_seq = next_fx_seq;
         marker.fx_bank = static_cast<uint8_t>(target_fx_bank);
@@ -310,7 +316,7 @@ public:
                 const auto& m = markers[b];
 
                 // Verify Synth Record
-                uint8_t synth_bytes[edit::kV2RecordBytes];
+                uint8_t synth_bytes[edit::kV3RecordBytes];
                 unsigned len = sizeof(synth_bytes);
                 const auto res = synth_store_->readVersioned(m.synth_version, slot, m.synth_bank, synth_bytes, len);
                 if (res != edit::BankRead::Present) continue;
@@ -318,7 +324,8 @@ public:
                 edit::Preset p{};
                 const bool synth_ok = (m.synth_version == 1) ?
                     edit::decode(synth_bytes, len, p) :
-                    edit::decodeV2(synth_bytes, len, p);
+                    (m.synth_version == 2 ? edit::decodeV2(synth_bytes, len, p) :
+                                            edit::decodeV3(synth_bytes, len, p));
                 if (!synth_ok || p.sequence != m.synth_seq || p.patch != m.patch_id) continue;
 
                 // Verify FX Record

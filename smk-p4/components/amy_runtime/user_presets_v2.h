@@ -107,11 +107,33 @@ inline bool decodeV2(const uint8_t* b,unsigned n,Preset& out){
     out=p;return true;
 }
 // A storage error must never be confused with an absent or corrupt key.
+// V3 wraps an unchanged V2 payload and commits all eight positions with it.
+constexpr unsigned kV3RecordBytes = 4 + kV2RecordBytes + performance::kMacroCount + 4;
+constexpr uint32_t kV3Magic = 0x33314553;
+inline bool encodeV3(const Preset& preset, uint8_t* bytes) {
+    if (!performance::valid(preset.performance_macros) || !encodeV2(preset, bytes + 4)) return false;
+    put32(bytes, kV3Magic);
+    std::memcpy(bytes + 4 + kV2RecordBytes, preset.performance_macros.data(), performance::kMacroCount);
+    put32(bytes + kV3RecordBytes - 4, crc(bytes, kV3RecordBytes - 4));
+    return true;
+}
+inline bool decodeV3(const uint8_t* bytes, unsigned length, Preset& preset) {
+    if (length != kV3RecordBytes || get32(bytes) != kV3Magic ||
+        get32(bytes + length - 4) != crc(bytes, length - 4)) return false;
+    Preset candidate;
+    if (!decodeV2(bytes + 4, kV2RecordBytes, candidate)) return false;
+    std::memcpy(candidate.performance_macros.data(), bytes + 4 + kV2RecordBytes, performance::kMacroCount);
+    if (!performance::valid(candidate.performance_macros)) return false;
+    preset = candidate;
+    return true;
+}
+
 enum class BankRead : uint8_t { Present, Missing, Error };
 class VersionedPresetStore : public PresetStore {
 public:
     virtual BankRead readVersioned(unsigned version,unsigned slot,unsigned bank,uint8_t* data,unsigned& length)=0;
     virtual bool writeV2(unsigned slot,unsigned bank,const uint8_t* data,unsigned length)=0;
+    virtual bool writeV3(unsigned,unsigned,const uint8_t*,unsigned) { return false; }
     bool accepts(const Preset& p) const override {return validPreset(p,false);}
     bool load(unsigned slot,Preset& out) override {
         Scan scan{};if(!scanSlot(slot,scan) || !scan.found)return false;
