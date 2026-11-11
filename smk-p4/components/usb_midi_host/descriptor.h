@@ -11,17 +11,17 @@ inline bool findEndpoint(const uint8_t* data,size_t size,Endpoint& out) {
     const size_t total=data[2]|(size_t(data[3])<<8);
     if(total<data[0] || total>size) return false;
     uint8_t view[]={9,2,25,0,1,1,0,0x80,50, 9,4,0,0,0,0,0,0,0, 7,5,0,0,0,0,0};
-    uint8_t alt=0; bool interface=false,found=false; Endpoint selected;
+    uint8_t alt=0; bool have_interface=false,found=false; Endpoint selected;
     for(size_t offset=0;offset<total;) {
         if(total-offset<2 || data[offset]<2 || data[offset]>total-offset) return false;
         const auto* p=data+offset; const size_t length=p[0];
         if(p[1]==4) {
             if(length<9) return false;
             std::memcpy(view+9,p,9); view[9]=9;
-            alt=p[3]; view[12]=0; interface=true;
+            alt=p[3]; view[12]=0; have_interface=true;
         } else if(p[1]==5) {
             if(length<7) return false;
-            if(interface) {
+            if(have_interface) {
                 std::memcpy(view+18,p,7); view[18]=7;
                 const uint16_t mps=p[4]|(uint16_t(p[5])<<8);
                 if(mps==512) { view[22]=64; view[23]=0; }

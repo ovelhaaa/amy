@@ -29,4 +29,12 @@ try {
         & "build/editor011/$test.exe" | Tee-Object "build/editor011/$test.log"
         if($LASTEXITCODE){throw "Regression failed: $test"}
     }
+    if(!$single){
+        $lvgl=Join-Path $repo 'smk-p4/managed_components/lvgl__lvgl'
+        if(!(Test-Path $lvgl)) { throw 'Pinned LVGL missing; resolve the managed component before running the 0.13.1 regression' }
+        & g++ @flags -DLV_CONF_INCLUDE_SIMPLE=1 "-I$lvgl" -Ismk-p4/ui-preview -Ismk-p4/components/ui_blueprint/include smk-p4/tests/stability_0131_regression_test.cpp smk-p4/main/ui_blueprint_performance_adapter.cpp smk-p4/components/ui_blueprint/src/ui_model.cpp smk-p4/components/ui_blueprint/src/ui_parameters.cpp smk-p4/components/amy_runtime/amy_runtime.cpp smk-p4/tests/heap_probe.cpp @objects '-Wl,--wrap=malloc' '-Wl,--wrap=calloc' '-Wl,--wrap=realloc' '-Wl,--wrap=free' -lm -o build/editor011/stability_0131_regression_test.exe
+        if($LASTEXITCODE){throw '0.13.1 regression compile failed'}
+        & build/editor011/stability_0131_regression_test.exe | Tee-Object build/editor011/stability_0131_regression_test.log
+        if($LASTEXITCODE){throw '0.13.1 regression failed'}
+    }
 } finally {Pop-Location}

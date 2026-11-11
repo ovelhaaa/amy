@@ -19,6 +19,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: lvgl/lvgl
+          ref: v9.3.0
+          path: smk-p4/managed_components/lvgl__lvgl
+          persist-credentials: false
       - name: Protocol, touch gesture and display geometry regressions
         shell: pwsh
         run: |
