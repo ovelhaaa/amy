@@ -319,6 +319,52 @@ int main() {
     assert(std::strcmp(backend.editNotice(), "FACTORY ORIGINAL") == 0);
     std::puts("  PASS: Visual feedback clearly distinguishes all unsaved combinations and Compare");
 
+    std::puts("--- Scenario 5: Recall owner failures ---");
+    assert(backend.editAction(3, 0));
+    runtime.apply(current_time_ms);
+    runtime.loadPendingPatch();
+    assert(runtime.render());
+    backend.publish(runtime.snapshot(), false, 0, 0);
+    backend.service(current_time_ms + 35);
+    runtime.apply(current_time_ms + 35);
+    assert(runtime.render());
+    const auto recalled = runtime.snapshot();
+    auto missing_fx_ack = recalled;
+    missing_fx_ack.fx.request = 0;
+    backend.publish(missing_fx_ack, false, 0, 0);
+    assert(backend.presetOperationStatus().state == smk::p4::PresetOperationState::Verifying);
+    backend.publish(recalled, false, 0, 0);
+    assert(backend.presetOperationStatus().state == smk::p4::PresetOperationState::Confirmed);
+    assert(backend.editAction(1));
+    tick(current_time_ms + 70);
+
+    assert(backend.editAction(3, 0));
+    backend.service(current_time_ms + 2000);
+    assert(!backend.editPending());
+    assert(backend.presetOperationStatus().state == smk::p4::PresetOperationState::Failed);
+    assert(std::strcmp(backend.presetOperationStatus().message,
+                       "RECALL NOT CONFIRMED: OWNER TIMEOUT") == 0);
+
+    // Consume the timed-out patch command before starting another recall.
+    tick(current_time_ms + 2035);
+    assert(backend.editAction(3, 0));
+    runtime.commands().panic();
+    backend.service(current_time_ms + 1);
+    assert(!backend.editPending());
+    assert(std::strcmp(backend.presetOperationStatus().message,
+                       "RECALL CANCELED: STALE GENERATION") == 0);
+    tick();
+
+    assert(backend.editAction(3, 0));
+    auto failed_patch = runtime.snapshot();
+    ++failed_patch.patch_failures;
+    failed_patch.patch_state = amy::PatchState::Failed;
+    backend.publish(failed_patch, false, 0, 0);
+    backend.service(current_time_ms + 1);
+    assert(!backend.editPending());
+    assert(std::strcmp(backend.presetOperationStatus().message,
+                       "RECALL FAILED: PATCH LOAD ERROR") == 0);
+
     std::puts("=========================================================");
     std::puts("=== ALL 0.13.1 STABILITY & UX REGRESSIONS PASSED (PASS) ===");
     std::puts("=========================================================");

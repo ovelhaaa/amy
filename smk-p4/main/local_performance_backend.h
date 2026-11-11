@@ -42,25 +42,30 @@ public:
                         cur_algo, cur_algo, unsigned(edit_.request), unsigned(commands_.generation()),
                         edit_error_ ? "REJECTED" : "CONFIRMED");
                 }
-                if(recall_wait_ && edit_.request==recall_token_){
-                    if(edit_.errors==recall_errors_){
-                        saved_edit_=edit_;saved_fx_=recall_fx_;saved_valid_=true;
-                        std::snprintf(user_name_,sizeof(user_name_),"%s",recall_.name);
-                        std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "SLOT %02u RECALLED", recall_slot_ + 1);
-                        preset_op_status_ = { PresetOperationState::Confirmed, 3, uint8_t(recall_slot_), preset_op_msg_ };
-                        logPresetDiag("RECALL", recall_slot_, "CONFIRMED", PresetRejectReason::None);
-                    } else {
-                        std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "RECALL REJECTED: OWNER ERROR");
-                        preset_op_status_ = { PresetOperationState::Failed, 3, uint8_t(recall_slot_), preset_op_msg_ };
-                        logPresetDiag("RECALL", recall_slot_, "REJECTED", PresetRejectReason::OwnerTimeout);
-                    }
-                    recall_wait_=false;
-                }
+
             }
         }
 #endif
         if(snapshot.patch_id!=state_.patch_id && !recalling_){desired_fx_=original_fx_=snapshot.fx.config;}
         fx_state_=snapshot.fx;
+#ifdef SMKP4_SOUND_EDITOR
+        if(recall_wait_ && commands_.generation()==recall_generation_ &&
+           snapshot.generation==recall_generation_ && edit_.patch==recall_.patch){
+            if((edit_.request==recall_token_ && edit_.errors!=recall_errors_) ||
+               fx_state_.errors!=recall_fx_errors_){
+                failRecall("RECALL REJECTED: OWNER ERROR", PresetRejectReason::InvalidPreset);
+            }else if(edit_.request==recall_token_ && recall_fx_token_ &&
+                     fx_state_.request==recall_fx_token_ &&
+                     fxEquivalent(fx_state_.config,recall_fx_)){
+                recall_wait_=false;
+                saved_edit_=edit_;saved_fx_=original_fx_=fx_state_.config;saved_valid_=true;
+                std::snprintf(user_name_,sizeof(user_name_),"%s",recall_.name);
+                std::snprintf(preset_op_msg_,sizeof(preset_op_msg_),"SLOT %02u RECALLED",recall_slot_+1);
+                preset_op_status_={PresetOperationState::Confirmed,3,uint8_t(recall_slot_),preset_op_msg_};
+                logPresetDiag("RECALL",recall_slot_,"CONFIRMED",PresetRejectReason::None);
+            }
+        }
+#endif
         ready_=snapshot.ready; state_.patch_id=state_.engine_patch=snapshot.patch_id;
         const int index=amy::patchIndex(snapshot.patch_id);
         std::snprintf(state_.patch_name,sizeof(state_.patch_name),"%s",index<0?"ERROR":amy::kPatches[index].name);
@@ -107,7 +112,22 @@ public:
             }
             saving_=false;commands_.storage_requested.store(false,std::memory_order_release);
         }
-        if(recalling_ && !busy() && !failed_ && edit_.patch==recall_.patch){
+        const uint32_t owner_generation=commands_.generation();
+        const auto transition=commands_.transition_context.load(std::memory_order_acquire);
+        const bool recall_patch_interrupted=recalling_ && owner_generation!=recall_generation_ &&
+            (uint32_t(owner_generation-recall_generation_)>2 ||
+             ((transition>>4)==(owner_generation&0x0fffffffu) &&
+              amy::OutputReason(transition&7u)!=amy::OutputReason::Patch));
+        if(recalling_ && failures_!=recall_patch_failures_){
+            failRecall("RECALL FAILED: PATCH LOAD ERROR", PresetRejectReason::InvalidPreset);
+        }else if((recall_wait_ && owner_generation!=recall_generation_) || recall_patch_interrupted){
+            failRecall("RECALL CANCELED: STALE GENERATION", PresetRejectReason::StaleGeneration);
+        }else if((recalling_ || recall_wait_) && uint32_t(now_ms-recall_started_ms_)>=2000){
+            failRecall("RECALL NOT CONFIRMED: OWNER TIMEOUT", PresetRejectReason::OwnerTimeout);
+        }
+        // The owner advances the generation at patch admission and load completion.
+        if(recalling_ && !busy() && !failed_ && changes_!=recall_patch_changes_ &&
+           commands_.generation()==recall_generation_+2 && edit_.patch==recall_.patch){
             std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "VERIFYING SLOT %02u...", recall_slot_ + 1);
             preset_op_status_ = { PresetOperationState::Verifying, 3, uint8_t(recall_slot_), preset_op_msg_ };
             desired_={};desired_.patch=edit_.patch;desired_.generation=commands_.generation();
@@ -115,12 +135,13 @@ public:
             desired_.mask=recall_.mask;desired_.slot=int8_t(recall_slot_);
             for(unsigned p=0;p<edit::Count;++p)desired_.values[p]=recall_.values[p];
             desired_.request=newEditToken();edit_pending_=true;recalling_=false;recall_wait_=true;recall_token_=edit_token_;recall_errors_=edit_.errors;
-            desired_fx_=original_fx_=recall_fx_;
+            recall_generation_=desired_.generation;
+            recall_fx_errors_=fx_state_.errors;
+            recall_fx_token_=0;
+            desired_fx_=recall_fx_;
             fx_pending_=true;
-            fx::FxRequest req{};req.config=desired_fx_;req.generation=commands_.generation();req.request=++fx_token_;
-            if(commands_.fx.push(req)){fx_pending_=false;last_fx_ms_=now_ms;}
         }
-        if(!edit_pending_ && edit_.request!=edit_token_ && !edit_timeout_ && uint32_t(now_ms-last_edit_ms_)>2000){
+        if(!recall_wait_ && !edit_pending_ && edit_.request!=edit_token_ && !edit_timeout_ && uint32_t(now_ms-last_edit_ms_)>2000){
             edit_timeout_=edit_error_=true;notice_="EDIT TIMEOUT; PANIC; RETRY AFTER SNAPSHOT";commands_.panic();
         }
         if(saving_ && !quiet_ && uint32_t(now_ms-save_requested_ms_)>2000){
@@ -137,7 +158,12 @@ public:
 #endif
         if(fx_pending_ && !busy() && uint32_t(now_ms-last_fx_ms_)>=15){
             fx::FxRequest req{};req.config=desired_fx_;req.generation=commands_.generation();req.request=++fx_token_;
-            if(commands_.fx.push(req)){fx_pending_=false;last_fx_ms_=now_ms;}
+            if(commands_.fx.push(req)){
+                fx_pending_=false;last_fx_ms_=now_ms;
+#ifdef SMKP4_SOUND_EDITOR
+                if(recall_wait_) recall_fx_token_=req.request;
+#endif
+            }
         }
     }
 #ifdef SMKP4_SOUND_EDITOR
@@ -197,7 +223,7 @@ public:
     }
     uint32_t editToken() const override { return edit_token_; }
     bool editParameter(unsigned p,float value) override {
-        if(!ready_ || busy() || saving_ || edit_.compare || p>=edit::Count || !(edit_.available&edit::bit(p)) || !edit::valid(p,value))return false;
+        if(!ready_ || busy() || saving_ || recalling_ || recall_wait_ || edit_.compare || p>=edit::Count || !(edit_.available&edit::bit(p)) || !edit::valid(p,value))return false;
         if(p == edit::FmAlgorithm) {
             const unsigned target_algo = unsigned(std::lround(value));
             const unsigned current_algo = unsigned(std::lround(edit_.applied[edit::FmAlgorithm]));
@@ -229,6 +255,11 @@ public:
     // 0 Compare,1 Revert,2 Save As,3 Recall. Overwrite/rename uses explicit Save As.
     bool editAction(unsigned action,unsigned slot=0,const char* name=nullptr) override {
         const char* act_name = (action == 0) ? "COMPARE" : (action == 1) ? "REVERT" : (action == 2) ? "SAVE" : (action == 3) ? "RECALL" : "UNKNOWN";
+        if(recalling_ || recall_wait_){
+            setRejectNotice(PresetRejectReason::PendingEdit, "PRESET BLOCKED: RECALL IN PROGRESS");
+            logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::PendingEdit);
+            return false;
+        }
         if(!ready_){
             setRejectNotice(PresetRejectReason::EngineUnavailable, "PRESET ENGINE UNAVAILABLE");
             preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
@@ -381,6 +412,10 @@ public:
                 logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::Busy);
                 return false;
             }
+            recall_started_ms_=last_service_ms_;
+            recall_generation_=commands_.generation();
+            recall_patch_changes_=changes_;
+            recall_patch_failures_=failures_;
             setRejectNotice(PresetRejectReason::None, nullptr);
             logPresetDiag(act_name, slot, "ACCEPTED", PresetRejectReason::None);
             return true;
@@ -420,6 +455,9 @@ public:
     const fx::FxState* fxState() const override { return &fx_state_; }
     uint32_t fxToken() const override { return fx_token_; }
     bool setFxParameter(const char* id, float value, uint32_t now_ms) override {
+#ifdef SMKP4_SOUND_EDITOR
+        if(recalling_ || recall_wait_)return false;
+#endif
         if (!ready_ || busy()) return false;
         if (!id) return false;
         if (std::strcmp(id, "fx.chorus.mode") == 0) {
@@ -470,7 +508,7 @@ public:
     }
     bool setPatch(uint16_t id,uint32_t now_ms) override {
 #ifdef SMKP4_SOUND_EDITOR
-        if(!recalling_ && unsaved())return false;
+        if(recall_wait_ || (!recalling_ && unsaved()))return false;
 #endif
         if(!ready_ || busy() || amy::patchIndex(id)<0) return false;
         panic();
@@ -515,7 +553,7 @@ public:
 private:
 #ifdef SMKP4_SOUND_EDITOR
     bool macroParameter(unsigned m,uint8_t value){
-        if(m>=3 || value>127 || busy() || !ready_ || edit_.compare || (edit_.family==0 && m>0))return false;
+        if(m>=3 || value>127 || recalling_ || recall_wait_ || busy() || !ready_ || edit_.compare || (edit_.family==0 && m>0))return false;
         prepareEdit();desired_.macros[m]=value;desired_.request=newEditToken();edit_pending_=true;return true;
     }
     static bool fxEquivalent(const fx::FxConfig& a, const fx::FxConfig& b) {
@@ -554,6 +592,22 @@ private:
     edit::State saved_edit_;
     bool saved_valid_=false,recall_wait_=false;
     uint32_t recall_token_=0,recall_errors_=0;
+    uint32_t recall_started_ms_=0,recall_generation_=0,recall_patch_changes_=0,recall_patch_failures_=0;
+    uint32_t recall_fx_token_=0,recall_fx_errors_=0;
+    void failRecall(const char* message, PresetRejectReason reason){
+        if(recalling_)pending_=false;
+        if(recall_wait_){
+            edit_pending_=false;
+            edit_token_=edit_.request;
+            fx_pending_=false;
+            desired_fx_=fx_state_.config;
+        }
+        recalling_=recall_wait_=false;
+        edit_error_=true;
+        notice_=message;
+        preset_op_status_={PresetOperationState::Failed,3,uint8_t(recall_slot_),message};
+        logPresetDiag("RECALL",recall_slot_,"FAILED",reason);
+    }
     char user_name_[25]{};
     const char* notice_="FACTORY ORIGINAL";
     PresetOperationStatus preset_op_status_{};
