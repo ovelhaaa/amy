@@ -96,6 +96,8 @@ int UiBlueprintPerformanceAdapter::editIndex(const char* id) const {
     return -1;
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestSoundAction(unsigned action,unsigned slot,const char* name){
+    if(pending_edit_.active && pending_edit_.param==edit::FmAlgorithm)
+        return result(UiCommandState::Rejected,"editor","ALGORITHM CHANGE PENDING");
     if(!backend_.editAction(action,slot,name)){
         const char* notice = backend_.presetRejectNotice();
         return result(UiCommandState::Rejected,"editor",(notice && notice[0])?notice:"COMMAND REJECTED");
@@ -163,6 +165,9 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterValue(const char*
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestParameterFloat(const char* id,float v) {
     if(backend_.soundEdit() && editIndex(id)>=0){
+        if(pending_edit_.active && pending_edit_.param==edit::FmAlgorithm)
+            return result(UiCommandState::Rejected,id,"ALGORITHM CHANGE PENDING");
+        const uint32_t generation=backend_.editGeneration();
         if(!usable() || !backend_.editParameter(unsigned(editIndex(id)),v)) {
             const char* notice = backend_.editNotice();
             return result(UiCommandState::Rejected,id,(notice && notice[0])?notice:"EDIT REJECTED; SEE CONFIRMED VALUE");
@@ -175,8 +180,11 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterFloat(const char*
         pending_edit_.patch_id = static_cast<uint16_t>(model_.getInt("perf.patch_id", 0));
         pending_edit_.requested_ms = now_ms_;
         pending_edit_.initial_errors = backend_.soundEdit()->errors;
+        pending_edit_.generation = generation;
         const char* req_notice = (pending_edit_.param == edit::FmAlgorithm) ? "ALGORITHM REQUESTED; WAIT OWNER" : "EDIT REQUESTED; WAIT OWNER";
-        return result(UiCommandState::Requested,id,req_notice,pending_edit_.token);
+        const auto request=result(UiCommandState::Requested,id,req_notice,pending_edit_.token);
+        if(pending_edit_.param==edit::FmAlgorithm) fm_algorithm_result_=request;
+        return request;
     }
     if(backend_.fxState() && isFxId(id)){
         if(!usable())return result(UiCommandState::Rejected,id,"ENGINE/SNAPSHOT UNAVAILABLE");
@@ -220,6 +228,8 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterInt(const char* i
     if(parameterStatus(id)!=FeatureStatus::Available) return result(UiCommandState::Unsupported,id,"PLANNED; NO DSP COMMAND");
     if(!usable()) return result(UiCommandState::Rejected,id,"ENGINE/SNAPSHOT UNAVAILABLE");
     if(backend_.soundEdit() && (eq(id,"perf.macro.2") || eq(id,"perf.macro.5") || eq(id,"perf.macro.6"))){
+        if(pending_edit_.active && pending_edit_.param==edit::FmAlgorithm)
+            return result(UiCommandState::Rejected,id,"ALGORITHM CHANGE PENDING");
         const unsigned m=eq(id,"perf.macro.2")?1:eq(id,"perf.macro.5")?4:5;
         if(v<0 || v>127 || !backend_.setMacro(uint8_t(m),uint8_t(v),now_ms_))return result(UiCommandState::Rejected,id,"MACRO REJECTED");
         edit_requested_=true;edit_errors_=backend_.soundEdit()->errors;edit_id_=ParameterRegistry::findById(id)->id;
@@ -331,16 +341,14 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     if(backend_.connected() && rev && (!have_snapshot_ || rev!=revision_)) {
         have_snapshot_=true; revision_=rev;
         if(const auto* edit=backend_.soundEdit()){
-            if(edit_requested_ && !backend_.editPending() && !backend_.busy()){
+            if(edit_requested_ && !(pending_edit_.active && pending_edit_.param==edit::FmAlgorithm) && !backend_.editPending() && !backend_.busy()){
                 edit_requested_=false;
                 if(pending_edit_.active && backend_.state().patch_id != pending_edit_.patch_id){
                     pending_edit_.active = false;
-                    result(UiCommandState::Rejected, (pending_edit_.param == edit::FmAlgorithm) ? "fm.algo" : edit_id_, "PATCH CHANGED; ALGORITHM CANCELED");
+                    result(UiCommandState::Rejected, edit_id_, "PATCH CHANGED; EDIT CANCELED");
                 } else {
-                    const char* confirm_notice = (pending_edit_.active && pending_edit_.param == edit::FmAlgorithm && edit->errors == edit_errors_ && !backend_.editError())
-                        ? "ALGORITHM APPLIED"
-                        : backend_.editNotice();
-                    result(edit->errors==edit_errors_ && !backend_.editError()?UiCommandState::Confirmed:UiCommandState::Rejected,edit_id_,confirm_notice,pending_edit_.token);
+                    result(edit->errors==edit_errors_ && !backend_.editError()?UiCommandState::Confirmed:UiCommandState::Rejected,
+                           edit_id_,backend_.editNotice(),pending_edit_.token);
                     pending_edit_.active = false;
                 }
             }
@@ -416,20 +424,34 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
         }
         result(UiCommandState::Rejected,fx_id_,"FX NOT CONFIRMED; OWNER STATE RETAINED");
     }
-    if(pending_edit_.active){
-        if(model_.getInt("perf.patch_id", 0) != pending_edit_.patch_id){
-            pending_edit_.active = false;
-            edit_requested_ = false;
-            result(UiCommandState::Rejected, "fm.algo", "PATCH CHANGED; ALGORITHM CANCELED");
-        } else if(uint32_t(now_ms - pending_edit_.requested_ms) >= kPatchConfirmationTimeoutMs){
-            pending_edit_.active = false;
-            edit_requested_ = false;
-            if(pending_edit_.param == edit::FmAlgorithm){
-                result(UiCommandState::Rejected, "fm.algo", "ALGORITHM CHANGE NOT CONFIRMED");
-            } else {
-                result(UiCommandState::Rejected, edit_id_, "EDIT NOT CONFIRMED; OWNER STATE RETAINED");
+    if(pending_edit_.active && pending_edit_.param==edit::FmAlgorithm){
+        const auto& request=pending_edit_;
+        const auto* edit=backend_.soundEdit();
+        UiCommandState state=UiCommandState::Rejected;
+        const char* notice=nullptr;
+        if(backend_.editGeneration()!=request.generation || backend_.state().patch_id!=request.patch_id){
+            notice="PATCH CHANGED; ALGORITHM CANCELED";
+        }else if(uint32_t(now_ms-request.requested_ms)>=kPatchConfirmationTimeoutMs){
+            notice="ALGORITHM CHANGE NOT CONFIRMED";
+        }else if(backend_.connected() && edit && request.token && edit->request==request.token &&
+                 edit->patch==request.patch_id && backend_.editSnapshotGeneration()==request.generation){
+            if(edit->errors!=request.initial_errors){
+                notice="ALGORITHM REJECTED: OWNER ERROR";
+            }else if(edit->applied[edit::FmAlgorithm]==request.requested_value){
+                state=UiCommandState::Confirmed;
+                notice="ALGORITHM APPLIED";
             }
         }
+        if(notice){
+            pending_edit_.active=false;
+            edit_requested_=false;
+            fm_algorithm_result_=result(state,"fm.algo",notice,request.token);
+        }
+    }else if(pending_edit_.active &&
+             uint32_t(now_ms-pending_edit_.requested_ms)>=kPatchConfirmationTimeoutMs){
+        pending_edit_.active=false;
+        edit_requested_=false;
+        result(UiCommandState::Rejected,edit_id_,"EDIT NOT CONFIRMED; OWNER STATE RETAINED");
     }
     if(const auto* h=backend_.harmonyState()) {
         model_.live_harmony=*h;model_.live_harmony.pending=harmony_pending_;

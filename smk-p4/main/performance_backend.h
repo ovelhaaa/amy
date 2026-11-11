@@ -70,6 +70,8 @@ public:
     virtual const edit::State* soundEdit() const { return nullptr; }
     virtual bool editError() const {return false;}
     virtual bool editPending() const {return false;}
+    virtual uint32_t editGeneration() const { return 0; }
+    virtual uint32_t editSnapshotGeneration() const { return 0; }
     virtual uint32_t editToken() const { return 0; }
     virtual bool editParameter(unsigned,float) { return false; }
     virtual bool editAction(unsigned,unsigned=0,const char* =nullptr) { return false; }

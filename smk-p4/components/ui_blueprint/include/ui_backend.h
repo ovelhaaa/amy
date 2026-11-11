@@ -101,6 +101,7 @@ public:
     }
     virtual UiCommandState lastCommandState() const = 0;
     virtual const char* lastCommandParameterId() const = 0;
+    virtual UiCommandResult fmAlgorithmResult() const { return {}; }
     virtual uint32_t lastCommandToken() const { return 0; }
 
     // 4. Musical & parameter commands (never assume slider move == hardware applied)

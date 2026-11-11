@@ -27,6 +27,7 @@ public:
         harmony_.voices=snapshot.active_notes;harmony_.capacity=amy::kVoices;harmony_.available=true;
 #endif
 #ifdef SMKP4_SOUND_EDITOR
+        edit_snapshot_generation_=snapshot.generation;
         quiet_=snapshot.storage_quiet;
         if(edit_.patch!=snapshot.edit.patch || edit_.revision!=snapshot.edit.revision){
             const bool changed=edit_.epoch!=snapshot.edit.epoch;
@@ -226,6 +227,8 @@ public:
         }
         return (edit_.dirty || !fxEquivalent(desired_fx_,original_fx_))?"EDITED / SAVED":"FACTORY ORIGINAL";
     }
+    uint32_t editGeneration() const override { return commands_.generation(); }
+    uint32_t editSnapshotGeneration() const override { return edit_snapshot_generation_; }
     uint32_t editToken() const override { return edit_token_; }
     bool editParameter(unsigned p,float value) override {
         if(!ready_ || busy() || saving_ || recalling_ || recall_wait_ || edit_.compare || p>=edit::Count || !(edit_.available&edit::bit(p)) || !edit::valid(p,value))return false;
@@ -595,6 +598,7 @@ private:
     edit::Preset save_preset_,recall_;
     unsigned save_slot_=0,recall_slot_=0;
     bool edit_pending_=false,saving_=false,quiet_=false,recalling_=false;
+    uint32_t edit_snapshot_generation_=0;
     uint32_t coalesced_=0,save_requested_ms_=0,last_service_ms_=0,edit_serial_=0;
     bool edit_error_=false,edit_timeout_=false;
     uint32_t last_edit_ms_=0,edit_token_=0,last_edit_errors_=0;

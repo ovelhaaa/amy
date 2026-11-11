@@ -226,14 +226,48 @@ int main() {
     // Before engine processes, applied is still initial_algo
     assert(backend.soundEdit()->applied[edit::FmAlgorithm] == float(initial_algo));
 
+    assert(adapter.requestParameterInt("perf.master_volume", 90).accepted());
+    auto uncorrelated = runtime.snapshot();
+    uncorrelated.master = 90;
+    uncorrelated.edit.revision += 100;
+    uncorrelated.edit.request = algo_req.token - 1;
+    uncorrelated.edit.applied[edit::FmAlgorithm] = float(target_algo);
+    backend.publish(uncorrelated, false, 0, 0);
+    adapter.service(current_time_ms);
+    assert(std::strcmp(adapter.lastCommandParameterId(), "perf.master_volume") == 0);
+    assert(adapter.fmAlgorithmResult().state == UiCommandState::Requested);
+
+    ++uncorrelated.edit.revision;
+    uncorrelated.edit.request = algo_req.token;
+    uncorrelated.edit.applied[edit::FmAlgorithm] = float(initial_algo);
+    backend.publish(uncorrelated, false, 0, 0);
+    adapter.service(current_time_ms);
+    assert(adapter.fmAlgorithmResult().state == UiCommandState::Requested);
+
+    ++uncorrelated.edit.revision;
+    --uncorrelated.generation;
+    uncorrelated.edit.applied[edit::FmAlgorithm] = float(target_algo);
+    backend.publish(uncorrelated, false, 0, 0);
+    adapter.service(current_time_ms);
+    assert(adapter.fmAlgorithmResult().state == UiCommandState::Requested);
+
     tick();
     // After engine applies, owner confirmation arrives
     assert(adapter.lastCommandState() == UiCommandState::Confirmed);
     assert(std::strcmp(adapter.lastCommandParameterId(), "fm.algo") == 0);
     assert(adapter.lastCommandToken() == algo_req.token);
+    assert(adapter.fmAlgorithmResult().state == UiCommandState::Confirmed);
+    assert(adapter.fmAlgorithmResult().token == algo_req.token);
     assert(std::strcmp(adapter.model().lastNotice(), "ALGORITHM APPLIED") == 0);
     assert(backend.soundEdit()->applied[edit::FmAlgorithm] == float(target_algo));
     std::puts("  PASS: Algorithm request correlated to token and applied snapshot");
+
+    const auto timed_out_algo = adapter.requestParameterInt("fm.algo", target_algo);
+    assert(timed_out_algo.state == UiCommandState::Requested);
+    tick(current_time_ms + UiBlueprintPerformanceAdapter::kPatchConfirmationTimeoutMs);
+    assert(adapter.fmAlgorithmResult().token == timed_out_algo.token);
+    assert(adapter.fmAlgorithmResult().state == UiCommandState::Rejected);
+    assert(std::strcmp(adapter.fmAlgorithmResult().notice, "ALGORITHM CHANGE NOT CONFIRMED") == 0);
 
     std::puts("--- Scenario 3.2: Rejection of Algorithm Change During Active Notes ---");
     assert(backend.noteOn(60, 100, 350));
@@ -279,6 +313,8 @@ int main() {
     assert(adapter.lastCommandState() == UiCommandState::Rejected);
     assert(std::strcmp(adapter.lastCommandParameterId(), "fm.algo") == 0);
     assert(std::strcmp(adapter.model().lastNotice(), "PATCH CHANGED; ALGORITHM CANCELED") == 0);
+    assert(adapter.fmAlgorithmResult().state == UiCommandState::Rejected);
+    assert(adapter.fmAlgorithmResult().token == algo24_req.token);
     std::puts("  PASS: Concurrent patch change cleanly supersedes pending algorithm request");
 
     // ─────────────────────────────────────────────────────────────────────────

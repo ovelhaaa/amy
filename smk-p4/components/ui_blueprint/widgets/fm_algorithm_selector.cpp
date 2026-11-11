@@ -71,18 +71,6 @@ struct TopologyDiagramCtx {
     lv_point_precise_t line_points[20][4] = {};
 };
 
-bool isEditPending(IUiBackend* b) {
-    if (!b) return false;
-    const char* s = b->soundEditStatus();
-    return s && std::strstr(s, "WAIT OWNER") != nullptr;
-}
-
-bool isEditRejected(IUiBackend* b) {
-    if (!b) return false;
-    const char* s = b->soundEditStatus();
-    return s && std::strstr(s, "REJECTED") != nullptr;
-}
-
 void refreshTopology(TopologyDiagramCtx* ctx) {
     if (!ctx || !ctx->backend) return;
     const bool is_fm = (ctx->backend->model().activePatch().family == SynthFamily::FM);
@@ -246,7 +234,7 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
             if (!bctx || !bctx->m || !bctx->m->backend) return;
             auto* m = bctx->m;
 
-            if (m->pending_algo != 0 && (isEditPending(m->backend) || m->backend->isBusy())) {
+            if (m->pending_algo != 0) {
                 if (m->status_lbl) {
                     lv_label_set_text(m->status_lbl, "ALGORITHM CHANGE PENDING");
                     lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kWarning), 0);
@@ -278,7 +266,7 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
             m->pending_algo = bctx->algo;
             m->pending_token = res.token;
             m->initial_patch_id = m->backend->model().activePatch().id;
-            if (res.state == UiCommandState::Confirmed) {
+            if (res.state == UiCommandState::Confirmed || res.state == UiCommandState::DemoApplied) {
                 m->confirmed_algo = bctx->algo;
                 m->pending_algo = 0;
                 if (m->status_lbl) {
@@ -317,47 +305,21 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
                     lv_label_set_text(m->status_lbl, "PATCH CHANGED; ALGORITHM CANCELED");
                     lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kWarning), 0);
                 }
-            } else if (std::strcmp(m->backend->lastCommandParameterId(), "fm.algo") == 0) {
-                if (m->backend->lastCommandState() == UiCommandState::Confirmed) {
-                    const int cur = m->backend->model().getInt("fm.algo", m->confirmed_algo);
-                    if (cur == m->pending_algo) {
-                        m->confirmed_algo = cur;
-                        m->pending_algo = 0;
-                        if (m->status_lbl) {
-                            char abuf[48];
-                            std::snprintf(abuf, sizeof(abuf), "ALGORITHM %02d APPLIED", cur);
-                            lv_label_set_text(m->status_lbl, abuf);
-                            lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kActive), 0);
-                        }
-                    }
-                } else if (m->backend->lastCommandState() == UiCommandState::Rejected) {
-                    m->pending_algo = 0;
-                    if (m->status_lbl) {
-                        const char* notice = m->backend->soundEditStatus();
-                        if (notice && std::strstr(notice, "NOT CONFIRMED") != nullptr) {
-                            lv_label_set_text(m->status_lbl, "ALGORITHM CHANGE NOT CONFIRMED");
-                        } else {
-                            lv_label_set_text(m->status_lbl, (notice && notice[0]) ? notice : "ALGORITHM REJECTED: OWNER ERROR");
-                        }
-                        lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kWarning), 0);
-                    }
-                }
-            } else if (!isEditPending(m->backend)) {
-                const int cur = m->backend->model().getInt("fm.algo", m->confirmed_algo);
-                if (cur == m->pending_algo) {
-                    m->confirmed_algo = cur;
+            } else {
+                const auto ack = m->backend->fmAlgorithmResult();
+                if (ack.token == m->pending_token && ack.state == UiCommandState::Confirmed) {
+                    m->confirmed_algo = m->pending_algo;
                     m->pending_algo = 0;
                     if (m->status_lbl) {
                         char abuf[48];
-                        std::snprintf(abuf, sizeof(abuf), "ALGORITHM %02d APPLIED", cur);
+                        std::snprintf(abuf, sizeof(abuf), "ALGORITHM %02d APPLIED", m->confirmed_algo);
                         lv_label_set_text(m->status_lbl, abuf);
                         lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kActive), 0);
                     }
-                } else if (isEditRejected(m->backend)) {
+                } else if (ack.token == m->pending_token && ack.state == UiCommandState::Rejected) {
                     m->pending_algo = 0;
                     if (m->status_lbl) {
-                        const char* notice = m->backend->soundEditStatus();
-                        lv_label_set_text(m->status_lbl, (notice && notice[0]) ? notice : "ALGORITHM REJECTED: OWNER ERROR");
+                        lv_label_set_text(m->status_lbl, ack.notice ? ack.notice : "ALGORITHM CHANGE NOT CONFIRMED");
                         lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kWarning), 0);
                     }
                 }
