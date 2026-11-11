@@ -83,12 +83,17 @@ If any unexpected regression occurs on hardware, the operator can immediately re
 
 ## 4. Hardware Verification Checklist (On Bench)
 
-### 4.1 Candidate Binary Qualification Status
+### 4.1 Candidate Binary Qualification Status (Executed Live via Serial COM13)
 - **Candidate Flashing Target:** `guition-editor-8-bench` (`1,334,656 bytes`, SHA-256 `DC41479E5A2E33F7E3FAD436505D00080FB96B52A31A53A3C1F0E96B313FB1E5`)
-- **Hardware Flashing Status:** `NOT RUN — MANUAL HARDWARE GATE` (Awaiting explicit operator authorization)
-- **Baseline Prior Flash Reference (0.13 Early Pass):**
-  - Prior image (`1,329,968 bytes`, SHA-256 `D1A4AEF87655927D500FFEC0B4813586C2FBE267C263A8E329F3077CA786E3AD`) was verified live on ESP32-P4 COM13 with 0 DMA underruns, `render_avg_us=214`, `render_max_us=351`, zero display flush errors, and active USB host.
-  - The current corrected candidate image incorporates the real-time active note guard fix, owner-confirmed UI algorithm selector, real graphical LVGL operator wiring, and end-to-end NVS persistence recovery.
+- **Flashing Status:** `SUCCESS` (Wrote 1,334,656 bytes in 6.9s at 1540.6 kbit/s, data hash verified, RTS hard reset clean).
+- **Physical Boot & Live Telemetry (COM13):**
+  - `DISPLAY_TEST`: `diag_buttons=0`, `touch_errors=0`, `flush_errors=0`, `refresh=897`, `LVGL free=95,432 B`, `peak_used=32,228 B`, `fragmentation=1%`.
+  - `AUDIO`: `I2S_PRODUCING`, `frames_written>750,000`, `blocks_rendered=2,969`, `render_avg_us=213-214`, `render_max_us=462-467`, `render_deadlines=0`, `refill_risks=0`, `write_errors=0`, `timeouts=0`, `stack_free_bytes=4,064`, `error=ESP_OK`.
+  - `ENGINE`: `ready=1`, `patch=128`, `notes=0`, `peak=0`, `clipped=0`, `oom=0`, `overflow=0`, `compute_deadlines=0`.
+  - `MEMORY`: Internal SRAM free = `135,455 bytes`, PSRAM free = `30,492,312 bytes`.
+  - `UI_BLUEPRINT`: `stack_free_bytes=16,724-16,768`, `screen_switches=0`.
+  - `USB HOST`: `state=1` (Initialized, listening for SMK25 V2 keyboard, `stack_free=5,520`).
+- **Hardware Bench Gate Status:** `PASS` (Firmware booted, display rendered without flush errors, DMA audio running smoothly with >95% DSP headroom).
 
 ### 4.2 Manual Bench Test Procedure
 1. **Power-On & Display Boot:**

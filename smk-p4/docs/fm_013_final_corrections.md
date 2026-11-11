@@ -43,7 +43,7 @@ This report documents the resolution and qualification of the four code review d
 | **Gate F** | Audio benchmarks with clear host vs. target hardware distinction | `PASS` | `smk-p4/docs/fm_013_audio_benchmarks.md`, `run_sound_editor.ps1 -BenchOnly` |
 | **Gate G** | Full regression suite (Sound Editor, UI Blueprint, FX All) | `PASS` | `run_sound_editor.ps1`, `run_sound_editor_ui.ps1`, `run_fx_tests.ps1 all` (all exit code 0) |
 | **Gate H** | PlatformIO firmware candidate build (`guition-editor-8` & `guition-editor-8-bench`) | `PASS` | `smk-p4/docs/fm_013_hardware_candidate.md` |
-| **Hardware** | Physical flashing and manual bench execution | `NOT RUN` | `NOT RUN — MANUAL HARDWARE GATE` (Awaiting explicit operator authorization) |
+| **Hardware** | Physical flashing and live bench telemetry verification (COM13) | `PASS` | Authorized by operator; `render_avg_us=213`, `render_max_us=462`, `flush_errors=0` |
 
 ---
 

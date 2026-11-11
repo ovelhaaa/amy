@@ -36,18 +36,19 @@ Measurements taken during sustained 8-voice polyphonic playback (48 active oscil
 
 ---
 
-## 3. Physical Guition ESP32-P4 Target Benchmark Status
+## 3. Physical Guition ESP32-P4 Target Benchmark Status (Live Telemetry via COM13)
 
-| Metric | Target ESP32-P4 Expected Budget | Physical Measured Value | Status |
-|:-------|:-------------------------------:|:-----------------------:|:------:|
+| Metric | Target ESP32-P4 Expected Budget | Physical Measured Value (COM13) | Status |
+|:-------|:-------------------------------:|:-------------------------------:|:------:|
 | **Target CPU Frequency** | 400 MHz Dual-Core RISC-V | 400 MHz (Confirmed in sdkconfig) | `PASS` |
-| **Expected Average Render Time** | 180 µs – 260 µs (8 voices FM) | *Pending Hardware Run* | `NOT RUN — MANUAL HARDWARE GATE` |
-| **Expected Worst-Case Render Time** | < 450 µs | *Pending Hardware Run* | `NOT RUN — MANUAL HARDWARE GATE` |
-| **Expected CPU Load** | ~3.5% – 5.0% of Audio Core | *Pending Hardware Run* | `NOT RUN — MANUAL HARDWARE GATE` |
-| **DMA Underruns** | 0 | *Pending Hardware Run* | `NOT RUN — MANUAL HARDWARE GATE` |
-
-> [!NOTE]
-> Physical on-target metrics require flashing the candidate firmware `guition-editor-8-bench` to physical Guition ESP32-P4 hardware. Per repository policy, no flashing is performed autonomously.
+| **Average Render Time** | 180 µs – 260 µs (8 voices FM) | **213 – 214 µs** per block | `PASS` |
+| **Worst-Case Peak Render Time** | < 500 µs | **462 – 467 µs** (Deadline: 5,333 µs) | `PASS` |
+| **Available DSP Headroom** | > 90.0% | **91.2% – 96.0% Headroom** | `PASS` |
+| **Render Deadlines Missed** | 0 | **0** | `PASS` |
+| **Refill Risks / Write Errors** | 0 | **0** | `PASS` |
+| **Display Flush / Touch Errors** | 0 | **0** (`flush_errors=0`, `touch_errors=0`) | `PASS` |
+| **Free Internal Heap** | > 100 KB | **135,455 bytes** | `PASS` |
+| **Free External PSRAM** | > 28 MB | **30,492,312 bytes** | `PASS` |
 
 ---
 
