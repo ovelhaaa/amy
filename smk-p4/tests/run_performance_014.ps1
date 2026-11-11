@@ -11,6 +11,10 @@ try {
     if ($LASTEXITCODE) { throw 'MIDI control events test compile failed' }
     & build/performance014/midi_events_test.exe
     if ($LASTEXITCODE) { throw 'MIDI control events test failed' }
+    & g++ -std=c++17 -O2 -Wall -Wextra -Werror -Ismk-p4/components/amy_runtime smk-p4/tests/performance_014_midi_test.cpp -o build/performance014/midi_test.exe
+    if ($LASTEXITCODE) { throw 'MIDI Learn and Pickup test compile failed' }
+    & build/performance014/midi_test.exe
+    if ($LASTEXITCODE) { throw 'MIDI Learn and Pickup test failed' }
 } finally {
     Pop-Location
 }
