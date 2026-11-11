@@ -462,7 +462,7 @@ void UiBlueprintPerformanceAdapter::midiPerformanceAction(MidiAction action,unsi
             break;
         case MidiAction::SaveProfile:
             if(midi_save_pending_) break;
-            if(!midi_store_ || !backend_.requestStorageQuiet()){
+            if(!midi_store_ || fx_requested_ || !backend_.requestStorageQuiet()){
                 std::snprintf(midi_status_,sizeof(midi_status_),"PROFILE SAVE UNAVAILABLE OR ENGINE BUSY");
                 break;
             }
@@ -507,6 +507,7 @@ void UiBlueprintPerformanceAdapter::serviceMidi() {
     // Keep only the latest value per knob for this UI cycle.
     bool changed[8]{};
     uint8_t values[8]{};
+    const bool accept_updates=usable() && !edit.compare && !backend_.editPending() && !fx_requested_;
     amy::MidiControlEvent event;
     for(unsigned i=0;i<amy::MidiControlEvents::kCapacity && midi_input_->popControl(event);++i){
         if(!midi_input_->currentControl(event)) continue;
@@ -524,7 +525,7 @@ void UiBlueprintPerformanceAdapter::serviceMidi() {
             uint8_t target=0,output=0;
             knob.physical=event.value;
             knob.observed=true;
-            if(usable() && !edit.compare && midiTarget(k,target) && knob.pickup.update(event.value,target,output)){
+            if(accept_updates && midiTarget(k,target) && knob.pickup.update(event.value,target,output)){
                 changed[k]=output!=target;
                 values[k]=output;
             }
