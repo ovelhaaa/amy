@@ -205,9 +205,11 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
         lv_obj_t* btn_objs[32] = {};
         int pending_algo = 0;
         uint32_t pending_token = 0;
+        uint16_t initial_patch_id = 0;
         int confirmed_algo = 1;
     };
-    auto* mctx = attachLvContext<ModalCtx>(root, ModalCtx{&backend, root, status_lbl, {}, 0, 0, current_algo}, nullptr);
+    const uint16_t cur_patch_id = backend.model().activePatch().id;
+    auto* mctx = attachLvContext<ModalCtx>(root, ModalCtx{&backend, root, status_lbl, {}, 0, 0, cur_patch_id, current_algo}, nullptr);
 
     // 4 rows of 8 buttons = 32 algorithms
     const int start_x = 16, start_y = 66;
@@ -244,10 +246,19 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
             if (!bctx || !bctx->m || !bctx->m->backend) return;
             auto* m = bctx->m;
 
-            if (m->pending_algo != 0 && isEditPending(m->backend)) {
+            if (m->pending_algo != 0 && (isEditPending(m->backend) || m->backend->isBusy())) {
                 if (m->status_lbl) {
                     lv_label_set_text(m->status_lbl, "ALGORITHM CHANGE PENDING");
                     lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kWarning), 0);
+                }
+                return;
+            }
+            if (bctx->algo == m->confirmed_algo && m->pending_algo == 0) {
+                if (m->status_lbl) {
+                    char abuf[48];
+                    std::snprintf(abuf, sizeof(abuf), "ALGORITHM %02d APPLIED", bctx->algo);
+                    lv_label_set_text(m->status_lbl, abuf);
+                    lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kActive), 0);
                 }
                 return;
             }
@@ -255,6 +266,7 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
             const auto res = m->backend->requestParameterInt("fm.algo", bctx->algo);
             if (res.state == UiCommandState::Rejected) {
                 // Immediate rejection: Do not close modal, do not change confirmed algorithm
+                m->pending_algo = 0;
                 if (m->status_lbl) {
                     lv_label_set_text(m->status_lbl, res.notice ? res.notice : "RELEASE NOTES TO CHANGE ALGORITHM");
                     lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kWarning), 0);
@@ -265,6 +277,7 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
             // Command accepted or requested
             m->pending_algo = bctx->algo;
             m->pending_token = res.token;
+            m->initial_patch_id = m->backend->model().activePatch().id;
             if (res.state == UiCommandState::Confirmed) {
                 m->confirmed_algo = bctx->algo;
                 m->pending_algo = 0;
@@ -286,7 +299,7 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
     }
 
     lv_obj_t* close_btn = createActionButton(root, "CLOSE", 516, 12, 140, 34, nullptr, nullptr);
-    attachLvContext<ModalCtx>(close_btn, ModalCtx{&backend, root, status_lbl, {}, 0, 0, current_algo}, [](lv_event_t* e) {
+    attachLvContext<ModalCtx>(close_btn, ModalCtx{&backend, root, status_lbl, {}, 0, 0, cur_patch_id, current_algo}, [](lv_event_t* e) {
         if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
         auto* ctx = static_cast<ModalCtx*>(lv_event_get_user_data(e));
         if (ctx && ctx->root) lv_obj_delete(ctx->root);
@@ -295,23 +308,58 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
     lv_obj_add_event_cb(root, [](lv_event_t* e) {
         auto* m = static_cast<ModalCtx*>(lv_event_get_user_data(e));
         if (!m || !m->backend) return;
-        const int cur = m->backend->model().getInt("fm.algo", m->confirmed_algo);
+        const auto active_patch = m->backend->model().activePatch();
         if (m->pending_algo != 0) {
-            if (cur == m->pending_algo) {
-                m->confirmed_algo = cur;
+            if (active_patch.id != m->initial_patch_id) {
                 m->pending_algo = 0;
+                m->confirmed_algo = m->backend->model().getInt("fm.algo", 1);
                 if (m->status_lbl) {
-                    char abuf[48];
-                    std::snprintf(abuf, sizeof(abuf), "ALGORITHM %02d APPLIED", cur);
-                    lv_label_set_text(m->status_lbl, abuf);
-                    lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kActive), 0);
-                }
-            } else if (!isEditPending(m->backend) && isEditRejected(m->backend)) {
-                m->pending_algo = 0;
-                if (m->status_lbl) {
-                    const char* notice = m->backend->soundEditStatus();
-                    lv_label_set_text(m->status_lbl, notice ? notice : "ALGORITHM REJECTED: OWNER ERROR");
+                    lv_label_set_text(m->status_lbl, "PATCH CHANGED; ALGORITHM CANCELED");
                     lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kWarning), 0);
+                }
+            } else if (std::strcmp(m->backend->lastCommandParameterId(), "fm.algo") == 0) {
+                if (m->backend->lastCommandState() == UiCommandState::Confirmed) {
+                    const int cur = m->backend->model().getInt("fm.algo", m->confirmed_algo);
+                    if (cur == m->pending_algo) {
+                        m->confirmed_algo = cur;
+                        m->pending_algo = 0;
+                        if (m->status_lbl) {
+                            char abuf[48];
+                            std::snprintf(abuf, sizeof(abuf), "ALGORITHM %02d APPLIED", cur);
+                            lv_label_set_text(m->status_lbl, abuf);
+                            lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kActive), 0);
+                        }
+                    }
+                } else if (m->backend->lastCommandState() == UiCommandState::Rejected) {
+                    m->pending_algo = 0;
+                    if (m->status_lbl) {
+                        const char* notice = m->backend->soundEditStatus();
+                        if (notice && std::strstr(notice, "NOT CONFIRMED") != nullptr) {
+                            lv_label_set_text(m->status_lbl, "ALGORITHM CHANGE NOT CONFIRMED");
+                        } else {
+                            lv_label_set_text(m->status_lbl, (notice && notice[0]) ? notice : "ALGORITHM REJECTED: OWNER ERROR");
+                        }
+                        lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kWarning), 0);
+                    }
+                }
+            } else if (!isEditPending(m->backend)) {
+                const int cur = m->backend->model().getInt("fm.algo", m->confirmed_algo);
+                if (cur == m->pending_algo) {
+                    m->confirmed_algo = cur;
+                    m->pending_algo = 0;
+                    if (m->status_lbl) {
+                        char abuf[48];
+                        std::snprintf(abuf, sizeof(abuf), "ALGORITHM %02d APPLIED", cur);
+                        lv_label_set_text(m->status_lbl, abuf);
+                        lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kActive), 0);
+                    }
+                } else if (isEditRejected(m->backend)) {
+                    m->pending_algo = 0;
+                    if (m->status_lbl) {
+                        const char* notice = m->backend->soundEditStatus();
+                        lv_label_set_text(m->status_lbl, (notice && notice[0]) ? notice : "ALGORITHM REJECTED: OWNER ERROR");
+                        lv_obj_set_style_text_color(m->status_lbl, lv_color_hex(palette::kWarning), 0);
+                    }
                 }
             }
         }

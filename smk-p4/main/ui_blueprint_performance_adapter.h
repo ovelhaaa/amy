@@ -26,6 +26,7 @@ public:
     ui::FeatureStatus patchStatus(uint16_t id) const override;
     ui::UiCommandState lastCommandState() const override { return last_state_; }
     const char* lastCommandParameterId() const override { return last_id_; }
+    uint32_t lastCommandToken() const override { return last_token_; }
     ui::UiCommandResult requestParameterValue(const char*, const ui::ParameterValue&) override;
     ui::UiCommandResult requestParameterFloat(const char*, float) override;
     ui::UiCommandResult requestParameterInt(const char*, int32_t) override;
@@ -73,6 +74,16 @@ private:
     uint32_t fx_pending_token_=0;
     uint32_t fx_initial_errors_=0;
     uint32_t fx_initial_rejected_=0;
+    struct PendingEdit {
+        bool active=false;
+        unsigned param=0;
+        float requested_value=0.0f;
+        uint32_t token=0;
+        uint16_t patch_id=0;
+        uint32_t requested_ms=0;
+        uint32_t initial_errors=0;
+    } pending_edit_;
+    uint32_t last_token_=0;
     uint32_t next_token_=0, now_ms_=0, revision_=0;
     bool have_snapshot_=false, was_connected_=false;
     ui::UiCommandState last_state_=ui::UiCommandState::Rejected;

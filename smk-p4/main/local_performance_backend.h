@@ -36,6 +36,12 @@ public:
             if(edit_.request==edit_token_){
                 notice_=edit_.errors!=last_edit_errors_?"EDIT REJECTED; CONFIRMED VALUES RESTORED":"EDIT CONFIRMED";
                 edit_error_=edit_.errors!=last_edit_errors_;last_edit_errors_=edit_.errors;
+                if(edit_.family == 0){
+                    const unsigned cur_algo = unsigned(std::lround(edit_.applied[edit::FmAlgorithm]));
+                    std::printf("FM_ALGO_DIAG requested=%u confirmed=%u token=%u generation=%u state=%s\n",
+                        cur_algo, cur_algo, edit_.request, commands_.generation(),
+                        edit_error_ ? "REJECTED" : "CONFIRMED");
+                }
                 if(recall_wait_ && edit_.request==recall_token_){
                     if(edit_.errors==recall_errors_){
                         saved_edit_=edit_;saved_fx_=recall_fx_;saved_valid_=true;
@@ -188,6 +194,7 @@ public:
         }
         return (edit_.dirty || !fxEquivalent(desired_fx_,original_fx_))?"EDITED / SAVED":"FACTORY ORIGINAL";
     }
+    uint32_t editToken() const override { return edit_token_; }
     bool editParameter(unsigned p,float value) override {
         if(!ready_ || busy() || saving_ || edit_.compare || p>=edit::Count || !(edit_.available&edit::bit(p)) || !edit::valid(p,value))return false;
         if(p == edit::FmAlgorithm) {
@@ -196,13 +203,24 @@ public:
             if(target_algo != current_algo && (state_.active_notes > 0 || sustain_active_)) {
                 edit_error_ = true;
                 notice_ = "RELEASE NOTES TO CHANGE FM ALGORITHM";
+                const auto reason = state_.active_notes > 0 ? PresetRejectReason::ActiveNotes : PresetRejectReason::SustainActive;
+                setRejectNotice(reason, notice_);
+                std::printf("FM_ALGO_DIAG requested=%u confirmed=%u token=%u generation=%u state=REJECTED\n",
+                    target_algo, current_algo, edit_token_, commands_.generation());
                 return false;
             }
         }
         if(edit_pending_)++coalesced_;
         prepareEdit();desired_.values[p]=value;
         if(value==edit_.original[p])desired_.mask&=~edit::bit(p);else desired_.mask|=edit::bit(p);
-        desired_.request=newEditToken();edit_pending_=true;notice_="EDIT REQUESTED; WAIT OWNER";return true;
+        desired_.request=newEditToken();edit_pending_=true;notice_="EDIT REQUESTED; WAIT OWNER";
+        if(p == edit::FmAlgorithm) {
+            const unsigned target_algo = unsigned(std::lround(value));
+            const unsigned current_algo = unsigned(std::lround(edit_.applied[edit::FmAlgorithm]));
+            std::printf("FM_ALGO_DIAG requested=%u confirmed=%u token=%u generation=%u state=PENDING\n",
+                target_algo, current_algo, desired_.request, commands_.generation());
+        }
+        return true;
     }
     PresetRejectReason lastPresetRejectReason() const override { return last_reject_reason_; }
     const char* presetRejectNotice() const override { return reject_notice_[0] ? reject_notice_ : nullptr; }

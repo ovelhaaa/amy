@@ -48,6 +48,7 @@ UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend&
 }
 UiCommandResult UiBlueprintPerformanceAdapter::result(UiCommandState state,const char* id,const char* notice,uint32_t token) {
     last_state_=state;
+    last_token_=token;
     // Retain canonical/static IDs, never a caller-owned temporary string.
     const auto* desc=ParameterRegistry::findById(id);
     last_id_=desc?desc->id:"command";
@@ -167,7 +168,15 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterFloat(const char*
             return result(UiCommandState::Rejected,id,(notice && notice[0])?notice:"EDIT REJECTED; SEE CONFIRMED VALUE");
         }
         edit_requested_=true;edit_errors_=backend_.soundEdit()->errors;edit_id_=ParameterRegistry::findById(id)->id;
-        return result(UiCommandState::Requested,id,"EDIT REQUESTED; WAIT OWNER");
+        pending_edit_.active = true;
+        pending_edit_.param = unsigned(editIndex(id));
+        pending_edit_.requested_value = v;
+        pending_edit_.token = backend_.editToken();
+        pending_edit_.patch_id = static_cast<uint16_t>(model_.getInt("perf.patch_id", 0));
+        pending_edit_.requested_ms = now_ms_;
+        pending_edit_.initial_errors = backend_.soundEdit()->errors;
+        const char* req_notice = (pending_edit_.param == edit::FmAlgorithm) ? "ALGORITHM REQUESTED; WAIT OWNER" : "EDIT REQUESTED; WAIT OWNER";
+        return result(UiCommandState::Requested,id,req_notice,pending_edit_.token);
     }
     if(backend_.fxState() && isFxId(id)){
         if(!usable())return result(UiCommandState::Rejected,id,"ENGINE/SNAPSHOT UNAVAILABLE");
@@ -324,7 +333,11 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
         if(const auto* edit=backend_.soundEdit()){
             if(edit_requested_ && !backend_.editPending() && !backend_.busy()){
                 edit_requested_=false;
-                result(edit->errors==edit_errors_ && !backend_.editError()?UiCommandState::Confirmed:UiCommandState::Rejected,edit_id_,backend_.editNotice());
+                const char* confirm_notice = (pending_edit_.active && pending_edit_.param == edit::FmAlgorithm && edit->errors == edit_errors_ && !backend_.editError())
+                    ? "ALGORITHM APPLIED"
+                    : backend_.editNotice();
+                result(edit->errors==edit_errors_ && !backend_.editError()?UiCommandState::Confirmed:UiCommandState::Rejected,edit_id_,confirm_notice,pending_edit_.token);
+                pending_edit_.active = false;
             }
             const char* ids[]={
                 "osc.1.level","osc.sub_level","osc.noise_level","osc.1.pulse_width","osc.1.detune_ct",
@@ -397,6 +410,21 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
             model_.setFloat("fx.master_tone",fx->config.master_tone*100.0f);
         }
         result(UiCommandState::Rejected,fx_id_,"FX NOT CONFIRMED; OWNER STATE RETAINED");
+    }
+    if(pending_edit_.active){
+        if(model_.getInt("perf.patch_id", 0) != pending_edit_.patch_id){
+            pending_edit_.active = false;
+            edit_requested_ = false;
+            result(UiCommandState::Rejected, "fm.algo", "PATCH CHANGED; ALGORITHM CANCELED");
+        } else if(uint32_t(now_ms - pending_edit_.requested_ms) >= kPatchConfirmationTimeoutMs){
+            pending_edit_.active = false;
+            edit_requested_ = false;
+            if(pending_edit_.param == edit::FmAlgorithm){
+                result(UiCommandState::Rejected, "fm.algo", "ALGORITHM CHANGE NOT CONFIRMED");
+            } else {
+                result(UiCommandState::Rejected, edit_id_, "EDIT NOT CONFIRMED; OWNER STATE RETAINED");
+            }
+        }
     }
     if(const auto* h=backend_.harmonyState()) {
         model_.live_harmony=*h;model_.live_harmony.pending=harmony_pending_;
