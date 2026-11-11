@@ -388,6 +388,10 @@ int main(){
     cc(101);service();
     assert(r.snapshot().edit.performance_macros[0]==101);
     assert(r.snapshot().edit.performance_macros[6]==positions[6]);
+    assert(ui.navigation().navigateTo(ScreenId::Performance,0));preview::pumpFrame(ui);
+    for(const char* macro:{"CHARACTER","BRIGHTNESS","MOTION","SHAPE","ATTACK","RELEASE","SPACE","EDGE"})
+        assert(labels(ui.contentObject(),macro)==1);
+    assert(preview::saveFramebufferPpm("build/editor011/performance_014.ppm"));
 
     assert(lv_mem_test()==LV_RESULT_OK);ui.shutdown();r.end();
     puts("PASS LVGL9.3: all 7 editor tabs, Effects screen, Gate G0 inventory audit, FM/LFO/Mod/FX owner confirmation, dirty guard, Save/Recall/reboot simulation, heap integrity");
