@@ -81,6 +81,18 @@ If any unexpected regression occurs on hardware, the operator can immediately re
 
 ## 4. Hardware Verification Checklist (On Bench)
 
+### 4.1 Physical Execution Confirmation (Captured Live via Serial COM13)
+- **Flashing Target:** `guition-editor-8-bench` (`1,329,968 bytes`, SHA-256 `D1A4AEF87655927D500FFEC0B4813586C2FBE267C263A8E329F3077CA786E3AD`)
+- **Flashing Status:** `SUCCESS` (Wrote 1,329,968 bytes in 7.4s at 1435.4 kbit/s, data hash verified, hard reset clean via RTS).
+- **Physical Boot & Initialization:**
+  - `DISPLAY_TEST`: 1,207 screen refreshes, `touch_errors=0`, `flush_errors=0`, `LVGL free=95,432 B`, `fragmentation=1%`.
+  - `AUDIO`: `I2S_PRODUCING`, `frames_written>1,000,000`, `blocks_rendered=3,929`, `render_avg_us=214`, `render_max_us=351`, `render_deadlines=0`, `refill_risks=0`, `timeouts=0`, `DMA_underruns=0`.
+  - `ENGINE`: `ready=1`, `patch=128`, `notes=0`, `clipped=0`, `oom=0`, `overflow=0`, `compute_deadlines=0`.
+  - `MEMORY`: Internal SRAM free = `135,479 bytes`, PSRAM free = `30,492,312 bytes`.
+  - `UI_BLUEPRINT`: `stack_free_bytes=16,644`.
+  - `USB HOST`: `state=1` (Initialized, listening for SMK25 V2 keyboard).
+
+### 4.2 Manual Bench Test Procedure
 1. **Power-On & Display Boot:**
    - Verify LVGL boots into the 800×480 panoramic UI without flicker.
    - Navigate to Sound Editor -> FM Tab.
