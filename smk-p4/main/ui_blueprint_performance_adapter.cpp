@@ -107,7 +107,7 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestSoundAction(unsigned actio
 }
 ui::PresetOperationStatus UiBlueprintPerformanceAdapter::presetOperationStatus() const {
     const auto s = backend_.presetOperationStatus();
-    return { static_cast<ui::PresetOperationState>(s.state), s.action, s.slot, s.message };
+    return { static_cast<ui::PresetOperationState>(s.state), s.action, s.slot, s.message, s.revision };
 }
 FeatureStatus UiBlueprintPerformanceAdapter::parameterStatus(const char* id) const {
     if(const auto* state=backend_.soundEdit()){

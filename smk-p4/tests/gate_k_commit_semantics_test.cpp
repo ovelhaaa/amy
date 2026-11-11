@@ -171,6 +171,15 @@ int main() {
         // Verified: destructive patch change (action 3 - recall) is strictly blocked!
         assert(backend.unsaved());
         assert(!backend.editAction(3, 2)); // Blocked because unsaved is true
+        edit::Preset verified{};
+        fx::FxConfig verified_fx{};
+        assert(backend.transactionCoordinator().load(2,verified,verified_fx));
+        const auto sequence=verified.sequence;
+        assert(!backend.editAction(2,2,"MUST NOT OVERWRITE"));
+        assert(backend.presetOperationStatus().state==PresetOperationState::Confirmed);
+        assert(backend.transactionCoordinator().load(2,verified,verified_fx));
+        assert(verified.sequence==sequence);
+        assert(std::strcmp(verified.name,"INDETERMINATE")==0);
     }
     std::puts("  PASS: Indeterminate save blocks destructive patch changes in UI/backend");
 

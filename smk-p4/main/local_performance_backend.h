@@ -103,6 +103,7 @@ public:
                 preset_op_status_ = { PresetOperationState::Confirmed, 2, uint8_t(save_slot_), preset_op_msg_ };
                 logPresetDiag("SAVE", save_slot_, "CONFIRMED", PresetRejectReason::None);
             } else if(res.status == preset::SaveResult::Status::CommitOutcomeUnknown){
+                uncertain_[save_slot_]={true,res.expected_commit,res.expected_synth};
                 std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "SAVE UNCERTAIN: CHECK SLOT %02u", save_slot_ + 1);
                 preset_op_status_ = { PresetOperationState::OutcomeUnknown, 2, uint8_t(save_slot_), preset_op_msg_ };
                 logPresetDiag("SAVE", save_slot_, "OUTCOME_UNKNOWN", PresetRejectReason::CommitUncertain);
@@ -259,7 +260,11 @@ public:
     }
     PresetRejectReason lastPresetRejectReason() const override { return last_reject_reason_; }
     const char* presetRejectNotice() const override { return reject_notice_[0] ? reject_notice_ : nullptr; }
-    PresetOperationStatus presetOperationStatus() const override { return preset_op_status_; }
+    PresetOperationStatus presetOperationStatus() const override {
+        auto status=preset_op_status_;
+        status.revision=preset_op_revision_;
+        return status;
+    }
     // 0 Compare,1 Revert,2 Save As,3 Recall. Overwrite/rename uses explicit Save As.
     bool editAction(unsigned action,unsigned slot=0,const char* name=nullptr) override {
         const char* act_name = (action == 0) ? "COMPARE" : (action == 1) ? "REVERT" : (action == 2) ? "SAVE" : (action == 3) ? "RECALL" : "UNKNOWN";
@@ -336,6 +341,30 @@ public:
             return false;
         }
         if(action==2){
+            if(!fx_store_){
+                edit_error_=true;
+                notice_="SAVE FAILED: FX STORAGE UNAVAILABLE";
+                setRejectNotice(PresetRejectReason::StorageUnavailable,notice_);
+                preset_op_status_={PresetOperationState::Rejected,2,uint8_t(slot),notice_};
+                return false;
+            }
+            auto& uncertain=uncertain_[slot];
+            if(uncertain.active){
+                edit::Preset stored{};
+                fx::FxConfig stored_fx{};
+                preset::CommitMarker marker{};
+                if(coordinator_.load(slot,stored,stored_fx,&marker) &&
+                   marker.commit_seq==uncertain.commit && stored.sequence==uncertain.synth){
+                    uncertain.active=false;
+                    ++preset_op_revision_;
+                    preset_op_status_={PresetOperationState::Confirmed,2,uint8_t(slot),"PREVIOUS SAVE VERIFIED; CONFIRM AGAIN"};
+                    setRejectNotice(PresetRejectReason::CommitUncertain,"PREVIOUS SAVE VERIFIED; CONFIRM AGAIN");
+                }else{
+                    preset_op_status_={PresetOperationState::OutcomeUnknown,2,uint8_t(slot),"SAVE UNCERTAIN: SLOT WRITE BLOCKED"};
+                    setRejectNotice(PresetRejectReason::CommitUncertain,"SAVE UNCERTAIN: SLOT WRITE BLOCKED");
+                }
+                return false;
+            }
             if(edit_.compare){
                 setRejectNotice(PresetRejectReason::CompareActive, "OVERWRITE BLOCKED: COMPARE ACTIVE");
                 preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
@@ -371,6 +400,7 @@ public:
                 return false;
             }
             save_fx_=desired_fx_;
+            ++preset_op_revision_;
             save_slot_=slot;saving_=true;save_requested_ms_=last_service_ms_;notice_="SAVE REQUESTED; QUIET BARRIER";
             const auto st = quiet_ ? PresetOperationState::Writing : PresetOperationState::WaitingForQuiet;
             std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "%s", quiet_ ? "WRITING PRESET..." : "WAITING FOR QUIET");
@@ -410,6 +440,7 @@ public:
                 logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::InvalidPreset);
                 return false;
             }
+            ++preset_op_revision_;
             recalling_=true;recall_slot_=slot;
             std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "RECALL REQUESTED: SLOT %02u", slot + 1);
             preset_op_status_ = { PresetOperationState::Requested, 3, uint8_t(slot), preset_op_msg_ };
@@ -434,9 +465,13 @@ public:
         return false;
     }
     bool userPreset(unsigned slot,char* name,unsigned capacity,uint16_t& origin) override {
+        uint32_t sequence=0;
+        return userPresetIdentity(slot,name,capacity,origin,sequence);
+    }
+    bool userPresetIdentity(unsigned slot,char* name,unsigned capacity,uint16_t& origin,uint32_t& sequence) override {
         edit::Preset preset;fx::FxConfig dummy_fx{};
         if(!coordinator_.load(slot,preset,dummy_fx))return false;
-        std::snprintf(name,capacity,"%s",preset.name);origin=preset.patch;return true;
+        std::snprintf(name,capacity,"%s",preset.name);origin=preset.patch;sequence=preset.sequence;return true;
     }
 #endif
     void publishMidi(bool connected,bool error,uint32_t events) {
@@ -624,6 +659,9 @@ private:
     char user_name_[25]{};
     const char* notice_="FACTORY ORIGINAL";
     PresetOperationStatus preset_op_status_{};
+    uint32_t preset_op_revision_=0;
+    struct UncertainSave { bool active=false; uint32_t commit=0,synth=0; };
+    UncertainSave uncertain_[edit::kSlots]{};
     char preset_op_msg_[64]{};
     PresetRejectReason last_reject_reason_ = PresetRejectReason::None;
     char reject_notice_[64]{};

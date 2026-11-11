@@ -246,7 +246,26 @@ int main(){
     assert(ui.navigation().navigateTo(ScreenId::SoundEditor,2));preview::pumpFrame(ui);
     auto* open=button(ui.contentObject(),"USER / SAVE AS");assert(open);lv_obj_send_event(open,LV_EVENT_CLICKED,nullptr);preview::pumpFrame(ui);
     assert(preview::saveFramebufferPpm("build/editor011/presets.ppm"));
-    auto* close=button(lv_screen_active(),"CLOSE");assert(close);lv_obj_send_event(close,LV_EVENT_CLICKED,nullptr);preview::pumpFrame(ui);
+    auto* close=button(lv_screen_active(),"CLOSE");assert(close);
+    const auto screen_children=lv_obj_get_child_count(lv_screen_active());
+    lv_obj_send_event(open,LV_EVENT_CLICKED,nullptr);
+    assert(lv_obj_get_child_count(lv_screen_active())==screen_children);
+    auto* panel=lv_obj_get_parent(close);
+    auto* save_as=button(panel,"SAVE AS");assert(save_as);
+    const auto before_overwrite=next.presetOperationStatus().revision;
+    lv_obj_send_event(save_as,LV_EVENT_CLICKED,nullptr);
+    preview::g_sim_tick_ms+=10000;
+    preview::pumpFrame(ui);
+    lv_obj_send_event(save_as,LV_EVENT_CLICKED,nullptr);
+    assert(next.presetOperationStatus().revision==before_overwrite);
+
+    edit::Preset replacement{};
+    fx::FxConfig replacement_fx{};
+    assert(reboot.transactionCoordinator().load(0,replacement,replacement_fx));
+    assert(reboot.transactionCoordinator().save(0,replacement,replacement_fx).status==preset::SaveResult::Status::Success);
+    lv_obj_send_event(save_as,LV_EVENT_CLICKED,nullptr);
+    assert(next.presetOperationStatus().revision==before_overwrite);
+    lv_obj_send_event(close,LV_EVENT_CLICKED,nullptr);preview::pumpFrame(ui);
     assert(ui.navigation().navigateTo(ScreenId::PatchBrowser));preview::pumpFrame(ui);assert(button(ui.contentObject(),"USER PRESETS / SAVE AS"));
     auto* browser_open=button(ui.contentObject(),"USER PRESETS / SAVE AS");
     assert(browser_open);

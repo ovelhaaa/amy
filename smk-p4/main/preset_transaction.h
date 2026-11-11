@@ -78,6 +78,8 @@ struct SaveResult {
     };
     Status status = Status::Success;
     const char* message = "SAVED";
+    uint32_t expected_commit = 0;
+    uint32_t expected_synth = 0;
 };
 
 class PresetTransactionCoordinator {
@@ -231,7 +233,7 @@ public:
                 if (load(slot, check_p, check_fx) && check_p.sequence == next_synth_seq) {
                     return { SaveResult::Status::Success, "SAVED" };
                 }
-                return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET" };
+                return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET", next_commit_seq, next_synth_seq };
             }
             return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
         }
@@ -246,9 +248,9 @@ public:
                 if (load(slot, check_p, check_fx) && check_p.sequence == next_synth_seq) {
                     return { SaveResult::Status::Success, "SAVED" };
                 }
-                return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET" };
+                return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET", next_commit_seq, next_synth_seq };
             }
-            return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
+            return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET", next_commit_seq, next_synth_seq };
         }
 
         // Fault injection check: AfterMarkerWrite (marker committed!)
@@ -258,24 +260,24 @@ public:
             if (load(slot, check_preset, check_fx) && check_preset.sequence == next_synth_seq) {
                 return { SaveResult::Status::Success, "SAVED" };
             }
-            return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET" };
+            return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET", next_commit_seq, next_synth_seq };
         }
 
         // 5. Final Transaction Readback Verification
         if (fault_ == FaultInjection::DuringReadback) {
-            return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET" };
+            return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET", next_commit_seq, next_synth_seq };
         }
 
         edit::Preset check_preset{};
         fx::FxConfig check_fx{};
         if (!load(slot, check_preset, check_fx) || check_preset.sequence != next_synth_seq) {
-            return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET" };
+            return { SaveResult::Status::CommitOutcomeUnknown, "SAVE INDETERMINATE: VERIFY PRESET", next_commit_seq, next_synth_seq };
         }
 
         return { SaveResult::Status::Success, "SAVED" };
     }
 
-    bool load(unsigned slot, edit::Preset& preset, fx::FxConfig& fx) {
+    bool load(unsigned slot, edit::Preset& preset, fx::FxConfig& fx, CommitMarker* verified_marker=nullptr) {
         if (slot >= 16 || !synth_store_) return false;
 
         // 1. Try Commit Markers first
@@ -331,6 +333,7 @@ public:
                 }
 
                 // Both verified and paired!
+                if(verified_marker) *verified_marker=m;
                 preset = p;
                 fx = fx_cfg;
                 return true;
@@ -338,6 +341,8 @@ public:
             // If commit markers existed but pointed records are corrupt, fail closed.
             return false;
         }
+
+        if(verified_marker) return false;
 
         // 2. Legacy Fallback (No Commit Marker found)
         if (!synth_store_->load(slot, preset)) return false;

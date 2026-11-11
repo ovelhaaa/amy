@@ -159,6 +159,11 @@ public:
 private:
     lv_obj_t* banner_=nullptr;
     static inline lv_obj_t* s_active_preset_modal_ = nullptr;
+    static constexpr uint32_t kOverwriteConfirmTimeoutMs=10000;
+    static bool presetPending(PresetOperationState state) {
+        return state==PresetOperationState::Requested || state==PresetOperationState::WaitingForQuiet ||
+               state==PresetOperationState::Writing || state==PresetOperationState::Verifying;
+    }
     struct PresetPanel {
         IUiBackend* backend = nullptr;
         lv_obj_t* root = nullptr;
@@ -170,6 +175,10 @@ private:
         lv_obj_t* close_btn = nullptr;
         bool overwrite = false;
         unsigned overwrite_slot = 0;
+        uint32_t overwrite_started_ms = 0;
+        uint32_t overwrite_sequence = 0;
+        uint16_t overwrite_origin = 0;
+        uint32_t last_seen_revision = 0;
         char overwrite_cur_name[25]{};
         char overwrite_new_name[25]{};
         PresetOperationState last_seen_op_state = PresetOperationState::Idle;
@@ -188,7 +197,9 @@ private:
             if(n<0 || unsigned(n)>=800-used)break;
             used+=unsigned(n);
         }
+        const auto selected=lv_dropdown_get_selected(slot);
         lv_dropdown_set_options(slot,options);
+        lv_dropdown_set_selected(slot,selected);
         lv_free(options);
     }
 public:
@@ -196,6 +207,10 @@ public:
         lv_obj_t* screen = button ? lv_obj_get_screen(button) : lv_screen_active();
         if(!screen) screen = lv_screen_active();
         if(!screen) return;
+        if(s_active_preset_modal_){
+            lv_obj_move_foreground(s_active_preset_modal_);
+            return;
+        }
         auto* root=lv_obj_create(screen);
         if(!root) return;
         applyPanelStyle(root,true);
@@ -210,21 +225,22 @@ public:
         auto* save=createActionButton(root,"SAVE AS",12,118,210,40,nullptr,nullptr);
         auto* recall=createActionButton(root,"RECALL",244,118,210,40,nullptr,nullptr);
         auto* close=createActionButton(root,"CLOSE",476,118,204,40,nullptr,nullptr);
-        auto* context=attachLvContext<PresetPanel>(root,PresetPanel{&backend,root,slot,name,info,save,recall,close,false,0,{},{},PresetOperationState::Idle},nullptr);
+        auto* context=attachLvContext<PresetPanel>(root,PresetPanel{&backend,root,slot,name,info,save,recall,close},nullptr);
         if(!context){lv_obj_delete(root);return;}
         s_active_preset_modal_ = root;
         lv_obj_add_event_cb(root, [](lv_event_t* e){
-            (void)e;
-            s_active_preset_modal_ = nullptr;
+            if(lv_event_get_target(e)==s_active_preset_modal_) s_active_preset_modal_=nullptr;
         }, LV_EVENT_DELETE, nullptr);
         lv_obj_add_event_cb(root, [](lv_event_t* e){
             auto* c = static_cast<PresetPanel*>(lv_event_get_user_data(e));
             if(!c || !c->backend) return;
             const auto op = c->backend->presetOperationStatus();
-            const bool pending = (op.state == PresetOperationState::Requested ||
-                                  op.state == PresetOperationState::WaitingForQuiet ||
-                                  op.state == PresetOperationState::Writing ||
-                                  op.state == PresetOperationState::Verifying);
+            const bool pending=presetPending(op.state);
+            if(c->overwrite && (pending || op.revision!=c->last_seen_revision ||
+               lv_tick_elaps(c->overwrite_started_ms)>=kOverwriteConfirmTimeoutMs)){
+                c->overwrite=false;
+                lv_label_set_text(c->info,"OVERWRITE CONFIRMATION EXPIRED; PRESS SAVE AS");
+            }
             if(pending){
                 if(c->save_btn) lv_obj_add_state(c->save_btn, LV_STATE_DISABLED);
                 if(c->recall_btn) lv_obj_add_state(c->recall_btn, LV_STATE_DISABLED);
@@ -235,7 +251,7 @@ public:
             } else {
                 if(c->save_btn) lv_obj_clear_state(c->save_btn, LV_STATE_DISABLED);
                 if(c->recall_btn) lv_obj_clear_state(c->recall_btn, LV_STATE_DISABLED);
-                if(op.state != c->last_seen_op_state){
+                if(op.state != c->last_seen_op_state || op.revision!=c->last_seen_revision){
                     if(op.state == PresetOperationState::Confirmed){
                         if(op.action == 2 && c->slot){
                             updateSlotDropdown(c->slot, *c->backend);
@@ -255,6 +271,7 @@ public:
                 }
             }
             c->last_seen_op_state = op.state;
+            c->last_seen_revision = op.revision;
         }, LV_EVENT_REFRESH, context);
 
         lv_obj_add_event_cb(slot,[](lv_event_t* e){auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));
@@ -275,11 +292,28 @@ public:
             if(!c || !c->backend) return;
             const unsigned slot=lv_dropdown_get_selected(c->slot);
             const char* new_name = lv_textarea_get_text(c->name);
-            char cur_name[25]{};uint16_t origin=0;
-            const bool occupied = c->backend->userPreset(slot,cur_name,sizeof(cur_name),origin);
-            if(occupied && (!c->overwrite || c->overwrite_slot != slot || std::strcmp(c->overwrite_new_name, new_name) != 0)){
+            const auto op=c->backend->presetOperationStatus();
+            if(presetPending(op.state)) return;
+            char cur_name[25]{};uint16_t origin=0;uint32_t sequence=0;
+            const bool occupied=c->backend->userPresetIdentity(slot,cur_name,sizeof(cur_name),origin,sequence);
+            const bool matches=c->overwrite && c->overwrite_slot==slot &&
+                op.revision==c->last_seen_revision &&
+                lv_tick_elaps(c->overwrite_started_ms)<kOverwriteConfirmTimeoutMs &&
+                c->overwrite_sequence==sequence && c->overwrite_origin==origin &&
+                std::strcmp(c->overwrite_cur_name,cur_name)==0 &&
+                std::strcmp(c->overwrite_new_name,new_name)==0;
+            if(c->overwrite && !occupied){
+                c->overwrite=false;
+                lv_label_set_text(c->info,"SLOT CHANGED; PRESS SAVE AS AGAIN");
+                return;
+            }
+            if(occupied && !matches){
                 c->overwrite=true;
-                c->overwrite_slot = slot;
+                c->overwrite_slot=slot;
+                c->overwrite_started_ms=lv_tick_get();
+                c->overwrite_sequence=sequence;
+                c->overwrite_origin=origin;
+                c->last_seen_revision=op.revision;
                 std::snprintf(c->overwrite_cur_name, sizeof(c->overwrite_cur_name), "%s", cur_name);
                 std::snprintf(c->overwrite_new_name, sizeof(c->overwrite_new_name), "%s", new_name);
                 char conf_msg[160];
@@ -299,6 +333,7 @@ public:
 
         lv_obj_add_event_cb(recall,[](lv_event_t* e){auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));
             if(!c || !c->backend) return;
+            if(presetPending(c->backend->presetOperationStatus().state)) return;
             c->overwrite = false;
             const auto r=c->backend->requestSoundAction(3,lv_dropdown_get_selected(c->slot));
             if(r.notice) lv_label_set_text(c->info, r.notice);

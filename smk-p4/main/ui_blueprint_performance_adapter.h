@@ -45,6 +45,9 @@ public:
     const char* soundEditName() const override {return backend_.state().patch_name;}
     const char* soundEditStatus() const override { return backend_.editNotice(); }
     ui::UiCommandResult requestSoundAction(unsigned action,unsigned slot=0,const char* name=nullptr) override;
+    bool userPresetIdentity(unsigned slot,char* name,unsigned size,uint16_t& patch,uint32_t& sequence) override {
+        return backend_.userPresetIdentity(slot,name,size,patch,sequence);
+    }
     bool userPreset(unsigned slot,char* name,unsigned capacity,uint16_t& origin) override {return backend_.userPreset(slot,name,capacity,origin);}
     ui::PresetOperationStatus presetOperationStatus() const override;
 

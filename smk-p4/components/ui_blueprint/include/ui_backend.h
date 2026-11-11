@@ -34,6 +34,7 @@ struct PresetOperationStatus {
     uint8_t action = 0; // 0=None, 2=Save, 3=Recall
     uint8_t slot = 0;
     const char* message = nullptr;
+    uint32_t revision = 0;
 };
 
 struct UiCommandResult {
@@ -117,6 +118,10 @@ public:
     virtual const char* soundEditStatus() const { return "EDITOR PLANNED"; }
     virtual UiCommandResult requestSoundAction(unsigned,unsigned=0,const char* =nullptr) { return {}; }
     virtual bool userPreset(unsigned,char*,unsigned,uint16_t&) { return false; }
+    virtual bool userPresetIdentity(unsigned slot,char* name,unsigned size,uint16_t& patch,uint32_t& sequence) {
+        sequence=0;
+        return userPreset(slot,name,size,patch);
+    }
     virtual PresetOperationStatus presetOperationStatus() const { return {}; }
 
     // 5. Note lifecycle with explicit token/pitch pairing (prevents stuck notes on octave shift)

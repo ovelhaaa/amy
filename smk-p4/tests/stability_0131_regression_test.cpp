@@ -84,6 +84,12 @@ int main() {
     assert(std::strcmp(backend.presetOperationStatus().message, "SAVED TO SLOT 01") == 0);
     assert(std::strcmp(backend.editNotice(), "SAVED") == 0);
     std::puts("  PASS: Clean Save in empty slot confirmed asynchronously");
+    const auto first_save=backend.presetOperationStatus();
+    assert(backend.editAction(2, 2, "CONSECUTIVE SAVE"));
+    tick();
+    const auto second_save=backend.presetOperationStatus();
+    assert(second_save.state==first_save.state && second_save.slot==2);
+    assert(second_save.revision!=first_save.revision);
 
     std::puts("--- Scenario 1.2: Save As with Invalid Name & Limits ---");
     // Modify synth to make it unsaved

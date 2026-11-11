@@ -49,6 +49,7 @@ struct PresetOperationStatus {
     uint8_t action = 0; // 0=None, 2=Save, 3=Recall
     uint8_t slot = 0;
     const char* message = nullptr;
+    uint32_t revision = 0;
 };
 
 class PerformanceBackend {
@@ -76,6 +77,10 @@ public:
     virtual bool editParameter(unsigned,float) { return false; }
     virtual bool editAction(unsigned,unsigned=0,const char* =nullptr) { return false; }
     virtual bool userPreset(unsigned,char*,unsigned,uint16_t&) { return false; }
+    virtual bool userPresetIdentity(unsigned slot,char* name,unsigned size,uint16_t& patch,uint32_t& sequence) {
+        sequence=0;
+        return userPreset(slot,name,size,patch);
+    }
     virtual const char* editNotice() const { return "EDITOR UNAVAILABLE"; }
     virtual PresetRejectReason lastPresetRejectReason() const { return PresetRejectReason::None; }
     virtual const char* presetRejectNotice() const { return nullptr; }
