@@ -1,5 +1,6 @@
 #pragma once
 #include "commands.h"
+#include "midi_control_events.h"
 #include <cstddef>
 namespace smk::p4::amy {
 // USB client task is the sole producer. The AMY owner consumes this mailbox;
@@ -8,6 +9,14 @@ class UsbInput {
 public:
     struct Trace { uint32_t timestamp_ms=0; uint8_t packet[4]{}; uint8_t valid_bytes=0; };
     void enableTrace() { trace_enabled_=true; } // Before starting the USB task.
+    void enableControls() { controls_enabled_=true; } // Before starting the USB task.
+    bool popControl(MidiControlEvent& event) { return controls_.pop(event); }
+    uint32_t controlDrops() const { return controls_.dropped(); }
+    uint32_t deviceGeneration() const { return device_generation_.load(std::memory_order_acquire); }
+    bool currentControl(const MidiControlEvent& event) const {
+        return event.device_generation==deviceGeneration() &&
+            event.command_generation==commands.generation();
+    }
     bool popTrace(Trace& t) { // Diagnostics/UI is the only reader.
         const auto r=trace_read_.load(std::memory_order_relaxed);
         if(r==trace_write_.load(std::memory_order_acquire)) return false;
@@ -25,6 +34,9 @@ public:
             c.type=cin==8 || !p[3]?CommandType::NoteOff:CommandType::NoteOn;
             c.id=p[2]; c.value=p[3];
         } else if(cin==11) {
+            if(controls_enabled_ && observableController(p[2]))
+                controls_.push({now_ms,deviceGeneration(),commands.generation(),0,c.channel,p[2],p[3]});
+            if(!musicalController(p[2])) { ++events; return true; }
             c.type=CommandType::Control; c.id=p[2]; c.value=p[3];
         } else if(cin==14) {
             c.type=CommandType::Bend; c.id=uint16_t(p[2])|(uint16_t(p[3])<<7);
@@ -74,11 +86,17 @@ public:
         }
         return true;
     }
-    void disconnect() { commands.panic(); }
+    void disconnect() {
+        device_generation_.fetch_add(1,std::memory_order_acq_rel);
+        commands.panic();
+    }
     std::atomic<uint32_t> events{0},dropped{0},parse_errors{0},ignored_cable_packets{0};
     std::atomic<uint32_t> trace_dropped{0};
 private:
     bool trace_enabled_=false;
+    bool controls_enabled_=false;
+    MidiControlEvents controls_;
+    std::atomic<uint32_t> device_generation_{1};
     Trace trace_[kCommandCapacity]{};
     std::atomic<uint32_t> trace_read_{0},trace_write_{0};
 };
