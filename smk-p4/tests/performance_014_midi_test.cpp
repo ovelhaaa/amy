@@ -39,6 +39,7 @@ int main() {
     for (const uint8_t physical : {81, 82, 81, 83, 82})
         assert(!knob.update(physical, 84, output));
     assert(knob.update(88, 84, output) && output == 84);
+    assert(!knob.update(88, 84, output));
     assert(knob.update(99, 88, output) && output == 99);
     knob.reset();
     assert(!knob.update(100, 84, output));

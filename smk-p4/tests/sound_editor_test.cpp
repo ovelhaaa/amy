@@ -4,6 +4,7 @@
 #include "user_presets_v2.h"
 #include "fake_nvs.h"
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 extern "C" {
@@ -66,6 +67,28 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     macro.performance_macros=performance::kNeutral;submit(macro);
     assert(runtime.snapshot().edit.applied[edit::Cutoff]==1600);
     assert(amy_global.bus[0]->echo.level==0);
+    const auto measure=[&](bool move_macros){
+        using Clock=std::chrono::steady_clock;
+        constexpr unsigned cycles=200;
+        double total_us=0,max_us=0;
+        for(unsigned n=0;n<cycles;++n){
+            if(move_macros){
+                macro.request=runtime.snapshot().edit.request+1;
+                macro.performance_macros=n%2?performance::kNeutral:
+                    performance::Positions{83,90,48,90,57,78,60,43};
+                assert(runtime.commands().edits.push(macro));
+            }
+            const auto start=Clock::now();
+            tick();
+            const double elapsed=std::chrono::duration<double,std::micro>(Clock::now()-start).count();
+            total_us+=elapsed;max_us=std::max(max_us,elapsed);
+        }
+        std::printf("PERF014_HOST %s voices=8 blocks=%u apply_render_avg_us=%.2f max_us=%.2f\n",
+                    move_macros?"macro_burst":"baseline",cycles,total_us/cycles,max_us);
+    };
+    measure(false);
+    measure(true);
+    assert(runtime.snapshot().active_notes==8 && runtime.snapshot().edit.errors==0);
     auto r=request();r.mask=1;r.values[0]=500;submit(r);
     for(unsigned o=0;o<48;++o){assert(synth[o]->note_on_clock==clocks[o]);if(synth[o]->filter_type!=FILTER_NONE)assert(std::fabs(freq_of_logfreq(synth[o]->filter_logfreq_coefs[0])-500)<0.1f);}
     assert(runtime.snapshot().active_notes==8);
@@ -107,6 +130,11 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     r=request();r.mask=1u<<edit::Depth;r.values[edit::Depth]=0.75f;submit(r);
     for(unsigned v=0;v<8;++v)assert(synth[source[v][0]]->amp_coefs[0]==amps[v][0]); // OP1 carrier preserved
     assert(synth[source[0][1]]->amp_coefs[0]==amps[0][1]*0.75f);
+    const auto algorithm=runtime.snapshot().edit.applied[edit::FmAlgorithm];
+    r=request();r.performance_macros[1]=20;submit(r);
+    assert(runtime.snapshot().edit.applied[edit::FmAlgorithm]==algorithm);
+    assert(synth[source[0][0]]->amp_coefs[0]==amps[0][0]);
+    assert(synth[source[0][1]]->amp_coefs[0]<amps[0][1]*0.75f);
     MemoryStore store;edit::Preset preset;preset.sequence=1;preset.patch=135;preset.family=0;preset.mask=1u<<edit::Depth;preset.values[edit::Depth]=0.75f;std::strcpy(preset.name,"MY DX PIANO");
     for(unsigned slot=0;slot<16;++slot)assert(store.save(slot,preset));
     edit::Preset restored;assert(store.load(0,restored) && restored.sequence==1);

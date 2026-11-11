@@ -31,6 +31,7 @@ jobs:
           ./tests/run_smk_link.ps1
           ./smk-p4/tests/run_host.ps1
           ./smk-p4/tests/run_usb.ps1
+          ./smk-p4/tests/run_performance_014.ps1
           ./smk-p4/tests/run_retrigger_probe.ps1
           ./smk-p4/tests/run_amy.ps1 -Voices 4 | Tee-Object build/profile4_tests.log
           ./smk-p4/tests/run_amy.ps1 -Voices 6 | Tee-Object build/profile6_tests.log
