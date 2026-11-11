@@ -5,7 +5,7 @@ Push-Location $repo
 try {
     $build='build/harmony09'
     New-Item -ItemType Directory -Force $build | Out-Null
-    $flags=@('-O2','-Wall','-Wextra','-DAMY_NO_MINIAUDIO','-DAMY_SAMPLE_RATE=48000','-DAMY_BLOCK_SIZE=256','-DBLOCK_SIZE_BITS=8','-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1','-DAMY_EXCLUSIVE_FM_PHASE_RESTART=1','-DSMKP4_VOICES=8','-DSMKP4_SOUND_LIBRARY=1','-DSMKP4_UNIFIED_ENGINE=1','-DSMKP4_HARMONY=1','-Isrc','-Ismk-p4/components/amy_runtime','-Ismk-p4/main','-Ishared/smk_protocol')
+    $flags=@('-O2','-Wall','-Wextra','-DAMY_NO_MINIAUDIO','-DAMY_SAMPLE_RATE=48000','-DAMY_BLOCK_SIZE=256','-DBLOCK_SIZE_BITS=8','-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1','-DAMY_EXCLUSIVE_FM_PHASE_RESTART=1','-DSMKP4_VOICES=8','-DSMKP4_SOUND_LIBRARY=1','-DSMKP4_UNIFIED_ENGINE=1','-DSMKP4_HARMONY=1','-Isrc','-Ismk-p4/components/amy_runtime','-Ismk-p4/main','-Ishared/smk_protocol','-Ismk-p4/tests/nvs_mocks')
     & g++ -std=c++17 @flags smk-p4/tests/harmony_test.cpp -o "$build/music.exe"
     if($LASTEXITCODE){throw 'Music compile failed'}
     & "$build/music.exe" | Tee-Object "$build/music.log"

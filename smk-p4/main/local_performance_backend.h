@@ -47,7 +47,13 @@ public:
             }
         }
 #endif
-        if(snapshot.patch_id!=state_.patch_id && !recalling_){desired_fx_=original_fx_=snapshot.fx.config;}
+        if(snapshot.patch_id!=state_.patch_id
+#ifdef SMKP4_SOUND_EDITOR
+           && !recalling_
+#endif
+        ){
+            desired_fx_=original_fx_=snapshot.fx.config;
+        }
         fx_state_=snapshot.fx;
 #ifdef SMKP4_SOUND_EDITOR
         if(recall_wait_ && commands_.generation()==recall_generation_ &&

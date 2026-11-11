@@ -175,6 +175,12 @@ int main() {
         fx::FxConfig verified_fx{};
         assert(backend.transactionCoordinator().load(2,verified,verified_fx));
         const auto sequence=verified.sequence;
+        const auto writes=fake_nvs::writes;
+        fake_nvs::read_error=true;
+        assert(!backend.editAction(2,2,"MUST NOT OVERWRITE"));
+        assert(backend.presetOperationStatus().state==PresetOperationState::OutcomeUnknown);
+        assert(fake_nvs::writes==writes);
+        fake_nvs::read_error=false;
         assert(!backend.editAction(2,2,"MUST NOT OVERWRITE"));
         assert(backend.presetOperationStatus().state==PresetOperationState::Confirmed);
         assert(backend.transactionCoordinator().load(2,verified,verified_fx));
