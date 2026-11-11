@@ -284,7 +284,7 @@ public:
             logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::InvalidSlot);
             return false;
         }
-        if(!store_ || !fx_store_){
+        if(!store_){
             setRejectNotice(PresetRejectReason::StorageUnavailable, "PRESET STORAGE UNAVAILABLE");
             preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
             logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::StorageUnavailable);

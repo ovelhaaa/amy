@@ -333,11 +333,16 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
         if(const auto* edit=backend_.soundEdit()){
             if(edit_requested_ && !backend_.editPending() && !backend_.busy()){
                 edit_requested_=false;
-                const char* confirm_notice = (pending_edit_.active && pending_edit_.param == edit::FmAlgorithm && edit->errors == edit_errors_ && !backend_.editError())
-                    ? "ALGORITHM APPLIED"
-                    : backend_.editNotice();
-                result(edit->errors==edit_errors_ && !backend_.editError()?UiCommandState::Confirmed:UiCommandState::Rejected,edit_id_,confirm_notice,pending_edit_.token);
-                pending_edit_.active = false;
+                if(pending_edit_.active && backend_.state().patch_id != pending_edit_.patch_id){
+                    pending_edit_.active = false;
+                    result(UiCommandState::Rejected, (pending_edit_.param == edit::FmAlgorithm) ? "fm.algo" : edit_id_, "PATCH CHANGED; ALGORITHM CANCELED");
+                } else {
+                    const char* confirm_notice = (pending_edit_.active && pending_edit_.param == edit::FmAlgorithm && edit->errors == edit_errors_ && !backend_.editError())
+                        ? "ALGORITHM APPLIED"
+                        : backend_.editNotice();
+                    result(edit->errors==edit_errors_ && !backend_.editError()?UiCommandState::Confirmed:UiCommandState::Rejected,edit_id_,confirm_notice,pending_edit_.token);
+                    pending_edit_.active = false;
+                }
             }
             const char* ids[]={
                 "osc.1.level","osc.sub_level","osc.noise_level","osc.1.pulse_width","osc.1.detune_ct",
