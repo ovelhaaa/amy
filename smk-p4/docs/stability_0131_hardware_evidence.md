@@ -8,4 +8,9 @@ O commit `08a430fb8cdd7ea96b141b1d66969586389813d2` descreve telemetria da 0.13.
 
 ## Smoke físico pendente
 
-Com autorização específica para o SHA-256, verificar boot e memória livre, áudio estéreo com oito vozes, sustain e reconexão USB. No editor, verificar timeout de Recall, confirmação de FM com Master intercalado e expiração de Overwrite. Registrar o hash, a telemetria serial, underruns e resultado da escuta.
+Depois de o operador autorizar e instalar o SHA-256 específico:
+
+1. Conectar o PCM5102A a uma entrada estéreo e o SMK25 V2 à porta USB Host. Capturar o log serial de boot a 115200 baud e registrar o hash, SRAM e PSRAM livres, sample rate e tamanho de bloco.
+2. Tocar oito notas, acionar e soltar sustain, desconectar o controlador com notas ativas e reconectar. Esperar áudio nos dois canais, liberação das notas e retomada sem reboot. Registrar underruns e tempo máximo de render.
+3. Usar um slot descartável para Save As. Aguardar mais de 10 segundos após o primeiro toque de Overwrite e tocar novamente. Esperar um novo pedido de confirmação com o texto digitado preservado. Confirmar, mudar de patch e executar Recall. Esperar `Confirmed` após a aplicação de síntese e efeitos.
+4. Com as notas soltas, selecionar um algoritmo FM e alterar Master durante a solicitação. Esperar o algoritmo confirmado pelo owner e observar `FM_ALGO_DIAG` e `PRESET_DIAG`. Registrar o resultado da escuta e qualquer falha ou lacuna audível.

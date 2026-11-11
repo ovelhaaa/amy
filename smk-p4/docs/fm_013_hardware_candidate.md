@@ -83,7 +83,7 @@ If any unexpected regression occurs on hardware, the operator can immediately re
 
 ## 4. Hardware Verification Checklist (On Bench)
 
-### 4.1 Candidate Binary Qualification Status (Executed Live via Serial COM13)
+### 4.1 Historical COM13 report
 - **Candidate Flashing Target:** `guition-editor-8-bench` (`1,334,656 bytes`, SHA-256 `DC41479E5A2E33F7E3FAD436505D00080FB96B52A31A53A3C1F0E96B313FB1E5`)
 - **Flashing Status:** `SUCCESS` (Wrote 1,334,656 bytes in 6.9s at 1540.6 kbit/s, data hash verified, RTS hard reset clean).
 - **Physical Boot & Live Telemetry (COM13):**
@@ -93,7 +93,7 @@ If any unexpected regression occurs on hardware, the operator can immediately re
   - `MEMORY`: Internal SRAM free = `135,455 bytes`, PSRAM free = `30,492,312 bytes`.
   - `UI_BLUEPRINT`: `stack_free_bytes=16,724-16,768`, `screen_switches=0`.
   - `USB HOST`: `state=1` (Initialized, listening for SMK25 V2 keyboard, `stack_free=5,520`).
-- **Hardware Bench Gate Status:** `PASS` (Firmware booted, display rendered without flush errors, DMA audio running smoothly with >95% DSP headroom).
+- **Reported observations:** boot, display and audio telemetry recorded in the historical report. Independent logs were unavailable for the 0.13.1 review.
 
 ### 4.2 Manual Bench Test Procedure
 1. **Power-On & Display Boot:**
