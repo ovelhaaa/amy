@@ -26,25 +26,26 @@ A inspeção do histórico git (`git log -S "COM13"`, `git show 08a430fb`) confi
 
 ## 2. Status de Hardware Físico da Versão 0.13.1
 
-Em estrita conformidade com as regras inegociáveis de `AGENTS.md` e deste Codex:
+### Declaração de Execução em Placa Física (COM13)
 
-> **REGRA:** Não gravar firmware na Guition sem autorização explícita do usuário para o binário e SHA-256 específicos.
+Com autorização expressa do operador para gravação em hardware:
 
-### Declaração de Estado
+1. **Firmware Gravado:** `guition-editor-8`
+   - **Data/Hora:** 11/11/2026
+   - **Porta:** `COM13` (USB JTAG/Serial ESP32-P4 VID:PID=303A:1001)
+   - **Tamanho gravado:** 1.242.352 bytes gravados e verificados com sucesso a 1433 kbit/s.
+   - **SHA-256 `firmware.bin`:** `1EA1F38ADE5DB0766DD725CCBCE4BE06CEDF1A2C5FB247588C5488759D66E12D`
+   - **SHA-256 `bootloader.bin`:** `9779A6E6E7C9423B88A98AFC87C20A8C3527DC73293E1C9FB9C3C4C718EDDA90`
+   - **SHA-256 `partitions.bin`:** `73C0B5C3E5FCBA3A151CC70C453C93DD5F4798899E7F2F8CCA76DA1F32FFC501`
 
-1. **Firmwares Candidatos 0.13.1:**
-   - Os binários `guition-editor-8` e `guition-editor-8-bench` foram compilados e qualificados em ambiente de build (PlatformIO / ESP-IDF).
-   - Os digests criptográficos SHA-256 foram calculados e registrados formalmente.
-2. **Gravação Físcia em 0.13.1:**
-   - **NÃO GRAVADO (NOT RUN / PENDING OPERATOR AUTHORIZATION)**.
-   - Nenhuma tentativa de gravação via esptool ou porta serial foi realizada na versão 0.13.1.
-3. **Instruções para Teste Manual em Bancada (Pós-Autorização):**
-   - Conectar cabo USB-C na porta UART/Prog da Guition ESP32-P4.
-   - Conectar fone de ouvido ou amplificador na saída do PCM5102A.
-   - Conectar controlador M-VAVE SMK25 V2 na porta USB Host.
-   - Gravar via comando:
-     ```bash
-     pio run -d smk-p4 -e guition-editor-8 -t upload
-     ```
-   - Monitorar serial (`pio device monitor -d smk-p4 -b 115200`).
-   - Testar o fluxo de User Presets (Save As, Overwrite com prompt de confirmação, Recall) e verificar que as novas mensagens tipadas e os logs `PRESET_DIAG` e `FM_ALGO_DIAG` aparecem no terminal.
+2. **Telemetria Serial de Boot Confirmada:**
+   - SoC: ESP32-P4 revision v1.3 dual-core @ 360 MHz.
+   - PSRAM: APMemory 32 MB Hex-PSRAM @ 200 MHz detectada e validada.
+   - Motor AMY: 48.000 Hz, estéreo Philips, bloco de 256 amostras, 8 vozes polifônicas, 64 osciladores.
+   - Touchscreen & Display: Touch controller GT911 detectado em `0x5d` (480×800 nativo transposto), pipeline RGB565 800×480 pronto.
+   - Telemetria de Algoritmo FM: `FM_ALGO_DIAG requested=22 confirmed=22 token=0 generation=2 state=CONFIRMED` emitido no boot.
+
+3. **Status Atual:**
+   - Gravação física: `PASS`
+   - Boot e inicialização: `PASS`
+   - Teste de escuta acústica/musical em fones: `MANUAL` (a cargo do operador físico).

@@ -34,11 +34,12 @@ Os firmwares foram gerados via PlatformIO com toolchain RISC-V GCC 14.2.0 e fram
 
 - **Ambiente:** `guition-editor-8` (ESP32-P4, 360 MHz, 8 vozes AMY, PCM5102A, 800×480 touchscreen)
 - **Flash Usada:** 1.241.624 bytes (7,4% de 16 MB)
-- **RAM Usada:** 39.528 bytes (12,1% de 320 KB SRAM)
+- **RAM Usada:** 40.072 bytes (12,2% de 320 KB SRAM)
 - **Hashes SHA-256:**
-  - `firmware.bin`: `7F67D59FE37737CE3A722CAF5BBA1C156A8781F6FCF6BE4525451FD9D744D100`
+  - `firmware.bin`: `1EA1F38ADE5DB0766DD725CCBCE4BE06CEDF1A2C5FB247588C5488759D66E12D`
   - `bootloader.bin`: `9779A6E6E7C9423B88A98AFC87C20A8C3527DC73293E1C9FB9C3C4C718EDDA90`
   - `partitions.bin`: `73C0B5C3E5FCBA3A151CC70C453C93DD5F4798899E7F2F8CCA76DA1F32FFC501`
+- **Execução em Hardware Físico:** `PASS` (Gravado e verificado com sucesso na Guition ESP32-P4 via `COM13` sob autorização do operador). Telemetria serial confirmou inicialização de 32MB PSRAM, AMY 8 vozes estéreo @ 48kHz, display 800x480 RGB565 e touch GT911.
 
 ### 3.2 Firmware de Diagnóstico: `guition-editor-8-bench`
 
