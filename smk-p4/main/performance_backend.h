@@ -95,6 +95,7 @@ public:
     virtual uint16_t patchAt(uint16_t index) const=0;
     virtual bool patchInfo(uint16_t index,PatchInfo& info,uint32_t now_ms)=0;
     virtual bool setPatch(uint16_t id,uint32_t now_ms)=0;
+    virtual bool resetLegacyOffsets() { return false; }
     virtual bool setMacro(uint8_t index,uint8_t value,uint32_t now_ms)=0;
     virtual bool setMaster(uint8_t value,uint32_t now_ms)=0;
     virtual bool noteOn(uint8_t note,uint8_t velocity,uint32_t now_ms)=0;

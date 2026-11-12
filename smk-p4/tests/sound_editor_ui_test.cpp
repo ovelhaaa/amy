@@ -96,6 +96,37 @@ int main(){
     // 1. Juno patch 4: Gate A, B, C, E parameters + Gate G0 inventory audit
     assert(a.requestSelectPatch(4).accepted());apply();
     auditInventory(a, apply);
+    // Materialize historical offsets through the real owner mailbox.
+    edit::Request legacy{};
+    legacy.patch = 4;
+    legacy.generation = r.commands().generation();
+    legacy.request = r.snapshot().edit.request;
+    legacy.macros[0] = 96;
+    assert(r.commands().edits.push(legacy));
+    r.apply(preview::g_sim_tick_ms += 25);
+    publish();
+    assert(app.navigation().navigateTo(ScreenId::Performance, 0));
+    preview::pumpFrame(app);
+    auto* open_legacy = button(app.contentObject(), "LEGACY OFFSETS");
+    assert(open_legacy);
+    lv_obj_send_event(open_legacy, LV_EVENT_CLICKED, nullptr);
+    preview::pumpFrame(app);
+    assert(labels(app.contentObject(), "LEGACY MACRO OFFSETS") == 1);
+    assert(preview::saveFramebufferPpm("build/editor011/legacy_offsets_0141.ppm"));
+    auto* reset_legacy = button(app.contentObject(), "RESET LEGACY OFFSETS");
+    assert(reset_legacy);
+    const float with_legacy = r.snapshot().edit.applied[edit::Cutoff];
+    assert(with_legacy > r.snapshot().edit.manual[edit::Cutoff]);
+    lv_obj_send_event(reset_legacy, LV_EVENT_CLICKED, nullptr);
+    assert(r.snapshot().edit.macros[0] == 96);
+    lv_obj_send_event(reset_legacy, LV_EVENT_CLICKED, nullptr);
+    assert(a.lastCommandState() == UiCommandState::Requested);
+    assert(r.snapshot().edit.macros[0] == 96);
+    apply();
+    assert(a.lastCommandState() == UiCommandState::Confirmed);
+    assert(r.snapshot().edit.macros[0] == 64);
+    assert(r.snapshot().edit.applied[edit::Cutoff] == r.snapshot().edit.manual[edit::Cutoff]);
+
     assert(a.model().getFloat("filter.cutoff_hz")>3000);
     assert(a.parameterStatus("filter.cutoff_hz")==FeatureStatus::Available);
     assert(a.parameterStatus("fm.op.ratio")==FeatureStatus::Unavailable);

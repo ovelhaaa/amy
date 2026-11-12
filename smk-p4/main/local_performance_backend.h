@@ -209,7 +209,12 @@ public:
     }
     bool synthUnsaved() const {
         if(edit_pending_ || (!edit_timeout_ && edit_.request!=edit_token_))return true;
-        if(!edit_.dirty)return false;
+        if (!edit_.dirty) {
+            if (saved_valid_ && edit_.patch == saved_edit_.patch && edit_.user_slot == saved_edit_.user_slot)
+                for (unsigned m = 0; m < 3; ++m)
+                    if (edit_.macros[m] != saved_edit_.macros[m]) return true;
+            return false;
+        }
         if(!saved_valid_ || saved_edit_.patch!=edit_.patch || saved_edit_.mask!=edit_.mask)return true;
         for(unsigned m=0;m<3;++m)if(saved_edit_.macros[m]!=edit_.macros[m])return true;
         if(saved_edit_.performance_macros!=edit_.performance_macros)return true;
@@ -593,6 +598,19 @@ public:
         pending_=accepted;
 #endif
         return accepted;
+    }
+    bool resetLegacyOffsets() override {
+#ifdef SMKP4_SOUND_EDITOR
+        if (!ready_ || busy() || saving_ || recalling_ || recall_wait_ ||
+            edit_.compare || editPending() || !edit_.available) return false;
+        prepareEdit();
+        for (auto& position : desired_.macros) position = 64;
+        desired_.request = newEditToken();
+        edit_pending_ = true;
+        return true;
+#else
+        return false;
+#endif
     }
     bool setMacro(uint8_t index,uint8_t value,uint32_t) override {
 #ifdef SMKP4_SOUND_EDITOR

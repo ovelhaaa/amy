@@ -17,7 +17,11 @@ public:
     ScreenId id() const override { return ScreenId::Performance; }
 
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
-        const uint8_t view_mode = nav.subTab(ScreenId::Performance) % 2; // 0=MACRO FOCUS, 1=KEYS FOCUS
+        legacy_ = nullptr;
+        confirm_ = nullptr;
+        oct_lbl_ = status_lbl_ = kb_ = nullptr;
+        const uint8_t view_mode = nav.subTab(ScreenId::Performance);
+        if (view_mode == 2) return buildLegacy(parent, backend, nav);
 
         // 1. Dominant Stage Patch Banner (y = 4..62, StageMinimal)
         createPatchSelectorCard(parent, backend, nav, 8, 4, 784, 58, PresentationLevel::StageMinimal);
@@ -121,6 +125,14 @@ public:
                                       PresentationLevel::StageMinimal, kMacroLabels[i]);
             }
 
+            if (backend.hasSoundEditor()) {
+                auto* legacy = createActionButton(parent, "LEGACY OFFSETS", 620, 226, 172, 34, nullptr, nullptr);
+                attachLvContext<UiNavigationManager*>(legacy, &nav, [](lv_event_t* e) {
+                    auto* navigation = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
+                    navigation->navigateTo(ScreenId::Performance, 2);
+                }, LV_EVENT_CLICKED);
+            }
+
             // Bottom Performance Deck: Master Volume + Octave + 1-Octave Stage Keyboard (y = 268..388)
             createParameterSlider(parent, backend, "perf.master_volume", 8, 268, 232, 72,
                                   PresentationLevel::StageMinimal, "MASTER LEVEL");
@@ -160,6 +172,24 @@ public:
     }
 
     void refresh(IUiBackend& backend) override {
+        if (legacy_) {
+            IUiBackend::LegacyOffsets offsets;
+            char text[320];
+            if (backend.legacyOffsets(offsets)) {
+                const auto status = [&](unsigned i) {
+                    return offsets.positions[i] == 64 ? "NEUTRAL" : offsets.compare ? "BYPASSED" : "ACTIVE";
+                };
+                std::snprintf(text, sizeof(text),
+                    "%s%s\n\nBRIGHTNESS   %u / 64   %s   %s\n\nATTACK   %u / 64   %s   %s\n\nRELEASE   %u / 64   %s   %s",
+                    offsets.fm ? "DX7" : "JUNO", offsets.compare ? " | COMPARE ACTIVE" : "",
+                    offsets.positions[0], status(0), offsets.fm ? "FM depth" : "Filter cutoff",
+                    offsets.positions[1], status(1), offsets.fm ? "Juno only" : "Amp envelope attack",
+                    offsets.positions[2], status(2), offsets.fm ? "Juno only" : "Amp envelope release");
+            } else {
+                std::snprintf(text, sizeof(text), "LEGACY OFFSETS UNAVAILABLE");
+            }
+            lv_label_set_text(legacy_, text);
+        }
         if (oct_lbl_) {
             const int32_t oct = backend.model().getInt("perf.octave_shift", 0);
             char obuf[16];
@@ -177,6 +207,40 @@ public:
     }
 
 private:
+    bool buildLegacy(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) {
+        confirming_ = false;
+        createLabel(parent, "LEGACY MACRO OFFSETS", 12, 14, 560, &lv_font_montserrat_14, palette::kAccentPrimary);
+        legacy_ = createLabel(parent, "", 12, 70, 760, &lv_font_montserrat_14, palette::kTextSecondary);
+        confirm_ = createLabel(parent, "", 12, 252, 760, &lv_font_montserrat_14, palette::kAccentPrimary);
+        auto* back = createActionButton(parent, "BACK / CANCEL", 12, 302, 184, 44, nullptr, nullptr);
+        attachLvContext<UiNavigationManager*>(back, &nav, [](lv_event_t* e) {
+            auto* navigation = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
+            navigation->navigateTo(ScreenId::Performance, 0);
+        }, LV_EVENT_CLICKED);
+        struct ResetContext { PerformanceScreen* screen; IUiBackend* backend; };
+        auto* reset = createActionButton(parent, "RESET LEGACY OFFSETS", 206, 302, 244, 44, nullptr, nullptr);
+        attachLvContext<ResetContext>(reset, {this, &backend}, [](lv_event_t* e) {
+            auto& context = *static_cast<ResetContext*>(lv_event_get_user_data(e));
+            auto& screen = *context.screen;
+            if (screen.confirming_) {
+                const auto result = context.backend->resetLegacyOffsets(screen.expected_);
+                lv_label_set_text(screen.confirm_, result.state == UiCommandState::Requested ?
+                    "RESET REQUESTED. WAITING FOR OWNER." : "RESET REJECTED.");
+                screen.confirming_ = false;
+            } else if (context.backend->legacyOffsets(screen.expected_) && !screen.expected_.compare) {
+                screen.confirming_ = true;
+                lv_label_set_text(screen.confirm_, "TAP RESET AGAIN TO SET ALL THREE OFFSETS TO 64.");
+            }
+        }, LV_EVENT_CLICKED);
+        status_lbl_ = createLabel(parent, "", 462, 314, 300, &lv_font_montserrat_14, palette::kAccentPrimary);
+        refresh(backend);
+        return true;
+    }
+
+    IUiBackend::LegacyOffsets expected_{};
+    bool confirming_ = false;
+    lv_obj_t* legacy_ = nullptr;
+    lv_obj_t* confirm_ = nullptr;
     lv_obj_t* oct_lbl_    = nullptr;
     lv_obj_t* status_lbl_ = nullptr;
     lv_obj_t* kb_         = nullptr;

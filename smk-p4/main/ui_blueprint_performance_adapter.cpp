@@ -109,6 +109,27 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestSoundAction(unsigned actio
     if(action<=1)resetPickup();
     return result(UiCommandState::Requested,"editor",backend_.editNotice());
 }
+bool UiBlueprintPerformanceAdapter::legacyOffsets(LegacyOffsets& offsets) const {
+    const auto* state = backend_.soundEdit();
+    if (!state || !state->available) return false;
+    for (unsigned i = 0; i < 3; ++i) offsets.positions[i] = state->macros[i];
+    offsets.patch = state->patch;
+    offsets.epoch = state->epoch;
+    offsets.fm = state->family == 0;
+    offsets.compare = state->compare;
+    return true;
+}
+UiCommandResult UiBlueprintPerformanceAdapter::resetLegacyOffsets(const LegacyOffsets& expected) {
+    LegacyOffsets current;
+    if (!legacyOffsets(current) || current.patch != expected.patch || current.epoch != expected.epoch ||
+        std::memcmp(current.positions, expected.positions, sizeof(current.positions)) != 0 ||
+        !backend_.resetLegacyOffsets())
+        return result(UiCommandState::Rejected, "editor", "LEGACY RESET REJECTED");
+    edit_requested_ = true;
+    edit_errors_ = backend_.soundEdit()->errors;
+    edit_id_ = "editor";
+    return result(UiCommandState::Requested, "editor", "LEGACY RESET REQUESTED");
+}
 ui::PresetOperationStatus UiBlueprintPerformanceAdapter::presetOperationStatus() const {
     const auto s = backend_.presetOperationStatus();
     return { static_cast<ui::PresetOperationState>(s.state), s.action, s.slot, s.message, s.revision };

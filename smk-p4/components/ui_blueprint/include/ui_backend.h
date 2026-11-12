@@ -113,6 +113,15 @@ public:
 
     virtual UiCommandResult requestSelectPatch(uint16_t patch_id, uint8_t target_layer = 0) = 0;
 
+    struct LegacyOffsets {
+        uint8_t positions[3]{64, 64, 64};
+        uint32_t epoch = 0;
+        uint16_t patch = 0;
+        bool fm = false;
+        bool compare = false;
+    };
+    virtual bool legacyOffsets(LegacyOffsets&) const { return false; }
+    virtual UiCommandResult resetLegacyOffsets(const LegacyOffsets&) { return {}; }
     virtual bool hasSoundEditor() const { return false; }
     virtual const char* soundEditName() const {return model().activePatch().name;}
     virtual const char* soundEditStatus() const { return "EDITOR PLANNED"; }

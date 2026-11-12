@@ -44,6 +44,8 @@ public:
     const ui::UiSignalMeters& meters() const override { return meters_; }
     uint8_t activeSequencerStep() const override { return 0; }
     bool isNoteHeld(uint8_t note) const override;
+    bool legacyOffsets(LegacyOffsets& offsets) const override;
+    ui::UiCommandResult resetLegacyOffsets(const LegacyOffsets& expected) override;
     bool hasSoundEditor() const override { return backend_.soundEdit()!=nullptr; }
     const char* soundEditName() const override {return backend_.state().patch_name;}
     const char* soundEditStatus() const override { return backend_.editNotice(); }
