@@ -16,7 +16,7 @@
 | L | Interface LVGL | PASS em host. Aplicar, rejeitar, cancelar, destruir, reabrir, Save/Recall e família |
 | M | Regressões | PASS em host. Ver [resultados e métricas](performance_0141_results.md) |
 | N | Builds | PASS para ambos os perfis. Ver [imagens e hashes](performance_0141_hardware_candidate.md) |
-| Hardware | Guition e PCM5102A | MANUAL / NOT RUN |
+| Hardware | Guition e PCM5102A | Gravação, verificação e display PASS. Admissão de áudio FAIL. Ensaio musical NOT RUN. |
 
 ## Ensaio físico pendente
 

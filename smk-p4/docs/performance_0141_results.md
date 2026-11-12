@@ -20,7 +20,7 @@ A UI edita até 48 rotas, exibe Manual/Applied e confirma mudanças pelo owner. 
 | python smk-p4/tests/check_blueprint_build.py --voices 8 --sound-library --unified-engine --harmony --full-factory --sound-editor --environment guition-editor-8 | PASS |
 | python smk-p4/tests/check_blueprint_build.py --voices 8 --sound-library --unified-engine --harmony --full-factory --sound-editor --musical --environment guition-editor-8-bench | PASS |
 | CI remoto | NOT RUN. Os runners de editor, LVGL e FX estão no workflow |
-| Touchscreen, USB, NVS, PSRAM e PCM5102A na Guition | MANUAL / NOT RUN |
+| Guition bench | Gravação, verificação, PSRAM, inicialização do display e integridade da NVS PASS. Admissão de áudio FAIL. Ensaio musical NOT RUN. |
 
 Os framebuffers do teste LVGL ficam em build/editor011/legacy_offsets_0141.ppm e build/editor011/routing_editor_0141.ppm. Os testes confirmam alteração no barramento AMY e restauração após remover a rota. O teste transacional cobre o ponto de publicação do marcador, corrupção V4 e a interrupção de nova tentativa após recuperar o banco anterior.
 
