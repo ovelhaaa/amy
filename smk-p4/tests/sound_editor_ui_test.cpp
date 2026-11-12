@@ -13,9 +13,17 @@ using namespace smk::p4::ui;
 struct MemoryStore:edit::VersionedPresetStore {
     uint8_t bytes[16][2][160]{};bool present[16][2]{};bool fail=false;
     uint8_t v3[16][2][edit::kV3RecordBytes]{};bool has_v3[16][2]{};
+    uint8_t v4[16][2][edit::kV4MaxBytes]{};
+    unsigned v4_size[16][2]{};
     bool read(unsigned,unsigned,uint8_t*,unsigned&) override {return false;}
     bool write(unsigned,unsigned,const uint8_t*,unsigned) override {return false;}
     edit::BankRead readVersioned(unsigned version,unsigned s,unsigned b,uint8_t* p,unsigned& n) override {
+        if(version==4){
+            const unsigned length=v4_size[s][b];
+            if(!length)return edit::BankRead::Missing;
+            if(n<length)return edit::BankRead::Error;
+            std::memcpy(p,v4[s][b],length);n=length;return edit::BankRead::Present;
+        }
         if(version==3){
             if(!has_v3[s][b])return edit::BankRead::Missing;
             if(n<sizeof(v3[s][b]))return edit::BankRead::Error;
@@ -26,6 +34,10 @@ struct MemoryStore:edit::VersionedPresetStore {
         std::memcpy(p,bytes[s][b],160);n=160;return edit::BankRead::Present;
     }
     bool writeV2(unsigned s,unsigned b,const uint8_t* p,unsigned n) override {if(fail)return false;assert(n==160);std::memcpy(bytes[s][b],p,n);present[s][b]=true;return true;}
+    bool writeV4(unsigned s,unsigned b,const uint8_t* p,unsigned n) override {
+        if(fail || n>sizeof(v4[s][b]))return false;
+        std::memcpy(v4[s][b],p,n);v4_size[s][b]=n;return true;
+    }
     bool writeV3(unsigned s,unsigned b,const uint8_t* p,unsigned n) override {
         if(fail || n!=sizeof(v3[s][b]))return false;
         std::memcpy(v3[s][b],p,n);has_v3[s][b]=true;return true;
@@ -45,6 +57,18 @@ static lv_obj_t* button(lv_obj_t* root,const char* text){
         if(lv_obj_check_type(child,&lv_label_class) && std::strcmp(lv_label_get_text(child),text)==0)return lv_obj_get_parent(child);
         if(auto* found=button(child,text))return found;
     }return nullptr;
+}
+static lv_obj_t* widgetAt(lv_obj_t* root, const lv_obj_class_t* type, int x, int y) {
+    if (lv_obj_check_type(root, type) && lv_obj_get_x(root) == x && lv_obj_get_y(root) == y) return root;
+    for (unsigned i = 0; i < lv_obj_get_child_count(root); ++i) {
+        if (auto* match = widgetAt(lv_obj_get_child(root, i), type, x, y)) return match;
+    }
+    return nullptr;
+}
+static void select(lv_obj_t* dropdown, unsigned index) {
+    assert(dropdown);
+    lv_dropdown_set_selected(dropdown, index);
+    lv_obj_send_event(dropdown, LV_EVENT_VALUE_CHANGED, nullptr);
 }
 static unsigned labels(lv_obj_t* root,const char* text){
     unsigned n=lv_obj_check_type(root,&lv_label_class) && std::strcmp(lv_label_get_text(root),text)==0?1:0;
@@ -426,6 +450,146 @@ int main(){
     for(const char* macro:{"CHARACTER","BRIGHTNESS","MOTION","SHAPE","ATTACK","RELEASE","SPACE","EDGE"})
         assert(labels(ui.contentObject(),macro)==1);
     assert(preview::saveFramebufferPpm("build/editor011/performance_014.ppm"));
+
+    const auto open_routes = [&] {
+        auto* open = button(ui.contentObject(), "ROUTING EDITOR");
+        assert(open);
+        lv_obj_send_event(open, LV_EVENT_CLICKED, nullptr);
+        preview::pumpFrame(ui);
+        auto* content = ui.contentObject();
+        assert(labels(content, "MACRO ROUTING EDITOR") == 1);
+        select(widgetAt(content, &lv_dropdown_class, 12, 36), 6);
+        select(widgetAt(content, &lv_dropdown_class, 267, 36), 5);
+        return content;
+    };
+    const auto choose_reverb = [](lv_obj_t* content) {
+        auto* destination = widgetAt(content, &lv_dropdown_class, 521, 36);
+        assert(destination);
+        const int option = lv_dropdown_get_option_index(destination, "FX / Reverb Mix");
+        assert(option > 0);
+        select(destination, unsigned(option));
+        auto* depth = widgetAt(content, &lv_textarea_class, 372, 146);
+        assert(depth);
+        return depth;
+    };
+    auto* route_content = open_routes();
+    auto* depth = choose_reverb(route_content);
+    lv_textarea_set_text(depth, "0.55");
+    lv_obj_send_event(button(route_content, "CANCEL / BACK"), LV_EVENT_CLICKED, nullptr);
+    preview::pumpFrame(ui);
+    assert(!r.snapshot().edit.performance_routes.custom);
+    route_content = open_routes();
+    depth = choose_reverb(route_content);
+    const auto before_reverb = amy_global.bus[0]->reverb.level;
+    lv_textarea_set_text(depth, "2");
+    lv_obj_send_event(button(route_content, "APPLY ROUTES"), LV_EVENT_CLICKED, nullptr);
+    assert(next.lastCommandState() == UiCommandState::Rejected);
+    assert(amy_global.bus[0]->reverb.level == before_reverb);
+    lv_textarea_set_text(depth, "0.55");
+    select(widgetAt(route_content, &lv_dropdown_class, 12, 206), 3);
+    lv_obj_send_event(button(route_content, "APPLY ROUTES"), LV_EVENT_CLICKED, nullptr);
+    assert(next.routingResult().state == UiCommandState::Requested);
+    assert(labels(route_content, "WAITING FOR OWNER") == 1);
+    assert(amy_global.bus[0]->reverb.level == before_reverb);
+    next_apply();
+    assert(next.routingResult().state == UiCommandState::Confirmed);
+    assert(labels(route_content, "ROUTES APPLIED. SAVE PRESET TO KEEP.") == 1);
+    assert(amy_global.bus[0]->reverb.level > before_reverb);
+    const auto& route = r.snapshot().edit.performance_routes.routes[6][5];
+    assert(route.depth == 0.55f && route.curve == performance::Curve::SCurve);
+    assert(preview::saveFramebufferPpm("build/editor011/routing_editor_0141.ppm"));
+    IUiBackend::RoutingValues fx_values;
+    assert(next.routingValues(performance::ReverbMix,fx_values));
+    assert(fx_values.applied > fx_values.manual && (fx_values.sources & (1u<<6)));
+    assert(next.requestSoundAction(2,14,"ROUTING V4").accepted());
+    for(unsigned i=0;i<4;++i)service();
+    assert(next.presetOperationStatus().state==ui::PresetOperationState::Confirmed);
+    edit::Preset saved_routes;
+    fx::FxConfig saved_routes_fx;
+    preset::CommitMarker route_marker;
+    assert(reboot.transactionCoordinator().load(14,saved_routes,saved_routes_fx,&route_marker));
+    assert(route_marker.synth_version==4 && saved_routes.performance_routes==r.snapshot().edit.performance_routes);
+    lv_obj_send_event(button(route_content, "CANCEL / BACK"), LV_EVENT_CLICKED, nullptr);
+    preview::pumpFrame(ui);
+    route_content = open_routes();
+    lv_obj_send_event(button(route_content, "DELETE ROUTE"), LV_EVENT_CLICKED, nullptr);
+    lv_obj_send_event(button(route_content, "APPLY ROUTES"), LV_EVENT_CLICKED, nullptr);
+    assert(next.routingResult().state == UiCommandState::Requested);
+    next_apply();
+    assert(next.routingResult().state == UiCommandState::Confirmed);
+    assert(!r.snapshot().edit.performance_routes.custom && amy_global.bus[0]->reverb.level == before_reverb);
+    assert(reboot.unsaved());
+    assert(next.requestSoundAction(1).accepted());
+    next_apply();
+    assert(r.snapshot().edit.performance_routes==saved_routes.performance_routes && !reboot.unsaved());
+    assert(next.requestSoundAction(0).accepted());next_apply();
+    assert(r.snapshot().edit.compare && amy_global.bus[0]->reverb.level==0);
+    assert(next.requestSoundAction(0).accepted());next_apply();
+    assert(!r.snapshot().edit.compare && amy_global.bus[0]->reverb.level>before_reverb);
+    lv_obj_send_event(button(route_content, "CANCEL / BACK"), LV_EVENT_CLICKED, nullptr);
+    preview::pumpFrame(ui);
+    assert(next.requestSoundAction(3,14).accepted());
+    for(unsigned i=0;i<6;++i)service();
+    assert(next.presetOperationStatus().state==ui::PresetOperationState::Confirmed);
+    assert(r.snapshot().edit.performance_routes==saved_routes.performance_routes);
+    route_content = open_routes();
+    next.requestPanic();
+    next_apply();
+    assert(lv_obj_has_state(button(route_content, "APPLY ROUTES"), LV_STATE_DISABLED));
+    assert(labels(route_content, "PATCH OR ROUTES CHANGED. REOPEN EDITOR.") == 1);
+
+    for(unsigned i=0;i<3;++i)next.midiPerformanceAction(MidiAction::NextBank,0);
+    assert(ui.navigation().navigateTo(ScreenId::MidiSettings,1));preview::pumpFrame(ui);
+    lv_obj_send_event(button(ui.contentObject(),"DESTINATION"),LV_EVENT_CLICKED,nullptr);
+    preview::pumpFrame(ui);
+    auto* midi_targets=widgetAt(ui.contentObject(),&lv_dropdown_class,12,110);
+    assert(midi_targets);
+    const int feedback=lv_dropdown_get_option_index(midi_targets,"DELAY FDBK");
+    assert(feedback>0);
+    lv_dropdown_set_selected(midi_targets,unsigned(feedback));
+    lv_obj_send_event(button(ui.contentObject(),"APPLY DESTINATION"),LV_EVENT_CLICKED,nullptr);
+    preview::pumpFrame(ui);
+    assert(next.midiCustomTarget(0)!=0);
+    assert(next.requestParameterFloat("fx.delay.feedback",40).accepted());
+    service();service();
+    cc(0);cc(120);cc(121);service();
+    assert(r.snapshot().fx.config.delay_feedback>0.80f);
+    next.midiPerformanceAction(MidiAction::SaveProfile,0);
+    service();service();
+    performance::ControllerProfile custom_profile;
+    assert(profile_store.load(custom_profile));
+    assert(custom_profile.destinations[3][0]==next.midiCustomTarget(0));
+    assert(custom_profile.knobs[0].controller==74);
+    uint8_t v1_profile[performance::kProfileV1Bytes]{};
+    std::memcpy(v1_profile,profile_store.bytes,32);
+    v1_profile[4]=1;
+    edit::put32(v1_profile+32,edit::crc(v1_profile,32));
+    performance::ControllerProfile legacy_profile;
+    assert(performance::decodeProfile(v1_profile,sizeof(v1_profile),legacy_profile));
+    assert(legacy_profile.destinations==performance::MidiDestinations{});
+    assert(legacy_profile.knobs==custom_profile.knobs);
+    assert(next.requestSoundAction(1).accepted());next_apply();
+    assert(!reboot.unsaved());
+    assert(ui.navigation().navigateTo(ScreenId::Performance,0));preview::pumpFrame(ui);
+    route_content=open_routes();
+    lv_obj_send_event(button(route_content,"RESET POSITION"),LV_EVENT_CLICKED,nullptr);
+    assert(r.snapshot().edit.performance_macros[6]!=performance::kNeutral[6]);
+    lv_obj_send_event(button(route_content,"APPLY ROUTES"),LV_EVENT_CLICKED,nullptr);
+    next_apply();
+    assert(r.snapshot().edit.performance_macros[6]==performance::kNeutral[6]);
+    assert(r.snapshot().edit.performance_routes==saved_routes.performance_routes);
+    assert(next.requestSoundAction(1).accepted());next_apply();
+    assert(r.snapshot().edit.performance_macros[6]==saved_routes.performance_macros[6]);
+    assert(next.requestSelectPatch(4).accepted());next_apply();
+    assert(r.snapshot().edit.family==1);
+    assert(lv_obj_has_state(button(route_content,"APPLY ROUTES"),LV_STATE_DISABLED));
+    lv_obj_send_event(button(route_content,"CANCEL / BACK"),LV_EVENT_CLICKED,nullptr);
+    preview::pumpFrame(ui);
+    route_content=open_routes();
+    auto* juno_catalog=widgetAt(route_content,&lv_dropdown_class,521,36);
+    assert(juno_catalog && lv_dropdown_get_option_index(juno_catalog,"FILTER / Cutoff")>0);
+    assert(lv_dropdown_get_option_index(juno_catalog,"FM / Feedback")<0);
+    std::puts("PASS 0.14.1 routing UI, V4 Save/Recall, Compare/Revert, Manual/Applied and MIDI bank override");
 
     assert(lv_mem_test()==LV_RESULT_OK);ui.shutdown();r.end();
     puts("PASS LVGL9.3: all 7 editor tabs, Effects screen, Gate G0 inventory audit, FM/LFO/Mod/FX owner confirmation, dirty guard, Save/Recall/reboot simulation, heap integrity");

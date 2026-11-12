@@ -134,6 +134,7 @@ jobs:
           ./smk-p4/tests/run_harmony.ps1
           ./smk-p4/tests/run_harmony_ui.ps1
           ./smk-p4/tests/run_sound_editor_ui.ps1
+          ./smk-p4/tests/run_fx_tests.ps1 all
           python smk-p4/tests/generate_factory_library.py --check
           python -m unittest discover -s smk-p4/tests -p test_factory_library.py
           ./smk-p4/tests/run_factory_runtime.ps1

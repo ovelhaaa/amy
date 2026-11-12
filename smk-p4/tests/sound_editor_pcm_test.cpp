@@ -1,4 +1,5 @@
 #include "amy_runtime.h"
+#include "user_presets_v2.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -37,6 +38,90 @@ static std::vector<int16_t> run(unsigned patch,unsigned control,bool restore=fal
     char name[128];std::snprintf(name,sizeof(name),"build/editor011/audio_%u_%u_%u.pcm",patch,control,voices);FILE* file=std::fopen(name,"wb");assert(file);assert(std::fwrite(pcm.data(),sizeof(int16_t),pcm.size(),file)==pcm.size());std::fclose(file);
     runtime.end();return pcm;
 }
+static std::vector<int16_t> renderPreset(const edit::Preset& preset, const fx::FxConfig& effects) {
+    assert(runtime.begin());
+    assert(runtime.commands().push({amy::CommandType::Patch, preset.patch}));
+    runtime.apply(0);
+    runtime.loadPendingPatch();
+    edit::Request request;
+    request.patch = preset.patch;
+    request.generation = runtime.snapshot().generation;
+    request.request = 1;
+    request.mask = preset.mask;
+    std::memcpy(request.macros, preset.macros, sizeof(request.macros));
+    std::memcpy(request.values, preset.values, sizeof(request.values));
+    request.performance_macros = preset.performance_macros;
+    request.performance_routes = preset.performance_routes;
+    assert(runtime.commands().edits.push(request));
+    fx::FxRequest fx_request;
+    fx_request.config = effects;
+    fx_request.generation = request.generation;
+    fx_request.request = 1;
+    assert(runtime.commands().fx.push(fx_request));
+    runtime.apply(0);
+    assert(!runtime.snapshot().edit.errors && runtime.snapshot().edit.request == 1);
+    my_srand48(123);
+    const uint8_t on[]{9, 0x90, 60, 100};
+    const uint8_t off[]{8, 0x80, 60, 0};
+    assert(runtime.usbInput().packet(on, 0));
+    std::vector<int16_t> result;
+    result.reserve(128 * 512);
+    for (unsigned block = 0; block < 128; ++block) {
+        if (block == 64) assert(runtime.usbInput().packet(off, block * 5));
+        probe_realtime(true);
+        runtime.apply(block * 5);
+        const auto* pcm = runtime.render();
+        probe_realtime(false);
+        assert(pcm);
+        result.insert(result.end(), pcm, pcm + 512);
+    }
+    assert(!runtime.snapshot().active_notes);
+    runtime.end();
+    return result;
+}
+
+static void testPresetPcm() {
+    edit::Preset fixture;
+    fixture.sequence = 1;
+    fixture.patch = 4;
+    fixture.family = 1;
+    std::strcpy(fixture.name, "LEGACY PCM");
+    fx::FxConfig effects;
+    const auto neutral_pcm = renderPreset(fixture, effects);
+    for (unsigned i = 0; i < 4; ++i) {
+        auto source = fixture;
+        if (i) source.macros[i - 1] = 100;
+        const auto expected = renderPreset(source, effects);
+        if (i) assert(expected != neutral_pcm);
+        edit::Preset decoded;
+        uint8_t v1[edit::kRecordBytes];
+        assert(edit::encode(source, v1) && edit::decode(v1, sizeof(v1), decoded));
+        assert(renderPreset(decoded, effects) == expected);
+        uint8_t v2[edit::kV2RecordBytes];
+        assert(edit::encodeV2(source, v2) && edit::decodeV2(v2, sizeof(v2), decoded));
+        assert(renderPreset(decoded, effects) == expected);
+    }
+    fixture.patch = 135;
+    fixture.family = 0;
+    fixture.macros[0] = 44;
+    fixture.performance_macros[1] = 50;
+    fixture.performance_macros[6] = 96;
+    fixture.mask = edit::bit(edit::FmAlgorithm);
+    fixture.values[edit::FmAlgorithm] = 7;
+    effects.reverb_mix = 0.23f;
+    uint8_t v3[edit::kV3RecordBytes];
+    edit::Preset decoded;
+    assert(edit::encodeV3(fixture, v3) && edit::decodeV3(v3, sizeof(v3), decoded));
+    assert(renderPreset(decoded, effects) == renderPreset(fixture, effects));
+    fixture.performance_routes = {performance::kFactoryRoutes, true};
+    fixture.performance_routes.routes[6][0].depth = 0.52f;
+    const unsigned length = edit::v4Size(fixture.performance_routes);
+    uint8_t v4[edit::kV4MaxBytes];
+    assert(edit::encodeV4(fixture, v4, length) && edit::decodeV4(v4, length, decoded));
+    assert(renderPreset(decoded, effects) == renderPreset(fixture, effects));
+    std::puts("PASS PCM V1/V2 legacy offsets, V3 FM algorithm and V4 routes after codec recovery");
+}
+
 int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     for(unsigned voices:{1u,8u}){
         auto original=run(4,0,false,voices);
@@ -55,6 +140,7 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
             assert(run(4,control,true,1,note)==baseline);
         }
     }
+    testPresetPcm();
     std::puts("PASS C2/C4/C6 filter PCM change and Compare/Revert restoration");
     std::puts("PASS real AMY PCM changes for compatible Juno decay/sustain and existing controls; Compare/Revert byte-identical fresh note;1/8 voices");
 }
