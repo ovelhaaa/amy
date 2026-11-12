@@ -1,23 +1,25 @@
 # SMK-P4 0.14.1 — matriz de aceitação
 
-| Gate | Critério | Estado do incremento |
+| Gate | Critério | Evidência |
 |---|---|---|
-| A | Auditoria de arquitetura | PASS |
-| B | Compatibilidade visual legada | Painel e reset PASS em host. Restauração direta após reset e matriz PCM histórica pendentes |
-| C | Modelo editável | PASS em host |
-| D | Composição dinâmica | PASS no owner em host |
-| E | Editor visual de rotas | NOT RUN |
-| F | Valores Manual/Applied | NOT RUN |
-| G | Persistência transacional de rotas | NOT RUN |
-| H | Compare/Revert/Reset de rotas | NOT RUN |
-| I | Destinos MIDI personalizáveis | NOT RUN |
-| J | Composição de 48 rotas editadas | PASS no owner em host. Persistência pendente |
-| K | Fixtures e PCM V1/V2/V3 | Matriz 0.14.1 NOT RUN |
-| L | Interface LVGL do editor de rotas | NOT RUN. Painel legado testado separadamente pelo runner existente de LVGL |
-| M | Regressão de tempo real | Ver resultados de host. Benchmark de 48 rotas em host. Medições físicas NOT RUN |
-| N | Builds | PASS para os dois perfis do incremento |
-| Hardware | Guition e PCM5102A | MANUAL, NOT RUN |
+| A | Auditoria de arquitetura | PASS. Base remota conferida e fluxo auditado |
+| B | Compatibilidade visual legada | PASS em host. Painel, reset confirmado e PCM legado |
+| C | Modelo editável | PASS. Validação integral e limite de 48 rotas |
+| D | Composição dinâmica | PASS em host. Oito vozes, DSP Synth/FX e remoção |
+| E | Editor visual | PASS em LVGL host. Edição numérica, curvas e ACK |
+| F | Manual/Applied | PASS em host. Snapshot do owner, contribuição M7 e FX nativo |
+| G | Persistência transacional | PASS com NVS simulada. V4, 48 rotas, falhas, reboot, corrupção e orçamento |
+| H | Compare/Revert/Reset | PASS em host. Compare ROM, Revert de preset V4, reset de posição, rotas e ambos |
+| I | Bancos MIDI personalizáveis | PASS em host. Bank D, CC real do parser, Pickup, perfil V1/V2 |
+| J | Motor de macros | PASS em host. Cutoff 2.000 → 3.500 → 2.000 Hz, 48 rotas e remoção de reverb |
+| K | Compatibilidade PCM | PASS em host. V1/V2/V3 iguais à 0.14 e V4 antes/depois do codec |
+| L | Interface LVGL | PASS em host. Aplicar, rejeitar, cancelar, destruir, reabrir, Save/Recall e família |
+| M | Regressões | PASS em host. Ver [resultados e métricas](performance_0141_results.md) |
+| N | Builds | PASS para ambos os perfis. Ver [imagens e hashes](performance_0141_hardware_candidate.md) |
+| Hardware | Guition e PCM5102A | MANUAL / NOT RUN |
 
-## Verificação futura na Guition
+## Ensaio físico pendente
 
-Após autorização explícita para o SHA-256 escolhido, carregar um preset Juno existente com Brightness legado diferente de 64. Verificar família, destino e posição no painel. Entrar em Compare e sair de Compare. Esperar que o painel indique bypass durante Compare e mostre a posição ativa ao voltar. Tocar a mesma passagem antes e depois, usando velocidade MIDI fixa. Confirmar reset com dois toques, verificar 64 nas três posições e confirmar que a alteração exige Save para persistir. Fazer Recall da versão anterior depois de descartar a edição e verificar o retorno da posição original. Repetir com Brightness DX7 e conferir o destino FM Depth. Durante o teste, registrar underruns, notas presas, deadlines e memória livre interna e PSRAM.
+Após autorização vinculada ao SHA-256 e backup da unidade, iniciar pelo perfil de diagnóstico. Confirmar oito vozes, 48 kHz e 256 frames no log. Conectar o SMK25 V2, tocar e soltar acordes de oito notas com sustain, desconectar e reconectar. Esperar silêncio após Panic, áudio nas duas saídas e novo Note On/Off sem reboot. Registrar underruns, deadlines, fila, clipping, RAM interna, PSRAM e stack livre.
+
+Abrir um preset Juno histórico com offset diferente de 64. Conferir família, destino e posição. Entrar e sair de Compare. Confirmar reset e fazer Revert para restaurar a referência salva. No Routing Editor, selecionar M7, editar Reverb Mix e Delay Mix, aplicar, mover M7 e ouvir ambos os efeitos. Verificar Manual/Applied, desativar a rota e conferir a recuperação do valor manual. Salvar em slot de teste, reiniciar e verificar Recall com rotas, posições, Synth e FX. Em Bank D, selecionar Delay Feedback para um knob aprendido e confirmar que o parâmetro só muda após Pickup. Registrar toque, duração de edição, espaço livre NVS e pior tempo por bloco durante o ensaio.

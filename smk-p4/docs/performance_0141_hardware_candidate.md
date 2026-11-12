@@ -1,14 +1,16 @@
-# SMK-P4 0.14.1 — imagens do incremento de rotas no owner
+# SMK-P4 0.14.1 — candidatos Guition
 
-**NO-GO para qualificação física da 0.14.1.** As imagens incluem o painel legado e a composição dinâmica no owner. O editor visual e o V4 seguem pendentes.
+**GO para iniciar a qualificação física mediante autorização vinculada ao hash.** Validação em placa permanece MANUAL / NOT RUN.
 
-Código compilado: 9299ba73fa2848ac8bf17cc120173e9e8ec78271. Os commits posteriores de documentação não entram no build.
+Código de firmware compilado em 650ab199f76787781d70d487e78e21072773d296. Os commits posteriores de testes ou documentação não entram nesses binários.
 
 | Perfil | Bytes do binário | SHA-256 | Flash reportada | RAM estática reportada |
 |---|---:|---|---:|---:|
-| guition-editor-8 | 1.271.072 | `c47172dac23470eadef737e037f5f7289f1ed4b7c10d4ef63e50382cc3a1784b` | 1.270.338 B | 48.200 B |
-| guition-editor-8-bench | 1.372.096 | `e3f8ca8f109d0d8836ea6ae312c64797c4afdd7afccf1a3fc51aeb79e23d57c2` | 1.371.376 B | 48.584 B |
+| guition-editor-8 | 1.300.624 | `f5520ea2b5bfaf99adc6e48476b079e8ef089228e9a55fe187368cfb9db72337` | 1.299.892 B | 51.032 B |
+| guition-editor-8-bench | 1.401.648 | `664f2c3488f6546665c1d0cf56b91c54a0988768da1440b1d8b57bcd46bfcc8f` | 1.400.936 B | 51.416 B |
 
-Os dois builds e as duas auditorias de configuração retornaram PASS. A RAM estática aumentou 6.960 B em cada perfil. Os perfis configuram flash de 16 MB e PSRAM Hex a 200 MHz. PSRAM livre, RAM interna livre, margem de stack, latência, underruns e deadlines na placa estão sem medições.
+Os perfis preservam oito vozes, 48 kHz, 256 frames e a partição factory de 3 MiB. A configuração indica flash de 16 MB e PSRAM Hex a 200 MHz. RAM interna e PSRAM livres, margem de stack, underruns, latência e deadlines na placa ainda precisam de medição. Nenhuma alteração de pinagem, partições ou hardware foi necessária.
 
-Os binários estão em `smk-p4/.pio/build/<perfil>/firmware.bin`. A [matriz de aceitação](performance_0141_test_matrix.md) registra o ensaio físico pendente. Nenhuma imagem foi gravada na placa. Se houver qualificação autorizada posteriormente, preservar a imagem e a NVS da unidade antes do ensaio. Para voltar ao estado exato anterior, usar esse par de backups. Qualquer gravação, inclusive de rollback, requer autorização vinculada ao SHA-256 da imagem.
+Os binários ficam em `smk-p4/.pio/build/<perfil>/firmware.bin`. Antes do ensaio, guardar firmware e NVS da mesma unidade. O retorno à 0.14 ou 0.13.1 usa o par pré-ensaio verificado. Essas versões não leem V4. Qualquer gravação, inclusive de rollback, exige autorização vinculada ao SHA-256 da imagem. Nenhum firmware foi gravado e nenhuma NVS foi apagada.
+
+[Procedimento de hardware](performance_0141_test_matrix.md) · [Persistência e rollback](performance_0141_persistence.md).

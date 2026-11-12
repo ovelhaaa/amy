@@ -1,9 +1,9 @@
 # Offsets legados na 0.14.1
 
-Abra **Performance → Macro Focus → Legacy Offsets**. O painel mostra as três posições históricas, o neutro 64, a família, o destino e o estado de Compare. Em DX7, Brightness atua na profundidade de FM. Em Juno, Brightness atua no cutoff e Attack/Release no envelope de amplitude.
+Abra **Performance → Macro Focus → Legacy Offsets**. O painel mostra posição, neutro 64, família, destino e estado. Em DX7, Brightness atua na profundidade FM. Em Juno, Brightness atua no cutoff e Attack/Release no envelope de amplitude.
 
-O primeiro toque em **Reset Legacy Offsets** abre a confirmação. O segundo solicita ao owner uma edição completa que altera somente as três posições legadas. **Back / Cancel** fecha o painel. A confirmação rejeita mudanças de patch ou de offsets desde o primeiro toque. A interface mostra os valores recebidos do owner.
+O primeiro toque em **Reset Legacy Offsets** abre a confirmação. O segundo envia ao owner uma edição que altera somente as três posições históricas. **Back / Cancel** fecha o painel. A confirmação rejeita mudanças de patch ou offsets desde o primeiro toque. O painel exibe os valores confirmados pelo owner.
 
-As fórmulas históricas e os codecs V1/V2/V3 permanecem na implementação existente. Compare mantém sua referência ROM e suspende as contribuições de macros. Revert continua voltando à referência de fábrica. Para recuperar offsets já salvos depois de um reset, descarte as edições e faça Recall. A restauração direta dos offsets anteriores ao reset ainda está pendente.
+Compare usa a referência ROM e suspende macros legadas e novas. Revert recupera a referência de presets chamados por Recall e de referências salvas com offsets legados ou rotas customizadas. Fora dessas referências, Revert volta à fábrica. Abertura e Recall não regravam o registro.
 
-O teste LVGL usa um Juno com Brightness 96 e confirma que o primeiro toque preserva o cutoff, que a UI sinaliza a solicitação antes do ACK e que o owner devolve o cutoff ao valor manual após o reset.
+O teste LVGL usa Brightness 96 e verifica a recuperação do cutoff manual após reset. O teste PCM cobre neutro, Brightness, Attack e Release em fixtures V1/V2. O FM V3 inclui algoritmo editado, posição legada, macros novas e FX. Os nove trechos de PCM renderizados pelos runtimes 0.14 e 0.14.1 resultaram no mesmo arquivo de 1.179.648 bytes. [Hash e resultados](performance_0141_results.md).
