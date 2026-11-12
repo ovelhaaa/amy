@@ -82,6 +82,54 @@ int main() {
     assert(loaded_p.performance_macros == next.performance_macros);
     assert(loaded_fx.delay_time_ms == next_fx.delay_time_ms);
 
+    auto routed = performance_preset;
+    routed.performance_routes.custom = true;
+    for (auto& slots : routed.performance_routes.routes)
+        slots.fill(performance::route(performance::ReverbMix, 0, 1, 0.33333334f));
+    auto routed_fx = fx1;
+    routed_fx.reverb_mix = 0.51f;
+    assert(edit::v4Size(routed.performance_routes) == edit::kV4MaxBytes);
+    assert(coordinator.save(14, routed, routed_fx).status == SaveResult::Status::Success);
+    auto updated = routed;
+    updated.performance_macros[7] = 127;
+    updated.performance_routes.routes[7][5] = {};
+    auto updated_fx = routed_fx;
+    updated_fx.reverb_mix = 0.75f;
+    for (const auto fault : {FaultInjection::BeforeFxWrite, FaultInjection::DuringFxWrite,
+             FaultInjection::AfterFxWrite, FaultInjection::BeforeSynthWrite, FaultInjection::DuringSynthWrite,
+             FaultInjection::AfterSynthWrite, FaultInjection::BeforeMarkerWrite, FaultInjection::DuringMarkerWrite}) {
+        coordinator.setFaultInjection(fault);
+        assert(coordinator.save(14, updated, updated_fx).status != SaveResult::Status::Success);
+        assert(coordinator.load(14, loaded_p, loaded_fx));
+        assert(loaded_p.performance_routes == routed.performance_routes);
+        assert(loaded_p.performance_macros == routed.performance_macros && approx(loaded_fx.reverb_mix, 0.51f));
+    }
+    coordinator.setFaultInjection(FaultInjection::None);
+    const auto available_entries = fake_nvs::free_entries;
+    fake_nvs::free_entries = 155;
+    assert(coordinator.save(14, updated, updated_fx).status == SaveResult::Status::NvsFull);
+    fake_nvs::free_entries = available_entries;
+    coordinator.setFaultInjection(FaultInjection::DuringReadback);
+    assert(coordinator.save(14, updated, updated_fx).status == SaveResult::Status::CommitOutcomeUnknown);
+    coordinator.setFaultInjection(FaultInjection::None);
+    {
+        PresetTransactionCoordinator reboot;
+        reboot.setSynthStore(&synth_store);
+        reboot.setFxStore(&fx_store);
+        CommitMarker marker;
+        assert(reboot.load(14, loaded_p, loaded_fx, &marker) && marker.synth_version == 4);
+        assert(loaded_p.performance_routes == updated.performance_routes);
+        assert(loaded_p.performance_macros == updated.performance_macros && approx(loaded_fx.reverb_mix, 0.75f));
+        auto& blob = fake_nvs::blobs.at({2, marker.synth_bank ? "x14b" : "x14a"});
+        blob.back() ^= 1;
+        coordinator.setFaultInjection(FaultInjection::AfterSynthWrite);
+        assert(coordinator.save(14, updated, updated_fx).status != SaveResult::Status::Success);
+        coordinator.setFaultInjection(FaultInjection::None);
+        assert(reboot.load(14, loaded_p, loaded_fx));
+        assert(loaded_p.performance_routes == routed.performance_routes);
+        assert(loaded_p.performance_macros == routed.performance_macros && approx(loaded_fx.reverb_mix, 0.51f));
+    }
+
     // ── 2. Fault Injection Across All Transaction Steps ─────────────────────
     // Target: Updating Slot 0 with Preset 2
     edit::Preset p2 = p1;

@@ -17,6 +17,7 @@ struct Preset {
     char name[25]{};
     uint8_t macros[3]{64, 64, 64};
     performance::Positions performance_macros = performance::kNeutral;
+    performance::RouteConfiguration performance_routes;
     Mask mask = 0;
     float values[Count]{};
 };
@@ -48,7 +49,7 @@ constexpr Mask allowedMask(uint8_t family, bool v1) {
 inline bool validPreset(const Preset& p, bool v1) {
     const auto* patch = library::find(p.patch);
     const Mask max_mask = v1 ? (bit(kV1Count) - 1ULL) : (bit(Count) - 1ULL);
-    if (!p.sequence || !patch || !(patch->qualification & library::SUPPORTED) ||
+    if ((v1 && p.performance_routes.custom) || !p.sequence || !patch || !(patch->qualification & library::SUPPORTED) ||
         p.family != uint8_t(patch->family) || (p.mask & ~max_mask) || !p.name[0] || p.name[24])
         return false;
 

@@ -33,7 +33,7 @@ static_assert(sizeof(CommitMarker) == kMarkerRecordBytes, "CommitMarker must be 
 inline bool validMarker(const CommitMarker& m) {
     if (m.magic != kMarkerMagic || m.version != kMarkerVersion) return false;
     if (m.slot >= 16) return false;
-    if (m.synth_bank > 1 || m.synth_version < 1 || m.synth_version > 3) return false;
+    if (m.synth_bank > 1 || m.synth_version < 1 || m.synth_version > 4) return false;
     if (m.fx_bank > 1) return false;
     if (m.reserved != 0) return false;
     if (m.rom_compat != fx::kRomCompatibility) return false;
@@ -95,7 +95,14 @@ public:
         if (!edit::validPreset(preset, false)) return { SaveResult::Status::InvalidPreset, "SAVE FAILED: INVALID SYNTH" };
         if (!fx::valid(fx)) return { SaveResult::Status::InvalidPreset, "SAVE FAILED: INVALID FX" };
 
-        if (!fx_store_->checkNvsBudget(12)) {
+        const unsigned route_size = edit::v4Size(preset.performance_routes);
+        if (preset.performance_routes.custom && (!route_size ||
+            !performance::valid(preset.performance_routes, preset.family, edit::familyParameterMask(preset.family)))) {
+            return { SaveResult::Status::InvalidPreset, "SAVE FAILED: INVALID ROUTES" };
+        }
+        // Candidate Synth, FX, commit marker and optional legacy baseline marker.
+        const unsigned budget = route_size ? (route_size + 31) / 32 + 3 + 12 : 12;
+        if (!fx_store_->checkNvsBudget(budget)) {
             return { SaveResult::Status::NvsFull, "SAVE FAILED: NVS FULL" };
         }
 
@@ -109,6 +116,13 @@ public:
         unsigned cur_marker_bank = 0;
         bool marker_found = false;
         scanMarkers(slot, cur_marker, cur_marker_bank, marker_found);
+        if (marker_found) {
+            edit::Preset committed;
+            fx::FxConfig committed_fx;
+            if (!load(slot, committed, committed_fx, &cur_marker, &cur_marker_bank)) {
+                return { SaveResult::Status::StorageUnavailable, "SAVE FAILED: NO VALID COMMITTED BASELINE" };
+            }
+        }
 
         if (!marker_found) {
             LegacySlotInspection insp{};
@@ -177,13 +191,15 @@ public:
         // 3. Write candidate Synth to inactive Synth bank
         edit::Preset p_to_save = preset;
         p_to_save.sequence = next_synth_seq;
-        const unsigned synth_version = p_to_save.performance_macros == performance::kNeutral ? 2 : 3;
-        const unsigned synth_size = synth_version == 3 ? edit::kV3RecordBytes : edit::kV2RecordBytes;
-        uint8_t synth_bytes[edit::kV3RecordBytes];
-        if (!(synth_version == 3 ? edit::encodeV3(p_to_save, synth_bytes) : edit::encodeV2(p_to_save, synth_bytes))) {
+        const unsigned synth_version = route_size ? 4 : p_to_save.performance_macros == performance::kNeutral ? 2 : 3;
+        const unsigned synth_size = route_size ? route_size : synth_version == 3 ? edit::kV3RecordBytes : edit::kV2RecordBytes;
+        uint8_t synth_bytes[edit::kV4MaxBytes];
+        if (!(synth_version == 4 ? edit::encodeV4(p_to_save, synth_bytes, synth_size) :
+            synth_version == 3 ? edit::encodeV3(p_to_save, synth_bytes) : edit::encodeV2(p_to_save, synth_bytes))) {
             return { SaveResult::Status::InvalidPreset, "SAVE FAILED: SYNTH ENCODE ERROR" };
         }
         const auto writeSynth = [&]() {
+            if (synth_version == 4) return synth_store_->writeV4(slot, target_synth_bank, synth_bytes, synth_size);
             return synth_version == 3 ? synth_store_->writeV3(slot, target_synth_bank, synth_bytes, synth_size)
                                       : synth_store_->writeV2(slot, target_synth_bank, synth_bytes, synth_size);
         };
@@ -197,7 +213,7 @@ public:
         }
 
         // Readback verify candidate synth
-        uint8_t synth_check[edit::kV3RecordBytes];
+        uint8_t synth_check[edit::kV4MaxBytes];
         unsigned synth_check_len = sizeof(synth_check);
         if (synth_store_->readVersioned(synth_version, slot, target_synth_bank, synth_check, synth_check_len) != edit::BankRead::Present ||
             synth_check_len != synth_size ||
@@ -283,7 +299,7 @@ public:
         return { SaveResult::Status::Success, "SAVED" };
     }
 
-    bool load(unsigned slot, edit::Preset& preset, fx::FxConfig& fx, CommitMarker* verified_marker=nullptr) {
+    bool load(unsigned slot, edit::Preset& preset, fx::FxConfig& fx, CommitMarker* verified_marker=nullptr, unsigned* verified_bank=nullptr) {
         if (slot >= 16 || !synth_store_) return false;
 
         // 1. Try Commit Markers first
@@ -316,7 +332,7 @@ public:
                 const auto& m = markers[b];
 
                 // Verify Synth Record
-                uint8_t synth_bytes[edit::kV3RecordBytes];
+                uint8_t synth_bytes[edit::kV4MaxBytes];
                 unsigned len = sizeof(synth_bytes);
                 const auto res = synth_store_->readVersioned(m.synth_version, slot, m.synth_bank, synth_bytes, len);
                 if (res != edit::BankRead::Present) continue;
@@ -325,7 +341,7 @@ public:
                 const bool synth_ok = (m.synth_version == 1) ?
                     edit::decode(synth_bytes, len, p) :
                     (m.synth_version == 2 ? edit::decodeV2(synth_bytes, len, p) :
-                                            edit::decodeV3(synth_bytes, len, p));
+                     m.synth_version == 3 ? edit::decodeV3(synth_bytes, len, p) : edit::decodeV4(synth_bytes, len, p));
                 if (!synth_ok || p.sequence != m.synth_seq || p.patch != m.patch_id) continue;
 
                 // Verify FX Record
@@ -341,6 +357,7 @@ public:
 
                 // Both verified and paired!
                 if(verified_marker) *verified_marker=m;
+                if(verified_bank) *verified_bank=b;
                 preset = p;
                 fx = fx_cfg;
                 return true;

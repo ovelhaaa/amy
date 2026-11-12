@@ -1,5 +1,6 @@
 #pragma once
 #include "user_presets.h"
+#include "performance_factory_routes.h"
 namespace smk::p4::edit {
 // V2 sparse codec; V1 decoding and keys remain unchanged.
 constexpr unsigned kV2RecordBytes=160;
@@ -128,18 +129,98 @@ inline bool decodeV3(const uint8_t* bytes, unsigned length, Preset& preset) {
     return true;
 }
 
+// V4 stores sorted overrides of factory slots within the Synth transaction.
+// Each override uses slot + destination + flags + three IEEE-754 LE values.
+constexpr uint32_t kV4Magic = 0x34314553;
+constexpr unsigned kV4HeaderBytes = 5 + kV3RecordBytes;
+constexpr unsigned kV4RouteBytes = 15;
+constexpr unsigned kV4Slots = performance::kMacroCount * performance::kRoutesPerMacro;
+constexpr unsigned kV4MaxBytes = kV4HeaderBytes + kV4Slots * kV4RouteBytes + 4;
+static_assert(performance::EqHigh < 256 && kV4Slots < 256);
+
+inline unsigned v4Size(const performance::RouteConfiguration& config) {
+    if (!config.custom) return 0;
+    unsigned overrides = 0;
+    for (unsigned m = 0; m < performance::kMacroCount; ++m)
+        for (unsigned i = 0; i < performance::kRoutesPerMacro; ++i)
+            overrides += !(config.routes[m][i] == performance::kFactoryRoutes[m][i]);
+    return overrides ? kV4HeaderBytes + overrides * kV4RouteBytes + 4 : 0;
+}
+
+inline bool encodeV4(const Preset& preset, uint8_t* bytes, unsigned length) {
+    if (!length || length != v4Size(preset.performance_routes) ||
+        !performance::valid(preset.performance_routes, preset.family, familyParameterMask(preset.family)) ||
+        !encodeV3(preset, bytes + 5)) return false;
+    put32(bytes, kV4Magic);
+    bytes[4] = uint8_t((length - kV4HeaderBytes - 4) / kV4RouteBytes);
+    unsigned offset = kV4HeaderBytes;
+    for (unsigned slot = 0; slot < kV4Slots; ++slot) {
+        const unsigned macro = slot / performance::kRoutesPerMacro;
+        const unsigned index = slot % performance::kRoutesPerMacro;
+        const auto& route = preset.performance_routes.routes[macro][index];
+        if (route == performance::kFactoryRoutes[macro][index]) continue;
+        bytes[offset++] = uint8_t(slot);
+        bytes[offset++] = uint8_t(route.destination);
+        bytes[offset++] = uint8_t(unsigned(route.curve) | (unsigned(route.polarity) << 2) |
+            (unsigned(route.families) << 4) | (unsigned(route.enabled) << 6) | (unsigned(route.inverted) << 7));
+        for (float value : {route.minimum, route.maximum, route.depth}) {
+            uint32_t bits;
+            std::memcpy(&bits, &value, sizeof(bits));
+            put32(bytes + offset, bits);
+            offset += 4;
+        }
+    }
+    put32(bytes + offset, crc(bytes, offset));
+    return true;
+}
+
+inline bool decodeV4(const uint8_t* bytes, unsigned length, Preset& preset) {
+    if (length < kV4HeaderBytes + 4 || length > kV4MaxBytes || get32(bytes) != kV4Magic ||
+        !bytes[4] || length != kV4HeaderBytes + bytes[4] * kV4RouteBytes + 4 ||
+        get32(bytes + length - 4) != crc(bytes, length - 4)) return false;
+    Preset candidate;
+    if (!decodeV3(bytes + 5, kV3RecordBytes, candidate)) return false;
+    candidate.performance_routes = {performance::kFactoryRoutes, true};
+    unsigned offset = kV4HeaderBytes;
+    unsigned next = 0;
+    for (unsigned i = 0; i < bytes[4]; ++i) {
+        const unsigned slot = bytes[offset++];
+        if (slot < next || slot >= kV4Slots) return false;
+        next = slot + 1;
+        auto& route = candidate.performance_routes.routes[slot / performance::kRoutesPerMacro][slot % performance::kRoutesPerMacro];
+        route.destination = bytes[offset++];
+        const unsigned flags = bytes[offset++];
+        route.curve = performance::Curve(flags & 3);
+        route.polarity = performance::Polarity((flags >> 2) & 3);
+        route.families = (flags >> 4) & 3;
+        route.enabled = (flags & 64) != 0;
+        route.inverted = (flags & 128) != 0;
+        for (float* value : {&route.minimum, &route.maximum, &route.depth}) {
+            const uint32_t bits = get32(bytes + offset);
+            std::memcpy(value, &bits, sizeof(bits));
+            offset += 4;
+        }
+    }
+    if (v4Size(candidate.performance_routes) != length ||
+        !performance::valid(candidate.performance_routes, candidate.family, familyParameterMask(candidate.family))) return false;
+    preset = candidate;
+    return true;
+}
+
 enum class BankRead : uint8_t { Present, Missing, Error };
 class VersionedPresetStore : public PresetStore {
 public:
     virtual BankRead readVersioned(unsigned version,unsigned slot,unsigned bank,uint8_t* data,unsigned& length)=0;
     virtual bool writeV2(unsigned slot,unsigned bank,const uint8_t* data,unsigned length)=0;
     virtual bool writeV3(unsigned,unsigned,const uint8_t*,unsigned) { return false; }
+    virtual bool writeV4(unsigned,unsigned,const uint8_t*,unsigned) { return false; }
     bool accepts(const Preset& p) const override {return validPreset(p,false);}
     bool load(unsigned slot,Preset& out) override {
         Scan scan{};if(!scanSlot(slot,scan) || !scan.found)return false;
         out=scan.latest;return true;
     }
     bool save(unsigned slot,Preset p) override {
+        if (p.performance_routes.custom) return false;
         Scan scan{};if(!scanSlot(slot,scan))return false;
         if(scan.found && scan.latest.sequence==UINT32_MAX)return false;
         p.sequence=scan.found?scan.latest.sequence+1:1;

@@ -22,7 +22,7 @@ public:
     }
     bool write(unsigned,unsigned,const uint8_t*,unsigned) override {return false;}
     edit::BankRead readVersioned(unsigned version,unsigned slot,unsigned bank,uint8_t* data,unsigned& length) override {
-        if(!modern_ || slot>=edit::kSlots || bank>1 || version<1 || version>3)return edit::BankRead::Error;
+        if(!modern_ || slot>=edit::kSlots || bank>1 || version<1 || version>4)return edit::BankRead::Error;
         nvs_handle_t h = modern_;
         if(version==1) {
             if(!legacy_) {
@@ -44,6 +44,10 @@ public:
     bool writeV3(unsigned slot,unsigned bank,const uint8_t* data,unsigned length) override {
         return length==edit::kV3RecordBytes && writeModern(3,slot,bank,data,length);
     }
+    bool writeV4(unsigned slot,unsigned bank,const uint8_t* data,unsigned length) override {
+        return length > edit::kV4HeaderBytes + 4 && length <= edit::kV4MaxBytes &&
+            writeModern(4,slot,bank,data,length);
+    }
     esp_err_t error() const{return error_;}
 private:
     bool writeModern(unsigned version,unsigned slot,unsigned bank,const uint8_t* data,unsigned length) {
@@ -54,9 +58,9 @@ private:
         // ESP-IDF 5.5.2: 160 bytes/32 + one chunk header + blob index = 7
         // entries normally, conservatively budget 8 (including a split chunk).
         // Reserve a GC page and one full record beyond all 32 resident banks.
-        const size_t entries_per_blob=version==3?9:8;
+        const size_t entries_per_blob=version==4?(length+31)/32+3:version==3?9:8;
         constexpr size_t gc_entries=126;
-        const size_t required=edit::kSlots*2*entries_per_blob+gc_entries+entries_per_blob;
+        const size_t required=edit::kSlots*2*(version==4?9:entries_per_blob)+gc_entries+entries_per_blob;
         if(stats.free_entries+used<required || stats.free_entries<gc_entries+entries_per_blob){
             error_=ESP_ERR_NVS_NOT_ENOUGH_SPACE;return false;
         }
@@ -67,7 +71,7 @@ private:
     }
     void close(){if(legacy_)nvs_close(legacy_);if(modern_)nvs_close(modern_);legacy_=modern_=0;}
     static void makeKey(unsigned version,unsigned slot,unsigned bank,char* key){
-        std::snprintf(key,12,"%c%02u%c",version==1?'s':version==2?'v':'w',slot,bank?'b':'a');
+        std::snprintf(key,12,"%c%02u%c",version==1?'s':version==2?'v':version==3?'w':'x',slot,bank?'b':'a');
     }
     nvs_handle_t legacy_=0,modern_=0;esp_err_t error_=ESP_OK;
 };
