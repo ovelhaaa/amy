@@ -37,6 +37,145 @@ static void patch(unsigned id){runtime.commands().panic();assert(runtime.command
 static void tick(){probe_realtime(true);runtime.apply(20);assert(runtime.render());probe_realtime(false);}
 static edit::Request request(){const auto& s=runtime.snapshot();edit::Request r;r.patch=s.patch_id;r.generation=s.generation;r.request=s.edit.request+1;for(unsigned i=0;i<edit::Count;++i)r.values[i]=s.edit.manual[i];r.mask=s.edit.mask;return r;}
 static void submit(edit::Request r){assert(runtime.commands().edits.push(r));tick();assert(runtime.snapshot().edit.request==r.request);}
+static void testEditableRoutes() {
+    using namespace performance;
+    patch(4);
+    harmony::Config harmony{};
+    harmony.scale_on = harmony.chord_on = false;
+    assert(runtime.commands().push({amy::CommandType::Harmony, 0, 0, 0, harmony::pack(harmony)}));
+    tick();
+    for (unsigned note = 60; note < 68; ++note) {
+        const uint8_t packet[] = {0x09, 0x90, uint8_t(note), 100};
+        assert(runtime.usbInput().packet(packet, 0));
+    }
+    tick();
+    assert(runtime.snapshot().active_notes == 8);
+    const auto allocations = probe_calls();
+    const auto memory = probe_bytes();
+    const auto oom = runtime.snapshot().oom_count;
+    auto edit_request = request();
+    edit_request.mask = edit::bit(edit::Cutoff);
+    edit_request.values[edit::Cutoff] = 2000;
+    auto& config = edit_request.performance_routes;
+    config.custom = true;
+    config.routes[0][0] = route(edit::Cutoff, 20, 18000, 500, Juno);
+    config.routes[1][0] = route(edit::Cutoff, 20, 18000, 1000, Juno);
+    config.routes[6][0] = route(ReverbMix, 0, 1, 0.35f);
+    const auto apply = [&] {
+        edit_request.request = runtime.snapshot().edit.request + 1;
+        submit(edit_request);
+    };
+    const auto cutoff = [] { return runtime.snapshot().edit.applied[edit::Cutoff]; };
+    for (unsigned repeat = 0; repeat < 16; ++repeat) {
+        edit_request.performance_macros[0] = 127;
+        apply();
+        assert(cutoff() == 2500);
+        edit_request.performance_macros[1] = 127;
+        apply();
+        assert(cutoff() == 3500);
+        edit_request.performance_macros[0] = kNeutral[0];
+        apply();
+        assert(cutoff() == 3000);
+        edit_request.performance_macros[1] = kNeutral[1];
+        apply();
+        assert(cutoff() == 2000);
+    }
+    edit_request.performance_macros[1] = edit_request.performance_macros[6] = 127;
+    apply();
+    assert(cutoff() == 3000);
+    const auto reverb = [] {
+        const auto& snapshot = runtime.snapshot();
+        return effectiveFx(snapshot.fx.config, snapshot.edit).reverb_mix;
+    };
+    assert(reverb() == 0.35f && amy_global.bus[0]->reverb.level > 0);
+    edit_request.values[edit::Cutoff] = 2200;
+    apply();
+    assert(cutoff() == 3200);
+    config.routes[1][0].enabled = false;
+    config.routes[6][0] = {};
+    apply();
+    assert(cutoff() == 2200 && reverb() == 0 && amy_global.bus[0]->reverb.level == 0);
+
+    config.routes[1][0] = route(edit::Cutoff, 20, 18000, 1000, Juno);
+    apply();
+    assert(cutoff() == 3200);
+    edit_request.compare = true;
+    apply();
+    assert(cutoff() == runtime.snapshot().edit.original[edit::Cutoff]);
+    edit_request.compare = false;
+    apply();
+    assert(cutoff() == 3200);
+
+    const auto accepted = config;
+    const auto reject = [&](Route invalid) {
+        config.routes[7][5] = invalid;
+        const auto errors = runtime.snapshot().edit.errors;
+        apply();
+        assert(runtime.snapshot().edit.errors == errors + 1);
+        assert(runtime.snapshot().edit.performance_routes == accepted && cutoff() == 3200);
+    };
+    reject(route(edit::FmAlgorithm, 1, 32, 1, Fm));
+    reject(route(65535, 0, 1, 1));
+    reject(route(edit::Cutoff, 20, 18000, 500, Fm));
+    reject(route(edit::Cutoff, 20, 18000, NAN, Juno));
+    reject(route(edit::Cutoff, 18000, 20, 500, Juno));
+    reject(route(edit::Cutoff, 20, 18000, 18000, Juno));
+    reject(route(edit::Cutoff, 20, 18000, 500, Juno, static_cast<Curve>(255)));
+    auto invalid_polarity = route(edit::Cutoff, 20, 18000, 500, Juno);
+    invalid_polarity.polarity = static_cast<Polarity>(255);
+    reject(invalid_polarity);
+    assert(!valid(accepted, 1, 0));
+
+    for (auto& slots : config.routes)
+        slots.fill(route(edit::Cutoff, 20, 18000, 500, Juno));
+    edit_request.performance_macros.fill(127);
+    apply();
+    assert(cutoff() == 18000 && runtime.snapshot().edit.performance_routes == config);
+    for (unsigned v = 0; v < 8; ++v) {
+        uint16_t voice;
+        assert(instrument_get_num_voices(v + 1, &voice) == 1);
+        const auto* osc = synth[voice_to_base_osc[voice]];
+        assert(std::fabs(freq_of_logfreq(osc->filter_logfreq_coefs[0]) - 18000) < 1);
+    }
+    edit_request.performance_macros = kNeutral;
+    apply();
+    assert(cutoff() == 2200);
+    unsigned destination = 0;
+    const auto available = runtime.snapshot().edit.available;
+    for (auto& slots : config.routes) {
+        for (auto& slot : slots) {
+            do {
+                destination = (destination + 1) % (EqHigh + 1);
+            } while (!(destinationFamilies(destination) & Juno) ||
+                     (destination < edit::Count && !(available & edit::bit(destination))));
+            const auto domain = destinationDomain(destination);
+            slot = route(uint16_t(destination), domain.minimum, domain.maximum,
+                         (domain.maximum - domain.minimum) * 0.05f, Juno, Curve::SCurve);
+        }
+    }
+    using Clock = std::chrono::steady_clock;
+    constexpr unsigned blocks = 200;
+    double total_us = 0;
+    double max_us = 0;
+    for (unsigned block = 0; block < blocks; ++block) {
+        edit_request.performance_macros = kNeutral;
+        if (block % 2 == 0) edit_request.performance_macros.fill(127);
+        const auto start = Clock::now();
+        apply();
+        const double elapsed = std::chrono::duration<double, std::micro>(Clock::now() - start).count();
+        total_us += elapsed;
+        max_us = std::max(max_us, elapsed);
+    }
+    std::printf("PERF0141_HOST routes=48 voices=8 blocks=%u request_apply_render_avg_us=%.2f max_us=%.2f peak=%u clipped=%u\n",
+                blocks, total_us / blocks, max_us, runtime.snapshot().peak, runtime.snapshot().clipped);
+    edit_request.performance_routes = {};
+    apply();
+    assert(!runtime.snapshot().edit.performance_routes.custom);
+    assert(runtime.snapshot().active_notes == 8 && runtime.snapshot().oom_count == oom);
+    assert(probe_calls() == allocations && probe_bytes() == memory);
+    std::puts("PASS 0.14.1 owner: 48 routes, cutoff recovery, native reverb removal, Compare and atomic rejection");
+}
+
 int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     assert(runtime.begin());patch(4);
     auto state=runtime.snapshot().edit;
@@ -188,6 +327,7 @@ int main(){std::setvbuf(stdout,nullptr,_IONBF,0);
     assert(backend.editCoalesced()>=999 && runtime.commands().depth()==0);
     backend.service(3050);tick();backend.publish(runtime.snapshot(),false,0,0);assert(runtime.snapshot().edit.applied[edit::Depth]==0.99f);
     std::puts("PASS editor: eight-voice Juno/FM, native maps, no retrigger/allocation, limits, Compare/Revert, stale rejection;16-slot codec/CRC/future version/interrupted overwrite/recall");
+    testEditableRoutes();
     runtime.end();
 }
 

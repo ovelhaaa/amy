@@ -295,7 +295,9 @@ void Runtime::applyEdit(uint32_t now_ms) {
     out.request=request.request;++out.revision;
     if(!state_.ready || state_.patch_state!=PatchState::Ready || request.patch!=out.patch ||
        request.generation!=state_.generation || (request.mask&~out.available) ||
-       !performance::valid(request.performance_macros)) {++out.errors;return;}
+       !performance::valid(request.performance_macros) ||
+       (request.performance_routes!=out.performance_routes &&
+        !performance::valid(request.performance_routes,out.family,out.available))) {++out.errors;return;}
     for(unsigned p=0;p<edit::Count;++p)
         if((request.mask&edit::bit(p)) && !edit::valid(p,request.values[p])){++out.errors;return;}
     if((request.mask&edit::bit(edit::LfoDest)) && std::lround(request.values[edit::LfoDest])==2 &&
@@ -329,19 +331,21 @@ void Runtime::applyEdit(uint32_t now_ms) {
         }
         return v;
     };
+    const auto& routes=performance::activeRoutes(request.performance_routes);
     float composed[edit::Count]{};
     edit::Mask performance_mask=0, evaluated=0;
     if(!request.compare && request.performance_macros!=performance::kNeutral){
         const auto family=performance::familyMask(out.family);
         for(unsigned m=0;m<performance::kMacroCount;++m){
             if(request.performance_macros[m]==performance::kNeutral[m])continue;
-            for(const auto& route:performance::kFactoryRoutes[m]){
+            for(const auto& route:routes[m]){
                 const unsigned p=route.destination;
                 if(!route.enabled || !(route.families&family) || p>=edit::Count ||
                    !(out.available&edit::bit(p)) || (evaluated&edit::bit(p)))continue;
                 evaluated|=edit::bit(p);
-                const auto result=performance::compose(performance::kFactoryRoutes,request.performance_macros,
-                    family,p,legacyValue(p),route.minimum,route.maximum);
+                const auto domain=performance::destinationDomain(p);
+                const auto result=performance::compose(routes,request.performance_macros,
+                    family,p,legacyValue(p),domain.minimum,domain.maximum);
                 if(result.active){performance_mask|=edit::bit(p);composed[p]=result.value;}
             }
         }
@@ -531,8 +535,10 @@ void Runtime::applyEdit(uint32_t now_ms) {
     if(amy_get_oom_count()!=state_.oom_count){++out.errors;failRendering();return;}
     const bool update_fx=performance::fxRoutesChanged(out,request);
     out.mask=request.mask;out.compare=request.compare;out.dirty=request.mask!=0 || request.macros[0]!=64 || request.macros[1]!=64 || request.macros[2]!=64 ||
-        request.performance_macros!=performance::kNeutral;out.user_slot=request.slot;
+        request.performance_macros!=performance::kNeutral || request.performance_routes.custom;
+    out.user_slot=request.slot;
     out.performance_macros=request.performance_macros;
+    if(out.performance_routes!=request.performance_routes)out.performance_routes=request.performance_routes;
     out.performance_mask=performance_mask;
     if(update_fx)applyPerformanceFx();
     for(unsigned m=0;m<3;++m)out.macros[m]=request.macros[m];

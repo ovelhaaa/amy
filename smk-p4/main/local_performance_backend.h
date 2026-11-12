@@ -217,7 +217,8 @@ public:
         }
         if(!saved_valid_ || saved_edit_.patch!=edit_.patch || saved_edit_.mask!=edit_.mask)return true;
         for(unsigned m=0;m<3;++m)if(saved_edit_.macros[m]!=edit_.macros[m])return true;
-        if(saved_edit_.performance_macros!=edit_.performance_macros)return true;
+        if(saved_edit_.performance_macros!=edit_.performance_macros ||
+           saved_edit_.performance_routes!=edit_.performance_routes)return true;
         for(unsigned p=0;p<edit::Count;++p)if((edit_.mask&edit::bit(p)) && saved_edit_.manual[p]!=edit_.manual[p])return true;
         return false;
     }
@@ -329,7 +330,7 @@ public:
                 }
             }
             prepareEdit();desired_.compare=action==0?!desired_.compare:false;
-            if(action==1){desired_.mask=0;desired_.slot=-1;for(auto& m:desired_.macros)m=64;desired_.performance_macros=performance::kNeutral;desired_fx_=original_fx_;}
+            if(action==1){desired_.mask=0;desired_.slot=-1;for(auto& m:desired_.macros)m=64;desired_.performance_macros=performance::kNeutral;desired_.performance_routes={};desired_fx_=original_fx_;}
             desired_.request=newEditToken();edit_pending_=true;
             fx::FxRequest req{};req.config=desired_.compare?original_fx_:desired_fx_;req.generation=commands_.generation();req.request=++fx_token_;commands_.fx.push(req);
             setRejectNotice(PresetRejectReason::None, nullptr);
@@ -383,6 +384,12 @@ public:
                 setRejectNotice(PresetRejectReason::CompareActive, "OVERWRITE BLOCKED: COMPARE ACTIVE");
                 preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
                 logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::CompareActive);
+                return false;
+            }
+            if(edit_.performance_routes.custom){
+                setRejectNotice(PresetRejectReason::InvalidPreset, "SAVE BLOCKED: CUSTOM ROUTES REQUIRE V4");
+                preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
+                logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::InvalidPreset);
                 return false;
             }
             if(state_.active_notes > 0){
@@ -669,6 +676,7 @@ private:
         desired_={};desired_.patch=edit_.patch;desired_.generation=commands_.generation();desired_.mask=edit_.mask;
         for(unsigned m=0;m<3;++m)desired_.macros[m]=edit_.macros[m];
         desired_.performance_macros=edit_.performance_macros;
+        desired_.performance_routes=edit_.performance_routes;
         desired_.compare=edit_.compare;desired_.slot=edit_.user_slot;
         for(unsigned p=0;p<edit::Count;++p)desired_.values[p]=edit_.manual[p];
     }
