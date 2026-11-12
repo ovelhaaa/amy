@@ -1,0 +1,14 @@
+# SMK-P4 0.14.1 — auditoria de arquitetura
+
+Base local e remota: 37c7caf0a794298f740efb52a672e05ae041ffd4. A origem não tinha commits adicionais. O alvo explícito é o SMK-P4 Guition; specs.md descreve o SMK-S3 e não define a pinagem ou os perfis de build do P4. O README raiz na base contém marcadores de conflito já versionados.
+
+1. performance_factory_routes.h é a fonte única de rotas. Posições residem em edit::State e edit::Request.
+2. O owner parte do valor manual ou original, aplica os controles históricos e soma as contribuições limitadas de cada rota antes do clamp final. O mask anterior participa da reaplicação para restaurar destinos que deixaram de receber contribuição.
+3. O catálogo está em sound_edit.h (IDs 0–57). A disponibilidade real vem da máscara do patch materializado. Juno expõe oscilador, filtro, envelope, amplitude e modulação; DX7 expõe níveis, razões, envelopes e velocidade dos operadores, profundidade, feedback e algoritmo. Seletores discretos, incluindo algoritmo FM, exigem a via de edição manual.
+4. Brightness altera cutoff Juno e profundidade FM; Attack e Release alteram os envelopes Juno. A composição nova recebe o resultado legado, preservando os multiplicadores históricos.
+5. effectiveFx recebe uma cópia do FX manual do owner. O resultado passa a applyBusFx e não volta à configuração manual.
+6. Compare usa os parâmetros originais ROM e suspende macros. A saída de Compare reaplica a solicitação editada. Revert limpa máscara e posições; o backend mantém FX de referência e usa o mailbox Synth e a fila FX. Um estado de referência que inclua rotas deve ser transportado junto das posições.
+7. V3 tem 176 bytes: magic de 4, V2 de 160, oito posições e CRC de 4. V2 carrega nome, máscara, valores, identidade e CRC próprios. V3 não tem espaço reservado para rotas.
+8. O marcador de 32 bytes identifica slot, sequência de commit, patch, versão/banco/sequência Synth e banco/sequência FX, com identidade ROM e CRC. A recuperação valida os dois registros sob o mesmo marcador.
+9. A extensão preferida é um V4 no próprio registro Synth, com as rotas protegidas pelo CRC e pela sequência Synth referenciada pelo marcador. Um sidecar exigiria outra referência e outro ciclo de escrita. Uma codificação direta de 14 bytes por rota exigiria 672 bytes adicionais por registro, ou 21.504 bytes adicionais para 16 slots com dois bancos, antes de contabilizar Synth, FX, marcadores e overhead NVS. A partição de 24 KiB tem seis páginas de 4 KiB e precisa de reserva de GC. Um formato esparso com limite explícito e teste de capacidade física é necessário para aceitar Save com segurança.
+10. Publicar uma configuração completa pelo mailbox SPSC com patch, geração e token. Validar antes de tocar no DSP, recompor a união dos destinos anteriores e atuais, e publicar o snapshot após a aplicação. Manter a edição LVGL e o armazenamento fora do owner.
