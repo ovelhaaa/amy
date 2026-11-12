@@ -1,13 +1,13 @@
-# SMK-P4 0.14.1 — imagens do incremento legado
+# SMK-P4 0.14.1 — imagens do incremento de rotas no owner
 
-**NO-GO para qualificação física da 0.14.1.** As imagens abaixo correspondem ao painel legado, sem o editor de rotas do escopo de release.
+**NO-GO para qualificação física da 0.14.1.** As imagens abaixo incluem o painel legado e a composi��o din�mica no owner. O editor visual e o V4 seguem pendentes.
 
-Código compilado: 203a77ff4ecd8113eac23eaa84d5c973bcc98e07. Os commits posteriores de documentação não entram no build.
+Código compilado: 9299ba73fa2848ac8bf17cc120173e9e8ec78271. Os commits posteriores de documentação não entram no build.
 
 | Perfil | Bytes do binário | SHA-256 | Flash reportada | RAM estática reportada |
 |---|---:|---|---:|---:|
-| guition-editor-8 | 1.264.080 | `40ce04e677357986154f6b6ab77a2c35bc7738c7363c20b89bb8f25cbc456980` | 1.263.346 B | 41.240 B |
-| guition-editor-8-bench | 1.365.040 | `319efb677a066f28fbd42e1437c5464c74d86f9c42976432cfed30c53b4e9376` | 1.364.324 B | 41.624 B |
+| guition-editor-8 | 1.271.072 | `c47172dac23470eadef737e037f5f7289f1ed4b7c10d4ef63e50382cc3a1784b` | 1.270.338 B | 48.200 B |
+| guition-editor-8-bench | 1.372.096 | `e3f8ca8f109d0d8836ea6ae312c64797c4afdd7afccf1a3fc51aeb79e23d57c2` | 1.371.376 B | 48.584 B |
 
 Os dois builds e as duas auditorias de configuração retornaram PASS. PSRAM livre, RAM interna livre, latência, underruns e deadlines na placa estão sem medições.
 

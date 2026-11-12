@@ -24,3 +24,9 @@ O teste LVGL jÃ¡ executado pelo CI verifica as trÃªs linhas do painel, reset em 
 No Windows, o runner de Sound Editor mediu 200 blocos com oito vozes. AplicaÃ§Ã£o e render combinados deram mÃ©dia de 80,87 Âµs e mÃ¡ximo de 102,20 Âµs na referÃªncia, com 112,40 Âµs de mÃ©dia e 186,10 Âµs de mÃ¡ximo durante mudanÃ§as nas macros de fÃ¡brica. O runner tambÃ©m verificou PCM dos controles existentes e restauraÃ§Ã£o em Compare/Revert. O teste de offsets novo comprova a mudanÃ§a do cutoff aplicado. A comparaÃ§Ã£o PCM de fixtures V1/V2/V3 entre as duas versÃµes estÃ¡ pendente.
 
 Consultar a [matriz de aceitaÃ§Ã£o](performance_0141_test_matrix.md), o [orÃ§amento de persistÃªncia](performance_0141_persistence.md) e os [hashes das imagens](performance_0141_hardware_candidate.md). O incremento ainda nÃ£o qualifica o release 0.14.1.
+
+## Incremento de rotas no owner
+
+O código 9299ba73fa2848ac8bf17cc120173e9e8ec78271 passou pelo runner Sound Editor, pela suíte Performance 0.14, pelo runner de UI, e pelo teste transacional `run_fx_tests.ps1 gate_b_tx`. O teste de 48 rotas combina Synth e FX em oito vozes. Em Windows, 200 blocos alternando as oito posições entre neutro e 127 mediram 92,93 µs de média e 736,60 µs de máximo para submissão, aplicação e render combinados, com pico 415, clipping zero, nenhuma chamada de alocação na janela instrumentada e nenhum incremento de OOM. Os testes exercitam o DSP por mailbox. As medições de deadline e de memória dinâmica no P4 continuam pendentes.
+
+A configuração customizada fica na RAM e o Save é recusado enquanto o formato transacional estiver pendente. [Composição e validação](performance_0141_macro_routes.md).
