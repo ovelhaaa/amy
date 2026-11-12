@@ -174,21 +174,23 @@ public:
     void refresh(IUiBackend& backend) override {
         if (legacy_) {
             IUiBackend::LegacyOffsets offsets;
-            char text[320];
-            if (backend.legacyOffsets(offsets)) {
-                const auto status = [&](unsigned i) {
-                    return offsets.positions[i] == 64 ? "NEUTRAL" : offsets.compare ? "BYPASSED" : "ACTIVE";
-                };
-                std::snprintf(text, sizeof(text),
-                    "%s%s\n\nBRIGHTNESS   %u / 64   %s   %s\n\nATTACK   %u / 64   %s   %s\n\nRELEASE   %u / 64   %s   %s",
-                    offsets.fm ? "DX7" : "JUNO", offsets.compare ? " | COMPARE ACTIVE" : "",
-                    offsets.positions[0], status(0), offsets.fm ? "FM depth" : "Filter cutoff",
-                    offsets.positions[1], status(1), offsets.fm ? "Juno only" : "Amp envelope attack",
-                    offsets.positions[2], status(2), offsets.fm ? "Juno only" : "Amp envelope release");
-            } else {
-                std::snprintf(text, sizeof(text), "LEGACY OFFSETS UNAVAILABLE");
+            const bool available = backend.legacyOffsets(offsets);
+            lv_label_set_text(legacy_, !available ? "LEGACY OFFSETS UNAVAILABLE" :
+                offsets.fm ? (offsets.compare ? "DX7 | COMPARE ACTIVE" : "DX7") :
+                             (offsets.compare ? "JUNO | COMPARE ACTIVE" : "JUNO"));
+            constexpr const char* names[]{"BRIGHTNESS", "ATTACK", "RELEASE"};
+            constexpr const char* juno[]{"Filter cutoff", "Amp envelope attack", "Amp envelope release"};
+            constexpr const char* fm[]{"FM depth", "Juno only", "Juno only"};
+            for (unsigned i = 0; i < 3; ++i) {
+                char text[96]{};
+                if (available) {
+                    const char* state = offsets.positions[i] == 64 ? "NEUTRAL" :
+                        offsets.compare ? "BYPASSED" : "ACTIVE";
+                    std::snprintf(text, sizeof(text), "%s   %u / 64   %s   %s", names[i],
+                        unsigned(offsets.positions[i]), state, offsets.fm ? fm[i] : juno[i]);
+                }
+                lv_label_set_text(legacy_rows_[i], text);
             }
-            lv_label_set_text(legacy_, text);
         }
         if (oct_lbl_) {
             const int32_t oct = backend.model().getInt("perf.octave_shift", 0);
@@ -211,6 +213,9 @@ private:
         confirming_ = false;
         createLabel(parent, "LEGACY MACRO OFFSETS", 12, 14, 560, &lv_font_montserrat_14, palette::kAccentPrimary);
         legacy_ = createLabel(parent, "", 12, 70, 760, &lv_font_montserrat_14, palette::kTextSecondary);
+        for (unsigned i = 0; i < 3; ++i)
+            legacy_rows_[i] = createLabel(parent, "", 12, 112 + 36 * i, 760,
+                &lv_font_montserrat_14, palette::kTextPrimary);
         confirm_ = createLabel(parent, "", 12, 252, 760, &lv_font_montserrat_14, palette::kAccentPrimary);
         auto* back = createActionButton(parent, "BACK / CANCEL", 12, 302, 184, 44, nullptr, nullptr);
         attachLvContext<UiNavigationManager*>(back, &nav, [](lv_event_t* e) {
@@ -225,7 +230,7 @@ private:
             if (screen.confirming_) {
                 const auto result = context.backend->resetLegacyOffsets(screen.expected_);
                 lv_label_set_text(screen.confirm_, result.state == UiCommandState::Requested ?
-                    "RESET REQUESTED. WAITING FOR OWNER." : "RESET REJECTED.");
+                    "" : "RESET REJECTED.");
                 screen.confirming_ = false;
             } else if (context.backend->legacyOffsets(screen.expected_) && !screen.expected_.compare) {
                 screen.confirming_ = true;
@@ -240,6 +245,7 @@ private:
     IUiBackend::LegacyOffsets expected_{};
     bool confirming_ = false;
     lv_obj_t* legacy_ = nullptr;
+    lv_obj_t* legacy_rows_[3]{};
     lv_obj_t* confirm_ = nullptr;
     lv_obj_t* oct_lbl_    = nullptr;
     lv_obj_t* status_lbl_ = nullptr;

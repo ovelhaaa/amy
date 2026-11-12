@@ -112,6 +112,9 @@ int main(){
     lv_obj_send_event(open_legacy, LV_EVENT_CLICKED, nullptr);
     preview::pumpFrame(app);
     assert(labels(app.contentObject(), "LEGACY MACRO OFFSETS") == 1);
+    assert(labels(app.contentObject(), "BRIGHTNESS   96 / 64   ACTIVE   Filter cutoff") == 1);
+    assert(labels(app.contentObject(), "ATTACK   64 / 64   NEUTRAL   Amp envelope attack") == 1);
+    assert(labels(app.contentObject(), "RELEASE   64 / 64   NEUTRAL   Amp envelope release") == 1);
     assert(preview::saveFramebufferPpm("build/editor011/legacy_offsets_0141.ppm"));
     auto* reset_legacy = button(app.contentObject(), "RESET LEGACY OFFSETS");
     assert(reset_legacy);
