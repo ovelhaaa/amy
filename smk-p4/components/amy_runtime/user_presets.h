@@ -42,14 +42,7 @@ constexpr Mask allowedMask(uint8_t family, bool v1) {
     const Mask v1_juno = 15ULL;
     const Mask v1_fm = (bit(kV1Count) - 1ULL) & ~v1_juno;
     if (v1) return family == 1 ? v1_juno : v1_fm;
-    const Mask shared = bit(PatchLevel) | bit(LfoRate) | bit(LfoDepth) | bit(LfoWave) | bit(LfoDest) |
-                        bit(ModEnable) | bit(ModSource) | bit(ModDest) | bit(ModAmount) | bit(ModPolarity);
-    if (family == 1) {
-        const Mask juno_v2 = (bit(Velocity + 1) - 1ULL) & ~(bit(kV1Count) - 1ULL);
-        return v1_juno | juno_v2 | shared;
-    }
-    const Mask fm_v2 = (bit(OpVel5 + 1) - 1ULL) & ~(bit(FmFeedback) - 1ULL);
-    return v1_fm | fm_v2 | shared | bit(FmAlgorithm);
+    return familyParameterMask(family);
 }
 
 inline bool validPreset(const Preset& p, bool v1) {

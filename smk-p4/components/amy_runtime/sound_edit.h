@@ -36,43 +36,66 @@ struct State {
     uint32_t revision = 0, request = 0, errors = 0, epoch = 0, apply_max_us = 0;
     uint8_t macros[3]{64, 64, 64};
     performance::Positions performance_macros = performance::kNeutral;
+    performance::RouteConfiguration performance_routes;
     Mask performance_mask = 0;
     float original[Count]{}, manual[Count]{}, applied[Count]{};
     bool compare = false, dirty = false;
     int8_t user_slot = -1;
 };
 
+struct Domain {
+    float minimum = 0;
+    float maximum = 0;
+    constexpr bool continuous() const { return minimum < maximum; }
+};
+
+constexpr Domain continuousDomain(unsigned p) {
+    if (p == Cutoff) return {20.0f, 18000.0f};
+    if (p == Resonance) return {0.1f, 2.0f};
+    if (p == Attack || p == Release) return {1.0f, 8000.0f};
+    if (p == Decay) return {1.0f, 30000.0f};
+    if (p >= OpLevel0 && p <= OpLevel5) return {0.0f, 100.0f};
+    if (p >= OpRatio0 && p <= OpRatio5) return {0.5f, 16.0f};
+    if (p == FilterEnv) return {-11.0f, 11.0f};
+    if (p == FilterKeytrack) return {0.0f, 200.0f};
+    if (p == OscLevel || p == SubLevel || p == NoiseLevel || p == PatchLevel || p == Velocity) return {0.0f, 100.0f};
+    if (p == PulseWidth) return {5.0f, 95.0f};
+    if (p == Detune) return {-100.0f, 100.0f};
+    if (p == Pan) return {-64.0f, 63.0f};
+    if (p == Sustain) return {0.0f, 100.0f};
+    if (p == Depth) return {0.0f, 1.0f};
+    if (p == FmFeedback) return {0.0f, 100.0f};
+    if (p >= OpAttack0 && p <= OpAttack5) return {0.0f, 2000.0f};
+    if (p >= OpDecay0 && p <= OpDecay5) return {0.0f, 4000.0f};
+    if (p >= OpVel0 && p <= OpVel5) return {0.0f, 100.0f};
+    if (p == LfoRate) return {0.1f, 20.0f};
+    if (p == LfoDepth) return {0.0f, 100.0f};
+    if (p == ModAmount) return {-100.0f, 100.0f};
+    return {};
+}
+
 inline bool valid(unsigned p, float v) {
     if (!std::isfinite(v)) return false;
-    if (p == Cutoff) return v >= 20.0f && v <= 18000.0f;
-    if (p == Resonance) return v >= 0.1f && v <= 2.0f;
-    if (p == Attack || p == Release) return v >= 1.0f && v <= 8000.0f;
-    if (p == Decay) return v >= 1.0f && v <= 30000.0f;
-    if (p >= OpLevel0 && p <= OpLevel5) return v >= 0.0f && v <= 100.0f;
-    if (p >= OpRatio0 && p <= OpRatio5) return v >= 0.5f && v <= 16.0f;
-    if (p == FilterEnv) return v >= -11.0f && v <= 11.0f;
-    if (p == FilterKeytrack) return v >= 0.0f && v <= 200.0f;
-    if (p == OscLevel || p == SubLevel || p == NoiseLevel || p == PatchLevel || p == Velocity) return v >= 0.0f && v <= 100.0f;
-    if (p == PulseWidth) return v >= 5.0f && v <= 95.0f;
-    if (p == Detune) return v >= -100.0f && v <= 100.0f;
-    if (p == Pan) return v >= -64.0f && v <= 63.0f;
-    if (p == Sustain) return v >= 0.0f && v <= 100.0f;
-    if (p == Depth) return v >= 0.0f && v <= 1.0f;
-    if (p == FmFeedback) return v >= 0.0f && v <= 100.0f;
-    if (p >= OpAttack0 && p <= OpAttack5) return v >= 0.0f && v <= 2000.0f;
-    if (p >= OpDecay0 && p <= OpDecay5) return v >= 0.0f && v <= 4000.0f;
-    if (p >= OpVel0 && p <= OpVel5) return v >= 0.0f && v <= 100.0f;
-    if (p == LfoRate) return v >= 0.1f && v <= 20.0f;
-    if (p == LfoDepth) return v >= 0.0f && v <= 100.0f;
+    const auto domain = continuousDomain(p);
+    if (domain.continuous()) return v >= domain.minimum && v <= domain.maximum;
     if (p == LfoWave) return v >= 0.0f && v <= 4.0f && std::floor(v) == v;
     if (p == LfoDest) return v >= 0.0f && v <= 3.0f && std::floor(v) == v;
     if (p == ModEnable) return v == 0.0f || v == 1.0f;
     if (p == ModSource) return v == 0.0f || v == 1.0f;
     if (p == ModDest) return v == 0.0f || v == 1.0f || v == 3.0f;
-    if (p == ModAmount) return v >= -100.0f && v <= 100.0f;
     if (p == ModPolarity) return v >= 0.0f && v <= 2.0f && std::floor(v) == v;
     if (p == FmAlgorithm) return v >= 1.0f && v <= 32.0f && std::floor(v) == v;
     return false;
+}
+
+constexpr Mask familyParameterMask(uint8_t family) {
+    constexpr Mask shared = bit(PatchLevel) | bit(LfoRate) | bit(LfoDepth) | bit(LfoWave) |
+        bit(LfoDest) | bit(ModEnable) | bit(ModSource) | bit(ModDest) | bit(ModAmount) | bit(ModPolarity);
+    constexpr Mask legacy_juno = bit(Release + 1) - 1;
+    constexpr Mask legacy_fm = (bit(Depth + 1) - 1) & ~legacy_juno;
+    if (family == 1)
+        return legacy_juno | shared | ((bit(Velocity + 1) - 1) & ~(bit(Depth + 1) - 1));
+    return legacy_fm | shared | bit(FmAlgorithm) | ((bit(OpVel5 + 1) - 1) & ~(bit(FmFeedback) - 1));
 }
 
 struct Request {
@@ -81,6 +104,7 @@ struct Request {
     Mask mask = 0;
     uint8_t macros[3]{64, 64, 64};
     performance::Positions performance_macros = performance::kNeutral;
+    performance::RouteConfiguration performance_routes;
     float values[Count]{};
     bool compare = false;
     int8_t slot = -1;

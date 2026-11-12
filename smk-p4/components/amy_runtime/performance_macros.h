@@ -26,9 +26,26 @@ struct Route {
     uint8_t families = Both;
     bool enabled = false;
     bool inverted = false;
+
+    constexpr bool operator==(const Route& other) const {
+        return destination == other.destination && minimum == other.minimum &&
+            maximum == other.maximum && depth == other.depth && curve == other.curve &&
+            polarity == other.polarity && families == other.families &&
+            enabled == other.enabled && inverted == other.inverted;
+    }
 };
 
 using Routes = std::array<std::array<Route, kRoutesPerMacro>, kMacroCount>;
+
+struct RouteConfiguration {
+    Routes routes{};
+    bool custom = false;
+
+    bool operator==(const RouteConfiguration& other) const {
+        return custom == other.custom && (!custom || routes == other.routes);
+    }
+    bool operator!=(const RouteConfiguration& other) const { return !(*this == other); }
+};
 
 inline bool valid(const Positions& positions) {
     return std::all_of(positions.begin(), positions.end(), [](uint8_t value) { return value <= 127; });

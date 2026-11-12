@@ -6,7 +6,8 @@
 namespace smk::p4::performance {
 
 enum FxDestination : uint16_t {
-    ChorusDepth = edit::Count, DelayMix, DelayFeedback, ReverbMix, ReverbSize, MasterTone
+    ChorusDepth = edit::Count, DelayMix, DelayFeedback, ReverbMix, ReverbSize, MasterTone,
+    DelayTime, EqLow, EqMid, EqHigh
 };
 
 constexpr Route route(uint16_t destination, float min, float max, float depth,
@@ -37,9 +38,56 @@ inline constexpr Routes kFactoryRoutes{{
 
 constexpr uint8_t familyMask(uint8_t family) { return family == 0 ? Fm : Juno; }
 
+constexpr edit::Domain destinationDomain(unsigned destination) {
+    if (destination < edit::Count) return edit::continuousDomain(destination);
+    switch (destination) {
+        case ChorusDepth: case DelayMix: case ReverbMix: case ReverbSize: return {0, 1};
+        case DelayFeedback: return {0, 0.95f};
+        case MasterTone: return {-1, 1};
+        case DelayTime: return {10, 1000};
+        case EqLow: case EqMid: case EqHigh: return {-12, 12};
+        default: return {};
+    }
+}
+
+constexpr uint8_t destinationFamilies(unsigned destination) {
+    if (!destinationDomain(destination).continuous()) return 0;
+    if (destination >= edit::Count) return Both;
+    const auto bit = edit::bit(destination);
+    return ((edit::familyParameterMask(0) & bit) ? Fm : 0) |
+           ((edit::familyParameterMask(1) & bit) ? Juno : 0);
+}
+
+inline const Routes& activeRoutes(const RouteConfiguration& config) {
+    return config.custom ? config.routes : kFactoryRoutes;
+}
+
+inline bool valid(const RouteConfiguration& config, uint8_t patch_family, edit::Mask available) {
+    if (!config.custom) return true;
+    const auto family = familyMask(patch_family);
+    for (unsigned macro = 0; macro < kMacroCount; ++macro) {
+        for (unsigned slot = 0; slot < kRoutesPerMacro; ++slot) {
+            const auto& candidate = config.routes[macro][slot];
+            // ROM routes may target topology-dependent parameters missing on this patch.
+            if (candidate == Route{} || candidate == kFactoryRoutes[macro][slot]) continue;
+            const auto domain = destinationDomain(candidate.destination);
+            if (!candidate.families || (candidate.families & ~destinationFamilies(candidate.destination)) ||
+                (candidate.families & family && candidate.destination < edit::Count &&
+                 !(available & edit::bit(candidate.destination))) ||
+                !std::isfinite(candidate.minimum) || !std::isfinite(candidate.maximum) ||
+                !std::isfinite(candidate.depth) || candidate.minimum < domain.minimum ||
+                candidate.maximum > domain.maximum || candidate.minimum > candidate.maximum ||
+                std::abs(candidate.depth) > domain.maximum - domain.minimum ||
+                candidate.curve > Curve::SCurve || candidate.polarity > Polarity::Negative)
+                return false;
+        }
+    }
+    return true;
+}
+
 inline bool available(unsigned macro,const edit::State& state) {
     if(macro>=kMacroCount || !state.available)return false;
-    for(const auto& route:kFactoryRoutes[macro]){
+    for(const auto& route:activeRoutes(state.performance_routes)[macro]){
         if(route.enabled && (route.families&familyMask(state.family)) &&
            (route.destination>=edit::Count || (state.available&edit::bit(route.destination))))return true;
     }
@@ -50,10 +98,19 @@ inline bool fxRoutesChanged(const edit::State& state, const edit::Request& reque
     const auto& before = state.compare ? kNeutral : state.performance_macros;
     const auto& after = request.compare ? kNeutral : request.performance_macros;
     const auto family = familyMask(state.family);
+    const auto& old_routes = activeRoutes(state.performance_routes);
+    const auto& new_routes = activeRoutes(request.performance_routes);
     for (unsigned m = 0; m < kMacroCount; ++m) {
-        if (before[m] == after[m]) continue;
-        for (const auto& route : kFactoryRoutes[m]) {
-            if (route.enabled && route.destination >= edit::Count && (route.families & family)) return true;
+        if (before[m] == kNeutral[m] && after[m] == kNeutral[m]) continue;
+        for (unsigned slot = 0; slot < kRoutesPerMacro; ++slot) {
+            const auto& old_route = old_routes[m][slot];
+            const auto& new_route = new_routes[m][slot];
+            if (before[m] == after[m] && old_route == new_route) continue;
+            const auto affects_fx = [family](const Route& route) {
+                return route.enabled && route.destination >= edit::Count && (route.families & family);
+            };
+            if ((before[m] != kNeutral[m] && affects_fx(old_route)) ||
+                (after[m] != kNeutral[m] && affects_fx(new_route))) return true;
         }
     }
     return false;
@@ -62,7 +119,7 @@ inline bool fxRoutesChanged(const edit::State& state, const edit::Request& reque
 inline fx::FxConfig effectiveFx(fx::FxConfig manual, const edit::State& state) {
     if (state.compare || state.performance_macros == kNeutral) return manual;
     const auto composeFx = [&](FxDestination destination, float base, float min, float max) {
-        return compose(kFactoryRoutes, state.performance_macros, familyMask(state.family),
+        return compose(activeRoutes(state.performance_routes), state.performance_macros, familyMask(state.family),
                        destination, base, min, max).value;
     };
     manual.chorus_depth = composeFx(ChorusDepth, manual.chorus_depth, 0, 1);
@@ -71,6 +128,12 @@ inline fx::FxConfig effectiveFx(fx::FxConfig manual, const edit::State& state) {
     manual.reverb_mix = composeFx(ReverbMix, manual.reverb_mix, 0, 1);
     manual.reverb_size = composeFx(ReverbSize, manual.reverb_size, 0, 1);
     manual.master_tone = composeFx(MasterTone, manual.master_tone, -1, 1);
+    if (state.performance_routes.custom) {
+        manual.delay_time_ms = composeFx(DelayTime, manual.delay_time_ms, 10, 1000);
+        manual.eq_low_db = composeFx(EqLow, manual.eq_low_db, -12, 12);
+        manual.eq_mid_db = composeFx(EqMid, manual.eq_mid_db, -12, 12);
+        manual.eq_high_db = composeFx(EqHigh, manual.eq_high_db, -12, 12);
+    }
     return manual;
 }
 
