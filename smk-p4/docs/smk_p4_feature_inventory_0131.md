@@ -82,3 +82,7 @@ Os seguintes módulos permanecem com interface gráfica blueprint pronta, aguard
 A tela Performance usa oito controles ligados ao owner. O mapa MIDI permite Learn, confirmação, substituição de conflitos, pickup e seleção de quatro bancos. O perfil salvo e o preset de performance têm registros versionados próprios. Edição de rotas pela touchscreen, bindings adicionais e captura física do KNOB-B permanecem pendentes.
 
 [Motor e destinos](performance_014_macro_engine.md) · [MIDI Learn](performance_014_midi_learn.md) · [Persistência](performance_014_persistence.md)
+
+## Incremento 0.14.1
+
+O painel **Performance → Legacy Offsets** exibe as três posições históricas e oferece reset com confirmação pelo owner. A interface foi exercitada em LVGL host. A qualificação na Guition e o editor de rotas continuam pendentes. [Compatibilidade legada 0.14.1](performance_0141_legacy_compatibility.md).
