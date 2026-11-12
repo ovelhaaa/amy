@@ -116,6 +116,9 @@ public:
         unsigned cur_marker_bank = 0;
         bool marker_found = false;
         scanMarkers(slot, cur_marker, cur_marker_bank, marker_found);
+        // Use the newest published sequences even if its data is corrupt. A
+        // retry must not make its old marker valid by reusing those sequences.
+        CommitMarker newest_marker = cur_marker;
         if (marker_found) {
             edit::Preset committed;
             fx::FxConfig committed_fx;
@@ -151,7 +154,7 @@ public:
                     return { SaveResult::Status::FailedBeforeCommit, "SAVE FAILED: PRE-COMMIT" };
                 }
 
-                cur_marker = base_marker;
+                cur_marker = newest_marker = base_marker;
                 cur_marker_bank = 0;
                 marker_found = true;
             }
@@ -162,13 +165,13 @@ public:
         const unsigned target_synth_bank = marker_found ? (1 - cur_marker.synth_bank) : 0;
         const unsigned target_fx_bank = marker_found ? (1 - cur_marker.fx_bank) : 0;
 
-        uint32_t next_commit_seq = marker_found ? (cur_marker.commit_seq + 1) : 1;
+        uint32_t next_commit_seq = marker_found ? (newest_marker.commit_seq + 1) : 1;
         if (next_commit_seq == 0) next_commit_seq = 1;
 
-        uint32_t next_synth_seq = marker_found ? (cur_marker.synth_seq + 1) : 1;
+        uint32_t next_synth_seq = marker_found ? (newest_marker.synth_seq + 1) : 1;
         if (next_synth_seq == 0) next_synth_seq = 1;
 
-        uint16_t next_fx_seq = marker_found ? static_cast<uint16_t>(cur_marker.fx_seq + 1) : 1;
+        uint16_t next_fx_seq = marker_found ? static_cast<uint16_t>(newest_marker.fx_seq + 1) : 1;
         if (next_fx_seq == 0) next_fx_seq = 1;
 
         // 2. Write candidate FX to inactive FX bank
