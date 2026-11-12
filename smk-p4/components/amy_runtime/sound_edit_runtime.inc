@@ -282,7 +282,8 @@ void Runtime::captureEdit() {
     for(unsigned p=0;p<edit::Count;++p)out.manual[p]=out.applied[p]=out.original[p];
 }
 void Runtime::applyPerformanceFx() {
-    fx::applyBusFx(performance::effectiveFx(state_.fx.config, state_.edit));
+    state_.fx.applied = performance::effectiveFx(state_.fx.config, state_.edit, state_.fx.performance_sources);
+    fx::applyBusFx(state_.fx.applied);
 }
 
 void Runtime::applyEdit(uint32_t now_ms) {
@@ -333,6 +334,7 @@ void Runtime::applyEdit(uint32_t now_ms) {
     };
     const auto& routes=performance::activeRoutes(request.performance_routes);
     float composed[edit::Count]{};
+    uint8_t sources[edit::Count]{};
     edit::Mask performance_mask=0, evaluated=0;
     if(!request.compare && request.performance_macros!=performance::kNeutral){
         const auto family=performance::familyMask(out.family);
@@ -346,7 +348,7 @@ void Runtime::applyEdit(uint32_t now_ms) {
                 const auto domain=performance::destinationDomain(p);
                 const auto result=performance::compose(routes,request.performance_macros,
                     family,p,legacyValue(p),domain.minimum,domain.maximum);
-                if(result.active){performance_mask|=edit::bit(p);composed[p]=result.value;}
+                if(result.active){performance_mask|=edit::bit(p);composed[p]=result.value;sources[p]=result.sources;}
             }
         }
     }
@@ -542,7 +544,15 @@ void Runtime::applyEdit(uint32_t now_ms) {
     out.performance_mask=performance_mask;
     if(update_fx)applyPerformanceFx();
     for(unsigned m=0;m<3;++m)out.macros[m]=request.macros[m];
-    for(unsigned p=0;p<edit::Count;++p){out.manual[p]=request.mask&edit::bit(p)?request.values[p]:out.original[p];out.applied[p]=value(p);}
+    out.legacy_mask = 0;
+    for(unsigned p=0;p<edit::Count;++p){
+        out.manual[p]=request.mask&edit::bit(p)?request.values[p]:out.original[p];
+        out.applied[p]=value(p);
+        out.performance_sources[p]=sources[p];
+        if(!request.compare && (effective & edit::bit(p)) &&
+           (p==edit::Cutoff || p==edit::Depth || p==edit::Attack || p==edit::Release) &&
+           legacyValue(p)!=out.manual[p])out.legacy_mask|=edit::bit(p);
+    }
     const edit::Mask mod_mask=edit::bit(edit::Cutoff)|edit::bit(edit::LfoRate)|edit::bit(edit::ModEnable)|
         edit::bit(edit::ModSource)|edit::bit(edit::ModDest)|edit::bit(edit::ModAmount)|edit::bit(edit::ModPolarity);
     if((touched&mod_mask) || out.compare!=request.compare){

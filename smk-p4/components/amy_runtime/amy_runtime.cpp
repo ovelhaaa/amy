@@ -85,6 +85,7 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
        !amy_global.bus[0]->reverb.rev->delay_1) {
         end(); return false;
     }
+    state_.fx.applied=state_.fx.config;
     fx::applyBusFx(state_.fx.config);
     for(size_t i=0;i<kAmyVoices;++i) {
         const auto synth_id=static_cast<uint8_t>(i+1);
@@ -328,6 +329,7 @@ void Runtime::applyFx(uint32_t now_ms) {
 #ifdef SMKP4_SOUND_EDITOR
         applyPerformanceFx();
 #else
+        state_.fx.applied=state_.fx.config;
         fx::applyBusFx(state_.fx.config);
 #endif
     }
@@ -526,6 +528,7 @@ bool Runtime::loadReusable(uint16_t patch_id) {
         if(result!=AMY_PATCH_RESOURCES_ASSIGNED) { state_.patch_error=result;return false; }
     }
     amy_execute_deltas();
+    state_.fx.applied=state_.fx.config;
     fx::applyBusFx(state_.fx.config);
     state_.patch_state=PatchState::Verifying;
     // Warm lazy DSP on the worker while output continues zero-filled PCM.
@@ -555,6 +558,8 @@ void Runtime::loadPendingPatch() {
         state_.patch_state=PatchState::Ready;++state_.patch_changes;
         state_.fx.config=fx::FxConfig{};
         state_.fx.dirty=false;
+        for (auto& source : state_.fx.performance_sources) source = 0;
+        state_.fx.applied=state_.fx.config;
         fx::applyBusFx(state_.fx.config);
 #ifdef SMKP4_SOUND_EDITOR
         captureEdit();

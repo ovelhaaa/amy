@@ -37,7 +37,8 @@ struct State {
     uint8_t macros[3]{64, 64, 64};
     performance::Positions performance_macros = performance::kNeutral;
     performance::RouteConfiguration performance_routes;
-    Mask performance_mask = 0;
+    Mask performance_mask = 0, legacy_mask = 0;
+    uint8_t performance_sources[Count]{};
     float original[Count]{}, manual[Count]{}, applied[Count]{};
     bool compare = false, dirty = false;
     int8_t user_slot = -1;

@@ -68,7 +68,8 @@ inline bool valid(const FxConfig& c) {
 }
 
 struct FxState {
-    FxConfig config;
+    FxConfig config, applied;
+    uint8_t performance_sources[10]{};
     uint32_t revision = 0;
     uint32_t request = 0;
     uint32_t errors = 0;

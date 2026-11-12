@@ -71,6 +71,7 @@ inline float contribution(const Route& route, uint8_t value, uint8_t neutral) {
 struct Composition {
     float value;
     bool active;
+    uint8_t sources = 0;
 };
 
 // A destination has one canonical domain. Route limits restrict each offset
@@ -80,7 +81,7 @@ inline Composition compose(const Routes& routes, const Positions& positions,
                            float minimum, float maximum) {
     if (!valid(positions) || !std::isfinite(manual)) return {manual, false};
     float total = 0;
-    bool active = false;
+    uint8_t sources = 0;
     for (unsigned m = 0; m < kMacroCount; ++m) {
         for (const auto& route : routes[m]) {
             if (!route.enabled || route.destination != destination || !(route.families & family) ||
@@ -91,11 +92,11 @@ inline Composition compose(const Routes& routes, const Positions& positions,
             const float limited = std::clamp(offset, std::min(0.0f, route.minimum - manual),
                                                       std::max(0.0f, route.maximum - manual));
             total += limited;
-            active |= limited != 0;
+            if (limited != 0) sources |= uint8_t(1u << m);
         }
     }
-    if (!active || !std::isfinite(total)) return {manual, false};
-    return {std::clamp(manual + total, minimum, maximum), true};
+    if (!sources || !std::isfinite(total)) return {manual, false};
+    return {std::clamp(manual + total, minimum, maximum), true, sources};
 }
 
 }

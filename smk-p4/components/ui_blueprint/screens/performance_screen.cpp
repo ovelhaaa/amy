@@ -1,5 +1,7 @@
 #include "ui_screens.h"
 #include "ui_widgets.h"
+#include "routing_editor.h"
+#include <memory>
 #include <cstdio>
 
 namespace smk::p4::ui {
@@ -21,6 +23,14 @@ public:
         confirm_ = nullptr;
         oct_lbl_ = status_lbl_ = kb_ = nullptr;
         const uint8_t view_mode = nav.subTab(ScreenId::Performance);
+        if (view_mode == 3) {
+            routing_ = std::make_unique<RoutingEditor>();
+            routing_root_ = lv_obj_create(parent);
+            lv_obj_remove_style_all(routing_root_);
+            lv_obj_set_size(routing_root_, lv_pct(100), lv_pct(100));
+            lv_obj_remove_flag(routing_root_, LV_OBJ_FLAG_SCROLLABLE);
+            return routing_->build(routing_root_, backend, nav);
+        }
         if (view_mode == 2) return buildLegacy(parent, backend, nav);
 
         // 1. Dominant Stage Patch Banner (y = 4..62, StageMinimal)
@@ -126,6 +136,11 @@ public:
             }
 
             if (backend.hasSoundEditor()) {
+                auto* routing = createActionButton(parent, "ROUTING EDITOR", 420, 226, 188, 34, nullptr, nullptr);
+                attachLvContext<UiNavigationManager*>(routing, &nav, [](lv_event_t* e) {
+                    auto* navigation = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
+                    navigation->navigateTo(ScreenId::Performance, 3);
+                }, LV_EVENT_CLICKED);
                 auto* legacy = createActionButton(parent, "LEGACY OFFSETS", 620, 226, 172, 34, nullptr, nullptr);
                 attachLvContext<UiNavigationManager*>(legacy, &nav, [](lv_event_t* e) {
                     auto* navigation = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
@@ -171,7 +186,14 @@ public:
         return true;
     }
 
+    void onDestroy() override {
+        if (routing_root_) lv_obj_delete(routing_root_);
+        routing_root_ = nullptr;
+        routing_.reset();
+    }
+
     void refresh(IUiBackend& backend) override {
+        if (routing_) { routing_->refresh(); return; }
         if (legacy_) {
             IUiBackend::LegacyOffsets offsets;
             const bool available = backend.legacyOffsets(offsets);
@@ -242,6 +264,8 @@ private:
         return true;
     }
 
+    std::unique_ptr<RoutingEditor> routing_;
+    lv_obj_t* routing_root_ = nullptr;
     IUiBackend::LegacyOffsets expected_{};
     bool confirming_ = false;
     lv_obj_t* legacy_ = nullptr;

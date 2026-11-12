@@ -109,6 +109,106 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestSoundAction(unsigned actio
     if(action<=1)resetPickup();
     return result(UiCommandState::Requested,"editor",backend_.editNotice());
 }
+bool UiBlueprintPerformanceAdapter::routingValues(unsigned id, RoutingValues& values) const {
+    using namespace performance;
+    if (!routingDestination(id).available) return false;
+    const auto* state = backend_.soundEdit();
+    values.compare = state->compare;
+    if (id < edit::Count) {
+        values.manual = state->manual[id];
+        values.applied = state->applied[id];
+        values.sources = state->performance_sources[id];
+        values.legacy = (state->legacy_mask & edit::bit(id)) != 0;
+        return true;
+    }
+    const auto* fx_state = backend_.fxState();
+    if (!fx_state) return false;
+    using Config = fx::FxConfig;
+    static constexpr float Config::* fields[]{
+        &Config::chorus_depth, &Config::delay_mix, &Config::delay_feedback, &Config::reverb_mix, &Config::reverb_size,
+        &Config::master_tone, &Config::delay_time_ms, &Config::eq_low_db, &Config::eq_mid_db, &Config::eq_high_db
+    };
+    static_assert(sizeof(fields) / sizeof(*fields) == EqHigh - ChorusDepth + 1);
+    const unsigned index = id - ChorusDepth;
+    values.manual = backend_.manualFx()->*fields[index];
+    values.applied = fx_state->applied.*fields[index];
+    values.sources = fx_state->performance_sources[index];
+    values.bypass = fx_state->applied.bypass_all;
+    return true;
+}
+
+bool UiBlueprintPerformanceAdapter::routingSnapshot(RoutingSnapshot& snapshot) const {
+    const auto* state = backend_.soundEdit();
+    if (!state || !state->available) return false;
+    snapshot.routes = performance::activeRoutes(state->performance_routes);
+    snapshot.positions = state->performance_macros;
+    snapshot.epoch = state->epoch;
+    snapshot.generation = backend_.editSnapshotGeneration();
+    snapshot.patch = state->patch;
+    snapshot.compare = state->compare;
+    return true;
+}
+
+UiBlueprintPerformanceAdapter::RoutingDestination UiBlueprintPerformanceAdapter::routingDestination(unsigned id) const {
+    using namespace performance;
+    const auto domain = destinationDomain(id);
+    const auto* state = backend_.soundEdit();
+    if (!state || !domain.continuous()) return {};
+    static constexpr const char* names[]{
+        "FILTER / Cutoff", "FILTER / Resonance", "ENV / Attack", "ENV / Release",
+        "FM / OP1 Level", "FM / OP2 Level", "FM / OP3 Level", "FM / OP4 Level", "FM / OP5 Level", "FM / OP6 Level",
+        "FM / OP1 Ratio", "FM / OP2 Ratio", "FM / OP3 Ratio", "FM / OP4 Ratio", "FM / OP5 Ratio", "FM / OP6 Ratio",
+        "FM / Depth", "ENV / Decay", "ENV / Sustain", "FILTER / Envelope", "FILTER / Keytrack",
+        "OSC / Main Level", "OSC / Sub Level", "OSC / Noise Level", "OSC / Pulse Width", "OSC / Detune",
+        "AMP / Patch Level", "AMP / Pan", "AMP / Velocity", "FM / Feedback",
+        "FM / OP1 Attack", "FM / OP2 Attack", "FM / OP3 Attack", "FM / OP4 Attack", "FM / OP5 Attack", "FM / OP6 Attack",
+        "FM / OP1 Decay", "FM / OP2 Decay", "FM / OP3 Decay", "FM / OP4 Decay", "FM / OP5 Decay", "FM / OP6 Decay",
+        "FM / OP1 Velocity", "FM / OP2 Velocity", "FM / OP3 Velocity", "FM / OP4 Velocity", "FM / OP5 Velocity", "FM / OP6 Velocity",
+        "LFO / Rate", "LFO / Depth", "", "", "", "", "", "MOD / Amount", "", "",
+        "FX / Chorus Depth", "FX / Delay Mix", "FX / Delay Feedback", "FX / Reverb Mix", "FX / Reverb Size", "FX / Master Tone",
+        "FX / Delay Time", "FX / Low EQ", "FX / Mid EQ", "FX / High EQ"
+    };
+    static_assert(sizeof(names) / sizeof(*names) == EqHigh + 1);
+    const char* unit = "native";
+    if (id == edit::Cutoff || id == edit::LfoRate) unit = "Hz";
+    else if (id == edit::Attack || id == edit::Release || id == edit::Decay || id == DelayTime ||
+             (id >= edit::OpAttack0 && id <= edit::OpDecay5)) unit = "ms";
+    else if (id == edit::Detune) unit = "cents";
+    else if (id >= EqLow) unit = "dB";
+    else if (id >= ChorusDepth || id == edit::Depth) unit = "normalized";
+    else if (id == edit::Sustain || id == edit::FilterKeytrack || id == edit::FmFeedback ||
+             (id >= edit::OscLevel && id <= edit::Velocity && id != edit::Detune && id != edit::Pan) ||
+             (id >= edit::OpLevel0 && id <= edit::OpLevel5) ||
+             (id >= edit::OpVel0 && id <= edit::OpVel5) || id == edit::LfoDepth || id == edit::ModAmount) unit = "%";
+    const auto families = destinationFamilies(id);
+    const bool available = (families & familyMask(state->family)) &&
+        (id >= edit::Count || (state->available & edit::bit(id)));
+    return {names[id], unit, domain.minimum, domain.maximum, families, available};
+}
+
+performance::Route UiBlueprintPerformanceAdapter::factoryRoute(unsigned macro, unsigned slot) const {
+    if (macro >= performance::kMacroCount || slot >= performance::kRoutesPerMacro) return {};
+    return performance::kFactoryRoutes[macro][slot];
+}
+
+UiCommandResult UiBlueprintPerformanceAdapter::requestRouting(const RoutingSnapshot& expected,
+                                                              const performance::Routes& routes, uint8_t reset_positions) {
+    RoutingSnapshot current;
+    if (!usable() || !routingSnapshot(current) || current.patch != expected.patch ||
+        current.epoch != expected.epoch || current.generation != expected.generation ||
+        current.routes != expected.routes || current.compare)
+        return result(UiCommandState::Rejected, "routing", "PATCH OR ROUTES CHANGED. REOPEN EDITOR.");
+    performance::RouteConfiguration configuration;
+    configuration.custom = routes != performance::kFactoryRoutes;
+    if (configuration.custom) configuration.routes = routes;
+    if (!backend_.setPerformanceRoutes(configuration, reset_positions))
+        return result(UiCommandState::Rejected, "routing", "INVALID ROUTES OR OWNER BUSY");
+    routing_epoch_ = current.epoch;
+    routing_generation_ = current.generation;
+    routing_errors_ = backend_.soundEdit()->errors;
+    return routing_result_ = result(UiCommandState::Requested, "routing", "WAITING FOR OWNER", backend_.editToken());
+}
+
 bool UiBlueprintPerformanceAdapter::legacyOffsets(LegacyOffsets& offsets) const {
     const auto* state = backend_.soundEdit();
     if (!state || !state->available) return false;
@@ -367,6 +467,7 @@ void UiBlueprintPerformanceAdapter::setControllerProfileStore(performance::Contr
     performance::ControllerProfile profile;
     if(!store.load(profile) || !performance::validProfile(profile)) return;
     midi_bank_=profile.bank;
+    midi_destinations_=profile.destinations;
     for(unsigned i=0;i<8;++i){
         midi_knobs_[i]={};
         midi_knobs_[i].source=profile.knobs[i];
@@ -374,9 +475,33 @@ void UiBlueprintPerformanceAdapter::setControllerProfileStore(performance::Contr
     midi_learn_.cancel();
 }
 
+const char* UiBlueprintPerformanceAdapter::midiTargetName(unsigned target) const {
+    if (!target) return "FACTORY DESTINATION";
+    if (target >= performance::kMidiTargetCount) return nullptr;
+    const auto* id = performance::kMidiTargets[target];
+    const auto* descriptor = ParameterRegistry::findById(id);
+    return descriptor && parameterStatus(id) == FeatureStatus::Available ? descriptor->name : nullptr;
+}
+
+unsigned UiBlueprintPerformanceAdapter::midiCustomTarget(unsigned knob) const {
+    return knob < 8 ? midi_destinations_[midi_bank_][knob] : 0;
+}
+
+bool UiBlueprintPerformanceAdapter::setMidiCustomTarget(unsigned knob, unsigned target) {
+    if (!hasMidiPerformance() || midi_save_pending_ || knob >= 8 || !midiTargetName(target)) return false;
+    midi_destinations_[midi_bank_][knob] = uint8_t(target);
+    midi_knobs_[knob].pickup.reset();
+    midi_learn_.cancel();
+    std::snprintf(midi_status_, sizeof(midi_status_), "K%u DESTINATION UPDATED. SAVE PROFILE TO KEEP.", knob + 1);
+    model_.bumpRevision();
+    return true;
+}
+
 const char* UiBlueprintPerformanceAdapter::midiDestination(unsigned knob) const {
     const auto* state=backend_.soundEdit();
     if(!state || knob>=8) return nullptr;
+    const unsigned custom = midiCustomTarget(knob);
+    if (custom) return performance::kMidiTargets[custom];
     static constexpr const char* destinations[6][8]{
         {"perf.macro.1","perf.macro.2","perf.macro.3","perf.macro.4","perf.macro.5","perf.macro.6","perf.macro.7","perf.macro.8"},
         {"osc.1.level","osc.sub_level","osc.noise_level","osc.1.pulse_width","osc.1.detune_ct","amp.level","amp.pan","amp.vel_sens"},
@@ -489,6 +614,7 @@ void UiBlueprintPerformanceAdapter::midiPerformanceAction(MidiAction action,unsi
             }
             midi_learn_.cancel();
             midi_saved_profile_.bank=uint8_t(midi_bank_);
+            midi_saved_profile_.destinations=midi_destinations_;
             for(unsigned i=0;i<8;++i) midi_saved_profile_.knobs[i]=midi_knobs_[i].source;
             midi_save_started_ms_=now_ms_;
             midi_save_pending_=true;
@@ -580,6 +706,18 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
         const uint8_t note=g.note;
         for(auto& same:gestures_) if(same.token && same.note==note) same.token=0;
         backend_.noteOff(note); model_.setNotice("TOUCH LEASE EXPIRED; RELEASE AND PRESS AGAIN"); model_.bumpRevision();
+    }
+    if (routing_result_.state == UiCommandState::Requested) {
+        const auto* edit = backend_.soundEdit();
+        const bool stale = !edit || edit->epoch != routing_epoch_ ||
+            backend_.editGeneration() != routing_generation_;
+        if (stale || !backend_.editPending()) {
+            const bool accepted = !stale && backend_.editSnapshotGeneration() == routing_generation_ &&
+                edit->request == routing_result_.token && edit->errors == routing_errors_ && !backend_.editError();
+            routing_result_ = result(accepted ? UiCommandState::Confirmed : UiCommandState::Rejected,
+                "routing", accepted ? "ROUTES APPLIED" : "ROUTES NOT CONFIRMED", routing_result_.token);
+            if (accepted) resetPickup();
+        }
     }
     const uint32_t rev=backend_.stateRevision();
     if(backend_.connected() && rev && (!have_snapshot_ || rev!=revision_)) {

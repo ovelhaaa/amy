@@ -1,6 +1,7 @@
 #pragma once
 #include "ui_model.h"
 #include <cstdint>
+#include "../../amy_runtime/performance_macros.h"
 
 namespace smk::p4::ui {
 
@@ -112,6 +113,35 @@ public:
     virtual UiCommandResult requestParameterBool(const char* id, bool val) = 0;
 
     virtual UiCommandResult requestSelectPatch(uint16_t patch_id, uint8_t target_layer = 0) = 0;
+
+    struct RoutingSnapshot {
+        performance::Routes routes{};
+        performance::Positions positions = performance::kNeutral;
+        uint32_t epoch = 0, generation = 0;
+        uint16_t patch = 0;
+        bool compare = false;
+    };
+    struct RoutingDestination {
+        const char* name = nullptr;
+        const char* unit = nullptr;
+        float minimum = 0, maximum = 0;
+        uint8_t families = 0;
+        bool available = false;
+    };
+    struct RoutingValues {
+        float manual = 0, applied = 0;
+        uint8_t sources = 0;
+        bool legacy = false, compare = false, bypass = false;
+    };
+    virtual bool routingValues(unsigned, RoutingValues&) const { return false; }
+    virtual const char* midiTargetName(unsigned) const { return nullptr; }
+    virtual unsigned midiCustomTarget(unsigned) const { return 0; }
+    virtual bool setMidiCustomTarget(unsigned, unsigned) { return false; }
+    virtual bool routingSnapshot(RoutingSnapshot&) const { return false; }
+    virtual RoutingDestination routingDestination(unsigned) const { return {}; }
+    virtual performance::Route factoryRoute(unsigned, unsigned) const { return {}; }
+    virtual UiCommandResult requestRouting(const RoutingSnapshot&, const performance::Routes&, uint8_t) { return {}; }
+    virtual UiCommandResult routingResult() const { return {}; }
 
     struct LegacyOffsets {
         uint8_t positions[3]{64, 64, 64};

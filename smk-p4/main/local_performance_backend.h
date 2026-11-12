@@ -66,7 +66,7 @@ public:
                      fx_state_.request==recall_fx_token_ &&
                      fxEquivalent(fx_state_.config,recall_fx_)){
                 recall_wait_=false;
-                saved_edit_=edit_;saved_fx_=original_fx_=fx_state_.config;saved_valid_=true;
+                saved_edit_=edit_;saved_fx_=fx_state_.config;saved_valid_=true;
                 std::snprintf(user_name_,sizeof(user_name_),"%s",recall_.name);
                 std::snprintf(preset_op_msg_,sizeof(preset_op_msg_),"SLOT %02u RECALLED",recall_slot_+1);
                 preset_op_status_={PresetOperationState::Confirmed,3,uint8_t(recall_slot_),preset_op_msg_};
@@ -142,6 +142,7 @@ public:
             desired_={};desired_.patch=edit_.patch;desired_.generation=commands_.generation();
             for(unsigned m=0;m<3;++m)desired_.macros[m]=recall_.macros[m];
             desired_.performance_macros=recall_.performance_macros;
+            desired_.performance_routes=recall_.performance_routes;
             desired_.mask=recall_.mask;desired_.slot=int8_t(recall_slot_);
             for(unsigned p=0;p<edit::Count;++p)desired_.values[p]=recall_.values[p];
             desired_.preset_recall=true;desired_.recall_started_ms=recall_started_ms_;
@@ -209,12 +210,7 @@ public:
     }
     bool synthUnsaved() const {
         if(edit_pending_ || (!edit_timeout_ && edit_.request!=edit_token_))return true;
-        if (!edit_.dirty) {
-            if (saved_valid_ && edit_.patch == saved_edit_.patch && edit_.user_slot == saved_edit_.user_slot)
-                for (unsigned m = 0; m < 3; ++m)
-                    if (edit_.macros[m] != saved_edit_.macros[m]) return true;
-            return false;
-        }
+        if (!edit_.dirty && !hasPresetReference()) return false;
         if(!saved_valid_ || saved_edit_.patch!=edit_.patch || saved_edit_.mask!=edit_.mask)return true;
         for(unsigned m=0;m<3;++m)if(saved_edit_.macros[m]!=edit_.macros[m])return true;
         if(saved_edit_.performance_macros!=edit_.performance_macros ||
@@ -225,7 +221,7 @@ public:
     bool fxUnsaved() const {
         if(fx_pending_)return true;
         const bool fx_dirty = !fxEquivalent(desired_fx_, original_fx_);
-        if(!fx_dirty)return false;
+        if(!fx_dirty && !hasPresetReference())return false;
         if(!saved_valid_)return true;
         return !fxEquivalent(desired_fx_, saved_fx_);
     }
@@ -307,6 +303,9 @@ public:
             return false;
         }
         if(action<2){
+            const bool use_saved = hasPresetReference();
+            const auto fx_target = action == 0 ? (!edit_.compare ? original_fx_ : desired_fx_) :
+                (use_saved ? saved_fx_ : original_fx_);
             if(edit_.family == 0 && (state_.active_notes > 0 || sustain_active_)) {
                 const unsigned current_algo = unsigned(std::lround(edit_.applied[edit::FmAlgorithm]));
                 unsigned target_algo = current_algo;
@@ -317,7 +316,8 @@ public:
                             ? unsigned(std::lround(edit_.manual[edit::FmAlgorithm]))
                             : unsigned(std::lround(edit_.original[edit::FmAlgorithm])));
                 } else if(action == 1) { // Revert
-                    target_algo = unsigned(std::lround(edit_.original[edit::FmAlgorithm]));
+                    target_algo = unsigned(std::lround(use_saved && (saved_edit_.mask & edit::bit(edit::FmAlgorithm))
+                        ? saved_edit_.manual[edit::FmAlgorithm] : edit_.original[edit::FmAlgorithm]));
                 }
                 if(target_algo != current_algo) {
                     edit_error_ = true;
@@ -329,10 +329,23 @@ public:
                     return false;
                 }
             }
-            prepareEdit();desired_.compare=action==0?!desired_.compare:false;
-            if(action==1){desired_.mask=0;desired_.slot=-1;for(auto& m:desired_.macros)m=64;desired_.performance_macros=performance::kNeutral;desired_.performance_routes={};desired_fx_=original_fx_;}
+            fx::FxRequest req{};
+            req.config=fx_target;req.generation=commands_.generation();req.request=++fx_token_;
+            if (!commands_.fx.push(req)) {
+                setRejectNotice(PresetRejectReason::Busy, "FX QUEUE BUSY");
+                return false;
+            }
+            prepareEdit();desired_.compare=action==0?!edit_.compare:false;
+            if(action==1){
+                desired_.mask=use_saved?saved_edit_.mask:0;
+                desired_.slot=use_saved?saved_edit_.user_slot:-1;
+                for(unsigned i=0;i<3;++i)desired_.macros[i]=use_saved?saved_edit_.macros[i]:64;
+                desired_.performance_macros=use_saved?saved_edit_.performance_macros:performance::kNeutral;
+                desired_.performance_routes=use_saved?saved_edit_.performance_routes:performance::RouteConfiguration{};
+                if(use_saved)for(unsigned i=0;i<edit::Count;++i)desired_.values[i]=saved_edit_.manual[i];
+                desired_fx_=fx_target;
+            }
             desired_.request=newEditToken();edit_pending_=true;
-            fx::FxRequest req{};req.config=desired_.compare?original_fx_:desired_fx_;req.generation=commands_.generation();req.request=++fx_token_;commands_.fx.push(req);
             setRejectNotice(PresetRejectReason::None, nullptr);
             logPresetDiag(act_name, slot, "ACCEPTED", PresetRejectReason::None);
             return true;
@@ -386,12 +399,6 @@ public:
                 logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::CompareActive);
                 return false;
             }
-            if(edit_.performance_routes.custom){
-                setRejectNotice(PresetRejectReason::InvalidPreset, "SAVE BLOCKED: CUSTOM ROUTES REQUIRE V4");
-                preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
-                logPresetDiag(act_name, slot, "REJECTED", PresetRejectReason::InvalidPreset);
-                return false;
-            }
             if(state_.active_notes > 0){
                 setRejectNotice(PresetRejectReason::ActiveNotes, "SAVE BLOCKED: NOTES STILL ACTIVE");
                 preset_op_status_ = { PresetOperationState::Rejected, uint8_t(action), uint8_t(slot), reject_notice_ };
@@ -414,6 +421,7 @@ public:
             std::snprintf(save_preset_.name,sizeof(save_preset_.name),"%s",name);save_preset_.mask=edit_.mask;
             for(unsigned m=0;m<3;++m)save_preset_.macros[m]=edit_.macros[m];
             save_preset_.performance_macros=edit_.performance_macros;
+            save_preset_.performance_routes=edit_.performance_routes;
             for(unsigned p=0;p<edit::Count;++p)save_preset_.values[p]=edit_.manual[p];
             if(!store_->accepts(save_preset_)){
                 setRejectNotice(PresetRejectReason::InvalidPreset, "SAVE BLOCKED: INVALID PRESET");
@@ -517,6 +525,12 @@ public:
 #endif
     }
     bool midiError() const override { return midi_error_; }
+    const fx::FxConfig* manualFx() const override {
+#ifdef SMKP4_SOUND_EDITOR
+        if (edit_.compare) return &desired_fx_;
+#endif
+        return &fx_state_.config;
+    }
     const fx::FxState* fxState() const override { return &fx_state_; }
     uint32_t fxToken() const override { return fx_token_; }
     bool setFxParameter(const char* id, float value, uint32_t now_ms) override {
@@ -606,6 +620,23 @@ public:
 #endif
         return accepted;
     }
+    bool setPerformanceRoutes(const performance::RouteConfiguration& routes, uint8_t reset_positions) override {
+#ifdef SMKP4_SOUND_EDITOR
+        if (!ready_ || busy() || saving_ || editPending() || edit_.compare || !edit_.available ||
+            commands_.generation() != edit_snapshot_generation_ ||
+            !performance::valid(routes, edit_.family, edit_.available)) return false;
+        prepareEdit();
+        desired_.performance_routes = routes;
+        for (unsigned m = 0; m < performance::kMacroCount; ++m)
+            if (reset_positions & (1u << m)) desired_.performance_macros[m] = performance::kNeutral[m];
+        desired_.request = newEditToken();
+        edit_pending_ = true;
+        return true;
+#else
+        (void)routes;(void)reset_positions;
+        return false;
+#endif
+    }
     bool resetLegacyOffsets() override {
 #ifdef SMKP4_SOUND_EDITOR
         if (!ready_ || busy() || saving_ || recalling_ || recall_wait_ ||
@@ -654,6 +685,11 @@ public:
     void panic() override { commands_.panic(); generation_=commands_.generation(); clearTokens();pending_=false;fx_pending_=false; }
 private:
 #ifdef SMKP4_SOUND_EDITOR
+    bool hasPresetReference() const {
+        return saved_valid_ && saved_edit_.patch == edit_.patch &&
+            (edit_.user_slot >= 0 || saved_edit_.performance_routes.custom ||
+             saved_edit_.macros[0] != 64 || saved_edit_.macros[1] != 64 || saved_edit_.macros[2] != 64);
+    }
     static bool fxEquivalent(const fx::FxConfig& a, const fx::FxConfig& b) {
         if (a.chorus_mode != b.chorus_mode) return false;
         if (std::lround(a.chorus_depth * 100.0f) != std::lround(b.chorus_depth * 100.0f)) return false;

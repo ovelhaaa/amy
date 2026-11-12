@@ -116,11 +116,14 @@ inline bool fxRoutesChanged(const edit::State& state, const edit::Request& reque
     return false;
 }
 
-inline fx::FxConfig effectiveFx(fx::FxConfig manual, const edit::State& state) {
+inline fx::FxConfig effectiveFx(fx::FxConfig manual, const edit::State& state, uint8_t* sources = nullptr) {
+    if (sources) std::fill_n(sources, EqHigh - ChorusDepth + 1, 0);
     if (state.compare || state.performance_macros == kNeutral) return manual;
     const auto composeFx = [&](FxDestination destination, float base, float min, float max) {
-        return compose(activeRoutes(state.performance_routes), state.performance_macros, familyMask(state.family),
-                       destination, base, min, max).value;
+        const auto result = compose(activeRoutes(state.performance_routes), state.performance_macros, familyMask(state.family),
+                                    destination, base, min, max);
+        if (sources) sources[destination - ChorusDepth] = result.sources;
+        return result.value;
     };
     manual.chorus_depth = composeFx(ChorusDepth, manual.chorus_depth, 0, 1);
     manual.delay_feedback = composeFx(DelayFeedback, manual.delay_feedback, 0, 0.95f);

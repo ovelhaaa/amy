@@ -66,6 +66,10 @@ public:
     virtual const harmony::State* harmonyState() const { return nullptr; }
     virtual bool setHarmony(harmony::Config,uint32_t) { return false; }
     virtual const fx::FxState* fxState() const { return nullptr; }
+    virtual const fx::FxConfig* manualFx() const {
+        const auto* state = fxState();
+        return state ? &state->config : nullptr;
+    }
     virtual bool setFxParameter(const char*, float, uint32_t) { return false; }
     virtual uint32_t fxToken() const { return 0; }
     virtual const edit::State* soundEdit() const { return nullptr; }
@@ -95,6 +99,7 @@ public:
     virtual uint16_t patchAt(uint16_t index) const=0;
     virtual bool patchInfo(uint16_t index,PatchInfo& info,uint32_t now_ms)=0;
     virtual bool setPatch(uint16_t id,uint32_t now_ms)=0;
+    virtual bool setPerformanceRoutes(const performance::RouteConfiguration&, uint8_t) { return false; }
     virtual bool resetLegacyOffsets() { return false; }
     virtual bool setMacro(uint8_t index,uint8_t value,uint32_t now_ms)=0;
     virtual bool setMaster(uint8_t value,uint32_t now_ms)=0;

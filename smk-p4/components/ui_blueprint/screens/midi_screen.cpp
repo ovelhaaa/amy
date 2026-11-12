@@ -39,7 +39,9 @@ public:
     ScreenId id() const override { return ScreenId::MidiSettings; }
 
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
-        const uint8_t tab = nav.subTab(ScreenId::MidiSettings) % 2;
+        const uint8_t tab = nav.subTab(ScreenId::MidiSettings);
+        if (tab >= 2 && tab < 10 && backend.hasMidiPerformance())
+            return buildDestination(parent, backend, nav, tab - 2);
         bank_=notice_=nullptr;
         for(auto& label:knobs_) label=nullptr;
 
@@ -99,6 +101,11 @@ public:
                 knobs_[i]=createLabel(parent,"",x,y,388,&lv_font_montserrat_14,palette::kTextPrimary);
                 liveMidiButton(parent,backend,"LEARN",x,y+25,98,Action::Learn,i);
                 liveMidiButton(parent,backend,"LEARN + CC1",x+106,y+25,144,Action::LearnModWheel,i);
+                auto* destination=createActionButton(parent,"DESTINATION",x+258,y+25,128,34,nullptr,nullptr);
+                attachLvContext<MidiLearnBtnCtx>(destination,{&backend,&nav,uint8_t(i),0},[](lv_event_t* event){
+                    const auto* ctx=static_cast<const MidiLearnBtnCtx*>(lv_event_get_user_data(event));
+                    ctx->nav->navigateTo(ScreenId::MidiSettings,uint8_t(2+ctx->slot));
+                },LV_EVENT_CLICKED);
             }
             refresh(backend);
         } else if(backend.isDemoMode()) {
@@ -176,6 +183,55 @@ public:
         }
     }
 private:
+    struct DestinationPanel {
+        IUiBackend* backend;
+        UiNavigationManager* nav;
+        lv_obj_t* select;
+        lv_obj_t* notice;
+        unsigned knob;
+        unsigned choices[64]{};
+    };
+
+    static bool buildDestination(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav, unsigned knob) {
+        char text[120];
+        std::snprintf(text,sizeof(text),"%s   |   KNOB %u",backend.midiBankName(),knob+1);
+        createLabel(parent,text,12,12,750,&lv_font_montserrat_14,palette::kAccentPrimary);
+        backend.midiKnobText(knob,text,sizeof(text));
+        createLabel(parent,text,12,44,750);
+        createLabel(parent,"TAKEOVER: PICKUP",12,72,750);
+        auto* drop=lv_dropdown_create(parent);
+        lv_obj_set_pos(drop,12,110);
+        lv_obj_set_size(drop,560,44);
+        lv_obj_set_style_max_height(lv_dropdown_get_list(drop),180,0);
+        auto* notice=createLabel(parent,"SELECT A MUSICAL DESTINATION",12,282,760);
+        auto* apply=createActionButton(parent,"APPLY DESTINATION",12,322,216,44,nullptr,nullptr);
+        auto* back=createActionButton(parent,"CANCEL / BACK",240,322,172,44,nullptr,nullptr);
+        DestinationPanel panel{&backend,&nav,drop,notice,knob};
+        char options[1900]{};
+        size_t used=0;
+        unsigned count=0,selected=0;
+        for(unsigned id=0;id<256 && count<64;++id){
+            const auto* name=backend.midiTargetName(id);
+            if(!name || used+std::strlen(name)+2>sizeof(options))continue;
+            used+=size_t(std::snprintf(options+used,sizeof(options)-used,"%s%s",count?"\n":"",name));
+            if(id==backend.midiCustomTarget(knob))selected=count;
+            panel.choices[count++]=id;
+        }
+        lv_dropdown_set_options(drop,options);
+        lv_dropdown_set_selected(drop,selected);
+        attachLvContext<DestinationPanel>(apply,panel,[](lv_event_t* event){
+            const auto* ctx=static_cast<const DestinationPanel*>(lv_event_get_user_data(event));
+            if(ctx->backend->setMidiCustomTarget(ctx->knob,ctx->choices[lv_dropdown_get_selected(ctx->select)]))
+                ctx->nav->navigateTo(ScreenId::MidiSettings,1);
+            else lv_label_set_text(ctx->notice,"DESTINATION UNAVAILABLE");
+        },LV_EVENT_CLICKED);
+        attachLvContext<UiNavigationManager*>(back,&nav,[](lv_event_t* event){
+            auto* navigation=*static_cast<UiNavigationManager**>(lv_event_get_user_data(event));
+            navigation->navigateTo(ScreenId::MidiSettings,1);
+        },LV_EVENT_CLICKED);
+        return true;
+    }
+
     lv_obj_t* usb_label_=nullptr;
     lv_obj_t* bank_=nullptr;
     lv_obj_t* notice_=nullptr;

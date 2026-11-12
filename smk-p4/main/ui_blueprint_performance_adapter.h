@@ -44,6 +44,12 @@ public:
     const ui::UiSignalMeters& meters() const override { return meters_; }
     uint8_t activeSequencerStep() const override { return 0; }
     bool isNoteHeld(uint8_t note) const override;
+    bool routingValues(unsigned, RoutingValues&) const override;
+    bool routingSnapshot(RoutingSnapshot&) const override;
+    RoutingDestination routingDestination(unsigned) const override;
+    performance::Route factoryRoute(unsigned, unsigned) const override;
+    ui::UiCommandResult requestRouting(const RoutingSnapshot&, const performance::Routes&, uint8_t) override;
+    ui::UiCommandResult routingResult() const override { return routing_result_; }
     bool legacyOffsets(LegacyOffsets& offsets) const override;
     ui::UiCommandResult resetLegacyOffsets(const LegacyOffsets& expected) override;
     bool hasSoundEditor() const override { return backend_.soundEdit()!=nullptr; }
@@ -57,6 +63,9 @@ public:
     ui::PresetOperationStatus presetOperationStatus() const override;
     void setMidiInput(amy::UsbInput& input) { midi_input_=&input; }
     void setControllerProfileStore(performance::ControllerProfileStore& store);
+    const char* midiTargetName(unsigned) const override;
+    unsigned midiCustomTarget(unsigned) const override;
+    bool setMidiCustomTarget(unsigned, unsigned) override;
     bool hasMidiPerformance() const override { return midi_input_ && hasSoundEditor(); }
     void midiPerformanceAction(MidiAction action,unsigned knob) override;
     const char* midiBankName() const override;
@@ -85,6 +94,7 @@ private:
     uint32_t midi_save_started_ms_=0;
     bool midi_save_pending_=false;
     unsigned midi_bank_=0,midi_learn_knob_=0;
+    performance::MidiDestinations midi_destinations_{};
     char midi_status_[72]="SELECT A KNOB TO LEARN";
     struct Gesture { uint32_t token=0, start_ms=0; uint8_t note=0; };
     struct Pending { bool active=false; uint16_t value=0; uint32_t revision=0, requested_ms=0; };
@@ -123,6 +133,8 @@ private:
         uint32_t generation=0;
     } pending_edit_;
     ui::UiCommandResult fm_algorithm_result_{};
+    ui::UiCommandResult routing_result_{};
+    uint32_t routing_epoch_=0, routing_generation_=0, routing_errors_=0;
     uint32_t last_token_=0;
     uint32_t next_token_=0, now_ms_=0, revision_=0;
     bool have_snapshot_=false, was_connected_=false;
