@@ -128,8 +128,9 @@ private:
         lv_checkbox_set_text(widget, text);
         lv_obj_set_pos(widget, x, 208);
         lv_obj_set_size(widget, 155, 42);
-        lv_obj_set_style_bg_color(widget, lv_color_hex(palette::kAccentPrimary), LV_PART_INDICATOR | LV_STATE_CHECKED);
-        lv_obj_set_style_text_color(widget, lv_color_hex(palette::kBackground), LV_PART_INDICATOR | LV_STATE_CHECKED);
+        constexpr auto checked = lv_style_selector_t(LV_PART_INDICATOR) | lv_style_selector_t(LV_STATE_CHECKED);
+        lv_obj_set_style_bg_color(widget, lv_color_hex(palette::kAccentPrimary), checked);
+        lv_obj_set_style_text_color(widget, lv_color_hex(palette::kBackground), checked);
         return widget;
     }
 
