@@ -553,13 +553,19 @@ public:
         if(recalling_ || recall_wait_)return false;
 #endif
         if (!ready_ || busy()) return false;
-        if (!id) return false;
+        if (!id || !std::isfinite(value)) return false;
         if (std::strcmp(id, "fx.chorus.mode") == 0) {
             desired_fx_.chorus_mode = static_cast<uint8_t>(std::clamp(int(std::lround(value)), 0, 5));
         } else if (std::strcmp(id, "fx.chorus.depth") == 0) {
             desired_fx_.chorus_depth = std::clamp(value / 100.0f, 0.0f, 1.0f);
         } else if (std::strcmp(id, "fx.delay.time_ms") == 0) {
             desired_fx_.delay_time_ms = std::clamp(value, 10.0f, 1000.0f);
+        } else if (std::strcmp(id, "fx.delay.mode") == 0) {
+            if(value!=0 && value!=1) return false;
+            desired_fx_.delay_mode=fx::DelayMode(int(value));
+        } else if (std::strcmp(id, "fx.delay.division") == 0) {
+            if(value<0 || value>=unsigned(tempo::Division::Count) || value!=std::floor(value)) return false;
+            desired_fx_.delay_division=tempo::Division(int(value));
         } else if (std::strcmp(id, "fx.delay.feedback") == 0) {
             desired_fx_.delay_feedback = std::clamp(value / 100.0f, 0.0f, 0.95f);
         } else if (std::strcmp(id, "fx.delay.mix") == 0) {
@@ -731,6 +737,7 @@ private:
         if (a.chorus_mode != b.chorus_mode) return false;
         if (std::lround(a.chorus_depth * 100.0f) != std::lround(b.chorus_depth * 100.0f)) return false;
         if (std::lround(a.delay_time_ms) != std::lround(b.delay_time_ms)) return false;
+        if (a.delay_mode!=b.delay_mode || a.delay_division!=b.delay_division) return false;
         if (std::lround(a.delay_feedback * 100.0f) != std::lround(b.delay_feedback * 100.0f)) return false;
         if (std::lround(a.delay_mix * 100.0f) != std::lround(b.delay_mix * 100.0f)) return false;
         if (std::lround(a.reverb_size * 100.0f) != std::lround(b.reverb_size * 100.0f)) return false;

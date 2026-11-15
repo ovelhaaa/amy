@@ -56,6 +56,8 @@ int main() {
 
     // ── 3. Modify FX Only: FX EDITED / UNSAVED & Block Patch Change ─────────
     assert(backend.setFxParameter("fx.chorus.mode", 2.0f, 60));
+    assert(backend.setFxParameter("fx.delay.mode",1,60));
+    assert(backend.setFxParameter("fx.delay.division",1,60));
     backend.service(75);
     runtime.apply(75);
     backend.publish(runtime.snapshot(), false, 0, 0);
@@ -78,6 +80,7 @@ int main() {
     assert(std::strcmp(backend.editNotice(), "COMPARE ACTIVE") == 0);
     // Owner should receive original neutral chorus mode (0 = Off)
     assert(runtime.snapshot().fx.config.chorus_mode == 0);
+    assert(runtime.snapshot().fx.config.delay_mode==fx::DelayMode::Free);
 
     // Turn Compare OFF
     assert(backend.editAction(0));
@@ -89,6 +92,8 @@ int main() {
     assert(std::strcmp(backend.editNotice(), "FX EDITED / UNSAVED") == 0);
     // Owner should receive edited chorus mode (2 = Juno I)
     assert(runtime.snapshot().fx.config.chorus_mode == 2);
+    assert(runtime.snapshot().fx.config.delay_mode==fx::DelayMode::Sync &&
+           runtime.snapshot().fx.delay_target_ms==375);
 
     // ── 5. Revert Clears FX Unsaved State & Unblocks Patch Change ────────────
     assert(backend.editAction(1)); // Revert
@@ -99,6 +104,7 @@ int main() {
     assert(!backend.unsaved());
     assert(std::strcmp(backend.editNotice(), "FACTORY ORIGINAL") == 0);
     assert(runtime.snapshot().fx.config.chorus_mode == 0);
+    assert(runtime.snapshot().fx.config.delay_mode==fx::DelayMode::Free);
 
     // Now patch change is unblocked!
     assert(backend.setPatch(8, 160));

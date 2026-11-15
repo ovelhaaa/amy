@@ -95,6 +95,8 @@ int main() {
     updated.performance_routes.routes[7][5] = {};
     auto updated_fx = routed_fx;
     updated_fx.reverb_mix = 0.75f;
+    updated_fx.delay_mode=fx::DelayMode::Sync;
+    updated_fx.delay_division=tempo::Division::DottedEighth;
     for (const auto fault : {FaultInjection::BeforeFxWrite, FaultInjection::DuringFxWrite,
              FaultInjection::AfterFxWrite, FaultInjection::BeforeSynthWrite, FaultInjection::DuringSynthWrite,
              FaultInjection::AfterSynthWrite, FaultInjection::BeforeMarkerWrite, FaultInjection::DuringMarkerWrite}) {
@@ -103,6 +105,7 @@ int main() {
         assert(coordinator.load(14, loaded_p, loaded_fx));
         assert(loaded_p.performance_routes == routed.performance_routes);
         assert(loaded_p.performance_macros == routed.performance_macros && approx(loaded_fx.reverb_mix, 0.51f));
+        assert(loaded_fx.delay_mode==fx::DelayMode::Free);
     }
     coordinator.setFaultInjection(FaultInjection::None);
     const auto available_entries = fake_nvs::free_entries;
@@ -120,6 +123,9 @@ int main() {
         assert(reboot.load(14, loaded_p, loaded_fx, &marker) && marker.synth_version == 4);
         assert(loaded_p.performance_routes == updated.performance_routes);
         assert(loaded_p.performance_macros == updated.performance_macros && approx(loaded_fx.reverb_mix, 0.75f));
+        assert(loaded_fx.delay_mode==fx::DelayMode::Sync &&
+               loaded_fx.delay_division==tempo::Division::DottedEighth &&
+               loaded_fx.delay_time_ms==routed_fx.delay_time_ms);
         auto& blob = fake_nvs::blobs.at({2, marker.synth_bank ? "x14b" : "x14a"});
         blob.back() ^= 1;
         coordinator.setFaultInjection(FaultInjection::AfterSynthWrite);

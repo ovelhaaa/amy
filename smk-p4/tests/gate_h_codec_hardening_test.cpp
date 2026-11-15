@@ -176,12 +176,12 @@ static void test_future_version_and_rom_rejection() {
     FxConfig decoded{};
     uint32_t seq = 0;
 
-    // Test future version 2
+    // Test the next unrecognized version with a valid CRC.
     uint8_t future_ver[kFxRecordBytes];
     std::memcpy(future_ver, buf, sizeof(future_ver));
     auto* r_ver = reinterpret_cast<Record*>(future_ver);
-    r_ver->version = 2;
-    r_ver->crc32 = calcCrc(future_ver, 28); // Valid CRC for version 2
+    r_ver->version = kFxVersion + 1;
+    r_ver->crc32 = calcCrc(future_ver, 28);
     assert(!decodeRecord(future_ver, sizeof(future_ver), decoded, seq));
 
     // Test wrong ROM compat
