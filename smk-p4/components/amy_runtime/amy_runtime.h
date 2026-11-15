@@ -65,6 +65,11 @@ private:
     void captureEdit();
     void applyEdit(uint32_t now_ms);
     void applyPerformanceFx();
+    void resolveDelay();
+    void serviceDelay(bool immediate=false);
+    float echo_time_ms_=350.0f,echo_mix_=0.0f,echo_feedback_=0.0f;
+    float last_sync_ms_=0.0f;
+    bool echo_sync_=false;
     void updateModWheelFilter();
     bool updateFmAlgorithmTopology(unsigned algorithm);
     struct EditOsc {

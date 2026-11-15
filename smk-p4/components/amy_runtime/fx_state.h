@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstring>
 #include <atomic>
+#include "musical_division.h"
 
 extern "C" {
 #include "amy.h"
@@ -23,7 +24,7 @@ void config_eq(uint8_t bus, SAMPLE eq_l, SAMPLE eq_m, SAMPLE eq_h);
 namespace smk::p4::fx {
 
 constexpr uint32_t kFxMagic = 0x32315846; // "FX12"
-constexpr uint32_t kFxVersion = 1;
+constexpr uint16_t kFxVersion = 2;
 constexpr unsigned kFxRecordBytes = 32;
 constexpr uint32_t kRomCompatibility = 0x3e76efb6;
 
@@ -36,6 +37,11 @@ enum class ChorusMode : uint8_t {
     Vibrato = 5,
     Count = 6
 };
+
+enum class DelayMode : uint8_t { Free, Sync };
+constexpr float kMinDelayMs=10.0f, kMaxDelayMs=1000.0f;
+
+inline bool delayFits(float ms) { return ms>=kMinDelayMs && ms<=kMaxDelayMs; }
 
 struct FxConfig {
     uint8_t chorus_mode = 0;       // ChorusMode::Off
@@ -50,12 +56,15 @@ struct FxConfig {
     float eq_mid_db = 0.0f;        // -12.0 .. +12.0 dB
     float eq_high_db = 0.0f;       // -12.0 .. +12.0 dB
     bool bypass_all = false;
+    DelayMode delay_mode=DelayMode::Free;
+    tempo::Division delay_division=tempo::Division::Eighth;
 };
 
 inline bool valid(const FxConfig& c) {
     if (c.chorus_mode >= static_cast<uint8_t>(ChorusMode::Count)) return false;
     if (!std::isfinite(c.chorus_depth) || c.chorus_depth < 0.0f || c.chorus_depth > 1.0f) return false;
-    if (!std::isfinite(c.delay_time_ms) || c.delay_time_ms < 10.0f || c.delay_time_ms > 1000.0f) return false;
+    if (!delayFits(c.delay_time_ms) || unsigned(c.delay_mode)>unsigned(DelayMode::Sync) ||
+        unsigned(c.delay_division)>=unsigned(tempo::Division::Count)) return false;
     if (!std::isfinite(c.delay_feedback) || c.delay_feedback < 0.0f || c.delay_feedback > 0.95f) return false;
     if (!std::isfinite(c.delay_mix) || c.delay_mix < 0.0f || c.delay_mix > 1.0f) return false;
     if (!std::isfinite(c.reverb_size) || c.reverb_size < 0.0f || c.reverb_size > 1.0f) return false;
@@ -76,6 +85,9 @@ struct FxState {
     uint32_t rejected = 0;
     bool enabled = true;
     bool dirty = false;
+    float delay_target_ms=0.0f;
+    float delay_dsp_ms=350.0f;
+    bool delay_out_of_range=false;
 };
 
 struct FxRequest {
@@ -120,10 +132,10 @@ using Mailbox = FxQueue<8>;
 
 // Applies an FxConfig directly to AMY Bus 0.
 // Hard real-time safe: Zero heap allocations, bounded execution time.
-inline void applyBusFx(const FxConfig& cfg) {
+inline void applyBusFx(const FxConfig& cfg,bool update_echo=true) {
     if (cfg.bypass_all) {
         config_chorus(0, 0.0f, CHORUS_DEFAULT_MAX_DELAY, CHORUS_DEFAULT_LFO_FREQ, CHORUS_DEFAULT_MOD_DEPTH);
-        config_echo(0, 0.0f, 350.0f, 1000.0f, 0.0f, 0.0f);
+        if(update_echo) config_echo(0, 0.0f, 350.0f, 1000.0f, 0.0f, 0.0f);
         config_reverb(0, 0.0f, REVERB_DEFAULT_LIVENESS, REVERB_DEFAULT_DAMPING, REVERB_DEFAULT_XOVER_HZ);
         config_eq(0, F2S(1.0f), F2S(1.0f), F2S(1.0f));
         return;
@@ -175,10 +187,12 @@ inline void applyBusFx(const FxConfig& cfg) {
     config_chorus(0, chorus_level, chorus_max_del, chorus_rate, depth_val);
 
     // --- Echo / Delay ---
-    float echo_mix = std::clamp(cfg.delay_mix, 0.0f, 1.0f);
-    float echo_time = std::clamp(cfg.delay_time_ms, 10.0f, 1000.0f);
-    float echo_fb = std::clamp(cfg.delay_feedback, 0.0f, 0.95f);
-    config_echo(0, echo_mix, echo_time, 1000.0f, echo_fb, 0.0f);
+    if(update_echo) {
+        const float echo_mix = std::clamp(cfg.delay_mix, 0.0f, 1.0f);
+        const float echo_time = std::clamp(cfg.delay_time_ms, kMinDelayMs, kMaxDelayMs);
+        const float echo_fb = std::clamp(cfg.delay_feedback, 0.0f, 0.95f);
+        config_echo(0, echo_mix, echo_time, kMaxDelayMs, echo_fb, 0.0f);
+    }
 
     // --- Reverb ---
     float rev_mix = std::clamp(cfg.reverb_mix, 0.0f, 1.0f);
@@ -203,7 +217,7 @@ inline void applyBusFx(const FxConfig& cfg) {
 #pragma pack(push, 1)
 struct Record {
     uint32_t magic;          // 0x32315846 ("FX12")
-    uint16_t version;        // 1
+    uint16_t version;        // 1 or 2
     uint16_t sequence;       // Sequence ID
     uint8_t chorus_mode;     // 0..5
     uint8_t chorus_depth;    // 0..100
@@ -217,7 +231,7 @@ struct Record {
     int8_t eq_mid_db;        // -12..12
     int8_t eq_high_db;       // -12..12
     uint8_t bypass_all;      // 0 or 1
-    uint8_t reserved[3];     // 0
+    uint8_t reserved[3];     // V2: mode, division, zero
     uint32_t rom_compat;     // 0x3e76efb6
     uint32_t crc32;          // CRC of bytes 0..27
 };
@@ -251,6 +265,8 @@ inline bool encodeRecord(const FxConfig& cfg, uint32_t sequence, uint8_t* out) {
     r.eq_mid_db = static_cast<int8_t>(std::lround(cfg.eq_mid_db));
     r.eq_high_db = static_cast<int8_t>(std::lround(cfg.eq_high_db));
     r.bypass_all = cfg.bypass_all ? 1 : 0;
+    r.reserved[0]=uint8_t(cfg.delay_mode);
+    r.reserved[1]=uint8_t(cfg.delay_division);
     r.rom_compat = kRomCompatibility;
     r.crc32 = calcCrc(reinterpret_cast<const uint8_t*>(&r), 28);
     std::memcpy(out, &r, sizeof(r));
@@ -261,7 +277,8 @@ inline bool decodeRecord(const uint8_t* in, unsigned len, FxConfig& cfg, uint32_
     if (len != kFxRecordBytes || !in) return false;
     Record r{};
     std::memcpy(&r, in, sizeof(r));
-    if (r.magic != kFxMagic || r.version != kFxVersion || r.rom_compat != kRomCompatibility) return false;
+    if (r.magic != kFxMagic || (r.version != 1 && r.version != kFxVersion) ||
+        r.rom_compat != kRomCompatibility) return false;
     if (r.crc32 != calcCrc(in, 28)) return false;
 
     FxConfig c{};
@@ -277,6 +294,11 @@ inline bool decodeRecord(const uint8_t* in, unsigned len, FxConfig& cfg, uint32_
     c.eq_mid_db = static_cast<float>(r.eq_mid_db);
     c.eq_high_db = static_cast<float>(r.eq_high_db);
     c.bypass_all = (r.bypass_all != 0);
+    if(r.version==kFxVersion) {
+        if(r.reserved[2] || r.bypass_all>1) return false;
+        c.delay_mode=DelayMode(r.reserved[0]);
+        c.delay_division=tempo::Division(r.reserved[1]);
+    }
 
     if (!valid(c)) return false;
     cfg = c;

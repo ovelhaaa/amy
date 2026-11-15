@@ -7,7 +7,7 @@ constexpr unsigned kInputCapacity=8;
 constexpr unsigned kPatternCapacity=kInputCapacity*4;
 
 enum class Mode : uint8_t { Up, Down, UpDown, Random, AsPlayed };
-enum class Action : uint16_t { Enable, Mode, Rate, Octaves, Gate, Swing, Latch, Bpm, Play, Stop, Toggle };
+enum class Action : uint16_t { Enable, Mode, Rate, Octaves, Gate, Swing, Latch, Bpm, Play, Stop, Toggle, ClearLatch, Restart };
 enum class Error : uint8_t { None, Invalid, Stale, Full };
 constexpr uint8_t kProtocolVersion=1;
 
@@ -15,7 +15,7 @@ struct Config {
     uint8_t octaves=2, gate=65, swing=54;
     Mode mode=Mode::Up;
     Rate rate=Rate::Sixteenth;
-    bool enabled=false, latch=false;
+    bool enabled=false, latch=false, restart=false;
 };
 
 struct Confirmation {
@@ -31,7 +31,8 @@ struct Status {
     std::array<uint8_t,kInputCapacity> held{};
     std::array<uint8_t,kPatternCapacity> pattern{};
     uint8_t held_count=0, length=0, step=UINT8_MAX;
-    bool armed=false, sounding=false;
+    bool armed=false, sounding=false, descending=false;
+    uint32_t upper_octaves=0;
     uint32_t rejected=0, revision=0;
     Confirmation touch,usb;
 
@@ -93,6 +94,15 @@ public:
             break;
         case Action::Stop: stop(); break;
         case Action::Toggle: return configure(Action::Enable,!c.enabled);
+        case Action::ClearLatch:
+            if(value!=1) return false;
+            for(unsigned i=count_;i>0;--i) if(!entries_[i-1].down) erase(i-1);
+            markDirty();
+            break;
+        case Action::Restart:
+            if(value>1) return false;
+            c.restart=value;
+            break;
         default: return false;
         }
         return true;
@@ -105,7 +115,10 @@ public:
     }
 
     void on(Input note) {
-        if(!status_.held_count && status_.config.latch) count_=0;
+        if(!status_.held_count) {
+            if(status_.config.latch) count_=0;
+            if(status_.config.restart) { clock_.reset(); cursor_=0; random_=1; }
+        }
         for(unsigned i=0;i<count_;++i) {
             auto& entry=entries_[i];
             if(matches(entry.note,note)) {
@@ -141,6 +154,7 @@ public:
         const auto& c=status_.config;
         gate_frames=clock_.step(c.rate,c.swing,position,c.gate);
         const unsigned length=status_.length;
+        status_.descending=c.mode==Mode::Down;
         unsigned index;
         if(c.mode==Mode::Random) {
             random_^=random_<<13;random_^=random_>>17;random_^=random_<<5;
@@ -149,6 +163,7 @@ public:
             const unsigned period=c.mode==Mode::UpDown && length>1?2*(length-1):length;
             index=cursor_%period;
             cursor_=(index+1)%period;
+            if(c.mode==Mode::UpDown && length>1) status_.descending=index>=length-1;
             if(index>=length) index=period-index;
         }
         status_.step=uint8_t(index);
@@ -177,6 +192,8 @@ private:
         case Action::Latch: return c.latch;
         case Action::Bpm: return 0;
         case Action::Play: case Action::Stop: return status_.armed;
+        case Action::ClearLatch: return status_.held_count;
+        case Action::Restart: return c.restart;
         }
         return 0;
     }
@@ -194,6 +211,7 @@ private:
     void rebuild() {
         status_.length=0;
         status_.step=UINT8_MAX;
+        status_.upper_octaves=0;
         for(unsigned octave=0;octave<status_.config.octaves;++octave) {
             for(unsigned i=0;i<count_;++i) {
                 const unsigned pitch=entries_[i].note.pitch+12*octave;
@@ -208,6 +226,8 @@ private:
                 pattern_[j]=uint8_t(i+octave*kInputCapacity);
             }
         }
+        for(unsigned i=0;i<status_.length;++i)
+            if(pattern_[i]>=kInputCapacity) status_.upper_octaves|=uint32_t(1)<<i;
     }
 
     Status status_;

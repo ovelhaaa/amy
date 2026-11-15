@@ -55,6 +55,8 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
     state_=Snapshot{}; bank_=0; gain_q16_=0;
 #ifdef SMKP4_SOUND_EDITOR
     arp_=arp::Engine{};tempo_=tempo::Clock{};arp_identity_=0;
+    echo_time_ms_=350.0f;echo_mix_=0.0f;echo_feedback_=0.0f;
+    last_sync_ms_=0.0f;echo_sync_=false;
 #endif
     for(auto& v:voices_) v=Voice{};
     for(auto& g:groups_) g=Group{};
@@ -355,6 +357,8 @@ void Runtime::applyArp(const Command& c,bool usb,uint32_t now_ms) {
     if(c.generation!=current || eventAgeMs(now_ms,c.timestamp_ms)>=kLeaseMs) error=arp::Error::Stale;
     else if(!c.token || c.version!=arp::kProtocolVersion ||
             !(action==arp::Action::Bpm?tempo_.setBpm(c.value):arp_.configure(action,c.value))) error=arp::Error::Invalid;
+    else if(action==arp::Action::Bpm) resolveDelay();
+    else if(action==arp::Action::ClearLatch) releaseArp();
     else if(action==arp::Action::Enable || action==arp::Action::Toggle) {
         if(state_.arp.config.enabled!=arp_.status().config.enabled) {
             for(unsigned i=0;i<kVoices;++i) if(voices_[i].used && voices_[i].usb) release(i);
@@ -547,6 +551,7 @@ const int16_t* Runtime::render() {
     if(amy_get_oom_count()!=state_.oom_count) { failRendering();return silent_pcm_; }
 #endif
 #ifdef SMKP4_SOUND_EDITOR
+    serviceDelay();
     if(arp_.status().config.enabled) serviceArp();
 #endif
     publishOutput(OutputReason::Ready);
@@ -644,7 +649,13 @@ bool Runtime::loadReusable(uint16_t patch_id) {
     }
     amy_execute_deltas();
     state_.fx.applied=state_.fx.config;
+#ifdef SMKP4_SOUND_EDITOR
+    resolveDelay();
+    fx::applyBusFx(state_.fx.applied,false);
+    serviceDelay(true);
+#else
     fx::applyBusFx(state_.fx.config);
+#endif
     state_.patch_state=PatchState::Verifying;
     // Warm lazy DSP on the worker while output continues zero-filled PCM.
     amy_simple_fill_buffer();
@@ -674,10 +685,14 @@ void Runtime::loadPendingPatch() {
         state_.fx.config=fx::FxConfig{};
         state_.fx.dirty=false;
         for (auto& source : state_.fx.performance_sources) source = 0;
+#ifdef SMKP4_SOUND_EDITOR
+        last_sync_ms_=0.0f;
+        captureEdit();
+        applyPerformanceFx();
+        serviceDelay(true);
+#else
         state_.fx.applied=state_.fx.config;
         fx::applyBusFx(state_.fx.config);
-#ifdef SMKP4_SOUND_EDITOR
-        captureEdit();
 #endif
     }
     state_.oom_count=amy_get_oom_count();

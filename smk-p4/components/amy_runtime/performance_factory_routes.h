@@ -132,7 +132,8 @@ inline fx::FxConfig effectiveFx(fx::FxConfig manual, const edit::State& state, u
     manual.reverb_size = composeFx(ReverbSize, manual.reverb_size, 0, 1);
     manual.master_tone = composeFx(MasterTone, manual.master_tone, -1, 1);
     if (state.performance_routes.custom) {
-        manual.delay_time_ms = composeFx(DelayTime, manual.delay_time_ms, 10, 1000);
+        if(manual.delay_mode==fx::DelayMode::Free)
+            manual.delay_time_ms = composeFx(DelayTime, manual.delay_time_ms, 10, 1000);
         manual.eq_low_db = composeFx(EqLow, manual.eq_low_db, -12, 12);
         manual.eq_mid_db = composeFx(EqMid, manual.eq_mid_db, -12, 12);
         manual.eq_high_db = composeFx(EqHigh, manual.eq_high_db, -12, 12);

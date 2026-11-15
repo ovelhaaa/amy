@@ -283,7 +283,49 @@ void Runtime::captureEdit() {
 }
 void Runtime::applyPerformanceFx() {
     state_.fx.applied = performance::effectiveFx(state_.fx.config, state_.edit, state_.fx.performance_sources);
-    fx::applyBusFx(state_.fx.applied);
+    resolveDelay();
+    fx::applyBusFx(state_.fx.applied,false);
+    // Preserve the existing immediate behavior for FREE-only updates.
+    if(!echo_sync_ && state_.fx.applied.delay_mode==fx::DelayMode::Free) serviceDelay();
+}
+
+void Runtime::resolveDelay() {
+    auto& fx_state=state_.fx;
+    const bool sync=fx_state.applied.delay_mode==fx::DelayMode::Sync;
+    fx_state.delay_target_ms=sync?tempo::durationMs(fx_state.applied.delay_division,tempo_.position().bpm):0.0f;
+    fx_state.delay_out_of_range=sync && !fx::delayFits(fx_state.delay_target_ms);
+    if(!sync) return;
+    fx_state.applied.delay_time_ms=fx_state.delay_out_of_range
+        ? (last_sync_ms_>0.0f?last_sync_ms_:fx_state.config.delay_time_ms)
+        : fx_state.delay_target_ms;
+}
+
+void Runtime::serviceDelay(bool immediate) {
+    const auto& desired=state_.fx.applied;
+    const bool sync=desired.delay_mode==fx::DelayMode::Sync;
+    const float time=desired.bypass_all?350.0f:desired.delay_time_ms;
+    const float mix=desired.bypass_all?0.0f:desired.delay_mix;
+    const float feedback=desired.bypass_all?0.0f:desired.delay_feedback;
+    const float step=std::max(mix*0.25f,0.05f);
+    if(!immediate && !desired.bypass_all && (sync || echo_sync_)) {
+        if(time!=echo_time_ms_ && echo_mix_>0.0f) {
+            echo_mix_=std::max(0.0f,echo_mix_-step);
+            config_echo(0,echo_mix_,echo_time_ms_,fx::kMaxDelayMs,echo_feedback_,0.0f);
+            return;
+        }
+    }
+    const float next_mix=!immediate && (sync || echo_sync_) && mix>echo_mix_
+        ? std::min(mix,echo_mix_+step):mix;
+    if(immediate || time!=echo_time_ms_ || next_mix!=echo_mix_ || feedback!=echo_feedback_) {
+        config_echo(0,next_mix,time,fx::kMaxDelayMs,feedback,0.0f);
+        echo_time_ms_=time;
+        echo_mix_=next_mix;
+        echo_feedback_=feedback;
+        state_.fx.delay_dsp_ms=amy_global.bus[0]->echo.delay_samples*1000.0f/kSampleRateHz;
+    }
+    if(sync && !desired.bypass_all && !state_.fx.delay_out_of_range) last_sync_ms_=time;
+    if(!sync) last_sync_ms_=0.0f;
+    if(next_mix==mix) echo_sync_=sync;
 }
 
 void Runtime::applyEdit(uint32_t now_ms) {
