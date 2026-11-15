@@ -4,6 +4,7 @@
 #include <cstdint>
 
 using namespace smk::p4::arp;
+namespace tempo = smk::p4::tempo;
 
 int main() {
     uint64_t max_lateness_ns=0;
@@ -11,11 +12,13 @@ int main() {
         for(unsigned r=0;r<=unsigned(Rate::ThirtySecond);++r) {
             for(unsigned swing:{50,54,75}) {
                 Clock clock;
+                tempo::Clock global;
+                assert(global.setBpm(bpm));
                 const auto rate=Rate(r);
                 const bool triplet=rate==Rate::EighthTriplet || rate==Rate::SixteenthTriplet;
                 unsigned steps=0;
                 for(uint64_t frame=0;steps<1000;frame+=256) {
-                    if(clock.due()) {
+                    if(clock.due(global.position())) {
                         const uint64_t weight=steps*100ull+(steps%2 && !triplet ? 2*swing-100 : 0);
                         const uint64_t ideal=weight*Clock::ticks(rate)*60*48000;
                         const uint64_t denominator=100*bpm*Clock::kPpqn;
@@ -24,11 +27,11 @@ int main() {
                         assert(lateness<256*denominator);
                         const uint64_t ns=lateness*1000000000/(denominator*48000);
                         if(ns>max_lateness_ns) max_lateness_ns=ns;
-                        const unsigned gate=clock.step(rate,swing,bpm,100);
+                        const unsigned gate=clock.step(rate,swing,global.position(),100);
                         assert(gate>0);
                         ++steps;
                     }
-                    clock.advance(bpm,256);
+                    global.advance(256);
                 }
             }
         }
@@ -36,28 +39,34 @@ int main() {
     std::printf("PASS arp clock maximum onset lateness %.3f us in the host sample trace\n",
                 double(max_lateness_ns)/1000);
     Clock fast;
-    assert(fast.step(Rate::ThirtySecond,75,240,10)==225);
-    for(unsigned i=0;i<9;++i) fast.advance(240,256);
-    assert(fast.due() && fast.step(Rate::ThirtySecond,75,240,10)<256);
+    tempo::Clock fast_global;
+    assert(fast_global.setBpm(240));
+    assert(fast.step(Rate::ThirtySecond,75,fast_global.position(),10)==225);
+    for(unsigned i=0;i<9;++i) fast_global.advance(256);
+    assert(fast.due(fast_global.position()) && fast.step(Rate::ThirtySecond,75,fast_global.position(),10)<256);
 
     Clock live;
-    assert(live.due());
-    live.step(Rate::Quarter,50,60,100);
+    tempo::Clock live_global;
+    assert(live_global.setBpm(60));
+    assert(live.due(live_global.position()));
+    live.step(Rate::Quarter,50,live_global.position(),100);
     for(unsigned i=0;i<100;++i) {
-        assert(!live.due());
-        live.advance(60,256);
+        assert(!live.due(live_global.position()));
+        live_global.advance(256);
     }
+    assert(live_global.setBpm(240));
     unsigned fast_blocks=0;
-    while(!live.due()) { live.advance(240,256);++fast_blocks; }
+    while(!live.due(live_global.position())) { live_global.advance(256);++fast_blocks; }
     assert(fast_blocks==22);
-    live.step(Rate::EighthTriplet,75,240,10);
+    live.step(Rate::EighthTriplet,75,live_global.position(),10);
     for(unsigned i=0;i<16;++i) {
-        assert(!live.due());
-        live.advance(240,256);
+        assert(!live.due(live_global.position()));
+        live_global.advance(256);
     }
-    assert(live.due());
+    assert(live.due(live_global.position()));
 
     Engine arp;
+    tempo::Clock performance;
     assert(!arp.configure(Action::Bpm,39));
     assert(!arp.configure(Action::Mode,5));
     arp.configure(Action::Enable,1);
@@ -68,8 +77,8 @@ int main() {
         Input note;
         uint32_t gate=0;
         for(unsigned i=0;i<300;++i) {
-            if(arp.next(note,gate)) { assert(gate>0); return note; }
-            arp.advance(256);
+            if(arp.next(note,gate,performance.position())) { assert(gate>0); return note; }
+            performance.advance(256);
         }
         assert(false);
         return note;

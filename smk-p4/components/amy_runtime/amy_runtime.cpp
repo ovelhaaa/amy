@@ -54,7 +54,7 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
     if(started_ || sample_rate_hz!=kSampleRateHz) return false;
     state_=Snapshot{}; bank_=0; gain_q16_=0;
 #ifdef SMKP4_SOUND_EDITOR
-    arp_=arp::Engine{};arp_identity_=0;
+    arp_=arp::Engine{};tempo_=tempo::Clock{};arp_identity_=0;
 #endif
     for(auto& v:voices_) v=Voice{};
     for(auto& g:groups_) g=Group{};
@@ -136,7 +136,7 @@ void Runtime::end() {
 }
 void Runtime::silence() {
 #ifdef SMKP4_SOUND_EDITOR
-    arp_.stop();arp_identity_=0;state_.arp=arp_.status();
+    arp_.stop();arp_identity_=0;publishArp();
 #endif
     amy_deltas_reset();
     for(size_t i=0;i<kAmyVoices;++i) {
@@ -265,7 +265,7 @@ unsigned Runtime::startGroup(NoteOrigin origin,const Command& c,uint32_t now_ms)
 }
 void Runtime::cancelUsb() {
 #ifdef SMKP4_SOUND_EDITOR
-    arp_.stop();arp_identity_=0;state_.arp=arp_.status();
+    arp_.stop();arp_identity_=0;publishArp();
 #endif
     for(unsigned i=0;i<kVoices;++i) if(voices_[i].used && voices_[i].usb) release(i);
     std::memset(sustain_,0,sizeof(sustain_));
@@ -353,7 +353,8 @@ void Runtime::applyArp(const Command& c,bool usb,uint32_t now_ms) {
     const auto current=usb?usb_.commands.generation():commands_.generation();
     auto error=arp::Error::None;
     if(c.generation!=current || eventAgeMs(now_ms,c.timestamp_ms)>=kLeaseMs) error=arp::Error::Stale;
-    else if(!c.token || c.version!=arp::kProtocolVersion || !arp_.configure(action,c.value)) error=arp::Error::Invalid;
+    else if(!c.token || c.version!=arp::kProtocolVersion ||
+            !(action==arp::Action::Bpm?tempo_.setBpm(c.value):arp_.configure(action,c.value))) error=arp::Error::Invalid;
     else if(action==arp::Action::Enable || action==arp::Action::Toggle) {
         if(state_.arp.config.enabled!=arp_.status().config.enabled) {
             for(unsigned i=0;i<kVoices;++i) if(voices_[i].used && voices_[i].usb) release(i);
@@ -364,8 +365,8 @@ void Runtime::applyArp(const Command& c,bool usb,uint32_t now_ms) {
         cancelUsb();
         usb_generation_=usb_.commands.generation();
     }
-    arp_.acknowledge(action,c.value,c.token,c.generation,usb,error);
-    state_.arp=arp_.status();
+    arp_.acknowledge(action,c.value,c.token,c.generation,usb,error,tempo_.position());
+    publishArp();
 }
 
 void Runtime::serviceArp() {
@@ -377,13 +378,13 @@ void Runtime::serviceArp() {
         usb_generation_=usb_.commands.generation();
     }
     if(commands_.generation()!=state_.generation) {
-        releaseArp();arp_.stop();state_.arp=arp_.status();return;
+        releaseArp();arp_.stop();publishArp();return;
     }
     arp_.prepare();
     if(!arp_.status().length || state_.blocks-arp_started_block_>=arp_gate_blocks_) releaseArp();
     arp::Input input;
     uint32_t gate_frames=0;
-    if(arp_.next(input,gate_frames)) {
+    if(arp_.next(input,gate_frames,tempo_.position())) {
         releaseArp();
         if(input.generation==usb_generation_ && input.generation==usb_.commands.generation()) {
             Command c{};
@@ -398,8 +399,7 @@ void Runtime::serviceArp() {
             }
         }
     }
-    arp_.advance(kBlockFrames);
-    state_.arp=arp_.status();
+    publishArp();
 }
 #endif
 void Runtime::applyFx(uint32_t now_ms) {
@@ -572,6 +572,10 @@ const int16_t* Runtime::render() {
             if(magnitude>peak) peak=magnitude;
         }
     }
+#ifdef SMKP4_SOUND_EDITOR
+    tempo_.advance(kBlockFrames);
+    state_.arp.tempo=tempo_.position();
+#endif
     state_.peak=peak; ++state_.blocks; state_.oom_count=amy_get_oom_count();
     return pcm;
 }
@@ -580,7 +584,7 @@ void Runtime::failRendering() {
     // No allocator or new delta events on an exhausted resource path.
     amy_deltas_reset();all_notes_off();
 #ifdef SMKP4_SOUND_EDITOR
-    arp_.stop();arp_identity_=0;state_.arp=arp_.status();
+    arp_.stop();arp_identity_=0;publishArp();
 #endif
     for(auto& voice:voices_)voice=Voice{};
     for(auto& g:groups_)g=Group{};

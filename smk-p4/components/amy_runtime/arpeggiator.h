@@ -12,7 +12,7 @@ enum class Error : uint8_t { None, Invalid, Stale, Full };
 constexpr uint8_t kProtocolVersion=1;
 
 struct Config {
-    uint8_t bpm=120, octaves=2, gate=65, swing=54;
+    uint8_t octaves=2, gate=65, swing=54;
     Mode mode=Mode::Up;
     Rate rate=Rate::Sixteenth;
     bool enabled=false, latch=false;
@@ -27,6 +27,7 @@ struct Confirmation {
 
 struct Status {
     Config config;
+    tempo::Position tempo;
     std::array<uint8_t,kInputCapacity> held{};
     std::array<uint8_t,kPatternCapacity> pattern{};
     uint8_t held_count=0, length=0, step=UINT8_MAX;
@@ -44,9 +45,11 @@ struct Input {
 class Engine {
 public:
     const Status& status() const { return status_; }
-    void acknowledge(Action action,uint8_t value,uint32_t token,uint32_t generation,bool usb,Error error) {
+    void acknowledge(Action action,uint8_t value,uint32_t token,uint32_t generation,bool usb,Error error,
+                     const tempo::Position& position) {
         auto& confirmation=usb?status_.usb:status_.touch;
-        confirmation={token,generation,action,value,applied(action),kProtocolVersion,error};
+        const auto confirmed=action==Action::Bpm?static_cast<uint8_t>(position.bpm):applied(action);
+        confirmation={token,generation,action,value,confirmed,kProtocolVersion,error};
         ++status_.revision;
     }
 
@@ -84,10 +87,6 @@ public:
                 for(unsigned i=count_; i>0; --i) if(!entries_[i-1].down) erase(i-1);
                 markDirty();
             }
-            break;
-        case Action::Bpm:
-            if(value<40 || value>240) return false;
-            c.bpm=value;
             break;
         case Action::Play:
             if(c.enabled) status_.armed=true;
@@ -137,10 +136,10 @@ public:
         rebuild();
     }
 
-    bool next(Input& note,uint32_t& gate_frames) {
-        if(!status_.length || !clock_.due()) return false;
+    bool next(Input& note,uint32_t& gate_frames,const tempo::Position& position) {
+        if(!status_.length || !clock_.due(position)) return false;
         const auto& c=status_.config;
-        gate_frames=clock_.step(c.rate,c.swing,c.bpm,c.gate);
+        gate_frames=clock_.step(c.rate,c.swing,position,c.gate);
         const unsigned length=status_.length;
         unsigned index;
         if(c.mode==Mode::Random) {
@@ -159,9 +158,6 @@ public:
         return true;
     }
 
-    void advance(unsigned frames) {
-        if(status_.length) clock_.advance(status_.config.bpm,frames);
-    }
     void sounding(bool value) { status_.sounding=value; }
 
 private:
@@ -179,7 +175,7 @@ private:
         case Action::Gate: return c.gate;
         case Action::Swing: return c.swing;
         case Action::Latch: return c.latch;
-        case Action::Bpm: return c.bpm;
+        case Action::Bpm: return 0;
         case Action::Play: case Action::Stop: return status_.armed;
         }
         return 0;

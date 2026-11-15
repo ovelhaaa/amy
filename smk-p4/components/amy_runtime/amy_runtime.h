@@ -56,6 +56,11 @@ private:
     void serviceArp();
     void releaseArp();
     arp::Engine arp_;
+    tempo::Clock tempo_;
+    void publishArp() {
+        state_.arp=arp_.status();
+        state_.arp.tempo=tempo_.position();
+    }
     uint32_t arp_identity_=0,arp_started_block_=0,arp_gate_blocks_=0;
     void captureEdit();
     void applyEdit(uint32_t now_ms);

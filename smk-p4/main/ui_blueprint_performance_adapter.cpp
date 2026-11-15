@@ -8,8 +8,9 @@ namespace smk::p4 {
 using namespace ui;
 namespace {
 constexpr const char* kArpIds[]{"arp.enable","arp.direction","arp.rate","arp.octaves",
-    "arp.gate_pct","arp.swing_pct","arp.latch","arp.bpm"};
+    "arp.gate_pct","arp.swing_pct","arp.latch","perf.bpm"};
 int arpIndex(const char* id) {
+    if(id && std::strcmp(id,"arp.bpm")==0) return int(arp::Action::Bpm);
     if(id) for(unsigned i=0;i<8;++i) if(std::strcmp(id,kArpIds[i])==0) return int(i);
     return -1;
 }
@@ -925,7 +926,7 @@ void UiBlueprintPerformanceAdapter::serviceArp() {
     const auto* status=backend_.arpStatus();
     if(!status) return;
     const auto& c=status->config;
-    const int values[]{c.enabled,int(c.mode),int(c.rate),c.octaves,c.gate,c.swing,c.latch,c.bpm};
+    const int values[]{c.enabled,int(c.mode),int(c.rate),c.octaves,c.gate,c.swing,c.latch,status->tempo.bpm};
     for(unsigned i=0;i<8;++i) if(model_.getInt(kArpIds[i],-1)!=values[i])
         model_.setInt(kArpIds[i],values[i]);
     const auto& ack=status->touch;

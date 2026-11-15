@@ -391,7 +391,7 @@ extern "C" void app_main() {
 #ifdef SMKP4_SOUND_EDITOR
                 const auto& arp=state.engine.arp;
                 ESP_LOGI(kTag,"ARP015 enabled=%d armed=%d gate=%d bpm=%u inputs=%u steps=%u rejected=%lu service_max_us=%lu",
-                    arp.config.enabled,arp.armed,arp.sounding,arp.config.bpm,arp.held_count,arp.length,
+                    arp.config.enabled,arp.armed,arp.sounding,arp.tempo.bpm,arp.held_count,arp.length,
                     (unsigned long)arp.rejected,(unsigned long)state.engine.arp_service_max_us);
                 ESP_LOGI(kTag,"EDIT011 patch=%u epoch=%lu revision=%lu request=%lu mask=%lx compare=%d dirty=%d available=%lx errors=%lu apply_max_us=%lu quiet=%d coalesced=%lu",
                     state.engine.edit.patch,(unsigned long)state.engine.edit.epoch,(unsigned long)state.engine.edit.revision,
