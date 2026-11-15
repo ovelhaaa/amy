@@ -58,8 +58,8 @@ public:
                     g_browser.page = 0;
                     break;
                 case 2:
-                    ctx->backend->requestSelectPatch(ctx->value, g_browser.target_layer);
-                    break;
+                    selectPatchWithConfirmation(*ctx->backend, *ctx->nav, ctx->value, g_browser.target_layer);
+                    return;
                 case 3:
                     if (g_browser.page > 0) --g_browser.page;
                     break;

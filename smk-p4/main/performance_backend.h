@@ -98,6 +98,8 @@ public:
     virtual uint16_t patchCount() const=0;
     virtual uint16_t patchAt(uint16_t index) const=0;
     virtual bool patchInfo(uint16_t index,PatchInfo& info,uint32_t now_ms)=0;
+    virtual bool patchHasUnsavedEdits() const { return false; }
+    virtual bool discardEditsAndSetPatch(uint16_t, uint32_t) { return false; }
     virtual bool setPatch(uint16_t id,uint32_t now_ms)=0;
     virtual bool setPerformanceRoutes(const performance::RouteConfiguration&, uint8_t) { return false; }
     virtual bool resetLegacyOffsets() { return false; }

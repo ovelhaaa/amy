@@ -599,10 +599,29 @@ public:
         info.id=patchAt(index); info.available=ready_;
         std::snprintf(info.name,sizeof(info.name),"%s",amy::kPatches[index].name); return true;
     }
+    bool patchHasUnsavedEdits() const override {
+#ifdef SMKP4_SOUND_EDITOR
+        return synthUnsaved() || fxUnsaved();
+#else
+        return false;
+#endif
+    }
+    bool discardEditsAndSetPatch(uint16_t id,uint32_t now_ms) override {
+#ifdef SMKP4_SOUND_EDITOR
+        if(saving_ || recalling_ || recall_wait_ || editPending() || fx_pending_)return false;
+        return queuePatch(id,now_ms);
+#else
+        (void)id;(void)now_ms;return false;
+#endif
+    }
     bool setPatch(uint16_t id,uint32_t now_ms) override {
 #ifdef SMKP4_SOUND_EDITOR
         if(recall_wait_ || (!recalling_ && unsaved()))return false;
 #endif
+        return queuePatch(id,now_ms);
+    }
+private:
+    bool queuePatch(uint16_t id,uint32_t now_ms) {
         if(!ready_ || busy() || amy::patchIndex(id)<0) return false;
         panic();
 #ifdef SMKP4_SOUND_EDITOR
@@ -620,6 +639,7 @@ public:
 #endif
         return accepted;
     }
+public:
     bool setPerformanceRoutes(const performance::RouteConfiguration& routes, uint8_t reset_positions) override {
 #ifdef SMKP4_SOUND_EDITOR
         if (!ready_ || busy() || saving_ || editPending() || edit_.compare || !edit_.available ||

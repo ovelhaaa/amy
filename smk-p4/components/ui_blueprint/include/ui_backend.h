@@ -112,6 +112,8 @@ public:
     virtual UiCommandResult requestParameterInt(const char* id, int32_t val) = 0;
     virtual UiCommandResult requestParameterBool(const char* id, bool val) = 0;
 
+    virtual bool patchNeedsDiscardConfirmation() const { return false; }
+    virtual UiCommandResult confirmPatchDiscard(uint16_t, uint8_t) { return {}; }
     virtual UiCommandResult requestSelectPatch(uint16_t patch_id, uint8_t target_layer = 0) = 0;
 
     struct RoutingSnapshot {

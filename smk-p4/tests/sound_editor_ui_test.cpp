@@ -607,6 +607,26 @@ int main(){
     assert(lv_dropdown_get_option_index(juno_catalog,"FM / Feedback")<0);
     std::puts("PASS 0.14.1 routing UI, V4 Save/Recall, Compare/Revert, Manual/Applied and MIDI bank override");
 
+    lv_obj_send_event(button(route_content,"CANCEL / BACK"),LV_EVENT_CLICKED,nullptr);
+    preview::pumpFrame(ui);
+    assert(next.requestParameterFloat("filter.cutoff_hz",2000).accepted());
+    next_apply();
+    const auto previous_patch=r.snapshot().patch_id;
+    auto* advance=button(ui.contentObject(),"NEXT >");
+    assert(advance);
+    lv_obj_send_event(advance,LV_EVENT_CLICKED,nullptr);
+    assert(button(ui.contentObject(),"DISCARD & LOAD"));
+    assert(!reboot.busy() && r.snapshot().patch_id==previous_patch);
+    lv_obj_send_event(button(ui.contentObject(),"CANCEL"),LV_EVENT_CLICKED,nullptr);
+    assert(!button(ui.contentObject(),"DISCARD & LOAD"));
+    assert(reboot.unsaved() && r.snapshot().edit.manual[edit::Cutoff]==2000);
+    lv_obj_send_event(advance,LV_EVENT_CLICKED,nullptr);
+    lv_obj_send_event(button(ui.contentObject(),"DISCARD & LOAD"),LV_EVENT_CLICKED,nullptr);
+    assert(reboot.busy());
+    next_apply();
+    assert(r.snapshot().patch_id!=previous_patch && !reboot.unsaved());
+    std::puts("PASS patch selector: cancel preserves edits, confirmed discard changes patch");
+
     assert(lv_mem_test()==LV_RESULT_OK);ui.shutdown();r.end();
     puts("PASS LVGL9.3: all 7 editor tabs, Effects screen, Gate G0 inventory audit, FM/LFO/Mod/FX owner confirmation, dirty guard, Save/Recall/reboot simulation, heap integrity");
 }

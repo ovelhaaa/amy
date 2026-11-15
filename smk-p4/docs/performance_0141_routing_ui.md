@@ -7,3 +7,7 @@ Os campos mínimo, máximo e profundidade aceitam edição numérica pelo teclad
 A UI informa **Waiting for Owner** até receber confirmação do token, da geração e do patch. Uma alteração concorrente de patch, geração ou configuração invalida o rascunho. Compare suspende a aplicação do rascunho. **Save Preset** persiste as rotas confirmadas.
 
 O teste LVGL usa os callbacks reais para editar o slot 6 de M7, selecionar Reverb Mix e S-Curve, rejeitar profundidade fora do domínio e verificar a alteração no barramento AMY após o ACK. O mesmo cenário cobre cancelamento, remoção, reentrada e geração obsoleta.
+
+## Troca de patch com edições pendentes
+
+No seletor Performance e no Patch Browser, escolher um patch com edições pendentes abre **Load Patch?**. **Cancel** fecha a confirmação e mantém o patch atual. **Discard & Load** autoriza o descarte para o destino exibido. Para guardar as alterações, cancele e use **User / Save As** antes de trocar. A confirmação só envia a solicitação de troca. O título do patch muda quando o snapshot do owner confirma a carga.

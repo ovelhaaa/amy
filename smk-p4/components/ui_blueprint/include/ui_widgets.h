@@ -8,6 +8,8 @@
 
 namespace smk::p4::ui {
 
+void selectPatchWithConfirmation(IUiBackend&, UiNavigationManager&, uint16_t, uint8_t);
+
 // Helper to create a clipped label with explicit font and color
 lv_obj_t* createLabel(lv_obj_t* parent, const char* text, int32_t x, int32_t y, int32_t w,
                       const lv_font_t* font = &lv_font_montserrat_14,

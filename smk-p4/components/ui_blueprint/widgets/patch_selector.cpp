@@ -11,6 +11,47 @@ struct PatchSelCtx {
 };
 } // namespace
 
+void selectPatchWithConfirmation(IUiBackend& backend, UiNavigationManager& nav, uint16_t patch, uint8_t layer) {
+    if (layer || !backend.patchNeedsDiscardConfirmation()) {
+        backend.requestSelectPatch(patch, layer);
+        return;
+    }
+    auto* root = lv_obj_create(nav.contentRoot());
+    if (!root) return;
+    lv_obj_remove_style_all(root);
+    lv_obj_set_size(root, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(root, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(root, LV_OPA_70, 0);
+    lv_obj_remove_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+    auto* panel = lv_obj_create(root);
+    applyPanelStyle(panel, true);
+    lv_obj_set_size(panel, 550, 180);
+    lv_obj_center(panel);
+    lv_obj_remove_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+    char heading[64];
+    std::snprintf(heading, sizeof(heading), "LOAD PATCH %03u?", unsigned(patch));
+    createLabel(panel, heading, 12, 10, 510);
+    createLabel(panel, "Unsaved changes to the current patch will be lost.", 12, 43, 510);
+    auto* status = createLabel(panel, "", 12, 70, 510);
+    auto* cancel = createActionButton(panel, "CANCEL", 12, 102, 150, 44, nullptr, nullptr);
+    auto* confirm = createActionButton(panel, "DISCARD & LOAD", 174, 102, 220, 44, nullptr, nullptr);
+    lv_obj_add_event_cb(cancel, [](lv_event_t* event) {
+        lv_obj_delete(static_cast<lv_obj_t*>(lv_event_get_user_data(event)));
+    }, LV_EVENT_CLICKED, root);
+    struct Context { IUiBackend* backend; lv_obj_t* root; lv_obj_t* status; uint16_t patch; uint16_t original; };
+    attachLvContext<Context>(confirm, {&backend, root, status, patch, backend.model().activePatch().id},
+        [](lv_event_t* event) {
+            const auto& ctx = *static_cast<Context*>(lv_event_get_user_data(event));
+            if (ctx.original != ctx.backend->model().activePatch().id) {
+                lv_label_set_text(ctx.status, "Current patch changed. Cancel and select again.");
+                return;
+            }
+            const auto result = ctx.backend->confirmPatchDiscard(ctx.patch, 0);
+            if (result.accepted()) lv_obj_delete(ctx.root);
+            else lv_label_set_text(ctx.status, result.notice ? result.notice : "Patch change unavailable.");
+        }, LV_EVENT_CLICKED);
+}
+
 lv_obj_t* createPatchSelectorCard(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav,
                                   int32_t x, int32_t y, int32_t w, int32_t h,
                                   PresentationLevel level) {
@@ -83,8 +124,7 @@ lv_obj_t* createPatchSelectorCard(lv_obj_t* parent, IUiBackend& backend, UiNavig
 #if defined(SMKP4_FULL_FACTORY_LIBRARY) || defined(CONFIG_SMKP4_FULL_FACTORY_LIBRARY)
             if(!ctx->backend->model().matchesBrowser(cat[next_idx]))return;
 #endif
-            ctx->backend->requestSelectPatch(cat[next_idx].id, 0);
-            ctx->nav->navigateTo(ctx->nav->currentScreen(), ctx->nav->subTab(ctx->nav->currentScreen()));
+            selectPatchWithConfirmation(*ctx->backend, *ctx->nav, cat[next_idx].id, 0);
         } else if (ctx->action == 2) {
             ctx->nav->navigateTo(ScreenId::PatchBrowser);
         } else if (ctx->action == 3) {
