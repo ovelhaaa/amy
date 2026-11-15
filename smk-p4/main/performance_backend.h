@@ -104,7 +104,15 @@ public:
     virtual bool patchInfo(uint16_t index,PatchInfo& info,uint32_t now_ms)=0;
     virtual bool patchHasUnsavedEdits() const { return false; }
     virtual bool discardEditsAndSetPatch(uint16_t, uint32_t) { return false; }
+    virtual bool discardEditsAndSetPatch(uint16_t id, uint32_t now_ms, uint8_t preserve_mask) {
+        (void)preserve_mask;
+        return discardEditsAndSetPatch(id, now_ms);
+    }
     virtual bool setPatch(uint16_t id,uint32_t now_ms)=0;
+    virtual bool setPatch(uint16_t id, uint32_t now_ms, uint8_t preserve_mask) {
+        (void)preserve_mask;
+        return setPatch(id, now_ms);
+    }
     virtual bool setPerformanceRoutes(const performance::RouteConfiguration&, uint8_t) { return false; }
     virtual bool resetLegacyOffsets() { return false; }
     virtual bool setMacro(uint8_t index,uint8_t value,uint32_t now_ms)=0;

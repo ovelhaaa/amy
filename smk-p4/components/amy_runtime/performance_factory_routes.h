@@ -71,9 +71,10 @@ inline bool valid(const RouteConfiguration& config, uint8_t patch_family, edit::
             // ROM routes may target topology-dependent parameters missing on this patch.
             if (candidate == Route{} || candidate == kFactoryRoutes[macro][slot]) continue;
             const auto domain = destinationDomain(candidate.destination);
-            if (!candidate.families || (candidate.families & ~destinationFamilies(candidate.destination)) ||
-                (candidate.families & family && candidate.destination < edit::Count &&
-                 !(available & edit::bit(candidate.destination))) ||
+            const auto dest_families = destinationFamilies(candidate.destination);
+            if (!candidate.families || (candidate.families & ~dest_families) ||
+                !(dest_families & family) ||
+                (candidate.destination < edit::Count && !(available & edit::bit(candidate.destination))) ||
                 !std::isfinite(candidate.minimum) || !std::isfinite(candidate.maximum) ||
                 !std::isfinite(candidate.depth) || candidate.minimum < domain.minimum ||
                 candidate.maximum > domain.maximum || candidate.minimum > candidate.maximum ||

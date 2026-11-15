@@ -3,6 +3,7 @@
 #include "output_context.h"
 #include "harmony.h"
 #include "juno_components.h"
+#include "performance_lock.h"
 #ifdef SMKP4_SOUND_EDITOR
 #include "arpeggiator.h"
 #endif
@@ -33,6 +34,7 @@ struct Snapshot {
     uint16_t requested_patch_id=kPatches[0].id;
     int32_t patch_error=0;
     uint32_t patch_changes=0, patch_failures=0;
+    uint8_t preserve_mask=0;
 };
 // All methods except commands() are called only by the owner. No I2S/LVGL here.
 class Runtime {
@@ -131,5 +133,6 @@ private:
     int16_t silent_pcm_[kBlockFrames*2]{};
 #endif
     uint32_t load_oom_baseline_=0;
+    uint8_t requested_preserve_mask_=0;
 };
 }

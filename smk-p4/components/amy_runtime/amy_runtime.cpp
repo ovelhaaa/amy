@@ -1,4 +1,5 @@
 #include "amy_runtime.h"
+#include "performance_factory_routes.h"
 #include <initializer_list>
 #include <cstring>
 #include <cmath>
@@ -507,6 +508,7 @@ void Runtime::apply(uint32_t now_ms) {
             commands_.panic(OutputReason::Patch); state_.generation=commands_.generation();
             usb_.commands.panic(); usb_generation_=usb_.commands.generation();
             state_.requested_patch_id=c.id; state_.patch_error=0;
+            requested_preserve_mask_=c.preserve_mask;
             state_.patch_state=PatchState::Requested;
             publishOutput(OutputReason::Patch);
             return;
@@ -667,6 +669,13 @@ void Runtime::loadPendingPatch() {
     load_oom_baseline_=amy_get_oom_count();
     state_.patch_state=PatchState::Loading;
     publishOutput(OutputReason::Patch);
+    const uint8_t mask=requested_preserve_mask_;
+    const fx::FxConfig prev_fx=state_.fx.config;
+    const harmony::Config prev_harmony=state_.harmony;
+#ifdef SMKP4_SOUND_EDITOR
+    const performance::Positions prev_macros=state_.edit.performance_macros;
+    const performance::RouteConfiguration prev_routes=state_.edit.performance_routes;
+#endif
     const bool loaded=loadReusable(state_.requested_patch_id);
     const bool cancelled=commands_.generation()!=state_.generation ||
         usb_.commands.generation()!=usb_generation_;
@@ -682,12 +691,45 @@ void Runtime::loadPendingPatch() {
     } else {
         state_.patch_id=state_.requested_patch_id;bank_=0;
         state_.patch_state=PatchState::Ready;++state_.patch_changes;
-        state_.fx.config=fx::FxConfig{};
-        state_.fx.dirty=false;
-        for (auto& source : state_.fx.performance_sources) source = 0;
+        state_.preserve_mask=mask;
+        if(mask & perf_lock::Fx) {
+            state_.fx.config=prev_fx;
+            state_.fx.dirty=true;
+        } else {
+            state_.fx.config=fx::FxConfig{};
+            state_.fx.dirty=false;
+            for (auto& source : state_.fx.performance_sources) source = 0;
+        }
+        if(mask & perf_lock::Harmony) {
+            state_.harmony=prev_harmony;
+        } else {
+            state_.harmony=harmony::Config{};
+        }
 #ifdef SMKP4_SOUND_EDITOR
         last_sync_ms_=0.0f;
         captureEdit();
+        if(mask & perf_lock::Macros) {
+            if(performance::valid(prev_routes, state_.edit.family, state_.edit.available)) {
+                state_.edit.performance_routes=prev_routes;
+                state_.edit.performance_macros=prev_macros;
+            }
+        }
+        if(mask & perf_lock::Arp) {
+            releaseArp();
+            arp_.stop();
+        } else {
+            releaseArp();
+            arp_.stop();
+            arp_.configure(arp::Action::Enable, 0);
+            arp_.configure(arp::Action::Mode, uint8_t(arp::Mode::Up));
+            arp_.configure(arp::Action::Rate, uint8_t(arp::Rate::Sixteenth));
+            arp_.configure(arp::Action::Octaves, 2);
+            arp_.configure(arp::Action::Gate, 65);
+            arp_.configure(arp::Action::Swing, 54);
+            arp_.configure(arp::Action::Latch, 0);
+            arp_.configure(arp::Action::Restart, 0);
+        }
+        publishArp();
         applyPerformanceFx();
         serviceDelay(true);
 #else

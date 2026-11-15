@@ -630,31 +630,41 @@ public:
 #endif
     }
     bool discardEditsAndSetPatch(uint16_t id,uint32_t now_ms) override {
+        return discardEditsAndSetPatch(id, now_ms, 0);
+    }
+    bool discardEditsAndSetPatch(uint16_t id,uint32_t now_ms,uint8_t preserve_mask) override {
 #ifdef SMKP4_SOUND_EDITOR
         if(saving_ || recalling_ || recall_wait_ || editPending() || fx_pending_)return false;
-        return queuePatch(id,now_ms);
+        return queuePatch(id,now_ms,preserve_mask);
 #else
-        (void)id;(void)now_ms;return false;
+        (void)id;(void)now_ms;(void)preserve_mask;return false;
 #endif
     }
     bool setPatch(uint16_t id,uint32_t now_ms) override {
+        return setPatch(id, now_ms, 0);
+    }
+    bool setPatch(uint16_t id,uint32_t now_ms,uint8_t preserve_mask) override {
 #ifdef SMKP4_SOUND_EDITOR
         if(recall_wait_ || (!recalling_ && unsaved()))return false;
 #endif
-        return queuePatch(id,now_ms);
+        return queuePatch(id,now_ms,preserve_mask);
     }
 private:
-    bool queuePatch(uint16_t id,uint32_t now_ms) {
+    bool queuePatch(uint16_t id,uint32_t now_ms,uint8_t preserve_mask=0) {
+        (void)preserve_mask;
         if(!ready_ || busy() || amy::patchIndex(id)<0) return false;
         panic();
 #ifdef SMKP4_SOUND_EDITOR
         if(!recalling_){
-            desired_fx_=original_fx_=fx::FxConfig{};
+            if(!(preserve_mask & perf_lock::Fx)) {
+                desired_fx_=original_fx_=fx::FxConfig{};
+            }
         }
 #endif
         amy::Command request{amy::CommandType::Patch,id,0,0,0,now_ms};
 #ifdef SMKP4_SOUND_EDITOR
         request.preset_recall=recalling_;
+        request.preserve_mask=preserve_mask;
 #endif
         const bool accepted=commands_.push(request);
 #ifdef SMKP4_UNIFIED_ENGINE

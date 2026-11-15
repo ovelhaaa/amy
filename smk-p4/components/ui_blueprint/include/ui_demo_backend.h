@@ -51,6 +51,10 @@ public:
     UiCommandResult requestParameterInt(const char* id, int32_t val) override;
     UiCommandResult requestParameterBool(const char* id, bool val) override;
     UiCommandResult requestSelectPatch(uint16_t patch_id, uint8_t target_layer = 0) override;
+    UiCommandResult requestSelectPatch(uint16_t patch_id, uint8_t target_layer, uint8_t preserve_mask) override {
+        (void)preserve_mask;
+        return requestSelectPatch(patch_id, target_layer);
+    }
 
     UiCommandResult requestNoteOn(uint8_t note, uint8_t velocity) override;
     UiCommandResult requestNoteOff(uint8_t note, uint32_t token = 0) override;

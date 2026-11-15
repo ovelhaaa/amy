@@ -133,7 +133,15 @@ public:
 
     virtual bool patchNeedsDiscardConfirmation() const { return false; }
     virtual UiCommandResult confirmPatchDiscard(uint16_t, uint8_t) { return {}; }
+    virtual UiCommandResult confirmPatchDiscard(uint16_t id, uint8_t layer, uint8_t preserve_mask) {
+        (void)preserve_mask;
+        return confirmPatchDiscard(id, layer);
+    }
     virtual UiCommandResult requestSelectPatch(uint16_t patch_id, uint8_t target_layer = 0) = 0;
+    virtual UiCommandResult requestSelectPatch(uint16_t patch_id, uint8_t target_layer, uint8_t preserve_mask) {
+        (void)preserve_mask;
+        return requestSelectPatch(patch_id, target_layer);
+    }
 
     struct RoutingSnapshot {
         performance::Routes routes{};

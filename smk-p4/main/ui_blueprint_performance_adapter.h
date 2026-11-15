@@ -47,7 +47,9 @@ public:
     const char* tempoSaveNotice() const override { return tempo_save_notice_; }
     bool patchNeedsDiscardConfirmation() const override { return backend_.patchHasUnsavedEdits(); }
     ui::UiCommandResult confirmPatchDiscard(uint16_t, uint8_t) override;
+    ui::UiCommandResult confirmPatchDiscard(uint16_t id, uint8_t layer, uint8_t preserve_mask) override;
     ui::UiCommandResult requestSelectPatch(uint16_t, uint8_t layer=0) override;
+    ui::UiCommandResult requestSelectPatch(uint16_t id, uint8_t layer, uint8_t preserve_mask) override;
     ui::UiCommandResult requestNoteOn(uint8_t, uint8_t) override;
     ui::UiCommandResult requestNoteOff(uint8_t, uint32_t token=0) override;
     void releaseAllUiNotes() override;

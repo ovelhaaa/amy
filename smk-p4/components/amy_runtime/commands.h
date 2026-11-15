@@ -14,6 +14,7 @@ struct Command {
     uint8_t channel=0;
     bool preset_recall=false;
     uint8_t version=0;
+    uint8_t preserve_mask=0;
 };
 // Exactly one producer per queue (UI or USB client), and one AMY owner.
 // Touch Off and every Panic use independent atomic latches.

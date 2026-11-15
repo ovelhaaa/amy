@@ -442,17 +442,23 @@ submit:
     return result(UiCommandState::Requested,id,"MASTER REQUESTED; WAIT SNAPSHOT");
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestSelectPatch(uint16_t id,uint8_t layer) {
+    return requestSelectPatch(id, layer, 0);
+}
+UiCommandResult UiBlueprintPerformanceAdapter::requestSelectPatch(uint16_t id,uint8_t layer,uint8_t preserve_mask) {
     if(layer || !isPatchSelectable(id)) return result(UiCommandState::Unsupported,"perf.patch_id","PATCH/LAYER UNAVAILABLE");
     if(!usable()) return result(UiCommandState::Rejected,"perf.patch_id","ENGINE/SNAPSHOT UNAVAILABLE");
     if (patchNeedsDiscardConfirmation())
         return result(UiCommandState::Rejected,"perf.patch_id","UNSAVED CHANGES. CONFIRM DISCARD IN PATCH SELECTOR.");
     releaseAllUiNotes();
-    if(!backend_.setPatch(id,now_ms_)) return result(UiCommandState::Rejected,"perf.patch_id","PATCH REJECTED; NOTES CANCELED");
+    if(!backend_.setPatch(id,now_ms_,preserve_mask)) return result(UiCommandState::Rejected,"perf.patch_id","PATCH REJECTED; NOTES CANCELED");
     patch_={true,id,backend_.stateRevision(),now_ms_};
     return result(UiCommandState::Requested,"perf.patch_id","PATCH REQUESTED; WAIT SNAPSHOT");
 }
 UiCommandResult UiBlueprintPerformanceAdapter::confirmPatchDiscard(uint16_t id, uint8_t layer) {
-    if (layer || !usable() || !isPatchSelectable(id) || !backend_.discardEditsAndSetPatch(id, now_ms_))
+    return confirmPatchDiscard(id, layer, 0);
+}
+UiCommandResult UiBlueprintPerformanceAdapter::confirmPatchDiscard(uint16_t id, uint8_t layer, uint8_t preserve_mask) {
+    if (layer || !usable() || !isPatchSelectable(id) || !backend_.discardEditsAndSetPatch(id, now_ms_, preserve_mask))
         return result(UiCommandState::Rejected, "perf.patch_id", "PATCH CHANGE UNAVAILABLE. TRY AGAIN.");
     releaseAllUiNotes();
     patch_ = {true, id, backend_.stateRevision(), now_ms_};
