@@ -5,7 +5,7 @@
 #include "fx_state.h"
 #include <atomic>
 namespace smk::p4::amy {
-enum class CommandType : uint8_t { NoteOn, Patch, Master, NoteOff, Control, Bend, Harmony };
+enum class CommandType : uint8_t { NoteOn, Patch, Master, NoteOff, Control, Bend, Harmony, Arp };
 struct Command {
     CommandType type{};
     uint16_t id=0;
@@ -13,16 +13,18 @@ struct Command {
     uint32_t generation=0, token=0, timestamp_ms=0;
     uint8_t channel=0;
     bool preset_recall=false;
+    uint8_t version=0;
 };
 // Exactly one producer per queue (UI or USB client), and one AMY owner.
 // Touch Off and every Panic use independent atomic latches.
 template<unsigned Capacity>
 class CommandQueue {
 public:
-    bool push(Command c) {
+    bool push(Command c) { return pushForGeneration(c,generation()); }
+    bool pushForGeneration(Command c,uint32_t expected) {
         const uint32_t w=write_.load(std::memory_order_relaxed);
         if(w-read_.load(std::memory_order_acquire)>=Capacity) { ++overflows_; return false; }
-        c.generation=generation(); slots_[w%Capacity]=c;
+        c.generation=expected; slots_[w%Capacity]=c;
         write_.store(w+1,std::memory_order_release); return true;
     }
     bool pop(Command& c) {

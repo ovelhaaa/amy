@@ -3,11 +3,15 @@
 #include "output_context.h"
 #include "harmony.h"
 #include "juno_components.h"
+#ifdef SMKP4_SOUND_EDITOR
+#include "arpeggiator.h"
+#endif
 namespace smk::p4::amy {
 enum class PatchState : uint8_t { Ready, Requested, Loading, Verifying, Failed };
 struct Snapshot {
 #ifdef SMKP4_SOUND_EDITOR
     edit::State edit;
+    arp::Status arp;
     bool storage_quiet=false;
 #endif
     fx::FxState fx;
@@ -47,6 +51,11 @@ public:
 private:
     void applyFx(uint32_t now_ms);
 #ifdef SMKP4_SOUND_EDITOR
+    void applyArp(const Command& c,bool usb,uint32_t now_ms);
+    void serviceArp();
+    void releaseArp();
+    arp::Engine arp_;
+    uint32_t arp_identity_=0,arp_started_block_=0,arp_gate_blocks_=0;
     void captureEdit();
     void applyEdit(uint32_t now_ms);
     void applyPerformanceFx();
@@ -73,9 +82,10 @@ private:
     void note(unsigned slot,uint8_t velocity);
     void release(unsigned slot);
     void cancelUsb();
-    unsigned findGroup(bool usb,uint8_t channel,uint8_t input) const;
+    enum class NoteOrigin : uint8_t { Touch, UsbDirect, Arpeggiator };
+    unsigned findGroup(NoteOrigin origin,uint8_t channel,uint8_t input) const;
     void releaseGroup(unsigned group);
-    void startGroup(bool usb,const Command& c,uint32_t now_ms);
+    unsigned startGroup(NoteOrigin origin,const Command& c,uint32_t now_ms);
     void applyUsb(uint32_t now_ms);
     void tune(unsigned slot);
     bool loadReusable(uint16_t patch_id);
@@ -92,7 +102,8 @@ private:
         uint32_t token=0, started_ms=0;
     } voices_[kVoices]{};
     struct Group {
-        bool used=false,usb=false,held=false,sustained=false;
+        bool used=false,held=false,sustained=false;
+        NoteOrigin origin=NoteOrigin::Touch;
         uint8_t channel=0,input=0,count=0,notes[4]{},slots[4]{};
         uint16_t live=0;
         uint32_t identity=0,token=0,generation=0,started_ms=0;
