@@ -11,12 +11,20 @@ int main(int argc,char** argv) {
     assert(argc==2);
     auto* output=std::fopen(argv[1],"wb");
     assert(output);
-    for(uint16_t patch:{4,135}) {
+    for(bool wet:{false,true}) for(uint16_t patch:{4,135}) {
         assert(runtime.begin());
         assert(runtime.commands().push({amy::CommandType::Patch,patch}));
         runtime.apply(0);
         runtime.loadPendingPatch();
         assert(runtime.snapshot().patch_id==patch);
+        if(wet) {
+            fx::FxRequest request{};
+            request.config.delay_time_ms=80;
+            request.config.delay_mix=0.35f;
+            request.config.chorus_mode=1;
+            request.config.reverb_mix=0.18f;
+            assert(runtime.commands().fx.push(request));
+        }
         my_srand48(123);
         int peak=0;
         for(unsigned i=0;i<100;++i) {

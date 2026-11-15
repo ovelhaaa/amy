@@ -1,12 +1,52 @@
 #include "arpeggiator.h"
+#include "tap_tempo.h"
+#include "musical_division.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdint>
+#include <cmath>
 
 using namespace smk::p4::arp;
 namespace tempo = smk::p4::tempo;
 
 int main() {
+    tempo::Clock global;
+    assert(!global.setBpm(39) && !global.setBpm(241) && global.position().revision==0);
+    assert(global.setBpm(120) && global.position().revision==0);
+    global.advance(48000);
+    assert(global.position().tick()==48);
+    assert(global.setBpm(90) && global.position().revision==1 && global.position().tick()==48);
+    for(unsigned hour=0;hour<1000;++hour) global.advance(48000*3600);
+    assert(global.position().tick()==48+1000*3600*36);
+    tempo::Position near_wrap{UINT64_MAX-100000,0,120};
+    Clock rollover;
+    assert(rollover.step(Rate::Quarter,50,near_wrap,100)==24000);
+    near_wrap.phase+=60ull*48000*25*24-1;
+    assert(!rollover.due(near_wrap));
+    ++near_wrap.phase;
+    assert(rollover.due(near_wrap));
+
+    tempo::TapTempo taps;
+    uint32_t timestamp=UINT32_MAX-800;
+    assert(taps.tap(timestamp)==0);
+    assert(taps.tap(timestamp+50)==0);
+    assert(taps.tap(timestamp+=500)==0);
+    assert(taps.tap(timestamp+=505)==0);
+    assert(taps.tap(timestamp+=495)==120);
+    assert(taps.tap(timestamp+=300)==0);
+    assert(taps.tap(timestamp+=2000)==0);
+    for(unsigned i=0;i<2;++i) assert(taps.tap(timestamp+=1000)==0);
+    assert(taps.tap(timestamp+=1000)==60);
+
+    constexpr float durations[]{500,375,250,500.0f/3,187.5f,125,250.0f/3,62.5f};
+    for(unsigned i=0;i<unsigned(tempo::Division::Count);++i)
+        assert(std::abs(tempo::durationMs(tempo::Division(i),120)-durations[i])<0.001f);
+    assert(tempo::durationMs(tempo::Division::Quarter,40)==1500);
+    assert(tempo::durationMs(tempo::Division::DottedEighth,40)==1125);
+    assert(tempo::durationMs(tempo::Division::Quarter,60)==1000);
+    assert(tempo::durationMs(tempo::Division::ThirtySecond,240)==31.25f);
+    assert(tempo::durationMs(tempo::Division::Count,120)==0);
+    std::puts("PASS global tempo phase, wrap, Tap Tempo and rhythmic divisions");
     uint64_t max_lateness_ns=0;
     for(unsigned bpm:{40,60,90,120,180,240}) {
         for(unsigned r=0;r<=unsigned(Rate::ThirtySecond);++r) {
@@ -105,6 +145,18 @@ int main() {
     arp.prepare();
     assert(arp.status().held_count==8 && arp.status().length==32 && arp.status().rejected==1);
     arp.clearChannel(0);arp.prepare();assert(!arp.status().length);
+    arp.configure(Action::Octaves,1);
+    assert(arp.configure(Action::Restart,1));
+    arp.on({60,100,0,3});arp.on({64,100,0,3});
+    assert(next().pitch==60);
+    assert(next().pitch==64);
+    arp.off({60,0,0,3});arp.off({64,0,0,3});
+    arp.on({72,100,0,3});arp.on({76,100,0,3});arp.on({72,80,0,3});
+    assert(next().pitch==72);
+    arp.off({72,0,0,3});
+    assert(arp.configure(Action::ClearLatch,1));
+    arp.prepare();
+    assert(arp.status().length==1 && arp.status().pattern[0]==76);
     arp.configure(Action::Mode,uint8_t(Mode::Random));
     arp.configure(Action::Octaves,1);
     for(unsigned run=0;run<2;++run) {

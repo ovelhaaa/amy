@@ -87,6 +87,14 @@ static void auditInventory(UiBlueprintPerformanceAdapter& a, ApplyFn&& apply) {
         const FeatureStatus st = a.parameterStatus(d.id);
         assert(st != FeatureStatus::Demo); // Real adapter never reports Demo status
         if (st == FeatureStatus::Available) {
+            if (std::strcmp(d.id,"fx.delay.division")==0 && a.model().getInt("fx.delay.mode")==0) {
+                assert(!a.isParameterEditable(d.id));
+                continue;
+            }
+            if (std::strcmp(d.id,"fx.delay.time_ms")==0 && a.model().getInt("fx.delay.mode")==1) {
+                assert(!a.isParameterEditable(d.id));
+                continue;
+            }
             if (d.capabilities & kCapReadOnly) {
                 assert(!a.isParameterEditable(d.id));
                 continue;

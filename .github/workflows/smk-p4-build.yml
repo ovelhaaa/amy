@@ -2,7 +2,7 @@ name: SMK-P4 Firmware Build
 
 on:
   push:
-    branches: [main, feature/smk-p4-smk25-integration-0142, feature/smk-p4-arpeggiator-015]
+    branches: [main, feature/smk-p4-smk25-integration-0142, feature/smk-p4-arpeggiator-015, feature/smk-p4-global-tempo-0151]
     paths: ['smk-p4/**', 'smk-s3/**', 'src/**', 'shared/**', 'tests/*smk_link*', 'tests/*smk_touch_note*', '.github/workflows/smk-p4-build.yml']
   pull_request:
     branches: [main]
@@ -42,6 +42,9 @@ jobs:
           git worktree add --detach build/arp_015_baseline f4eeb0d8d450a9bd06a3553415c151d28ed3d9f3
           if ($LASTEXITCODE) { throw 'Could not prepare the 0.14.2 PCM baseline' }
           ./smk-p4/tests/run_arp_015.ps1 -Runtime -BaselineRoot build/arp_015_baseline
+          git worktree add --detach build/tempo_015_baseline 2db72a01292f1d93cc25301e294f3697afe97019
+          if ($LASTEXITCODE) { throw 'Could not prepare the 0.15 PCM baseline' }
+          ./smk-p4/tests/run_arp_015.ps1 -Runtime -BaselineRoot build/tempo_015_baseline
           ./smk-p4/tests/run_sound_editor.ps1
           python smk-p4/tests/audit_patch_library.py --check
           python smk-p4/tests/summarize_polyphony.py

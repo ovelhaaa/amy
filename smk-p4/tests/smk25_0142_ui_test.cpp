@@ -119,16 +119,22 @@ void testSmk25LegacyUi(amy::Runtime& runtime,LocalAmyPerformanceBackend& backend
     assert(ui.navigation().navigateTo(ScreenId::Arpeggiator,10));
     content=ui.contentObject();
     assert(adapter.parameterStatus("arp.bpm")==FeatureStatus::Available);
+    assert(adapter.parameterStatus("perf.bpm")==FeatureStatus::Available);
     assert(!adapter.isParameterEditable("arp.clock_source"));
     assert(adapter.requestParameterInt("arp.bpm",90).state==UiCommandState::Requested);
     assert(adapter.model().getInt("arp.bpm")==120);
     frame();
-    assert(adapter.model().getInt("arp.bpm")==90);
-    click(content,"TAP TEMPO");
-    preview::g_sim_tick_ms+=500;
-    click(content,"TAP TEMPO");
+    assert(adapter.model().getInt("perf.bpm")==90);
+    click(content,"TAP");
+    click(ui.rootObject(),findButton(ui.rootObject()," 90 BPM INT")?" 90 BPM INT":"*90 BPM INT");
+    for(unsigned i=0;i<3;++i) {
+        preview::g_sim_tick_ms+=500;
+        auto* panel=lv_obj_get_child(ui.rootObject(),-1);
+        click(panel,"TAP");
+    }
     frame();
     assert(adapter.model().getInt("arp.bpm")==120);
+    click(lv_obj_get_child(ui.rootObject(),-1),"X");
     midi(0x90,60,100);
     assert(runtime.snapshot().arp.sounding && runtime.snapshot().arp.held_count==1);
     for(unsigned i=0;i<amy::kCommandCapacity;++i)
@@ -142,6 +148,19 @@ void testSmk25LegacyUi(amy::Runtime& runtime,LocalAmyPerformanceBackend& backend
     midi(0x99,47,100);
     assert(std::strcmp(adapter.midiLearnStatus(),"ARP OFF")==0);
     midi(0x89,47,0);
+    assert(adapter.requestParameterInt("perf.bpm",40).accepted());
+    frame();
+    assert(adapter.requestParameterInt("fx.delay.mode",1).accepted());
+    frame();
+    midi(0xb0,30,0); // pickup at 1/8, the longest valid division at 40 BPM
+    midi(0xb0,30,13); // close to the 1/8 to 1/8T boundary
+    assert(runtime.snapshot().fx.config.delay_division==tempo::Division::Eighth);
+    midi(0xb0,30,17);
+    assert(runtime.snapshot().fx.config.delay_division==tempo::Division::EighthTriplet);
+    midi(0xb0,30,13); // stay on the selected division during jitter
+    assert(runtime.snapshot().fx.config.delay_division==tempo::Division::EighthTriplet);
+    assert(adapter.requestParameterInt("fx.delay.mode",0).accepted());
+    frame();
     midi(0x99,50,100);
     assert(ui.navigation().currentScreen()==ScreenId::MidiSettings);
     assert(ui.navigation().subTab(ScreenId::MidiSettings)==1);
@@ -210,7 +229,7 @@ void testSmk25LegacyUi(amy::Runtime& runtime,LocalAmyPerformanceBackend& backend
     adapter.midiPerformanceAction(Action::RestoreLegacy,0);
     adapter.midiPerformanceAction(Action::RestoreLegacy,0);
     adapter.midiPerformanceAction(Action::NextBank,0);
-    constexpr unsigned eqTarget=performance::kMidiTargetCount-1;
+    constexpr unsigned eqTarget=performance::kMidiTargetCount-2;
     assert(adapter.setMidiCustomTarget(0,eqTarget));
     adapter.midiPerformanceAction(Action::SaveProfile,0);
     frame();
@@ -223,4 +242,9 @@ void testSmk25LegacyUi(amy::Runtime& runtime,LocalAmyPerformanceBackend& backend
     assert(adapter.midiCustomTarget(0)==eqTarget);
     adapter.midiKnobText(0,binding,sizeof(binding));
     assert(std::strstr(binding,"CC29") && std::strstr(binding,"EQ LOW"));
+    assert(adapter.setMidiCustomTarget(0,performance::kMidiTargetCount-1));
+    assert(std::strstr(adapter.midiTargetName(performance::kMidiTargetCount-1),"TEMPO"));
+    midi(0xb0,29,0);
+    midi(0xb0,29,64);
+    assert(runtime.snapshot().arp.tempo.bpm==141);
 }

@@ -21,6 +21,7 @@ try {
     $wrap = @('-Wl,--wrap=malloc', '-Wl,--wrap=calloc', '-Wl,--wrap=realloc', '-Wl,--wrap=free')
 
     $testsToRun = @()
+    if ($TestName -eq "all" -or $TestName -eq "tempo") { $testsToRun += "delay_sync_0151_test" }
     if ($TestName -eq "all" -or $TestName -eq "gate_a") { $testsToRun += "gate_a_fx_init_test" }
     if ($TestName -eq "all" -or $TestName -eq "gate_b_tx") { $testsToRun += "gate_b_transaction_test" }
     if ($TestName -eq "all" -or $TestName -eq "gate_c_save") { $testsToRun += "gate_c_save_semantics_test" }

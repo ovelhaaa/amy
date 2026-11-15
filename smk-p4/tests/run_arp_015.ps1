@@ -34,7 +34,7 @@ try {
             $current = (Get-FileHash build/arp_015/current.pcm).Hash
             $baseline = (Get-FileHash build/arp_015/baseline.pcm).Hash
             if ($current -ne $baseline) { throw 'ARP-off PCM differs from baseline' }
-            Write-Output "PASS ARP-off PCM vs 0.14.2: $current"
+            Write-Output "PASS ARP-off PCM vs $BaselineRoot : $current"
         }
     }
 } finally { Pop-Location }
