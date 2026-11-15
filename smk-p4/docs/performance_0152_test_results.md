@@ -18,6 +18,7 @@
 | **M4** | USB Host MIDI | `smk-p4/tests/run_usb.ps1` | **PASS** | Enumeration, descriptors, note on/off, disconnect/reconnect |
 | **M4** | Firmware Build (Editor) | `pio run -d smk-p4 -e guition-editor-8 -j 8` | **PASS** | PlatformIO release compile succeeded in 160.88s |
 | **M4** | Firmware Build (Bench) | `pio run -d smk-p4 -e guition-editor-8-bench -j 8` | **PASS** | PlatformIO release compile succeeded in 137.56s |
+| **M4** | Hardware Flash & Readback | `esptool write-flash 0x10000 COM13` | **PASS** | Hash verificado: F90DF8D9...; stack_free_bytes=3584 B |
 
 ---
 

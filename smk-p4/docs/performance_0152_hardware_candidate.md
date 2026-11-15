@@ -26,22 +26,22 @@ The following candidate binaries were built on Windows using PlatformIO with the
 
 ---
 
-## 2. Flashing Authorization Protocol
+## 2. Flashing & Verification Log · 2026-11-15
 
-Per repository rules:
-> **Do not flash firmware without explicit user authorization tied to the exact binary SHA-256.**
-
-Once the user approves flashing with the desired profile's SHA-256, the following command can be executed to flash the Guition board:
-
-```powershell
-# Example for guition-editor-8-bench (replace COMx with actual port):
-python -m esptool --chip esp32p4 -p COMx -b 460800 write_flash 0x10000 smk-p4/.pio/build/guition-editor-8-bench/firmware.bin
-```
-
-Or via PlatformIO:
-```powershell
-& C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-editor-8-bench -t upload --upload-port COMx
-```
+- **Authorization:** Explicit user authorization received for `guition-editor-8-bench` with SHA-256 `F90DF8D9D840DE42B6B98D9016CC6EFB39044B2319B1E810DB7D79CE4713CCB3`.
+- **Target Device:** Guition JC4880P433 (ESP32-P4 revision v1.3) on `COM13`.
+- **Pre-Flash Backup:** Full 16 MiB flash backup captured to `build/backups/p4-0152-com13-current/flash-before.bin` in 133.7 seconds.
+- **Flashing:** Wrote 1,435,536 bytes (784,762 compressed) at `0x00010000` via esptool v5.1.0 in 8.0 seconds (1433.8 kbit/s).
+- **Readback Verification:** Read 1,435,536 bytes from `0x00010000` to `flash-after-app.bin`. SHA-256 confirmed byte-identical:
+  ```text
+  F90DF8D9D840DE42B6B98D9016CC6EFB39044B2319B1E810DB7D79CE4713CCB3 (PASS)
+  ```
+- **Live Boot & Telemetry Observation:**
+  - **RAM Admission:** 357,763 B internal RAM free (5,507 B margin above 352,256 B required threshold).
+  - **Audio Owner Stack:** `stack_free_bytes = 3584 B` (recovered from 932 B in 0.15.1, an increase of 2,652 B free margin).
+  - **I2S Audio Output:** `AUDIO I2S_PRODUCING frames_written=1981952 blocks_rendered=7745 render_avg_us=239 render_max_us=522 render_deadlines=0 write_errors=0 timeouts=0`.
+  - **Display / LVGL:** `LVGL free=88512 largest=88152 peak_used=38440 fragmentation=1%`.
+  - **USB Host:** `USB state=1 connects=0 disconnects=0 errors=0 parse_errors=0`.
 
 ---
 
