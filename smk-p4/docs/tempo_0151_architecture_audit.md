@@ -1,0 +1,14 @@
+# SMK-P4 0.15.1 · Auditoria da base 0.15
+
+Base `2db72a01292f1d93cc25301e294f3697afe97019`. A especificação raiz descreve o SMK-S3 (30–300 BPM, display 284×76). Esta revisão segue o escopo explícito do SMK-P4 (40–240 BPM, Guition 800×480) e mantém os perfis S3.
+
+1. **BPM.** O owner de áudio aplica `arp::Action::Bpm` à configuração do arpejador. `perf.bpm` está planejado na UI live e o Tap da tela ARP usa um único intervalo de `lv_tick_get()`.
+2. **Duração.** `arp_clock.h` converte as seis divisões em ticks de 24 PPQN. O acumulador inteiro usa a taxa de 48 kHz, com pesos em centésimos para Swing e Gate.
+3. **Avanço.** `Runtime::render()` chama `serviceArp()` antes do bloco AMY. O próximo passo é emitido na primeira fronteira de bloco que cruza o prazo, com retenção do excedente. O Gate termina em blocos e a fase só avança com padrão. Stop e Panic descartam o padrão e reiniciam a fase local.
+4. **FX.** `LocalPerformanceBackend` enfileira configuração manual com geração e token. O runtime valida no owner, compõe o estado efetivo e configura o bus zero no limite de bloco. As linhas do echo são reservadas na inicialização.
+5. **Macros.** `performance::effectiveFx()` em `performance_factory_routes.h` aplica contribuições sobre a base manual. `sound_edit_runtime.inc` entrega a composição ao AMY.
+6. **Manual e aplicado.** `FxState::config` é a configuração confirmada e `FxState::applied` a composição efetiva. A UI recebe cópia via mailbox. Bypass programa nível de echo zero e tempo nominal de 350 ms.
+7. **Registro.** `fx_state.h` codifica FX12 V1 em 32 bytes com três bytes reservados (21–23), assinatura ROM e CRC dos primeiros 28 bytes. `user_preset_fx_nvs.h` lê e grava os registros FX. Dois bytes reservados comportam modo e divisão numa V2 sem aumentar o registro.
+8. **Atomicidade.** `preset_transaction.h` prepara Synth e FX nos bancos inativos, verifica o readback e publica o marcador V4 por último. O carregamento valida ambos os registros referenciados e pode recuperar o par anterior quando o mais novo é inválido.
+9. **DSP.** `config_echo()` converte ms para samples inteiros e escreve `fixed_delay` imediatamente. `delay_line_in_out_fixed_delay()` lê o tap por índice circular com máscara e usa esse mesmo tap no feedback. A alocação de 65.536 samples exige um sample de margem para o filtro. A faixa pública de 10–1.000 ms deve ser preservada. Mudanças devem ocorrer no owner, somente quando necessário, com tratamento de wet/feedback verificado separadamente. Não há interpolação nativa do tap.
+10. **UI.** A faixa de 42 px contém badge, título, patch, MIDI, áudio, vozes, PERF e PANIC. Reduzir o espaço de título para abrir um controle compacto de BPM. O painel de ajustes pode ocupar parte da área central, mantendo as regiões de navegação e Panic. A fase publicada pelo owner fornece o pulso visual.
