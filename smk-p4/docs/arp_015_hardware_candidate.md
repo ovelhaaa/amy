@@ -64,3 +64,15 @@ registrar o log e voltar à imagem bench 0.14.2 conhecida, com autorização
 para seu SHA-256 e preservação da NVS. A referência é o binário
 `aa4d6fdaee8043d2fe438281d5babb254c47e4e3011a4f1d9a6b7e46340ea3db`
 do commit-base `f4eeb0d8d450a9bd06a3553415c151d28ed3d9f3`.
+
+## Gravação e teste em repouso — 2026-11-15
+
+- **PASS — gravação e verificação.** Guition ESP32-P4 rev. 1.3, COM13, USB 303A:1001, MAC 80:F1:B2:D3:CC:86. O esptool 5.1.0 gravou e verificou somente os 1.421.312 bytes da aplicação em 0x10000, com autorização vinculada ao SHA-256 do candidato bench (`a11c3a0cd71b989677412bd5c39a01149b1453fac987bf88d5d982f31002b3fc`).
+- **PASS — backup e NVS.** Backup integral de 16 MiB em `build/backups/p4-015-com13-20261115T052202746Z/flash-before.bin`. A partição NVS foi preservada byte a byte (SHA-256 `2e9e858b22c13f60d3c8c9a8bafc2a23f85925b69a1be43bf176e0429b3bd04c` antes e depois).
+- **PASS — admissão do AMY.** 358.003 B livres de RAM interna e maior bloco de 245.760 B na admissão (exigido 352.256 B). Margem de admissão de 5.747 B (`admitted=1`). Em repouso: 133.383 B livres de RAM interna (mínimo 133.383 B, maior 61.440 B), 30.482.072 B livres de PSRAM (maior 30.408.704 B) e 2.672 B de stack livre do worker de áudio.
+- **PASS — produção I²S e telemetria ARP015 em repouso.** 1.746.176 frames escritos (6.824 blocos) na captura serial de 30 s. Render médio de 214 µs e máximo de 459 µs (muito abaixo do teto de 5.333 µs por bloco). Zero deadlines perdidos, OOM, timeouts ou erros de escrita. A telemetria confirmou `ARP015 enabled=0 armed=0 gate=0 bpm=120 inputs=0 steps=0 rejected=0 service_max_us=0`.
+- **PASS — subsistema USB.** Estado USB operacional (`USB state=1 connects=0 disconnects=0 errors=0 stack_free=5524`), pronto para enumeração do SMK25 V2.
+- **MANUAL — ensaio musical.** Teclado físico, Latch, Swing, Harmony com acordes de quatro vozes e carga sustentada de oito vozes continuam pendentes de teste manual pelo músico.
+
+Os logs e backups estão arquivados em `build/backups/p4-015-com13-20261115T052202746Z`. O candidato bench 0.15 permanece instalado na Guition.
+
