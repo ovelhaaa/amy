@@ -142,6 +142,8 @@ static void test_scenario_2_dx7_piano_delay_reboot_recall() {
 
         // Configure Delay: 420 ms, feedback 60%, mix 50%
         assert(backend.setFxParameter("fx.delay.time_ms", 420.0f, 10));
+        assert(backend.setFxParameter("fx.delay.mode",1,10));
+        assert(backend.setFxParameter("fx.delay.division",1,10));
         assert(backend.setFxParameter("fx.delay.feedback", 60.0f, 10));
         assert(backend.setFxParameter("fx.delay.mix", 50.0f, 10));
 
@@ -180,6 +182,9 @@ static void test_scenario_2_dx7_piano_delay_reboot_recall() {
         backend.fxPresetStore(&fx_store);
         backend.publish(runtime.snapshot(), false, 0, 0);
 
+        assert(backend.setArp(arp::Action::Bpm,100,0));
+        runtime.apply(0);
+        backend.publish(runtime.snapshot(),false,0,0);
         assert(backend.editAction(3, 2));
         for (uint32_t t = 10; t <= 200; t += 25) {
             backend.service(t);
@@ -198,8 +203,11 @@ static void test_scenario_2_dx7_piano_delay_reboot_recall() {
         assert(std::fabs(fx->config.delay_time_ms - 420.0f) < 1.0f);
         assert(std::fabs(fx->config.delay_feedback - 0.60f) < 0.02f);
         assert(std::fabs(fx->config.delay_mix - 0.50f) < 0.02f);
+        assert(fx->config.delay_mode==fx::DelayMode::Sync &&
+               fx->config.delay_division==tempo::Division::DottedEighth &&
+               fx->delay_target_ms==450 && runtime.snapshot().arp.tempo.bpm==100);
     }
-    std::puts("  PASS: Scenario 2 - DX7 Piano + Delay 420ms + Feedback 60% reboot & recall");
+    std::puts("  PASS: Scenario 2 - DX7 Piano + Delay Sync reboot & recall at independent BPM");
 }
 
 static void test_scenario_3_interrupted_write_rollback() {

@@ -8,6 +8,7 @@ using namespace smk::p4;
 using namespace smk::p4::ui;
 
 namespace {
+unsigned saved_tempo=0;
 lv_obj_t* findButton(lv_obj_t* root,const char* name) {
     if(lv_obj_check_type(root,&lv_button_class)){
         auto* label=lv_obj_get_child(root,0);
@@ -118,6 +119,7 @@ void testSmk25LegacyUi(amy::Runtime& runtime,LocalAmyPerformanceBackend& backend
 
     assert(ui.navigation().navigateTo(ScreenId::Arpeggiator,10));
     content=ui.contentObject();
+    adapter.setTempoSaver([](unsigned bpm) { saved_tempo=bpm;return true; });
     assert(adapter.parameterStatus("arp.bpm")==FeatureStatus::Available);
     assert(adapter.parameterStatus("perf.bpm")==FeatureStatus::Available);
     assert(!adapter.isParameterEditable("arp.clock_source"));
@@ -134,9 +136,15 @@ void testSmk25LegacyUi(amy::Runtime& runtime,LocalAmyPerformanceBackend& backend
     }
     frame();
     assert(adapter.model().getInt("arp.bpm")==120);
-    click(lv_obj_get_child(ui.rootObject(),-1),"X");
+    auto* tempo_panel=lv_obj_get_child(ui.rootObject(),-1);
+    assert(preview::saveFramebufferPpm("build/editor011/tempo0151_global.ppm"));
+    click(tempo_panel,"SAVE GLOBAL TEMPO");
+    frame();
+    assert(saved_tempo==120 && std::strcmp(adapter.tempoSaveNotice(),"GLOBAL TEMPO SAVED")==0);
+    click(tempo_panel,"X");
     midi(0x90,60,100);
     assert(runtime.snapshot().arp.sounding && runtime.snapshot().arp.held_count==1);
+    assert(preview::saveFramebufferPpm("build/editor011/tempo0151_arp.ppm"));
     for(unsigned i=0;i<amy::kCommandCapacity;++i)
         assert(runtime.commands().push({amy::CommandType::Master,0,64,0,0,preview::g_sim_tick_ms}));
     click(content,"STOP");
@@ -152,7 +160,11 @@ void testSmk25LegacyUi(amy::Runtime& runtime,LocalAmyPerformanceBackend& backend
     frame();
     assert(adapter.requestParameterInt("fx.delay.mode",1).accepted());
     frame();
+    assert(adapter.requestParameterInt("fx.delay.division",0).accepted());
+    frame();
+    assert(runtime.snapshot().fx.delay_out_of_range);
     midi(0xb0,30,0); // pickup at 1/8, the longest valid division at 40 BPM
+    assert(!runtime.snapshot().fx.delay_out_of_range);
     midi(0xb0,30,13); // close to the 1/8 to 1/8T boundary
     assert(runtime.snapshot().fx.config.delay_division==tempo::Division::Eighth);
     midi(0xb0,30,17);

@@ -910,7 +910,9 @@ void UiBlueprintPerformanceAdapter::serviceMidi() {
             knob.physical=event.value;
             knob.observed=true;
             if(accept_updates && midiTarget(k,target) && knob.pickup.update(event.value,target,output)){
-                changed[k]=output!=target;
+                const bool invalid_division=k==9 && delay_range &&
+                    unsigned(backend_.fxState()->config.delay_division)<delay_range-1;
+                changed[k]=output!=target || invalid_division;
                 values[k]=output;
             }
             model_.bumpRevision();
@@ -930,9 +932,9 @@ void UiBlueprintPerformanceAdapter::serviceMidi() {
         if(eq(id,"fx.delay.division")) {
             const unsigned first=firstDelayDivision();
             const unsigned span=unsigned(tempo::Division::Count)-1-first;
-            const unsigned current=std::max(first,unsigned(backend_.fxState()->config.delay_division));
+            const unsigned current=unsigned(backend_.fxState()->config.delay_division);
             const float division=first+position*span;
-            if(std::abs(division-current)<0.5f+2.0f*span/127.0f) continue;
+            if(current>=first && std::abs(division-current)<0.5f+2.0f*span/127.0f) continue;
             value=std::round(division);
         }
         midi_dispatch_=true;

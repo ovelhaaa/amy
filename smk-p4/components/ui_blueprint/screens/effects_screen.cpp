@@ -15,10 +15,11 @@ public:
         constexpr const char* delay[]{
             "fx.delay.mode","fx.delay.division","fx.delay.time_ms","fx.delay.feedback","fx.delay.mix"
         };
-        for(unsigned i=0;i<5;++i) createParameterCard(parent,backend,delay[i],8+158*i,28,152,108);
+        for(unsigned i=0;i<5;++i)
+            createParameterCard(parent,backend,delay[i],8+158*i,28,152,108,PresentationLevel::StageMinimal);
         notice_=createLabel(parent,"",8,144,784,&lv_font_montserrat_14,palette::kAccentPrimary);
-        createLabel(parent,"CHORUS                  REVERB                  EQ",8,175,784,
-                    &lv_font_montserrat_14,palette::kTextSecondary);
+        createLabel(parent,"CHORUS",8,175,190,&lv_font_montserrat_14,palette::kTextSecondary);
+        createLabel(parent,"REVERB",404,175,190,&lv_font_montserrat_14,palette::kTextSecondary);
         constexpr const char* other[]{
             "fx.chorus.mode","fx.chorus.depth","fx.reverb.size","fx.reverb.mix","fx.master_tone","fx.eq.low_db"
         };

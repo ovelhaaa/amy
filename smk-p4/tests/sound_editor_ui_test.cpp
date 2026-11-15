@@ -370,11 +370,11 @@ int main(){
     assert(ui.navigation().navigateTo(ScreenId::Effects));preview::pumpFrame(ui);
     assert(preview::saveFramebufferPpm("build/editor011/effects.ppm"));
     assert(button(ui.contentObject(),"CHORUS MODE") && button(ui.contentObject(),"CHORUS DEPTH"));
-    assert(button(ui.contentObject(),"DELAY TIME") && button(ui.contentObject(),"DELAY FDBK") && button(ui.contentObject(),"DELAY MIX"));
+    assert(button(ui.contentObject(),"MANUAL TIME") && button(ui.contentObject(),"DELAY FDBK") && button(ui.contentObject(),"DELAY MIX"));
+    assert(button(ui.contentObject(),"DELAY MODE") && button(ui.contentObject(),"DIVISION"));
     assert(button(ui.contentObject(),"REVERB SIZE") && button(ui.contentObject(),"REVERB MIX"));
     assert(button(ui.contentObject(),"TILT TONE"));
-    auto* drive_card=button(ui.contentObject(),"BUS DRIVE");assert(drive_card && labels(drive_card,"PLAN")>=1);
-    auto* routing_card=button(ui.contentObject(),"FX CHAIN");assert(routing_card && labels(routing_card,"PLAN")>=1);
+    assert(button(ui.contentObject(),"EQ LOW"));
 
     // Interactive FX edits with owner round-trip confirmation
     assert(next.requestParameterInt("fx.chorus.mode",2).accepted());
