@@ -15,7 +15,7 @@ bool eq(const char* a,const char* b) { return a && std::strcmp(a,b)==0; }
 bool isFxId(const char* id) {
     return eq(id,"fx.chorus.mode") || eq(id,"fx.chorus.depth") ||
            eq(id,"fx.delay.time_ms") || eq(id,"fx.delay.feedback") || eq(id,"fx.delay.mix") ||
-           eq(id,"fx.reverb.size") || eq(id,"fx.reverb.mix") || eq(id,"fx.master_tone");
+           eq(id,"fx.reverb.size") || eq(id,"fx.reverb.mix") || eq(id,"fx.master_tone") || eq(id,"fx.eq.low_db");
 }
 }
 UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend& backend):backend_(backend) {
@@ -32,7 +32,7 @@ UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend&
 #endif
 #endif
 #if defined(SMKP4_SOUND_EDITOR) || defined(CONFIG_SMKP4_SOUND_EDITOR)
-    d.firmware_version="SMK-P4 PERFORMANCE 0.14 DEV";
+    d.firmware_version="SMK-P4 PERFORMANCE 0.14.2";
 #endif
     d.amy_status="WAIT SNAPSHOT"; d.i2s_status="NOT LIVE"; d.usb_status="DISCONNECTED";
     model_.setBool("harmony.scale_enable",false);
@@ -467,17 +467,30 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestPanic() {
     return result(UiCommandState::Requested,"panic","PANIC REQUESTED; OWNER CANCELS ALL SOURCES");
 }
 const char* UiBlueprintPerformanceAdapter::midiBankName() const {
-    static constexpr const char* names[]{"A / MACROS", "B / OSC-FM", "C / ENVELOPES", "D / FX"};
-    return names[midi_bank_];
+    static constexpr const char* names[]{"VIRTUAL A / MACROS", "VIRTUAL B / OSC-FM", "VIRTUAL C / ENVELOPES", "VIRTUAL D / FX"};
+    return midi_legacy_ ? (midi_view_b_ ? "KNOBS B / FX" : "KNOBS A / MACROS") : names[midi_bank_];
 }
 
 void UiBlueprintPerformanceAdapter::setControllerProfileStore(performance::ControllerProfileStore& store) {
     midi_store_=&store;
     performance::ControllerProfile profile;
-    if(!store.load(profile) || !performance::validProfile(profile)) return;
+    if(!store.load(profile) || !performance::validProfile(profile))
+        profile=performance::smk25Defaults();
+    applyMidiProfile(profile);
+}
+
+void UiBlueprintPerformanceAdapter::applyMidiProfile(const performance::ControllerProfile& profile) {
+    midi_legacy_=profile.legacy;
+    midi_view_b_=false;
+    midi_knob_bank_=midi_pad_bank_='?';
+    midi_has_last_input_=false;
+    for(auto& velocity:midi_pad_velocity_) velocity=0;
+    resetMidiGesture();
+    if(midi_input_) midi_input_->setLegacyProfile(profile.legacy);
     midi_bank_=profile.bank;
     midi_destinations_=profile.destinations;
-    for(unsigned i=0;i<8;++i){
+    midi_physical_b_destinations_=profile.physical_b_destinations;
+    for(unsigned i=0;i<16;++i){
         midi_knobs_[i]={};
         midi_knobs_[i].source=profile.knobs[i];
     }
@@ -493,13 +506,17 @@ const char* UiBlueprintPerformanceAdapter::midiTargetName(unsigned target) const
 }
 
 unsigned UiBlueprintPerformanceAdapter::midiCustomTarget(unsigned knob) const {
-    return knob < 8 ? midi_destinations_[midi_bank_][knob] : 0;
+    const unsigned source=knob+(midi_legacy_ && midi_view_b_ && knob<8 ? 8 : 0);
+    return source<8 ? midi_destinations_[midi_bank_][source] :
+        source<16 && midi_legacy_ ? midi_physical_b_destinations_[source-8] : 0;
 }
 
 bool UiBlueprintPerformanceAdapter::setMidiCustomTarget(unsigned knob, unsigned target) {
     if (!hasMidiPerformance() || midi_save_pending_ || knob >= 8 || !midiTargetName(target)) return false;
-    midi_destinations_[midi_bank_][knob] = uint8_t(target);
-    midi_knobs_[knob].pickup.reset();
+    const unsigned source=knob+(midi_legacy_ && midi_view_b_ ? 8 : 0);
+    auto& targets=source<8 ? midi_destinations_[midi_bank_] : midi_physical_b_destinations_;
+    targets[source%8]=uint8_t(target);
+    midi_knobs_[source].pickup.reset();
     midi_learn_.cancel();
     std::snprintf(midi_status_, sizeof(midi_status_), "K%u DESTINATION UPDATED. SAVE PROFILE TO KEEP.", knob + 1);
     model_.bumpRevision();
@@ -508,8 +525,8 @@ bool UiBlueprintPerformanceAdapter::setMidiCustomTarget(unsigned knob, unsigned 
 
 const char* UiBlueprintPerformanceAdapter::midiDestination(unsigned knob) const {
     const auto* state=backend_.soundEdit();
-    if(!state || knob>=8) return nullptr;
-    const unsigned custom = midiCustomTarget(knob);
+    if(!state || knob>=midiKnobCount()) return nullptr;
+    const unsigned custom = knob<8 ? midi_destinations_[midi_bank_][knob] : midi_physical_b_destinations_[knob-8];
     if (custom) return performance::kMidiTargets[custom];
     static constexpr const char* destinations[6][8]{
         {"perf.macro.1","perf.macro.2","perf.macro.3","perf.macro.4","perf.macro.5","perf.macro.6","perf.macro.7","perf.macro.8"},
@@ -517,8 +534,10 @@ const char* UiBlueprintPerformanceAdapter::midiDestination(unsigned knob) const 
         {"fm.depth","fm.feedback","fm.op.level","fm.op.ratio","amp.level",nullptr,nullptr,nullptr},
         {"filter.cutoff_hz","filter.resonance","filter.env_amount","env.amp.attack_ms","env.amp.decay_ms","env.amp.sustain","env.amp.release_ms","filter.keytrack"},
         {"fm.op.attack","fm.op.decay","fm.op.vel_sens","lfo.1.rate_hz","lfo.1.depth",nullptr,nullptr,nullptr},
-        {"fx.chorus.depth","fx.delay.time_ms","fx.delay.feedback","fx.delay.mix","fx.reverb.size","fx.reverb.mix","fx.master_tone",nullptr}
+        {"fx.chorus.depth","fx.delay.time_ms","fx.delay.feedback","fx.delay.mix","fx.reverb.size","fx.reverb.mix","fx.master_tone","fx.eq.low_db"}
     };
+    if (midi_legacy_) return destinations[knob<8 ? 0 : 5][knob%8];
+    if (midi_bank_==3 && knob==7) return nullptr;
     const bool fm=state->family==0;
     const unsigned row=midi_bank_==0?0:midi_bank_==1?1+fm:midi_bank_==2?3+fm:5;
     return destinations[row][knob];
@@ -541,7 +560,7 @@ bool UiBlueprintPerformanceAdapter::midiTarget(unsigned knob,uint8_t& target) co
 
 void UiBlueprintPerformanceAdapter::resetPickup(const char* id) {
     if(midi_dispatch_) return;
-    for(unsigned i=0;i<8;++i){
+    for(unsigned i=0;i<midiKnobCount();++i){
         const auto* destination=midiDestination(i);
         if(!id || (destination && eq(id,destination))) midi_knobs_[i].pickup.reset();
     }
@@ -549,33 +568,65 @@ void UiBlueprintPerformanceAdapter::resetPickup(const char* id) {
 
 void UiBlueprintPerformanceAdapter::midiKnobText(unsigned knob,char* text,unsigned size) const {
     if(!size || knob>=8) return;
+    if(midi_legacy_ && midi_view_b_) knob+=8;
     const char* id=midiDestination(knob);
     const auto* desc=id?ParameterRegistry::findById(id):nullptr;
     uint8_t target=0;
     if(!desc || !midiTarget(knob,target)){
-        std::snprintf(text,size,"K%u  N/A",knob+1);
+        std::snprintf(text,size,"K%u  N/A",knob%8+1);
         return;
     }
     const auto& k=midi_knobs_[knob];
     if(k.source.channel>=16){
-        std::snprintf(text,size,"K%u  %s | UNBOUND",knob+1,desc->name);
+        std::snprintf(text,size,"K%u  %s | UNBOUND",knob%8+1,desc->name);
         return;
     }
     const auto state=k.pickup.state();
     const char* pickup=state==performance::PickupState::Captured?"PICKED UP":
         state==performance::PickupState::ApproachingFromBelow?"TURN RIGHT":
         state==performance::PickupState::ApproachingFromAbove?"TURN LEFT":"WAITING";
-    if(k.observed) std::snprintf(text,size,"K%u %s | CH%u CC%u | %u / %u %s",knob+1,desc->name,
+    if(k.observed) std::snprintf(text,size,"K%u %s | CH%u CC%u | %u / %u %s",knob%8+1,desc->name,
                                  k.source.channel+1,k.source.controller,target,k.physical,pickup);
-    else std::snprintf(text,size,"K%u %s | CH%u CC%u | %u %s",knob+1,desc->name,
+    else std::snprintf(text,size,"K%u %s | CH%u CC%u | %u %s",knob%8+1,desc->name,
                        k.source.channel+1,k.source.controller,target,pickup);
 }
 
 void UiBlueprintPerformanceAdapter::midiPerformanceAction(MidiAction action,unsigned knob) {
     if(!hasMidiPerformance() || knob>=8) return;
     const auto generation=midi_input_->deviceGeneration();
+    if(action!=MidiAction::RestoreLegacy) midi_restore_pending_=false;
     switch(action){
+        case MidiAction::RestoreLegacy:
+            if(midi_save_pending_) break;
+            if(!midi_restore_pending_){
+                midi_restore_pending_=true;
+                std::snprintf(midi_status_,sizeof(midi_status_),"PRESS RESTORE SMK25 DEFAULTS AGAIN TO CONFIRM");
+                break;
+            }
+            midi_restore_pending_=false;
+            applyMidiProfile(performance::smk25Defaults());
+            std::snprintf(midi_status_,sizeof(midi_status_),"SMK25 DEFAULTS LOADED. SAVE PROFILE TO KEEP.");
+            break;
+        case MidiAction::ReloadProfile: {
+            if(midi_save_pending_) break;
+            performance::ControllerProfile profile;
+            if(midi_store_ && midi_store_->load(profile) && performance::validProfile(profile)){
+                applyMidiProfile(profile);
+                std::snprintf(midi_status_,sizeof(midi_status_),"SAVED PROFILE LOADED");
+            } else std::snprintf(midi_status_,sizeof(midi_status_),"NO VALID SAVED PROFILE");
+            break;
+        }
+        case MidiAction::UseGeneric:
+            if(midi_save_pending_ || !midi_legacy_) break;
+            applyMidiProfile(performance::ControllerProfile{});
+            std::snprintf(midi_status_,sizeof(midi_status_),"P4 CUSTOM PROFILE. SAVE PROFILE TO KEEP.");
+            break;
         case MidiAction::NextBank:
+            if(midi_legacy_){
+                midi_view_b_=!midi_view_b_;
+                midi_learn_.cancel();
+                break;
+            }
             midi_bank_=(midi_bank_+1)%4;
             resetPickup();
             midi_learn_.cancel();
@@ -587,7 +638,7 @@ void UiBlueprintPerformanceAdapter::midiPerformanceAction(MidiAction action,unsi
                 std::snprintf(midi_status_,sizeof(midi_status_),"CONNECT A USB MIDI CONTROLLER");
                 break;
             }
-            midi_learn_knob_=knob;
+            midi_learn_knob_=knob+(midi_legacy_ && midi_view_b_ ? 8 : 0);
             midi_learn_.arm(now_ms_,generation,16,action==MidiAction::LearnModWheel);
             std::snprintf(midi_status_,sizeof(midi_status_),"K%u: MOVE A MIDI CONTROL",knob+1);
             break;
@@ -596,7 +647,7 @@ void UiBlueprintPerformanceAdapter::midiPerformanceAction(MidiAction action,unsi
             if(!midi_learn_.confirm(now_ms_,generation)) break;
             const auto source=midi_learn_.candidate();
             int conflict=-1;
-            for(unsigned i=0;i<8;++i) if(i!=midi_learn_knob_ && midi_knobs_[i].source==source) conflict=int(i);
+            for(unsigned i=0;i<midiKnobCount();++i) if(i!=midi_learn_knob_ && midi_knobs_[i].source==source) conflict=int(i);
             if(conflict>=0 && action!=MidiAction::Replace){
                 midi_learn_.resolve(false,now_ms_,generation);
                 std::snprintf(midi_status_,sizeof(midi_status_),"CH%u CC%u IN USE BY K%d. REPLACE OR CANCEL",
@@ -624,13 +675,72 @@ void UiBlueprintPerformanceAdapter::midiPerformanceAction(MidiAction action,unsi
             midi_learn_.cancel();
             midi_saved_profile_.bank=uint8_t(midi_bank_);
             midi_saved_profile_.destinations=midi_destinations_;
-            for(unsigned i=0;i<8;++i) midi_saved_profile_.knobs[i]=midi_knobs_[i].source;
+            midi_saved_profile_.legacy=midi_legacy_;
+            midi_saved_profile_.physical_b_destinations=midi_physical_b_destinations_;
+            for(unsigned i=0;i<16;++i) midi_saved_profile_.knobs[i]=midi_knobs_[i].source;
             midi_save_started_ms_=now_ms_;
             midi_save_pending_=true;
             std::snprintf(midi_status_,sizeof(midi_status_),"WAITING FOR QUIET TO SAVE PROFILE");
             break;
     }
     model_.bumpRevision();
+}
+
+const char* UiBlueprintPerformanceAdapter::midiProfileName() const {
+    return midi_legacy_ ? "SMK25 V2 â€” LEGACY S3" : "P4 CUSTOM PROFILE";
+}
+
+void UiBlueprintPerformanceAdapter::resetMidiGesture() {
+    midi_pads_held_=0;
+    midi_save_pad_armed_=false;
+    midi_shortcut_=MidiShortcut::None;
+}
+
+UiBlueprintPerformanceAdapter::MidiShortcut UiBlueprintPerformanceAdapter::takeMidiShortcut() {
+    const auto action=midi_shortcut_;
+    midi_shortcut_=MidiShortcut::None;
+    if(action==MidiShortcut::None || !midi_input_ || midi_input_->controlDrops()!=midi_control_drops_ ||
+       !midi_input_->currentControl(midi_last_input_) || backend_.editGeneration()!=midi_owner_generation_)
+        return MidiShortcut::None;
+    return action;
+}
+
+void UiBlueprintPerformanceAdapter::midiObservationText(char* text,unsigned size) const {
+    if(!midi_has_last_input_){
+        std::snprintf(text,size,"PHYSICAL KNOBS %c  |  PHYSICAL PADS %c",midi_knob_bank_,midi_pad_bank_);
+        return;
+    }
+    const auto& e=midi_last_input_;
+    std::snprintf(text,size,"PHYSICAL KNOBS %c  |  PHYSICAL PADS %c  |  CH %02u / %s %u / VALUE %u",
+        midi_knob_bank_,midi_pad_bank_,e.channel+1,
+        e.kind==amy::MidiControlKind::PadOn || e.kind==amy::MidiControlKind::PadOff ? "NOTE" : "CC",
+        e.controller,e.value);
+}
+
+void UiBlueprintPerformanceAdapter::midiLastBindingText(char* text,unsigned size) const {
+    if(!midi_has_last_input_ || midi_last_input_.kind!=amy::MidiControlKind::CC ||
+       (midi_legacy_ && !midi_input_->isSmk25())) return;
+    const performance::MidiSource source{midi_last_input_.cable,midi_last_input_.channel,midi_last_input_.controller};
+    for(unsigned i=0;i<midiKnobCount();++i) {
+        const auto& knob=midi_knobs_[i];
+        if(!(knob.source==source)) continue;
+        const auto* id=midiDestination(i);
+        const auto* desc=id ? ParameterRegistry::findById(id) : nullptr;
+        const char* pickup=knob.pickup.state()==performance::PickupState::Captured ? "CAPTURED" : "WAITING";
+        std::snprintf(text,size,"%sK%u  |  DESTINATION %s  |  PICKUP %s",
+            midi_legacy_ ? (i<8 ? "BANK A / " : "BANK B / ") : "",i%8+1,
+            desc ? desc->name : "UNAVAILABLE",pickup);
+        return;
+    }
+}
+
+void UiBlueprintPerformanceAdapter::midiPadText(unsigned pad,char* text,unsigned size) const {
+    if(pad>=16 || !midi_legacy_) return;
+    static constexpr const char* actions[]{"PATCH PREVIOUS","PATCH NEXT","HOME","ARP RESERVED",
+        "PAGE PREVIOUS","PAGE NEXT","MIDI LEARN","HOLD FOR SAVE AS"};
+    std::snprintf(text,size,"%c%u  CH10 NOTE %u  %s  %s  VEL %u",pad<8 ? 'A' : 'B',pad%8+1,
+        pad+36,pad<8 ? "MONITOR" : actions[pad-8],(midi_pads_held_&(1u<<pad)) ? "DOWN" : "UP",
+        midi_pad_velocity_[pad]);
 }
 
 void UiBlueprintPerformanceAdapter::serviceMidi() {
@@ -645,11 +755,30 @@ void UiBlueprintPerformanceAdapter::serviceMidi() {
     const auto& edit=*backend_.soundEdit();
     const auto device=midi_input_->deviceGeneration();
     const auto owner=backend_.editGeneration();
+    const auto usb_generation=midi_input_->commands.generation();
+    const auto drops=midi_input_->controlDrops();
+    const bool overflow=drops!=midi_control_drops_;
+    if(overflow) {
+        resetMidiGesture();
+        midi_control_drops_=drops;
+        std::snprintf(midi_status_,sizeof(midi_status_),"MIDI CONTROL OVERFLOW. PAD GESTURES CANCELLED.");
+        model_.bumpRevision();
+    }
+    if(device!=midi_device_generation_) {
+        midi_knob_bank_=midi_pad_bank_='?';
+        midi_has_last_input_=false;
+        for(auto& knob:midi_knobs_) knob.observed=false;
+        for(auto& velocity:midi_pad_velocity_) velocity=0;
+        model_.bumpRevision();
+    }
     if(device!=midi_device_generation_ || owner!=midi_owner_generation_ ||
+       usb_generation!=midi_usb_generation_ ||
        edit.epoch!=midi_edit_epoch_ || edit.compare!=midi_compare_){
         resetPickup();
+        resetMidiGesture();
         midi_device_generation_=device;
         midi_owner_generation_=owner;
+        midi_usb_generation_=usb_generation;
         midi_edit_epoch_=edit.epoch;
         midi_compare_=edit.compare;
     }
@@ -661,12 +790,56 @@ void UiBlueprintPerformanceAdapter::serviceMidi() {
         model_.bumpRevision();
     }
     // Keep only the latest value per knob for this UI cycle.
-    bool changed[8]{};
-    uint8_t values[8]{};
+    bool changed[16]{};
+    uint8_t values[16]{};
     const bool accept_updates=usable() && !edit.compare && !backend_.editPending() && !fx_requested_;
     amy::MidiControlEvent event;
     for(unsigned i=0;i<amy::MidiControlEvents::kCapacity && midi_input_->popControl(event);++i){
-        if(!midi_input_->currentControl(event)) continue;
+        if(event.device_generation!=device || event.command_generation!=usb_generation ||
+           !midi_input_->currentControl(event)) continue;
+        midi_last_input_=event;
+        midi_has_last_input_=true;
+        model_.bumpRevision();
+        if(event.kind==amy::MidiControlKind::Transport){
+            const char* label=event.controller==114 ? "PLAY RESERVED" :
+                event.controller==115 ? "STOP / USB PANIC" : "REC RESERVED";
+            std::snprintf(midi_status_,sizeof(midi_status_),"%s / CC%u VALUE %u",label,event.controller,event.value);
+            continue;
+        }
+        if(event.kind!=amy::MidiControlKind::CC){
+            if(!midi_legacy_ || overflow || midi_input_->controlDrops()!=drops) continue;
+            const unsigned pad=event.controller-36;
+            const auto mask=uint16_t(1u<<pad);
+            const bool held=(midi_pads_held_&mask)!=0;
+            midi_pad_bank_=pad<8 ? 'A' : 'B';
+            if(event.kind==amy::MidiControlKind::PadOff) {
+                midi_pads_held_&=uint16_t(~mask);
+                if(pad==15){
+                    if(held && midi_save_pad_armed_ && event.timestamp_ms-midi_save_pad_ms_>=1200)
+                        midi_shortcut_=MidiShortcut::SaveAs;
+                    midi_save_pad_armed_=false;
+                }
+            } else if(!held) {
+                midi_pads_held_|=mask;
+                midi_pad_velocity_[pad]=event.value;
+                if(pad==15){
+                    midi_save_pad_ms_=event.timestamp_ms;
+                    midi_save_pad_armed_=true;
+                }
+                if(pad==11)
+                    std::snprintf(midi_status_,sizeof(midi_status_),"ARPEGGIATOR NOT AVAILABLE");
+                static constexpr MidiShortcut shortcuts[]{MidiShortcut::PreviousPatch,MidiShortcut::NextPatch,
+                    MidiShortcut::Home,MidiShortcut::None,MidiShortcut::PreviousPage,MidiShortcut::NextPage,
+                    MidiShortcut::Learn};
+                if(pad>=8 && pad<15) midi_shortcut_=shortcuts[pad-8];
+            } else if(pad==15) midi_save_pad_armed_=false;
+            if(midi_shortcut_!=MidiShortcut::None) break;
+            continue;
+        }
+        if(midi_legacy_ && midi_input_->isSmk25() && event.channel==0 &&
+           event.controller>=21 && event.controller<=36)
+            midi_knob_bank_=event.controller<=28 ? 'A' : 'B';
+        if(midi_legacy_ && !midi_input_->isSmk25()) continue;
         if(midi_learn_.capture(event,now_ms_,device)){
             std::snprintf(midi_status_,sizeof(midi_status_),"K%u: CH%u CC%u. CONFIRM OR CANCEL",
                           midi_learn_knob_+1,event.channel+1,event.controller);
@@ -676,7 +849,7 @@ void UiBlueprintPerformanceAdapter::serviceMidi() {
         const auto learning=midi_learn_.state();
         if(learning==performance::LearnState::Armed || learning==performance::LearnState::Captured) continue;
         const performance::MidiSource source{event.cable,event.channel,event.controller};
-        for(unsigned k=0;k<8;++k) if(midi_knobs_[k].source==source){
+        for(unsigned k=0;k<midiKnobCount();++k) if(midi_knobs_[k].source==source){
             auto& knob=midi_knobs_[k];
             uint8_t target=0,output=0;
             knob.physical=event.value;
@@ -688,8 +861,10 @@ void UiBlueprintPerformanceAdapter::serviceMidi() {
             model_.bumpRevision();
         }
     }
-    if(device!=midi_input_->deviceGeneration() || owner!=backend_.editGeneration()) return;
-    for(unsigned k=0;k<8;++k) if(changed[k]){
+    if(midi_input_->controlDrops()!=drops) resetMidiGesture();
+    if(device!=midi_input_->deviceGeneration() || owner!=backend_.editGeneration() ||
+       usb_generation!=midi_input_->commands.generation() || midi_shortcut_!=MidiShortcut::None) return;
+    for(unsigned k=0;k<midiKnobCount();++k) if(changed[k]){
         const auto* id=midiDestination(k);
         const auto* desc=ParameterRegistry::findById(id);
         if(!desc) continue;
@@ -701,6 +876,13 @@ void UiBlueprintPerformanceAdapter::serviceMidi() {
         const auto result=requestParameterFloat(id,value);
         midi_dispatch_=false;
         if(!result.accepted()) midi_knobs_[k].pickup.reset();
+        else {
+            for(unsigned other=0;other<midiKnobCount();++other) {
+                if(other==k || !eq(midiDestination(other),id)) continue;
+                midi_knobs_[other].pickup.reset();
+                changed[other]=false;
+            }
+        }
     }
 }
 void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
@@ -783,6 +965,7 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
             model_.setFloat("fx.reverb.size",fx->config.reverb_size*100.0f);
             model_.setFloat("fx.reverb.mix",fx->config.reverb_mix*100.0f);
             model_.setFloat("fx.master_tone",fx->config.master_tone*100.0f);
+            model_.setFloat("fx.eq.low_db",fx->config.eq_low_db);
         }
         const auto& s=backend_.state();
         if(isPatchSelectable(s.patch_id)) {
@@ -818,6 +1001,7 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
             model_.setFloat("fx.reverb.size",fx->config.reverb_size*100.0f);
             model_.setFloat("fx.reverb.mix",fx->config.reverb_mix*100.0f);
             model_.setFloat("fx.master_tone",fx->config.master_tone*100.0f);
+            model_.setFloat("fx.eq.low_db",fx->config.eq_low_db);
         }
         result(UiCommandState::Rejected,fx_id_,"FX NOT CONFIRMED; OWNER STATE RETAINED");
     }

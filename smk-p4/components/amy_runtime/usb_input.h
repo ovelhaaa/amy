@@ -11,8 +11,8 @@ public:
     void enableTrace() { trace_enabled_=true; } // Before starting the USB task.
     void enableControls() { controls_enabled_=true; } // Before starting the USB task.
     void setLegacyProfile(bool enabled) {
-        if (legacy_profile_.exchange(enabled, std::memory_order_acq_rel)!=enabled)
-            commands.panic();
+        legacy_profile_.store(enabled, std::memory_order_release);
+        commands.panic();
     }
     void identifyDevice(uint16_t vendor, uint16_t product) {
         // Called by the USB producer after claiming the interface, before receiving packets.

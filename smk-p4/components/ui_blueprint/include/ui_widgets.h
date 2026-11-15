@@ -8,6 +8,7 @@
 
 namespace smk::p4::ui {
 
+void stepPatchWithConfirmation(IUiBackend&, UiNavigationManager&, int direction);
 void selectPatchWithConfirmation(IUiBackend&, UiNavigationManager&, uint16_t, uint8_t);
 
 // Helper to create a clipped label with explicit font and color

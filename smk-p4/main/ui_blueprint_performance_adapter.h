@@ -69,6 +69,11 @@ public:
     unsigned midiCustomTarget(unsigned) const override;
     bool setMidiCustomTarget(unsigned, unsigned) override;
     bool hasMidiPerformance() const override { return midi_input_ && hasSoundEditor(); }
+    MidiShortcut takeMidiShortcut() override;
+    const char* midiProfileName() const override;
+    void midiObservationText(char*, unsigned) const override;
+    void midiLastBindingText(char*, unsigned) const override;
+    void midiPadText(unsigned, char*, unsigned) const override;
     void midiPerformanceAction(MidiAction action,unsigned knob) override;
     const char* midiBankName() const override;
     const char* midiLearnStatus() const override { return midi_status_; }
@@ -86,7 +91,7 @@ private:
         bool observed=false;
     };
     amy::UsbInput* midi_input_=nullptr;
-    MidiKnob midi_knobs_[8]{};
+    MidiKnob midi_knobs_[16]{};
     performance::MidiLearn midi_learn_;
     uint32_t midi_device_generation_=0,midi_owner_generation_=0,midi_edit_epoch_=0;
     bool midi_compare_=false;
@@ -97,6 +102,20 @@ private:
     bool midi_save_pending_=false;
     unsigned midi_bank_=0,midi_learn_knob_=0;
     performance::MidiDestinations midi_destinations_{};
+    std::array<uint8_t,8> midi_physical_b_destinations_{};
+    bool midi_legacy_=false, midi_view_b_=false, midi_restore_pending_=false;
+    uint32_t midi_control_drops_=0,midi_usb_generation_=0;
+    char midi_knob_bank_='?', midi_pad_bank_='?';
+    uint16_t midi_pads_held_=0;
+    uint32_t midi_save_pad_ms_=0;
+    bool midi_save_pad_armed_=false;
+    uint8_t midi_pad_velocity_[16]{};
+    MidiShortcut midi_shortcut_=MidiShortcut::None;
+    amy::MidiControlEvent midi_last_input_{};
+    bool midi_has_last_input_=false;
+    unsigned midiKnobCount() const { return midi_legacy_ ? 16 : 8; }
+    void applyMidiProfile(const performance::ControllerProfile&);
+    void resetMidiGesture();
     char midi_status_[72]="SELECT A KNOB TO LEARN";
     struct Gesture { uint32_t token=0, start_ms=0; uint8_t note=0; };
     struct Pending { bool active=false; uint16_t value=0; uint32_t revision=0, requested_ms=0; };

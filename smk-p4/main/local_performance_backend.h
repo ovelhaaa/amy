@@ -555,6 +555,8 @@ public:
             desired_fx_.reverb_mix = std::clamp(value / 100.0f, 0.0f, 1.0f);
         } else if (std::strcmp(id, "fx.master_tone") == 0) {
             desired_fx_.master_tone = std::clamp(value / 100.0f, -1.0f, 1.0f);
+        } else if (std::strcmp(id, "fx.eq.low_db") == 0) {
+            desired_fx_.eq_low_db = std::round(std::clamp(value, -12.0f, 12.0f));
         } else {
             return false;
         }

@@ -90,6 +90,23 @@ void UiBlueprint::service(uint32_t now_ms) {
     }
 
     backend_.service(now_ms);
+    using Shortcut=IUiBackend::MidiShortcut;
+    const auto shortcut=backend_.takeMidiShortcut();
+    switch(shortcut) {
+        case Shortcut::PreviousPatch: stepPatchWithConfirmation(backend_,nav_,-1); break;
+        case Shortcut::NextPatch: stepPatchWithConfirmation(backend_,nav_,1); break;
+        case Shortcut::Home: nav_.returnToPerformance(); break;
+        case Shortcut::PreviousPage:
+        case Shortcut::NextPage: {
+            const unsigned count=unsigned(ScreenId::Count);
+            const unsigned step=shortcut==Shortcut::NextPage ? 1 : count-1;
+            nav_.navigateTo(ScreenId((unsigned(nav_.currentScreen())+step)%count));
+            break;
+        }
+        case Shortcut::Learn: nav_.navigateTo(ScreenId::MidiSettings,1); break;
+        case Shortcut::SaveAs: showUserPresetPanel(content_,backend_); break;
+        case Shortcut::None: break;
+    }
 
     const uint32_t rev = backend_.model().revision();
     const ScreenId cur = nav_.currentScreen();

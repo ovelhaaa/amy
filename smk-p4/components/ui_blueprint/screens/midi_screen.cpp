@@ -2,6 +2,7 @@
 #include "ui_widgets.h"
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 
 namespace smk::p4::ui {
 
@@ -34,6 +35,19 @@ void liveMidiButton(lv_obj_t* parent,IUiBackend& backend,const char* text,
     },LV_EVENT_CLICKED);
 }
 
+struct MidiLabelText { char text[114]{}; };
+
+void refreshMidiLabel(lv_obj_t* label,const char* text) {
+    auto* data=static_cast<MidiLabelText*>(lv_obj_get_user_data(label));
+    if(!data || std::strcmp(data->text,text)==0) return;
+    std::snprintf(data->text,sizeof(data->text),"%s",text);
+    lv_label_set_text_static(label,data->text);
+}
+
+void prepareMidiLabel(lv_obj_t* label) {
+    if(label) lv_obj_set_user_data(label,attachLvContext<MidiLabelText>(label,{},nullptr));
+}
+
 class MidiScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::MidiSettings; }
@@ -42,7 +56,8 @@ public:
         const uint8_t tab = nav.subTab(ScreenId::MidiSettings);
         if (tab >= 2 && tab < 10 && backend.hasMidiPerformance())
             return buildDestination(parent, backend, nav, tab - 2);
-        bank_=notice_=nullptr;
+        bank_=notice_=profile_=observation_=binding_=nullptr;
+        for(auto& label:pads_) label=nullptr;
         for(auto& label:knobs_) label=nullptr;
 
         // 1. Sub-tab bar (y = 4..40)
@@ -56,7 +71,20 @@ public:
         usb_label_=createLabel(dev_card, backend.isDemoMode() ? "USB: SMK25 V2 [DEMO]" : backend.model().diagnostics().usb_status, 6, 4, 220,
                     &lv_font_montserrat_14, palette::kAccentPrimary);
 
-        if (tab == 0) {
+        if(tab==10 && backend.hasMidiPerformance()){
+            using Action=IUiBackend::MidiAction;
+            liveMidiButton(parent,backend,"RESTORE SMK25 DEFAULTS",8,44,240,Action::RestoreLegacy);
+            liveMidiButton(parent,backend,"LOAD SAVED PROFILE",256,44,196,Action::ReloadProfile);
+            liveMidiButton(parent,backend,"USE P4 CUSTOM",460,44,160,Action::UseGeneric);
+            profile_=createLabel(parent,"",8,82,780);
+            notice_=createLabel(parent,"",8,106,780,&lv_font_montserrat_14);
+            observation_=createLabel(parent,"",8,126,780,&lv_font_montserrat_14);
+            binding_=createLabel(parent,"",8,147,780,&lv_font_montserrat_14);
+            for(unsigned i=0;i<16;++i)
+                pads_[i]=createLabel(parent,"",8+int(i/8)*396,170+int(i%8)*22,390,&lv_font_montserrat_14);
+            createLabel(parent,"CH1 PLAY CC114 RESERVED  |  STOP CC115 USB PANIC  |  REC CC117 RESERVED",
+                        8,352,780,&lv_font_montserrat_14);
+        } else if (tab == 0) {
             // Row 1: Available P4 MIDI features (y = 46..152)
             createParameterCard(parent, backend, "midi.input_channel",   8,   46, 190, 104);
             createParameterCard(parent, backend, "midi.bend_range_st",   206, 46, 190, 104);
@@ -95,19 +123,26 @@ public:
             liveMidiButton(parent,backend,"REPLACE",426,44,108,Action::Replace);
             liveMidiButton(parent,backend,"CANCEL",542,44,108,Action::Cancel);
             liveMidiButton(parent,backend,"SAVE PROFILE",658,44,134,Action::SaveProfile);
-            notice_=createLabel(parent,backend.midiLearnStatus(),8,84,780,&lv_font_montserrat_14,palette::kAccentPrimary);
+            profile_=createLabel(parent,"",8,80,420,&lv_font_montserrat_14,palette::kAccentPrimary);
+            auto* details=createActionButton(parent,"PROFILE / PADS / TRANSPORT",490,81,302,28,nullptr,nullptr);
+            attachLvContext<UiNavigationManager*>(details,&nav,[](lv_event_t* event){
+                auto* navigation=*static_cast<UiNavigationManager**>(lv_event_get_user_data(event));
+                navigation->navigateTo(ScreenId::MidiSettings,10);
+            },LV_EVENT_CLICKED);
+            notice_=createLabel(parent,backend.midiLearnStatus(),8,103,780,&lv_font_montserrat_14,palette::kAccentPrimary);
+            observation_=createLabel(parent,"",8,122,780,&lv_font_montserrat_14);
+            binding_=createLabel(parent,"",8,140,780,&lv_font_montserrat_14);
             for(unsigned i=0;i<8;++i){
-                const int x=8+int(i/4)*396,y=112+int(i%4)*68;
+                const int x=8+int(i/4)*396,y=159+int(i%4)*57;
                 knobs_[i]=createLabel(parent,"",x,y,388,&lv_font_montserrat_14,palette::kTextPrimary);
-                liveMidiButton(parent,backend,"LEARN",x,y+25,98,Action::Learn,i);
-                liveMidiButton(parent,backend,"LEARN + CC1",x+106,y+25,144,Action::LearnModWheel,i);
-                auto* destination=createActionButton(parent,"DESTINATION",x+258,y+25,128,34,nullptr,nullptr);
+                liveMidiButton(parent,backend,"LEARN",x,y+22,98,Action::Learn,i);
+                liveMidiButton(parent,backend,"LEARN + CC1",x+106,y+22,144,Action::LearnModWheel,i);
+                auto* destination=createActionButton(parent,"DESTINATION",x+258,y+22,128,34,nullptr,nullptr);
                 attachLvContext<MidiLearnBtnCtx>(destination,{&backend,&nav,uint8_t(i),0},[](lv_event_t* event){
                     const auto* ctx=static_cast<const MidiLearnBtnCtx*>(lv_event_get_user_data(event));
                     ctx->nav->navigateTo(ScreenId::MidiSettings,uint8_t(2+ctx->slot));
                 },LV_EVENT_CLICKED);
             }
-            refresh(backend);
         } else if(backend.isDemoMode()) {
             // Tab 1: Data-Driven SMK25 V2 Knob CC Mapping & Demo Learn
             lv_obj_t* table = lv_obj_create(parent);
@@ -169,17 +204,40 @@ public:
             }
         }
 
+        for(auto* label:{usb_label_,profile_,bank_,notice_,observation_,binding_}) prepareMidiLabel(label);
+        for(auto* label:knobs_) prepareMidiLabel(label);
+        for(auto* label:pads_) prepareMidiLabel(label);
         return true;
     }
 
     void refresh(IUiBackend& backend) override {
-        if(usb_label_ && !backend.isDemoMode()) lv_label_set_text_fmt(usb_label_,"USB: %s",backend.model().diagnostics().usb_status);
-        if(bank_) lv_label_set_text(bank_,backend.midiBankName());
-        if(notice_) lv_label_set_text(notice_,backend.midiLearnStatus());
+        if(usb_label_ && !backend.isDemoMode()){
+            char status[40]{};
+            std::snprintf(status,sizeof(status),"USB MIDI %s",backend.model().diagnostics().usb_status);
+            refreshMidiLabel(usb_label_,status);
+        }
+        if(profile_) refreshMidiLabel(profile_,backend.midiProfileName());
+        if(observation_){
+            char text[114]{};
+            backend.midiObservationText(text,sizeof(text));
+            refreshMidiLabel(observation_,text);
+        }
+        if(binding_){
+            char text[110]{};
+            backend.midiLastBindingText(text,sizeof(text));
+            refreshMidiLabel(binding_,text);
+        }
+        for(unsigned i=0;i<16;++i) if(pads_[i]){
+            char text[80]{};
+            backend.midiPadText(i,text,sizeof(text));
+            refreshMidiLabel(pads_[i],text);
+        }
+        if(bank_) refreshMidiLabel(bank_,backend.midiBankName());
+        if(notice_) refreshMidiLabel(notice_,backend.midiLearnStatus());
         for(unsigned i=0;i<8;++i) if(knobs_[i]){
             char text[96]{};
             backend.midiKnobText(i,text,sizeof(text));
-            if(std::strcmp(lv_label_get_text(knobs_[i]),text)!=0) lv_label_set_text(knobs_[i],text);
+            refreshMidiLabel(knobs_[i],text);
         }
     }
 private:
@@ -236,6 +294,10 @@ private:
     lv_obj_t* bank_=nullptr;
     lv_obj_t* notice_=nullptr;
     lv_obj_t* knobs_[8]{};
+    lv_obj_t* profile_=nullptr;
+    lv_obj_t* observation_=nullptr;
+    lv_obj_t* binding_=nullptr;
+    lv_obj_t* pads_[16]{};
 };
 
 } // namespace

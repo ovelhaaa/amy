@@ -16,8 +16,12 @@ void selectPatchWithConfirmation(IUiBackend& backend, UiNavigationManager& nav, 
         backend.requestSelectPatch(patch, layer);
         return;
     }
+    static lv_obj_t* confirmation=nullptr;
+    if(confirmation) return;
     auto* root = lv_obj_create(nav.contentRoot());
     if (!root) return;
+    confirmation=root;
+    lv_obj_add_event_cb(root, [](lv_event_t*) { confirmation=nullptr; }, LV_EVENT_DELETE, nullptr);
     lv_obj_remove_style_all(root);
     lv_obj_set_size(root, lv_pct(100), lv_pct(100));
     lv_obj_set_style_bg_color(root, lv_color_black(), 0);
@@ -50,6 +54,33 @@ void selectPatchWithConfirmation(IUiBackend& backend, UiNavigationManager& nav, 
             if (result.accepted()) lv_obj_delete(ctx.root);
             else lv_label_set_text(ctx.status, result.notice ? result.notice : "Patch change unavailable.");
         }, LV_EVENT_CLICKED);
+}
+
+void stepPatchWithConfirmation(IUiBackend& backend, UiNavigationManager& nav, int direction) {
+    size_t count = 0;
+    const auto* cat = UiModel::catalog(count);
+    const uint16_t cur_id = backend.model().activePatch().id;
+    size_t cur_idx = 0;
+    for (size_t i = 0; i < count; ++i) {
+        if (cat[i].id == cur_id) { cur_idx = i; break; }
+    }
+
+    size_t next_idx = cur_idx;
+    for (size_t step = 0; step < count; ++step) {
+        next_idx = (next_idx + count + (direction > 0 ? 1 : count - 1)) % count;
+        if (backend.isPatchSelectable(cat[next_idx].id)
+#if defined(SMKP4_FULL_FACTORY_LIBRARY) || defined(CONFIG_SMKP4_FULL_FACTORY_LIBRARY)
+            && backend.model().matchesBrowser(cat[next_idx])
+#endif
+           ) {
+            break;
+        }
+    }
+    if(next_idx==cur_idx || !backend.isPatchSelectable(cat[next_idx].id)) return;
+#if defined(SMKP4_FULL_FACTORY_LIBRARY) || defined(CONFIG_SMKP4_FULL_FACTORY_LIBRARY)
+    if(!backend.model().matchesBrowser(cat[next_idx]))return;
+#endif
+    selectPatchWithConfirmation(backend, nav, cat[next_idx].id, 0);
 }
 
 lv_obj_t* createPatchSelectorCard(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav,
@@ -100,35 +131,12 @@ lv_obj_t* createPatchSelectorCard(lv_obj_t* parent, IUiBackend& backend, UiNavig
         auto* ctx = static_cast<PatchSelCtx*>(lv_event_get_user_data(e));
         if (!ctx || !ctx->backend || !ctx->nav) return;
 
-        size_t count = 0;
-        const auto* cat = UiModel::catalog(count);
-        const uint16_t cur_id = ctx->backend->model().activePatch().id;
-        size_t cur_idx = 0;
-        for (size_t i = 0; i < count; ++i) {
-            if (cat[i].id == cur_id) { cur_idx = i; break; }
-        }
-
         if (ctx->action == -1 || ctx->action == 1) {
-            size_t next_idx = cur_idx;
-            for (size_t step = 0; step < count; ++step) {
-                next_idx = (next_idx + count + (ctx->action > 0 ? 1 : count - 1)) % count;
-                if (ctx->backend->isPatchSelectable(cat[next_idx].id)
-#if defined(SMKP4_FULL_FACTORY_LIBRARY) || defined(CONFIG_SMKP4_FULL_FACTORY_LIBRARY)
-                    && ctx->backend->model().matchesBrowser(cat[next_idx])
-#endif
-                   ) {
-                    break;
-                }
-            }
-            if(next_idx==cur_idx || !ctx->backend->isPatchSelectable(cat[next_idx].id)) return;
-#if defined(SMKP4_FULL_FACTORY_LIBRARY) || defined(CONFIG_SMKP4_FULL_FACTORY_LIBRARY)
-            if(!ctx->backend->model().matchesBrowser(cat[next_idx]))return;
-#endif
-            selectPatchWithConfirmation(*ctx->backend, *ctx->nav, cat[next_idx].id, 0);
+            stepPatchWithConfirmation(*ctx->backend,*ctx->nav,ctx->action);
         } else if (ctx->action == 2) {
             ctx->nav->navigateTo(ScreenId::PatchBrowser);
         } else if (ctx->action == 3) {
-            ctx->backend->model().toggleFavorite(cur_id);
+            ctx->backend->model().toggleFavorite(ctx->backend->model().activePatch().id);
             ctx->nav->navigateTo(ctx->nav->currentScreen(), ctx->nav->subTab(ctx->nav->currentScreen()));
         } else if (ctx->action == 4) {
             ctx->nav->navigateTo(ScreenId::SoundEditor);

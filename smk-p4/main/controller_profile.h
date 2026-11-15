@@ -35,6 +35,7 @@ struct ControllerProfile {
 
 constexpr unsigned kProfileV1Bytes = 36;
 constexpr unsigned kProfileV2Bytes = 68;
+constexpr unsigned kProfileV2TargetCount = 42;
 constexpr unsigned kProfileBytes = 100;
 
 inline ControllerProfile smk25Defaults() {
@@ -85,7 +86,7 @@ inline bool encodeProfile(const ControllerProfile& profile,uint8_t* bytes) {
 inline bool decodeProfile(const uint8_t* bytes,unsigned length,ControllerProfile& profile) {
     const unsigned version = length == kProfileV1Bytes ? 1 :
         length == kProfileV2Bytes ? 2 : length == kProfileBytes ? 3 : 0;
-    if (!version || edit::get32(bytes) != 0x34314d53 ||
+    if (!version || !bytes || edit::get32(bytes) != 0x34314d53 ||
         bytes[4] != version || bytes[6] || bytes[7] > (version==3 ? 1 : 0) ||
         edit::get32(bytes + length - 4) != edit::crc(bytes, length - 4)) return false;
     ControllerProfile candidate;
@@ -95,8 +96,11 @@ inline bool decodeProfile(const uint8_t* bytes,unsigned length,ControllerProfile
         candidate.knobs[i]={bytes[(i<8 ? 8 : 40)+3*i],bytes[(i<8 ? 9 : 41)+3*i],bytes[(i<8 ? 10 : 42)+3*i]};
     if (version >= 2)
         for (unsigned bank = 0; bank < 4; ++bank)
-            for (unsigned knob = 0; knob < 8; ++knob)
-                candidate.destinations[bank][knob] = bytes[32 + bank * 8 + knob];
+            for (unsigned knob = 0; knob < 8; ++knob) {
+                const auto target=bytes[32 + bank * 8 + knob];
+                if(version==2 && target>=kProfileV2TargetCount) return false;
+                candidate.destinations[bank][knob]=target;
+            }
     if (version==3)
         for (unsigned i=0;i<8;++i) candidate.physical_b_destinations[i]=bytes[88+i];
     if(!validProfile(candidate)) return false;

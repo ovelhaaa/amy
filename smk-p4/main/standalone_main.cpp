@@ -298,24 +298,11 @@ extern "C" void app_main() {
     const auto usb_start=smk::p4::boot::usbStart(usb_enabled_and_qualified,snapshots!=nullptr,
         owner_started,snapshot_received,initial);
     ESP_LOGI(kTag,"USB boot gate: %s",smk::p4::boot::reason(usb_start));
-#if defined(CONFIG_SMKP4_USB_WIRING_CONFIRMED)
-#if defined(CONFIG_SMKP4_USB_MIDI_TRACE)
-    runtime.usbInput().enableTrace();
-#endif
-    if(usb_start==smk::p4::boot::UsbStart::Ready) {
-#if defined(SMKP4_SOUND_EDITOR) && defined(CONFIG_SMKP4_UI_BLUEPRINT)
-        runtime.usbInput().enableControls();
-#endif
-        ESP_LOGI(kTag,"Starting qualified USB Host controller=%d",CONFIG_SMKP4_USB_CONTROLLER);
-        if(!usb_host.begin(CONFIG_SMKP4_USB_CONTROLLER)) ESP_LOGE(kTag,"USB Host initialization failed; Touch remains available");
-    } else ESP_LOGE(kTag,"USB Host not started: %s",smk::p4::boot::reason(usb_start));
-#endif
 #if defined(CONFIG_SMKP4_PCM_DIAGNOSTIC)
     constexpr bool diagnostic=true;
 #else
     constexpr bool diagnostic=false;
 #endif
-    const bool display_ready = smk::p4::beginDisplayTest(diagnostic);
 #ifdef SMKP4_SOUND_EDITOR
     static smk::p4::NvsUserPresets user_presets;
     const bool presets_ready=user_presets.begin();
@@ -344,6 +331,19 @@ extern "C" void app_main() {
 #else
     static smk::p4::PerformanceUi ui(backend);
 #endif
+#if defined(CONFIG_SMKP4_USB_WIRING_CONFIRMED)
+#if defined(CONFIG_SMKP4_USB_MIDI_TRACE)
+    runtime.usbInput().enableTrace();
+#endif
+    if(usb_start==smk::p4::boot::UsbStart::Ready) {
+#if defined(SMKP4_SOUND_EDITOR) && defined(CONFIG_SMKP4_UI_BLUEPRINT)
+        runtime.usbInput().enableControls();
+#endif
+        ESP_LOGI(kTag,"Starting qualified USB Host controller=%d",CONFIG_SMKP4_USB_CONTROLLER);
+        if(!usb_host.begin(CONFIG_SMKP4_USB_CONTROLLER)) ESP_LOGE(kTag,"USB Host initialization failed; Touch remains available");
+    } else ESP_LOGE(kTag,"USB Host not started: %s",smk::p4::boot::reason(usb_start));
+#endif
+    const bool display_ready = smk::p4::beginDisplayTest(diagnostic);
     const bool ui_ready=display_ready && !diagnostic && ui.begin();
     if(!display_ready || (!diagnostic && !ui_ready)) ESP_LOGE(kTag,"Display/UI failed; audio owner continues");
     TickType_t last_report = xTaskGetTickCount();

@@ -165,7 +165,13 @@ public:
     }
     virtual PresetOperationStatus presetOperationStatus() const { return {}; }
     virtual bool hasMidiPerformance() const { return false; }
-    enum class MidiAction : uint8_t { Learn, Confirm, Replace, Cancel, NextBank, SaveProfile, LearnModWheel };
+    enum class MidiAction : uint8_t { Learn, Confirm, Replace, Cancel, NextBank, SaveProfile, LearnModWheel, RestoreLegacy, ReloadProfile, UseGeneric };
+    enum class MidiShortcut : uint8_t { None, PreviousPatch, NextPatch, Home, PreviousPage, NextPage, Learn, SaveAs };
+    virtual MidiShortcut takeMidiShortcut() { return MidiShortcut::None; }
+    virtual const char* midiProfileName() const { return ""; }
+    virtual void midiObservationText(char*, unsigned) const {}
+    virtual void midiLastBindingText(char*, unsigned) const {}
+    virtual void midiPadText(unsigned, char*, unsigned) const {}
     virtual void midiPerformanceAction(MidiAction, unsigned) {}
     virtual const char* midiBankName() const { return ""; }
     virtual const char* midiLearnStatus() const { return ""; }
