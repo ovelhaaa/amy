@@ -30,6 +30,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include <cinttypes>
+#include <new>
 
 #if defined(CONFIG_SMK_LINK_ENABLED)
 #error "Standalone must not initialize the S3 UART bridge"
@@ -236,6 +237,22 @@ void audioTask(void*) {
 
 extern "C" void app_main() {
     if (!smk::p4::reportHardware()) return;
+#ifdef SMKP4_SOUND_EDITOR
+    // This backend belongs to the control task. Reserve its preset and edit
+    // state before AMY admission so any internal fallback is accounted for.
+    using Backend = smk::p4::LocalAmyPerformanceBackend;
+    void* backend_storage = heap_caps_malloc(sizeof(Backend), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    const bool backend_in_psram = backend_storage != nullptr;
+    if (!backend_storage)
+        backend_storage = heap_caps_malloc(sizeof(Backend), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!backend_storage) {
+        ESP_LOGE(kTag, "Cannot allocate control backend (%u bytes)", unsigned(sizeof(Backend)));
+        return;
+    }
+    ESP_LOGI(kTag, "Control backend: %u bytes in %s", unsigned(sizeof(Backend)),
+             backend_in_psram ? "PSRAM" : "internal RAM");
+    auto& backend = *new (backend_storage) Backend(runtime.commands());
+#endif
     ESP_LOGI(kTag, "Standalone local AMY; USB opt-in; no UART, ES8311 or NS4150");
     ESP_LOGI(kTag, "PCM=%" PRIu32 "Hz signed16 stereo Philips; block=%u DMA=%ux%u MCLK=unused",
              kSampleRateHz, unsigned(kBlockFrames), kDmaDescriptors, unsigned(kBlockFrames));
@@ -307,7 +324,9 @@ extern "C" void app_main() {
     const bool fx_ready=fx_presets.begin();
     if(!fx_ready)ESP_LOGE(kTag,"User FX Presets unavailable: %s; live FX continues without persistence",esp_err_to_name(fx_presets.error()));
 #endif
+#ifndef SMKP4_SOUND_EDITOR
     static smk::p4::LocalAmyPerformanceBackend backend(runtime.commands());
+#endif
 #ifdef SMKP4_SOUND_EDITOR
     if(presets_ready)backend.presetStore(&user_presets);
     if(fx_ready)backend.fxPresetStore(&fx_presets);

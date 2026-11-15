@@ -1,6 +1,6 @@
 # SMK-P4 0.14.1 — candidatos Guition
 
-**NO-GO após o ensaio físico do perfil bench.** A imagem gravada iniciou, mas a admissão do AMY recusou a RAM interna disponível.
+**PASS para gravação, boot e admissão do perfil bench com a correção de RAM.** Ensaio musical sob carga permanece pendente.
 
 Código de firmware compilado em 650ab199f76787781d70d487e78e21072773d296. Os commits posteriores de testes ou documentação não entram nesses binários.
 
@@ -11,7 +11,7 @@ Código de firmware compilado em 650ab199f76787781d70d487e78e21072773d296. Os co
 
 Os perfis preservam oito vozes, 48 kHz, 256 frames e a partição factory de 3 MiB. A configuração indica flash de 16 MB e PSRAM Hex a 200 MHz. A telemetria de áudio sob carga e a margem de stack do owner permanecem pendentes. Nenhuma alteração de pinagem, partições ou hardware foi necessária.
 
-Os binários ficam em `smk-p4/.pio/build/<perfil>/firmware.bin`. Antes do ensaio, guardar firmware e NVS da mesma unidade. O retorno à 0.14 ou 0.13.1 usa o par pré-ensaio verificado. Essas versões não leem V4. Qualquer gravação, inclusive de rollback, exige autorização vinculada ao SHA-256 da imagem. A imagem bench permanece instalada e a NVS conferiu byte a byte pelo SHA-256 após a gravação.
+A imagem bench deste ensaio foi preservada em `build/p4-0141-com13-bench/firmware-verified.bin` antes da recompilação. Antes do ensaio, guardar firmware e NVS da mesma unidade. O retorno à 0.14 ou 0.13.1 usa o par pré-ensaio verificado. Essas versões não leem V4. Qualquer gravação, inclusive de rollback, exige autorização vinculada ao SHA-256 da imagem. A NVS conferiu pelo SHA-256 após a gravação inicial.
 
 [Procedimento de hardware](performance_0141_test_matrix.md) · [Persistência e rollback](performance_0141_persistence.md).
 
@@ -33,3 +33,26 @@ python smk-p4/tests/capture_serial.py --port COM13 --output build/p4-0141-com13-
 ```
 
 Logs locais em build/p4-0141-com13-bench. SHA-256 de boot.log: e96271ac7c5d205e35f89de757a3a35a8b0f917c0160bb9178a923b17414b632. O próximo passo é reduzir a pressão de RAM interna e manter a guarda de admissão.
+
+## Correção de RAM interna
+
+O backend de controle do Sound Editor passa a ocupar 9.928 bytes de PSRAM reservados uma vez na inicialização. Ele contém estado de edição e presets e pertence à task de controle. A alocação alternativa em RAM interna acontece antes da admissão para que o custo entre na medição. A guarda de 352.256 bytes permanece ativa. O runtime AMY, o mailbox, as tarefas e os buffers de áudio permanecem no caminho anterior.
+
+| Perfil | RAM estática anterior | RAM estática nova | Bytes do firmware | SHA-256 |
+|---|---:|---:|---:|---|
+| guition-editor-8 | 51.032 B | 41.100 B | 1.300.864 | `451c48c999044192cc08b56e3ba77ba9eb984ce73401b8dc4e7be32d09d7953b` |
+| guition-editor-8-bench | 51.416 B | 41.484 B | 1.401.904 | `eb40674e617c8122ed61c705d1d9733e282431c5b255298ce53695ac8e0ae86c` |
+
+A redução estática de 9.932 bytes excede o déficit observado de 3.389 bytes. A admissão real depende da medição de heap no boot. O ELF confirma a remoção do objeto estático do backend.
+
+**PASS** para `powershell -File smk-p4/tests/run_host.ps1`, os dois builds `pio run -d smk-p4 -e <perfil> -j 8` e as duas auditorias `check_blueprint_build.py`. Os novos binários ficam em `smk-p4/.pio/build/<perfil>/firmware.bin`. A validação física da nova imagem está abaixo.
+
+## Ensaio da correção de RAM
+
+- **PASS — gravação e verificação.** Guition ESP32-P4 rev. 1.3 em COM13, com o SHA-256 eb40674e617c8122ed61c705d1d9733e282431c5b255298ce53695ac8e0ae86c autorizado. Esptool verificou 1.401.904 bytes da aplicação em 0x10000.
+- **PASS — NVS preservada.** Leituras anterior e posterior têm SHA-256 2e9e858b22c13f60d3c8c9a8bafc2a23f85925b69a1be43bf176e0429b3bd04c, igual ao backup original.
+- **PASS — admissão do AMY.** Backend de controle em PSRAM. RAM interna livre na admissão de 358.819 bytes, contra 348.867 antes da correção. Margem de 6.563 bytes sobre a guarda de 352.256. Maior bloco de 245.760 bytes.
+- **PASS — I²S em repouso.** Captura de 30 s com 1.253.632 frames escritos na última amostra. Render médio de 219 µs e máximo de 362 µs. Zero deadlines de render e computação, OOM, erros de escrita e timeouts. Stack livre do owner de 1.188 bytes, RAM interna livre de 134.219 bytes e PSRAM livre de 30.482.328 bytes. Underruns físicos não instrumentados.
+- **PASS — USB Host iniciado.** A captura indica estado de espera, com zero conexões. **NOT RUN** para enumeração do controlador, audição analógica, toque, execução sob carga e Save/Recall físico.
+
+A imagem corrigida permanece instalada. Logs locais em build/p4-0141-com13-bench-ram. SHA-256 de boot.log: 5035b2b84e90a866a718c8a4d4f9040f0c76148a7abcf7c972a0e98efd3955be.
