@@ -307,8 +307,9 @@ void Runtime::serviceDelay(bool immediate) {
     const float mix=desired.bypass_all?0.0f:desired.delay_mix;
     const float feedback=desired.bypass_all?0.0f:desired.delay_feedback;
     const float step=std::max(mix*0.25f,0.05f);
+    const bool large_shift=std::fabs(time-echo_time_ms_)>=1.5f;
     if(!immediate && !desired.bypass_all && (sync || echo_sync_)) {
-        if(time!=echo_time_ms_ && echo_mix_>0.0f) {
+        if(large_shift && echo_mix_>0.0f) {
             echo_mix_=std::max(0.0f,echo_mix_-step);
             config_echo(0,echo_mix_,echo_time_ms_,fx::kMaxDelayMs,echo_feedback_,0.0f);
             return;
