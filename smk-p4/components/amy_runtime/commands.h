@@ -3,6 +3,7 @@
 #include "output_context.h"
 #include "sound_edit.h"
 #include "fx_state.h"
+#include "performance_lock.h"
 #include <atomic>
 namespace smk::p4::amy {
 enum class CommandType : uint8_t { NoteOn, Patch, Master, NoteOff, Control, Bend, Harmony, Arp };
@@ -14,7 +15,7 @@ struct Command {
     uint8_t channel=0;
     bool preset_recall=false;
     uint8_t version=0;
-    uint8_t preserve_mask=0;
+    uint8_t preserve_mask=perf_lock::kDefaultLockMask;
 };
 // Exactly one producer per queue (UI or USB client), and one AMY owner.
 // Touch Off and every Panic use independent atomic latches.

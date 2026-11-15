@@ -442,7 +442,7 @@ submit:
     return result(UiCommandState::Requested,id,"MASTER REQUESTED; WAIT SNAPSHOT");
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestSelectPatch(uint16_t id,uint8_t layer) {
-    return requestSelectPatch(id, layer, 0);
+    return requestSelectPatch(id, layer, perf_lock::kDefaultLockMask);
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestSelectPatch(uint16_t id,uint8_t layer,uint8_t preserve_mask) {
     if(layer || !isPatchSelectable(id)) return result(UiCommandState::Unsupported,"perf.patch_id","PATCH/LAYER UNAVAILABLE");

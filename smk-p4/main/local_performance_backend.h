@@ -630,7 +630,7 @@ public:
 #endif
     }
     bool discardEditsAndSetPatch(uint16_t id,uint32_t now_ms) override {
-        return discardEditsAndSetPatch(id, now_ms, 0);
+        return discardEditsAndSetPatch(id, now_ms, perf_lock::kDefaultLockMask);
     }
     bool discardEditsAndSetPatch(uint16_t id,uint32_t now_ms,uint8_t preserve_mask) override {
 #ifdef SMKP4_SOUND_EDITOR
@@ -641,7 +641,7 @@ public:
 #endif
     }
     bool setPatch(uint16_t id,uint32_t now_ms) override {
-        return setPatch(id, now_ms, 0);
+        return setPatch(id, now_ms, perf_lock::kDefaultLockMask);
     }
     bool setPatch(uint16_t id,uint32_t now_ms,uint8_t preserve_mask) override {
 #ifdef SMKP4_SOUND_EDITOR
