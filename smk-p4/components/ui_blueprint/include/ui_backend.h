@@ -117,9 +117,18 @@ public:
     virtual const arp::Status* arpStatus() const { return nullptr; }
     virtual const char* arpNotice() const { return nullptr; }
     virtual UiCommandResult requestArpTransport(bool) { return {}; }
+    virtual UiCommandResult requestClearLatch() { return {}; }
+    struct DelayStatus {
+        float target_ms=0,applied_ms=0;
+        bool sync=false,out_of_range=false,bypassed=false;
+    };
+    virtual bool delayStatus(DelayStatus&) const { return false; }
     void tapTempo(uint32_t timestamp_ms) {
         if(const unsigned bpm=tap_tempo_.tap(timestamp_ms)) requestParameterInt("perf.bpm",int(bpm));
     }
+    virtual bool canSaveTempo() const { return false; }
+    virtual UiCommandResult requestSaveTempo() { return {}; }
+    virtual const char* tempoSaveNotice() const { return ""; }
 
     virtual bool patchNeedsDiscardConfirmation() const { return false; }
     virtual UiCommandResult confirmPatchDiscard(uint16_t, uint8_t) { return {}; }
@@ -142,7 +151,7 @@ public:
     struct RoutingValues {
         float manual = 0, applied = 0;
         uint8_t sources = 0;
-        bool legacy = false, compare = false, bypass = false;
+        bool legacy = false, compare = false, bypass = false, suspended = false;
     };
     virtual bool routingValues(unsigned, RoutingValues&) const { return false; }
     virtual const char* midiTargetName(unsigned) const { return nullptr; }

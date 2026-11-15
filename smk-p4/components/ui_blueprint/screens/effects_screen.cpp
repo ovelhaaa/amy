@@ -1,53 +1,53 @@
 #include "ui_screens.h"
 #include "ui_widgets.h"
 #include <cstdio>
+#include <cstring>
 
 namespace smk::p4::ui {
-
 namespace {
-
 class EffectsScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::Effects; }
 
-    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager&) override {
-        // 1. Top FX Chain & AMY Support Classification Banner (y = 4..42)
-        lv_obj_t* banner = lv_obj_create(parent);
-        applyPanelStyle(banner, true);
-        lv_obj_set_pos(banner, 8, 4);
-        lv_obj_set_size(banner, 784, 38);
-        lv_obj_set_style_pad_all(banner, 4, 0);
-        createLabel(banner,
-                    "NATIVE AMY FX CHAIN: EQ -> CHORUS -> DELAY -> REVERB  |  HARD REAL-TIME BUS 0",
-                    6, 4, 768, &lv_font_montserrat_14, palette::kAccentPrimary);
-
-        // 2. Row 1: Chorus & Delay (y = 46..156)
-        createParameterCard(parent, backend, "fx.chorus.mode",    8,   46, 190, 108);
-        createParameterCard(parent, backend, "fx.chorus.depth",   206, 46, 190, 108);
-        createParameterCard(parent, backend, "fx.delay.time_ms",  404, 46, 190, 108);
-        createParameterCard(parent, backend, "fx.delay.feedback", 602, 46, 190, 108);
-
-        // 3. Row 2: Delay Mix, Reverb Size, Reverb Mix, Bus FX Send (y = 160..270)
-        createParameterCard(parent, backend, "fx.delay.mix",   8,   160, 190, 108);
-        createParameterCard(parent, backend, "fx.reverb.size", 206, 160, 190, 108);
-        createParameterCard(parent, backend, "fx.reverb.mix",  404, 160, 190, 108);
-        createParameterCard(parent, backend, "mixer.fx_send",  602, 160, 190, 108);
-
-        // 4. Row 3: Bus Saturation Drive, Tilt EQ, Chain Routing Order (y = 274..386)
-        createParameterCard(parent, backend, "fx.drive",       8,   274, 256, 112);
-        createParameterCard(parent, backend, "fx.master_tone", 272, 274, 256, 112);
-        createParameterCard(parent, backend, "fx.routing",     536, 274, 256, 112);
-
+    bool build(lv_obj_t* parent,IUiBackend& backend,UiNavigationManager&) override {
+        createLabel(parent,"DELAY",8,5,130,&lv_font_montserrat_14,palette::kAccentPrimary);
+        timing_=createLabel(parent,"",112,5,678,&lv_font_montserrat_14,palette::kTextPrimary);
+        constexpr const char* delay[]{
+            "fx.delay.mode","fx.delay.division","fx.delay.time_ms","fx.delay.feedback","fx.delay.mix"
+        };
+        for(unsigned i=0;i<5;++i) createParameterCard(parent,backend,delay[i],8+158*i,28,152,108);
+        notice_=createLabel(parent,"",8,144,784,&lv_font_montserrat_14,palette::kAccentPrimary);
+        createLabel(parent,"CHORUS                  REVERB                  EQ",8,175,784,
+                    &lv_font_montserrat_14,palette::kTextSecondary);
+        constexpr const char* other[]{
+            "fx.chorus.mode","fx.chorus.depth","fx.reverb.size","fx.reverb.mix","fx.master_tone","fx.eq.low_db"
+        };
+        for(unsigned i=0;i<6;++i) createParameterCard(parent,backend,other[i],8+198*(i%4),200+94*(i/4),190,90);
+        refresh(backend);
         return true;
     }
 
-    void refresh(IUiBackend&) override {}
+    void refresh(IUiBackend& backend) override {
+        IUiBackend::DelayStatus status{};
+        if(!backend.delayStatus(status)) return;
+        char timing[100];
+        const int bpm=backend.model().getInt("perf.bpm",120);
+        if(status.sync)
+            std::snprintf(timing,sizeof(timing),"%d BPM  |  TARGET %.2f ms  |  DSP %.2f ms",
+                          bpm,double(status.target_ms),double(status.applied_ms));
+        else std::snprintf(timing,sizeof(timing),"%d BPM  |  DSP %.2f ms",bpm,double(status.applied_ms));
+        setLabel(timing_,timing);
+        setLabel(notice_,status.bypassed?"FX BYPASSED":status.out_of_range?
+                 "SYNC OUT OF RANGE  |  HOLDING SAFE TIME  |  TIME MACROS PAUSED":
+                 status.sync?"DELAY TIME MACROS PAUSED":"");
+    }
+private:
+    static void setLabel(lv_obj_t* label,const char* text) {
+        if(label && std::strcmp(lv_label_get_text(label),text)) lv_label_set_text(label,text);
+    }
+    lv_obj_t* timing_=nullptr;
+    lv_obj_t* notice_=nullptr;
 };
-
-} // namespace
-
-ScreenView* createEffectsScreen() {
-    return new EffectsScreen();
 }
-
-} // namespace smk::p4::ui
+ScreenView* createEffectsScreen() { return new EffectsScreen(); }
+}

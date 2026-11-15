@@ -27,6 +27,8 @@ constexpr const char* kFxRouting[] = {"CHOR > DLY > REV", "DLY > CHOR > REV", "P
 constexpr const char* kClockSources[] = {"INTERNAL", "USB MIDI", "AUTO"};
 constexpr const char* kArpRates[] = {"1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32"};
 constexpr const char* kArpDirs[] = {"UP", "DOWN", "UP/DOWN", "RANDOM", "AS PLAYED"};
+constexpr const char* kDelayModes[] = {"FREE", "SYNC"};
+constexpr const char* kDelayDivisions[] = {"1/4", "1/8 D", "1/8", "1/8 T", "1/16 D", "1/16", "1/16 T", "1/32"};
 constexpr const char* kDrumVoices[] = {"808 KICK", "808 SNARE", "CLOSED HAT", "OPEN HAT", "LOW TOM", "MID TOM", "CLAP", "RIMSHOT"};
 constexpr const char* kRootNotes[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 constexpr const char* kScaleTypes[] = {
@@ -399,7 +401,13 @@ const ParameterDescriptor kDescriptors[] = {
      ParameterScale::Linear, "Effects", "CHORUS", nullptr, 0, kModTargetCtrl,
      FeatureStatus::Available, nullptr, -1, "src/amy.h",
      "Stereo chorus modulation depth"},
-    {"fx.delay.time_ms", "fx", "DELAY TIME", ParameterValueType::Float, 10.0f, 1000.0f, 350.0f, 10.0f, "ms",
+    {"fx.delay.mode", "fx", "DELAY MODE", ParameterValueType::Enum, 0, 1, 0, 1, "",
+     ParameterScale::Linear, "Effects", "DELAY", kDelayModes, 2, kStdCtrl,
+     FeatureStatus::Planned, nullptr, -1, "fx_state.h", "Manual time or tempo sync"},
+    {"fx.delay.division", "fx", "DIVISION", ParameterValueType::Enum, 0, 7, 2, 1, "",
+     ParameterScale::Linear, "Effects", "DELAY", kDelayDivisions, 8, kStdCtrl,
+     FeatureStatus::Planned, nullptr, -1, "fx_state.h", "Rhythmic delay division"},
+    {"fx.delay.time_ms", "fx", "MANUAL TIME", ParameterValueType::Float, 10.0f, 1000.0f, 350.0f, 10.0f, "ms",
      ParameterScale::Linear, "Effects", "DELAY", nullptr, 0, kModTargetCtrl,
      FeatureStatus::Available, nullptr, -1, "src/amy.h",
      "Echo/delay time in ms (AMY echo module)"},
@@ -437,13 +445,13 @@ const ParameterDescriptor kDescriptors[] = {
      "Master effect chain order and bypass mode"},
 
     // ── ARPEGGIATOR ──────────────────────────────────────────────────────
-    {"arp.bpm", "arp", "TEMPO", ParameterValueType::Int, 40.0f, 240.0f, 120.0f, 1.0f, "BPM",
-     ParameterScale::Linear, "Arpeggiator", "TIMING", nullptr, 0, kStdCtrl,
-     FeatureStatus::Planned, nullptr, -1, "arp_clock.h", "Internal arpeggiator tempo"},
     {"arp.enable", "arp", "ARP ON", ParameterValueType::Bool, 0.0f, 1.0f, 0.0f, 1.0f, "",
      ParameterScale::Linear, "Arpeggiator", "MAIN", nullptr, 0, kStdCtrl,
      FeatureStatus::Planned, nullptr, -1, "smk-s3/components/sequencer/include/arpeggiator.h",
      "Enable note arpeggiator"},
+    {"arp.restart", "arp", "RESTART ON NEW CHORD", ParameterValueType::Bool, 0, 1, 0, 1, "",
+     ParameterScale::Linear, "Arpeggiator", "PATTERN", nullptr, 0, kStdCtrl,
+     FeatureStatus::Planned, nullptr, -1, "arpeggiator.h", "Restart when the first key of a new gesture is pressed"},
     {"arp.clock_source", "arp", "CLOCK SRC", ParameterValueType::Enum, 0.0f, 2.0f, 0.0f, 1.0f, "",
      ParameterScale::Linear, "Arpeggiator", "TIMING", kClockSources, 3, kStdCtrl,
      FeatureStatus::Planned, nullptr, -1, "smk-s3/components/sequencer/include/clock_manager.h",
@@ -652,17 +660,13 @@ size_t ParameterRegistry::count() {
 }
 
 const ParameterDescriptor* ParameterRegistry::findById(const char* id) {
-    if (!id) return nullptr;
-    for (size_t i = 0; i < kDescriptorCount; ++i) {
-        if (std::strcmp(kDescriptors[i].id, id) == 0) {
-            return &kDescriptors[i];
-        }
-    }
-    return nullptr;
+    const int index=indexOf(id);
+    return index<0?nullptr:&kDescriptors[index];
 }
 
 int ParameterRegistry::indexOf(const char* id) {
     if (!id) return -1;
+    if(std::strcmp(id,"arp.bpm")==0) id="perf.bpm";
     for (size_t i = 0; i < kDescriptorCount; ++i) {
         if (std::strcmp(kDescriptors[i].id, id) == 0) {
             return static_cast<int>(i);

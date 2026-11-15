@@ -122,6 +122,13 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, IUiBackend& backend, const char*
         };
         if (dec_btn) attachLvContext<CardActionCtx>(dec_btn, CardActionCtx{&backend, desc->id, vlbl, -1}, step_cb, LV_EVENT_CLICKED);
         if (inc_btn) attachLvContext<CardActionCtx>(inc_btn, CardActionCtx{&backend, desc->id, vlbl, +1}, step_cb, LV_EVENT_CLICKED);
+        for(auto* button:{dec_btn,inc_btn}) if(button)
+            attachLvContext<CardActionCtx>(button,{&backend,desc->id,nullptr,0},[](lv_event_t* e) {
+                auto* ctx=static_cast<CardActionCtx*>(lv_event_get_user_data(e));
+                auto* obj=static_cast<lv_obj_t*>(lv_event_get_target(e));
+                if(ctx->backend->isParameterEditable(ctx->param_id)) lv_obj_remove_state(obj,LV_STATE_DISABLED);
+                else lv_obj_add_state(obj,LV_STATE_DISABLED);
+            },LV_EVENT_REFRESH);
     }
 
     return card;

@@ -22,7 +22,8 @@ public:
         if(count_<intervals_.size()) ++count_;
         if(count_<3) return 0;
         auto sorted=intervals_;
-        std::sort(sorted.begin(),sorted.begin()+count_);
+        if(count_==3) sorted[3]=UINT32_MAX;
+        std::sort(sorted.begin(),sorted.end());
         const auto median=(sorted[(count_-1)/2]+sorted[count_/2]+1)/2;
         if(sorted[count_-1]-sorted[0]>median/4) return 0;
         return (60000+median/2)/median;

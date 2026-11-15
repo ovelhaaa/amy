@@ -21,7 +21,8 @@ int harmonyIndex(const char* id){if(id)for(unsigned i=0;i<12;++i)if(std::strcmp(
 bool eq(const char* a,const char* b) { return a && std::strcmp(a,b)==0; }
 bool isFxId(const char* id) {
     return eq(id,"fx.chorus.mode") || eq(id,"fx.chorus.depth") ||
-           eq(id,"fx.delay.time_ms") || eq(id,"fx.delay.feedback") || eq(id,"fx.delay.mix") ||
+           eq(id,"fx.delay.time_ms") || eq(id,"fx.delay.mode") || eq(id,"fx.delay.division") ||
+           eq(id,"fx.delay.feedback") || eq(id,"fx.delay.mix") ||
            eq(id,"fx.reverb.size") || eq(id,"fx.reverb.mix") || eq(id,"fx.master_tone") || eq(id,"fx.eq.low_db");
 }
 }
@@ -39,7 +40,7 @@ UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend&
 #endif
 #endif
 #if defined(SMKP4_SOUND_EDITOR) || defined(CONFIG_SMKP4_SOUND_EDITOR)
-    d.firmware_version="SMK-P4 PERFORMANCE 0.15";
+    d.firmware_version="SMK-P4 PERFORMANCE 0.15.1";
 #endif
     d.amy_status="WAIT SNAPSHOT"; d.i2s_status="NOT LIVE"; d.usb_status="DISCONNECTED";
     model_.setBool("harmony.scale_enable",false);
@@ -141,6 +142,8 @@ bool UiBlueprintPerformanceAdapter::routingValues(unsigned id, RoutingValues& va
     values.applied = fx_state->applied.*fields[index];
     values.sources = fx_state->performance_sources[index];
     values.bypass = fx_state->applied.bypass_all;
+    values.suspended=id==DelayTime && fx_state->config.delay_mode==fx::DelayMode::Sync;
+    if(values.suspended) values.applied=fx_state->delay_dsp_ms;
     return true;
 }
 
@@ -249,9 +252,13 @@ FeatureStatus UiBlueprintPerformanceAdapter::parameterStatus(const char* id) con
         const int p=editIndex(id);
         if(p>=0)return (state->available&edit::bit(unsigned(p)))?FeatureStatus::Available:FeatureStatus::Unavailable;
     }
-    if(backend_.arpStatus() && arpIndex(id)>=0) return FeatureStatus::Available;
+    if(backend_.arpStatus() && (arpIndex(id)>=0 || eq(id,"arp.restart"))) return FeatureStatus::Available;
     if(backend_.harmonyState() && harmonyIndex(id)>=0)return FeatureStatus::Available;
-    if(backend_.fxState() && isFxId(id))return FeatureStatus::Available;
+    if(backend_.fxState() && isFxId(id)) {
+        if(eq(id,"fx.delay.mode") || eq(id,"fx.delay.division"))
+            return backend_.arpStatus()?FeatureStatus::Available:FeatureStatus::Unavailable;
+        return FeatureStatus::Available;
+    }
     return eq(id,"perf.master_volume") || eq(id,"perf.octave_shift") || eq(id,"perf.patch_id")
         ? FeatureStatus::Available : FeatureStatus::Planned;
 }
@@ -272,6 +279,10 @@ bool UiBlueprintPerformanceAdapter::isParameterValueSupported(const char* id,int
     return true;
 }
 bool UiBlueprintPerformanceAdapter::isParameterEditable(const char* id) const {
+    if(const auto* fx=backend_.fxState()) {
+        const bool sync=fx->config.delay_mode==fx::DelayMode::Sync;
+        if((sync && eq(id,"fx.delay.time_ms")) || (!sync && eq(id,"fx.delay.division"))) return false;
+    }
     return parameterStatus(id)==FeatureStatus::Available && usable();
 }
 bool UiBlueprintPerformanceAdapter::isPatchSelectable(uint16_t id) const {
@@ -376,6 +387,8 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterInt(const char* i
         pending_edit_.requested_ms=now_ms_;
         return result(UiCommandState::Requested,id,"MACRO REQUESTED; WAIT OWNER",pending_edit_.token);
     }
+    if(eq(id,"arp.restart") && backend_.arpStatus() && (v==0 || v==1))
+        return submitArp(arp::Action::Restart,uint8_t(v),"arp.restart");
     const int ai=arpIndex(id);
     if(ai>=0 && backend_.arpStatus()) {
         const auto* desc=ParameterRegistry::findById(id);
@@ -553,6 +566,10 @@ const char* UiBlueprintPerformanceAdapter::midiDestination(unsigned knob) const 
         {"fm.op.attack","fm.op.decay","fm.op.vel_sens","lfo.1.rate_hz","lfo.1.depth",nullptr,nullptr,nullptr},
         {"fx.chorus.depth","fx.delay.time_ms","fx.delay.feedback","fx.delay.mix","fx.reverb.size","fx.reverb.mix","fx.master_tone","fx.eq.low_db"}
     };
+    if(midi_legacy_ && knob==9) {
+        const auto* state=backend_.fxState();
+        if(state && state->config.delay_mode==fx::DelayMode::Sync) return "fx.delay.division";
+    }
     if (midi_legacy_) return destinations[knob<8 ? 0 : 5][knob%8];
     if (midi_bank_==3 && knob==7) return nullptr;
     const bool fm=state->family==0;
@@ -564,6 +581,14 @@ bool UiBlueprintPerformanceAdapter::midiTarget(unsigned knob,uint8_t& target) co
     const char* id=midiDestination(knob);
     const auto* desc=id?ParameterRegistry::findById(id):nullptr;
     if(!desc || parameterStatus(id)!=FeatureStatus::Available) return false;
+    if(eq(id,"fx.delay.division")) {
+        const unsigned first=firstDelayDivision();
+        const unsigned last=unsigned(tempo::Division::Count)-1;
+        const unsigned selected=std::max(first,unsigned(backend_.fxState()->config.delay_division));
+        target=uint8_t(((selected-first)*127+(last-first)/2)/(last-first));
+        return true;
+    }
+    if(eq(id,"fx.delay.time_ms") && backend_.fxState()->config.delay_mode==fx::DelayMode::Sync) return false;
     const int p=editIndex(id);
     const float manual=p>=0?backend_.soundEdit()->manual[p]:model_.getFloat(id,desc->default_value);
     if(!std::isfinite(manual) || desc->maximum<=desc->minimum) return false;
@@ -573,6 +598,14 @@ bool UiBlueprintPerformanceAdapter::midiTarget(unsigned knob,uint8_t& target) co
         (bounded-desc->minimum)/(desc->maximum-desc->minimum);
     target=uint8_t(std::lround(127*std::clamp(position,0.0f,1.0f)));
     return true;
+}
+
+unsigned UiBlueprintPerformanceAdapter::firstDelayDivision() const {
+    const auto* status=backend_.arpStatus();
+    const unsigned bpm=status?status->tempo.bpm:tempo::kDefaultBpm;
+    // Only quarter and dotted eighth can exceed 1000 ms in the supported range.
+    if(bpm>=60) return 0;
+    return bpm>=45?1:2;
 }
 
 void UiBlueprintPerformanceAdapter::resetPickup(const char* id) {
@@ -761,6 +794,11 @@ void UiBlueprintPerformanceAdapter::midiPadText(unsigned pad,char* text,unsigned
 }
 
 void UiBlueprintPerformanceAdapter::serviceMidi() {
+    const unsigned delay_range=eq(midiDestination(9),"fx.delay.division")?firstDelayDivision()+1:0;
+    if(delay_range!=midi_delay_range_) {
+        midi_knobs_[9].pickup.reset();
+        midi_delay_range_=delay_range;
+    }
     if(!hasMidiPerformance()) return;
     if(midi_save_pending_ && (backend_.storageQuiet() || now_ms_-midi_save_started_ms_>=2000)){
         const bool saved=backend_.storageQuiet() && midi_store_->save(midi_saved_profile_);
@@ -886,9 +924,17 @@ void UiBlueprintPerformanceAdapter::serviceMidi() {
         const auto* desc=ParameterRegistry::findById(id);
         if(!desc) continue;
         const float position=values[k]/127.0f;
-        const float value=desc->scale==ParameterScale::Logarithmic && desc->minimum>0?
+        float value=desc->scale==ParameterScale::Logarithmic && desc->minimum>0?
             std::clamp(desc->minimum*std::pow(desc->maximum/desc->minimum,position),desc->minimum,desc->maximum):
             desc->minimum+(desc->maximum-desc->minimum)*position;
+        if(eq(id,"fx.delay.division")) {
+            const unsigned first=firstDelayDivision();
+            const unsigned span=unsigned(tempo::Division::Count)-1-first;
+            const unsigned current=std::max(first,unsigned(backend_.fxState()->config.delay_division));
+            const float division=first+position*span;
+            if(std::abs(division-current)<0.5f+2.0f*span/127.0f) continue;
+            value=std::round(division);
+        }
         midi_dispatch_=true;
         const auto result=requestParameterFloat(id,value);
         midi_dispatch_=false;
@@ -921,11 +967,35 @@ UiCommandResult UiBlueprintPerformanceAdapter::submitArp(arp::Action action,uint
 UiCommandResult UiBlueprintPerformanceAdapter::requestArpTransport(bool play) {
     return submitArp(play?arp::Action::Play:arp::Action::Stop,1,"arp.transport");
 }
+UiCommandResult UiBlueprintPerformanceAdapter::requestClearLatch() {
+    return submitArp(arp::Action::ClearLatch,1,"arp.clear_latch");
+}
+
+bool UiBlueprintPerformanceAdapter::delayStatus(DelayStatus& out) const {
+    const auto* state=backend_.fxState();
+    if(!state || !backend_.arpStatus()) return false;
+    out={state->delay_target_ms,state->delay_dsp_ms,state->config.delay_mode==fx::DelayMode::Sync,
+         state->delay_out_of_range,state->applied.bypass_all};
+    return true;
+}
+
+UiCommandResult UiBlueprintPerformanceAdapter::requestSaveTempo() {
+    const auto* status=backend_.arpStatus();
+    if(!save_tempo_ || !status || status->length || arp_token_ || fx_requested_ || !backend_.requestStorageQuiet()) {
+        tempo_save_notice_="SAVE REQUIRES IDLE AUDIO";
+        return result(UiCommandState::Rejected,"perf.bpm",tempo_save_notice_);
+    }
+    tempo_save_bpm_=status->tempo.bpm;
+    tempo_save_started_ms_=now_ms_;
+    tempo_save_notice_="WAITING FOR AUDIO";
+    return result(UiCommandState::Requested,"perf.bpm",tempo_save_notice_);
+}
 
 void UiBlueprintPerformanceAdapter::serviceArp() {
     const auto* status=backend_.arpStatus();
     if(!status) return;
     const auto& c=status->config;
+    if(model_.getBool("arp.restart",false)!=c.restart) model_.setBool("arp.restart",c.restart);
     const int values[]{c.enabled,int(c.mode),int(c.rate),c.octaves,c.gate,c.swing,c.latch,status->tempo.bpm};
     for(unsigned i=0;i<8;++i) if(model_.getInt(kArpIds[i],-1)!=values[i])
         model_.setInt(kArpIds[i],values[i]);
@@ -953,6 +1023,13 @@ void UiBlueprintPerformanceAdapter::serviceArp() {
 void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     now_ms_=now_ms; backend_.service(now_ms);
     serviceArp();
+    if(tempo_save_bpm_ && (backend_.storageQuiet() || now_ms_-tempo_save_started_ms_>=2000)) {
+        const bool saved=backend_.storageQuiet() && save_tempo_(tempo_save_bpm_);
+        backend_.releaseStorageQuiet();
+        tempo_save_bpm_=0;
+        tempo_save_notice_=saved?"GLOBAL TEMPO SAVED":"GLOBAL TEMPO SAVE FAILED";
+        result(saved?UiCommandState::Confirmed:UiCommandState::Rejected,"perf.bpm",tempo_save_notice_);
+    }
     if(was_connected_ && !backend_.connected()) {
         releaseAllUiNotes(); patch_.active=master_.active=false; have_snapshot_=false;
         result(UiCommandState::Rejected,"connection","ENGINE DISCONNECTED");
@@ -1026,6 +1103,8 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
             model_.setInt("fx.chorus.mode",fx->config.chorus_mode);
             model_.setFloat("fx.chorus.depth",fx->config.chorus_depth*100.0f);
             model_.setFloat("fx.delay.time_ms",fx->config.delay_time_ms);
+            model_.setInt("fx.delay.mode",int(fx->config.delay_mode));
+            model_.setInt("fx.delay.division",int(fx->config.delay_division));
             model_.setFloat("fx.delay.feedback",fx->config.delay_feedback*100.0f);
             model_.setFloat("fx.delay.mix",fx->config.delay_mix*100.0f);
             model_.setFloat("fx.reverb.size",fx->config.reverb_size*100.0f);
@@ -1062,6 +1141,8 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
             model_.setInt("fx.chorus.mode",fx->config.chorus_mode);
             model_.setFloat("fx.chorus.depth",fx->config.chorus_depth*100.0f);
             model_.setFloat("fx.delay.time_ms",fx->config.delay_time_ms);
+            model_.setInt("fx.delay.mode",int(fx->config.delay_mode));
+            model_.setInt("fx.delay.division",int(fx->config.delay_division));
             model_.setFloat("fx.delay.feedback",fx->config.delay_feedback*100.0f);
             model_.setFloat("fx.delay.mix",fx->config.delay_mix*100.0f);
             model_.setFloat("fx.reverb.size",fx->config.reverb_size*100.0f);

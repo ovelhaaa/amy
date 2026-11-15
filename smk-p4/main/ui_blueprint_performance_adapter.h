@@ -38,6 +38,13 @@ public:
     const arp::Status* arpStatus() const override { return backend_.arpStatus(); }
     const char* arpNotice() const override { return arp_notice_; }
     ui::UiCommandResult requestArpTransport(bool play) override;
+    ui::UiCommandResult requestClearLatch() override;
+    bool delayStatus(DelayStatus& out) const override;
+    using SaveTempo = bool (*)(unsigned);
+    void setTempoSaver(SaveTempo saver) { save_tempo_=saver; }
+    bool canSaveTempo() const override { return save_tempo_!=nullptr; }
+    ui::UiCommandResult requestSaveTempo() override;
+    const char* tempoSaveNotice() const override { return tempo_save_notice_; }
     bool patchNeedsDiscardConfirmation() const override { return backend_.patchHasUnsavedEdits(); }
     ui::UiCommandResult confirmPatchDiscard(uint16_t, uint8_t) override;
     ui::UiCommandResult requestSelectPatch(uint16_t, uint8_t layer=0) override;
@@ -83,6 +90,10 @@ public:
     void midiKnobText(unsigned knob,char* text,unsigned size) const override;
 
 private:
+    SaveTempo save_tempo_=nullptr;
+    const char* tempo_save_notice_="";
+    uint32_t tempo_save_started_ms_=0;
+    uint16_t tempo_save_bpm_=0;
     ui::UiCommandResult submitArp(arp::Action,uint8_t,const char*);
     void serviceArp();
     uint32_t arp_token_=0,arp_generation_=0,arp_requested_ms_=0,arp_usb_token_=0;
@@ -91,6 +102,8 @@ private:
     void serviceMidi();
     const char* midiDestination(unsigned knob) const;
     bool midiTarget(unsigned knob,uint8_t& target) const;
+    unsigned firstDelayDivision() const;
+    unsigned midi_delay_range_=0;
     void resetPickup(const char* id=nullptr);
     struct MidiKnob {
         performance::MidiSource source{0,16,0};

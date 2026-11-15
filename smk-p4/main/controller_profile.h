@@ -15,7 +15,7 @@ inline constexpr const char* kMidiTargets[]{
     "filter.cutoff_hz","filter.resonance","filter.env_amount","env.amp.attack_ms","env.amp.decay_ms",
     "env.amp.sustain","env.amp.release_ms","filter.keytrack","fm.op.attack","fm.op.decay","fm.op.vel_sens",
     "lfo.1.rate_hz","lfo.1.depth","fx.chorus.depth","fx.delay.time_ms","fx.delay.feedback",
-    "fx.delay.mix","fx.reverb.size","fx.reverb.mix","fx.master_tone","mod.slot1.amount","fx.eq.low_db"
+    "fx.delay.mix","fx.reverb.size","fx.reverb.mix","fx.master_tone","mod.slot1.amount","fx.eq.low_db","perf.bpm"
 };
 inline constexpr unsigned kMidiTargetCount = sizeof(kMidiTargets)/sizeof(*kMidiTargets);
 static_assert(kMidiTargetCount < 256);

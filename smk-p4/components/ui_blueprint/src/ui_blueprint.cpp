@@ -116,14 +116,16 @@ void UiBlueprint::service(uint32_t now_ms) {
         status_strip_.refresh(backend_, nav_);
         nav_bar_.refresh(nav_);
         nav_.refreshActive();
-    } else if(cur==ScreenId::Arpeggiator) {
-        nav_.refreshActiveView();
+    } else {
+        status_strip_.refreshTempo(backend_);
+        if(cur==ScreenId::Arpeggiator || cur==ScreenId::Effects) nav_.refreshActiveView();
     }
 }
 
 void UiBlueprint::onNavigate(void* user_data, ScreenId) {
     auto* self = static_cast<UiBlueprint*>(user_data);
     if (!self) return;
+    self->status_strip_.closeTempo();
     self->status_strip_.refresh(self->backend_, self->nav_);
     self->nav_bar_.refresh(self->nav_);
 }

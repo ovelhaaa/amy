@@ -14,6 +14,7 @@
 #include "user_preset_nvs.h"
 #include "user_preset_fx_nvs.h"
 #include "controller_profile_nvs.h"
+#include "global_tempo_nvs.h"
 #endif
 #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
 #include "ui_blueprint.h"
@@ -325,6 +326,11 @@ extern "C" void app_main() {
 #ifdef SMKP4_SOUND_EDITOR
     static smk::p4::performance::NvsControllerProfile controller_profile;
     adapter.setControllerProfileStore(controller_profile);
+    const unsigned boot_bpm=smk::p4::tempo::NvsTempo{}.load();
+    if(boot_bpm!=smk::p4::tempo::kDefaultBpm &&
+       !backend.setArp(smk::p4::arp::Action::Bpm,uint8_t(boot_bpm),uint32_t(esp_timer_get_time()/1000)))
+        ESP_LOGW(kTag,"Saved global tempo could not be queued");
+    adapter.setTempoSaver([](unsigned bpm){ return smk::p4::tempo::NvsTempo{}.save(bpm); });
 #endif
     adapter.service(static_cast<uint32_t>(esp_timer_get_time()/1000));
     static smk::p4::ui::UiBlueprint ui(adapter);
@@ -393,6 +399,12 @@ extern "C" void app_main() {
                 ESP_LOGI(kTag,"ARP015 enabled=%d armed=%d gate=%d bpm=%u inputs=%u steps=%u rejected=%lu service_max_us=%lu",
                     arp.config.enabled,arp.armed,arp.sounding,arp.tempo.bpm,arp.held_count,arp.length,
                     (unsigned long)arp.rejected,(unsigned long)state.engine.arp_service_max_us);
+                const auto& fx=state.engine.fx;
+                ESP_LOGI(kTag,"TEMPO0151 tick=%llu revision=%lu mode=%u division=%u manual_ms=%.2f target_ms=%.2f dsp_ms=%.2f out_of_range=%d snapshot_bytes=%u command_bytes=%u fx_request_bytes=%u",
+                    (unsigned long long)arp.tempo.tick(),(unsigned long)arp.tempo.revision,
+                    unsigned(fx.config.delay_mode),unsigned(fx.config.delay_division),double(fx.config.delay_time_ms),
+                    double(fx.delay_target_ms),double(fx.delay_dsp_ms),fx.delay_out_of_range,
+                    unsigned(sizeof(state.engine)),unsigned(sizeof(smk::p4::amy::Command)),unsigned(sizeof(smk::p4::fx::FxRequest)));
                 ESP_LOGI(kTag,"EDIT011 patch=%u epoch=%lu revision=%lu request=%lu mask=%lx compare=%d dirty=%d available=%lx errors=%lu apply_max_us=%lu quiet=%d coalesced=%lu",
                     state.engine.edit.patch,(unsigned long)state.engine.edit.epoch,(unsigned long)state.engine.edit.revision,
                     (unsigned long)state.engine.edit.request,(unsigned long)state.engine.edit.mask,state.engine.edit.compare,state.engine.edit.dirty,

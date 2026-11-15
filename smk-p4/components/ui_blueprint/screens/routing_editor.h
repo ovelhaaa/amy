@@ -226,9 +226,10 @@ private:
             for (unsigned m = 0; m < performance::kMacroCount; ++m)
                 if (values.sources & (1u << m))
                     used += size_t(std::snprintf(sources + used, sizeof(sources) - used, " M%u", m + 1));
-            std::snprintf(text, sizeof(text), "MANUAL %g   APPLIED %g%s%s%s%s",
+            std::snprintf(text, sizeof(text), "MANUAL %g   APPLIED %g%s%s%s%s%s",
                 double(values.manual), double(values.applied), values.legacy ? "   LEGACY" : "",
-                sources, values.compare ? "   COMPARE" : "", values.bypass ? "   FX BYPASS" : "");
+                sources, values.compare ? "   COMPARE" : "", values.bypass ? "   FX BYPASS" : "",
+                values.suspended ? "   MACROS PAUSED IN SYNC" : "");
         }
         if (std::strcmp(lv_label_get_text(values_), text) != 0) lv_label_set_text(values_, text);
     }

@@ -49,6 +49,8 @@ class StatusStrip {
 public:
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav);
     void refresh(IUiBackend& backend, UiNavigationManager& nav);
+    void refreshTempo(IUiBackend& backend);
+    void closeTempo();
 
 private:
     lv_obj_t* root_        = nullptr;
@@ -60,6 +62,11 @@ private:
     lv_obj_t* voices_lbl_  = nullptr;
     lv_obj_t* home_btn_    = nullptr;
     lv_obj_t* panic_btn_   = nullptr;
+    lv_obj_t* tempo_label_ = nullptr;
+    lv_obj_t* tempo_panel_ = nullptr;
+    lv_obj_t* tempo_notice_ = nullptr;
+    lv_obj_t* tempo_slider_ = nullptr;
+    void toggleTempo(lv_obj_t* parent,IUiBackend& backend);
     char      patch_buf_[48]{};
     char      voices_buf_[24]{};
 };
