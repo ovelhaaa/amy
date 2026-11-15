@@ -2,6 +2,9 @@
 #include "commands.h"
 #include "midi_control_events.h"
 #include <cstddef>
+#ifdef SMKP4_SOUND_EDITOR
+#include "arpeggiator.h"
+#endif
 namespace smk::p4::amy {
 // USB client task is the sole producer. The AMY owner consumes this mailbox;
 // the UI retains its own SPSC Commands. Never share a producer endpoint.
@@ -19,6 +22,9 @@ public:
         smk25_.store(vendor==0x4353 && product==0x4b4d,std::memory_order_release);
         musical_pads_=control_pads_=0;
         stop_pressed_=false;
+#ifdef SMKP4_SOUND_EDITOR
+        play_pressed_=false;
+#endif
     }
     bool isSmk25() const { return smk25_.load(std::memory_order_acquire); }
     bool popControl(MidiControlEvent& event) { return controls_.pop(event); }
@@ -50,6 +56,10 @@ public:
                 const bool control=(control_pads_&mask) ||
                     (!(musical_pads_&mask) && legacyEnabled());
                 if (control) {
+#ifdef SMKP4_SOUND_EDITOR
+                    if(on && c.id==47 && !(control_pads_&mask) && legacyEnabled())
+                        publishArp(c,arp::Action::Toggle);
+#endif
                     if (on) control_pads_|=mask;
                     else control_pads_&=uint16_t(~mask);
                     publishControl(c, on ? MidiControlKind::PadOn : MidiControlKind::PadOff);
@@ -64,9 +74,21 @@ public:
             if (legacyEnabled() && c.channel==0 && (c.id==114 || c.id==115 || c.id==117)) {
                 if (c.id==115) {
                     const bool pressed=c.value!=0;
-                    if (pressed && !stop_pressed_) commands.panic();
+                    if (pressed && !stop_pressed_) {
+                        commands.panic();
+#ifdef SMKP4_SOUND_EDITOR
+                        publishArp(c,arp::Action::Stop);
+#endif
+                    }
                     stop_pressed_=pressed;
                 }
+#ifdef SMKP4_SOUND_EDITOR
+                if(c.id==114) {
+                    const bool pressed=c.value!=0;
+                    if(pressed && !play_pressed_) publishArp(c,arp::Action::Play);
+                    play_pressed_=pressed;
+                }
+#endif
                 publishControl(c,MidiControlKind::Transport);
             } else if (observableController(p[2])) {
                 publishControl(c,MidiControlKind::CC);
@@ -129,6 +151,15 @@ public:
     std::atomic<uint32_t> events{0},dropped{0},parse_errors{0},ignored_cable_packets{0};
     std::atomic<uint32_t> trace_dropped{0};
 private:
+#ifdef SMKP4_SOUND_EDITOR
+    void publishArp(Command c,arp::Action action) {
+        const auto generation=commands.generation();
+        c.type=CommandType::Arp;c.id=uint16_t(action);c.token=commands.nextToken();
+        c.version=arp::kProtocolVersion;
+        if(!commands.pushForGeneration(c,generation)) ++dropped;
+    }
+    bool play_pressed_=false;
+#endif
     bool legacyEnabled() const {
         return controls_enabled_ && legacy_profile_.load(std::memory_order_acquire) && isSmk25();
     }
