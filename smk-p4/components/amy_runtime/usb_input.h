@@ -10,6 +10,17 @@ public:
     struct Trace { uint32_t timestamp_ms=0; uint8_t packet[4]{}; uint8_t valid_bytes=0; };
     void enableTrace() { trace_enabled_=true; } // Before starting the USB task.
     void enableControls() { controls_enabled_=true; } // Before starting the USB task.
+    void setLegacyProfile(bool enabled) {
+        if (legacy_profile_.exchange(enabled, std::memory_order_acq_rel)!=enabled)
+            commands.panic();
+    }
+    void identifyDevice(uint16_t vendor, uint16_t product) {
+        // Called by the USB producer after claiming the interface, before receiving packets.
+        smk25_.store(vendor==0x4353 && product==0x4b4d,std::memory_order_release);
+        musical_pads_=control_pads_=0;
+        stop_pressed_=false;
+    }
+    bool isSmk25() const { return smk25_.load(std::memory_order_acquire); }
     bool popControl(MidiControlEvent& event) { return controls_.pop(event); }
     uint32_t controlDrops() const { return controls_.dropped(); }
     uint32_t deviceGeneration() const { return device_generation_.load(std::memory_order_acquire); }
@@ -33,9 +44,33 @@ public:
         if(cin==8 || cin==9) {
             c.type=cin==8 || !p[3]?CommandType::NoteOff:CommandType::NoteOn;
             c.id=p[2]; c.value=p[3];
+            if (c.channel==9 && c.id>=36 && c.id<=51 && isSmk25()) {
+                const auto mask=uint16_t(1u<<(c.id-36));
+                const bool on=c.type==CommandType::NoteOn;
+                const bool control=(control_pads_&mask) ||
+                    (!(musical_pads_&mask) && legacyEnabled());
+                if (control) {
+                    if (on) control_pads_|=mask;
+                    else control_pads_&=uint16_t(~mask);
+                    publishControl(c, on ? MidiControlKind::PadOn : MidiControlKind::PadOff);
+                    ++events;
+                    return true;
+                }
+                if (on) musical_pads_|=mask;
+                else musical_pads_&=uint16_t(~mask);
+            }
         } else if(cin==11) {
-            if(controls_enabled_ && observableController(p[2]))
-                controls_.push({now_ms,deviceGeneration(),commands.generation(),0,c.channel,p[2],p[3]});
+            c.id=p[2]; c.value=p[3];
+            if (legacyEnabled() && c.channel==0 && (c.id==114 || c.id==115 || c.id==117)) {
+                if (c.id==115) {
+                    const bool pressed=c.value!=0;
+                    if (pressed && !stop_pressed_) commands.panic();
+                    stop_pressed_=pressed;
+                }
+                publishControl(c,MidiControlKind::Transport);
+            } else if (observableController(p[2])) {
+                publishControl(c,MidiControlKind::CC);
+            }
             if(!musicalController(p[2])) { ++events; return true; }
             c.type=CommandType::Control; c.id=p[2]; c.value=p[3];
         } else if(cin==14) {
@@ -87,12 +122,24 @@ public:
         return true;
     }
     void disconnect() {
+        smk25_.store(false,std::memory_order_release);
         device_generation_.fetch_add(1,std::memory_order_acq_rel);
         commands.panic();
     }
     std::atomic<uint32_t> events{0},dropped{0},parse_errors{0},ignored_cable_packets{0};
     std::atomic<uint32_t> trace_dropped{0};
 private:
+    bool legacyEnabled() const {
+        return controls_enabled_ && legacy_profile_.load(std::memory_order_acquire) && isSmk25();
+    }
+    void publishControl(const Command& c, MidiControlKind kind) {
+        if(controls_enabled_)
+            controls_.push({c.timestamp_ms,deviceGeneration(),commands.generation(),0,
+                            c.channel,uint8_t(c.id),uint8_t(c.value),kind});
+    }
+    std::atomic<bool> smk25_{false}, legacy_profile_{false};
+    uint16_t musical_pads_=0, control_pads_=0; // USB producer only.
+    bool stop_pressed_=false;
     bool trace_enabled_=false;
     bool controls_enabled_=false;
     MidiControlEvents controls_;

@@ -5,6 +5,8 @@
 
 namespace smk::p4::amy {
 
+enum class MidiControlKind : uint8_t { CC, PadOn, PadOff, Transport };
+
 struct MidiControlEvent {
     uint32_t timestamp_ms = 0;
     uint32_t device_generation = 0;
@@ -13,6 +15,7 @@ struct MidiControlEvent {
     uint8_t channel = 0;
     uint8_t controller = 0;
     uint8_t value = 0;
+    MidiControlKind kind = MidiControlKind::CC;
 };
 
 constexpr bool musicalController(uint8_t cc) {

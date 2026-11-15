@@ -102,6 +102,7 @@ void Host::open(uint8_t address) {
     transfer_->device_handle=device_; transfer_->bEndpointAddress=endpoint_;
     transfer_->callback=received; transfer_->context=this; transfer_->num_bytes=transfer_bytes_;
     if(usb_host_transfer_submit(transfer_)!=ESP_OK) { fail(true); return; }
+    input_.identifyDevice(dd->idVendor,dd->idProduct);
     inflight_=true; state_=State::Connected; ++connects_;
 }
 void Host::received(usb_transfer_t* t) {

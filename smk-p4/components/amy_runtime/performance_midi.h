@@ -34,7 +34,7 @@ public:
 
     bool capture(const amy::MidiControlEvent& event, uint32_t now_ms, uint32_t generation) {
         service(now_ms, generation);
-        if (state_ != LearnState::Armed || event.device_generation != generation ||
+        if (state_ != LearnState::Armed || event.kind != amy::MidiControlKind::CC || event.device_generation != generation ||
             event.timestamp_ms - started_ms_ >= kTimeoutMs || event.channel >= 16 ||
             (channel_ < 16 && event.channel != channel_) || event.cable != 0 ||
             event.value > 127 || !amy::observableController(event.controller) ||
