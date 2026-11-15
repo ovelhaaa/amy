@@ -8,6 +8,7 @@ typedef uint32_t nvs_handle_t;
 #define ESP_ERR_NVS_INVALID_LENGTH 2
 #define ESP_ERR_NVS_NOT_ENOUGH_SPACE 3
 #define ESP_FAIL 4
+#define NVS_READONLY 0
 #define NVS_READWRITE 1
 struct nvs_stats_t {size_t free_entries;};
 extern "C" {

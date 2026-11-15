@@ -38,8 +38,12 @@ static std::vector<int16_t> run(unsigned patch,unsigned control,bool restore=fal
     char name[128];std::snprintf(name,sizeof(name),"build/editor011/audio_%u_%u_%u.pcm",patch,control,voices);FILE* file=std::fopen(name,"wb");assert(file);assert(std::fwrite(pcm.data(),sizeof(int16_t),pcm.size(),file)==pcm.size());std::fclose(file);
     runtime.end();return pcm;
 }
-static std::vector<int16_t> renderPreset(const edit::Preset& preset, const fx::FxConfig& effects) {
+static std::vector<int16_t> renderPreset(const edit::Preset& preset, const fx::FxConfig& effects, bool legacy=false) {
     assert(runtime.begin());
+    auto& usb=runtime.usbInput();
+    usb.enableControls();
+    usb.identifyDevice(0x4353,0x4b4d);
+    usb.setLegacyProfile(legacy);
     assert(runtime.commands().push({amy::CommandType::Patch, preset.patch}));
     runtime.apply(0);
     runtime.loadPendingPatch();
@@ -88,6 +92,7 @@ static void testPresetPcm() {
     std::strcpy(fixture.name, "LEGACY PCM");
     fx::FxConfig effects;
     const auto neutral_pcm = renderPreset(fixture, effects);
+    assert(renderPreset(fixture,effects,true)==neutral_pcm);
     for (unsigned i = 0; i < 4; ++i) {
         auto source = fixture;
         if (i) source.macros[i - 1] = 100;
@@ -103,6 +108,8 @@ static void testPresetPcm() {
     }
     fixture.patch = 135;
     fixture.family = 0;
+    assert(renderPreset(fixture,effects,true)==renderPreset(fixture,effects));
+    std::puts("PASS Juno/FM PCM byte-identical with Legacy S3 profile active and knobs idle");
     fixture.macros[0] = 44;
     fixture.performance_macros[1] = 50;
     fixture.performance_macros[6] = 96;

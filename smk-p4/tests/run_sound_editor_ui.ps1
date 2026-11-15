@@ -17,7 +17,7 @@ try {
         }
     }
     $amy=Get-ChildItem build/harmony09/*.c.o | ForEach-Object FullName
-    & g++ @flags smk-p4/tests/sound_editor_ui_test.cpp smk-p4/main/ui_blueprint_performance_adapter.cpp smk-p4/components/amy_runtime/amy_runtime.cpp smk-p4/tests/heap_probe.cpp @objects @amy build/ui_blueprint_host/liblvgl_host.a '-Wl,--wrap=malloc' '-Wl,--wrap=calloc' '-Wl,--wrap=realloc' '-Wl,--wrap=free' -lm -o build/editor011/ui.exe
+    & g++ @flags smk-p4/tests/sound_editor_ui_test.cpp smk-p4/tests/smk25_0142_ui_test.cpp smk-p4/main/ui_blueprint_performance_adapter.cpp smk-p4/components/amy_runtime/amy_runtime.cpp smk-p4/tests/heap_probe.cpp @objects @amy build/ui_blueprint_host/liblvgl_host.a '-Wl,--wrap=malloc' '-Wl,--wrap=calloc' '-Wl,--wrap=realloc' '-Wl,--wrap=free' -lm -o build/editor011/ui.exe
     if($LASTEXITCODE) { throw 'Unified UI link failed' }
     & build/editor011/ui.exe | Tee-Object build/editor011/ui.log
     if($LASTEXITCODE) { throw 'Unified UI test failed' }

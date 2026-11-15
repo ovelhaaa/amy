@@ -10,6 +10,8 @@
 #include <initializer_list>
 using namespace smk::p4;
 using namespace smk::p4::ui;
+void testSmk25LegacyUi(amy::Runtime&, LocalAmyPerformanceBackend&, UiBlueprintPerformanceAdapter&, UiBlueprint&);
+
 struct MemoryStore:edit::VersionedPresetStore {
     uint8_t bytes[16][2][160]{};bool present[16][2]{};bool fail=false;
     uint8_t v3[16][2][edit::kV3RecordBytes]{};bool has_v3[16][2]{};
@@ -388,6 +390,7 @@ int main(){
     r.usbInput().enableControls();
     next.setMidiInput(r.usbInput());
     ProfileStore profile_store;
+    assert(profile_store.save(performance::ControllerProfile{}));
     next.setControllerProfileStore(profile_store);
     reboot.publishMidi(true,false,0);
     const auto service=[&]{
@@ -627,6 +630,8 @@ int main(){
     assert(r.snapshot().patch_id!=previous_patch && !reboot.unsaved());
     std::puts("PASS patch selector: cancel preserves edits, confirmed discard changes patch");
 
+    testSmk25LegacyUi(r,reboot,next,ui);
+    std::puts("PASS 0.14.2 SMK25 native pickup, pad shortcuts, Save As safety and USB-only Stop");
     assert(lv_mem_test()==LV_RESULT_OK);ui.shutdown();r.end();
     puts("PASS LVGL9.3: all 7 editor tabs, Effects screen, Gate G0 inventory audit, FM/LFO/Mod/FX owner confirmation, dirty guard, Save/Recall/reboot simulation, heap integrity");
 }

@@ -2,7 +2,7 @@ name: SMK-P4 Firmware Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/smk-p4-smk25-integration-0142]
     paths: ['smk-p4/**', 'smk-s3/**', 'src/**', 'shared/**', 'tests/*smk_link*', 'tests/*smk_touch_note*', '.github/workflows/smk-p4-build.yml']
   pull_request:
     branches: [main]
@@ -32,6 +32,7 @@ jobs:
           ./smk-p4/tests/run_host.ps1
           ./smk-p4/tests/run_usb.ps1
           ./smk-p4/tests/run_performance_014.ps1
+          ./smk-p4/tests/run_smk25_0142.ps1
           ./smk-p4/tests/run_retrigger_probe.ps1
           ./smk-p4/tests/run_amy.ps1 -Voices 4 | Tee-Object build/profile4_tests.log
           ./smk-p4/tests/run_amy.ps1 -Voices 6 | Tee-Object build/profile6_tests.log
