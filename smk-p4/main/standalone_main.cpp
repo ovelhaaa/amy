@@ -71,8 +71,19 @@ void runAudio() {
     Pcm5102Output output;
 #endif
     TestTone tone;
-    Snapshot state{};
+    auto* state_storage = static_cast<Snapshot*>(heap_caps_malloc(sizeof(Snapshot), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!state_storage)
+        state_storage = static_cast<Snapshot*>(heap_caps_malloc(sizeof(Snapshot), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    if (!state_storage) {
+        ESP_LOGE(kTag, "AUDIO FAIL: cannot allocate audio state snapshot (%u bytes)", unsigned(sizeof(Snapshot)));
+        return;
+    }
+    Snapshot& state = *new (state_storage) Snapshot{};
+#if defined(CONFIG_SMKP4_PCM_DIAGNOSTIC)
     int16_t pcm[kBlockSamples]{};
+#else
+    const int16_t* pcm = nullptr;
+#endif
 #if !defined(CONFIG_SMKP4_PCM_DIAGNOSTIC)
 #if defined(CONFIG_SMKP4_AMY_RAM_SELF_TEST)
     const size_t internal_before=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
@@ -229,6 +240,7 @@ void runAudio() {
     runtime.end(); state.engine=runtime.snapshot();
     state.running = false;
     xQueueOverwrite(snapshots, &state);
+    heap_caps_free(state_storage);
 }
 void audioTask(void*) {
     runAudio(); // RAII releases the driver before deleting the FreeRTOS task.
