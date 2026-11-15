@@ -2,7 +2,7 @@ name: SMK-P4 Firmware Build
 
 on:
   push:
-    branches: [main, feature/smk-p4-smk25-integration-0142]
+    branches: [main, feature/smk-p4-smk25-integration-0142, feature/smk-p4-arpeggiator-015]
     paths: ['smk-p4/**', 'smk-s3/**', 'src/**', 'shared/**', 'tests/*smk_link*', 'tests/*smk_touch_note*', '.github/workflows/smk-p4-build.yml']
   pull_request:
     branches: [main]
@@ -39,6 +39,9 @@ jobs:
           ./smk-p4/tests/run_amy.ps1 -Voices 8 | Tee-Object build/profile8_tests.log
           ./smk-p4/tests/run_amy.ps1 -Voices 8 -SoundLibrary
           ./smk-p4/tests/run_harmony.ps1
+          git worktree add --detach build/arp_015_baseline f4eeb0d8d450a9bd06a3553415c151d28ed3d9f3
+          if ($LASTEXITCODE) { throw 'Could not prepare the 0.14.2 PCM baseline' }
+          ./smk-p4/tests/run_arp_015.ps1 -Runtime -BaselineRoot build/arp_015_baseline
           ./smk-p4/tests/run_sound_editor.ps1
           python smk-p4/tests/audit_patch_library.py --check
           python smk-p4/tests/summarize_polyphony.py
@@ -102,7 +105,7 @@ jobs:
         if: matrix.project == 'smk-s3'
         run: python -c "from pathlib import Path; assert '#define CONFIG_SMKS3_P4_HEADLESS 1' in Path('smk-s3/.pio/build/esp32-s3-link/config/sdkconfig.h').read_text()"
       - name: Verify Blueprint target and safe hardware defaults
-        if: startsWith(matrix.environment, 'guition-standalone-blueprint') || matrix.environment == 'guition-sound-library-8' || matrix.environment == 'guition-unified-engine-8' || matrix.environment == 'guition-harmony-8' || matrix.environment == 'guition-factory-8'
+        if: startsWith(matrix.environment, 'guition-standalone-blueprint') || matrix.environment == 'guition-sound-library-8' || matrix.environment == 'guition-unified-engine-8' || matrix.environment == 'guition-harmony-8' || matrix.environment == 'guition-factory-8' || startsWith(matrix.environment, 'guition-editor-8')
         run: python smk-p4/tests/check_blueprint_build.py --voices ${{ matrix.voices }} ${{ matrix.audit_flags }}
       - name: Verify standalone target and safe hardware defaults
         if: matrix.environment == 'guition-standalone'
