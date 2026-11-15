@@ -90,8 +90,8 @@ int main() {
             now+=5;
         }
     };
-    const auto bpm=[&](unsigned value) {
-        amy::Command c{amy::CommandType::Arp,uint16_t(arp::Action::Bpm),uint8_t(value),0,queue.nextToken(),now};
+    const auto arpCommand=[&](arp::Action action,unsigned value) {
+        amy::Command c{amy::CommandType::Arp,uint16_t(action),uint8_t(value),0,queue.nextToken(),now};
         c.version=arp::kProtocolVersion;
         assert(queue.push(c));
     };
@@ -116,7 +116,7 @@ int main() {
     assert(state.fx.delay_dsp_ms==500);
     for(unsigned rate:{100,140,60,40,100}) {
         const auto phase=state.arp.tempo.phase;
-        bpm(rate);render(110);
+        arpCommand(arp::Action::Bpm,rate);render(110);
         assert(state.arp.tempo.bpm==rate && state.arp.tempo.phase-phase==110ull*amy::kBlockFrames*rate*tempo::kPpqn*25);
         assert(state.fx.config.delay_time_ms==321);
         if(rate==40) assert(state.fx.delay_out_of_range && state.fx.delay_dsp_ms==1000);
@@ -139,4 +139,23 @@ int main() {
     assert(state.oom_count==oom && probe_calls()==allocations && peak>0 && !state.clipped);
     std::printf("PASS delay transition: blocks=%u apply_render_avg_us=%.2f max_us=%.2f peak=%d max_sample_delta=%d clipping=%u oom=%u\n",
                 blocks,elapsed_us/blocks,worst_us,peak,delta,state.clipped,state.oom_count);
+
+    request.config.delay_mode=fx::DelayMode::Sync;
+    request.config.delay_division=tempo::Division::Eighth;
+    applyFx();
+    arpCommand(arp::Action::Bpm,120);
+    arpCommand(arp::Action::Enable,1);
+    arpCommand(arp::Action::Octaves,1);
+    const uint8_t first[]{9,0x90,60,70},second[]{9,0x90,64,70};
+    assert(runtime.usbInput().packet(first,now) && runtime.usbInput().packet(second,now));
+    const auto admitted=state.groups_admitted;
+    render(11);
+    assert(state.groups_admitted==admitted+1 && state.arp.step==0 && state.fx.delay_dsp_ms==250);
+    arpCommand(arp::Action::Bpm,240);
+    render(8);
+    assert(state.groups_admitted==admitted+1 && state.fx.delay_target_ms==125 && state.fx.delay_dsp_ms==125);
+    render(1);
+    assert(state.groups_admitted==admitted+2 && state.arp.step==1);
+    assert(state.oom_count==oom && probe_calls()==allocations);
+    std::puts("PASS shared BPM change moves both ARP step and native Delay tap");
 }
