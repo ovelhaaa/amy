@@ -1,10 +1,12 @@
 #include "arpeggiator.h"
 #include <cassert>
+#include <cstdio>
 #include <cstdint>
 
 using namespace smk::p4::arp;
 
 int main() {
+    uint64_t max_lateness_ns=0;
     for(unsigned bpm:{40,60,90,120,180,240}) {
         for(unsigned r=0;r<=unsigned(Rate::ThirtySecond);++r) {
             for(unsigned swing:{50,54,75}) {
@@ -18,7 +20,10 @@ int main() {
                         const uint64_t ideal=weight*Clock::ticks(rate)*60*48000;
                         const uint64_t denominator=100*bpm*Clock::kPpqn;
                         assert(frame*denominator>=ideal);
-                        assert(frame*denominator-ideal<256*denominator);
+                        const uint64_t lateness=frame*denominator-ideal;
+                        assert(lateness<256*denominator);
+                        const uint64_t ns=lateness*1000000000/(denominator*48000);
+                        if(ns>max_lateness_ns) max_lateness_ns=ns;
                         const unsigned gate=clock.step(rate,swing,bpm,100);
                         assert(gate>0);
                         ++steps;
@@ -28,6 +33,13 @@ int main() {
             }
         }
     }
+    std::printf("PASS arp clock maximum onset lateness %.3f us in the host sample trace\n",
+                double(max_lateness_ns)/1000);
+    Clock fast;
+    assert(fast.step(Rate::ThirtySecond,75,240,10)==225);
+    for(unsigned i=0;i<9;++i) fast.advance(240,256);
+    assert(fast.due() && fast.step(Rate::ThirtySecond,75,240,10)<256);
+
     Clock live;
     assert(live.due());
     live.step(Rate::Quarter,50,60,100);

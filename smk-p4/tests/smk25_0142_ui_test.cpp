@@ -131,6 +131,8 @@ void testSmk25LegacyUi(amy::Runtime& runtime,LocalAmyPerformanceBackend& backend
     assert(adapter.model().getInt("arp.bpm")==120);
     midi(0x90,60,100);
     assert(runtime.snapshot().arp.sounding && runtime.snapshot().arp.held_count==1);
+    for(unsigned i=0;i<amy::kCommandCapacity;++i)
+        assert(runtime.commands().push({amy::CommandType::Master,0,64,0,0,preview::g_sim_tick_ms}));
     click(content,"STOP");
     frame();
     assert(!runtime.snapshot().arp.sounding && !runtime.snapshot().arp.length);

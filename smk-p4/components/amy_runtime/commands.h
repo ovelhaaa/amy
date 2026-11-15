@@ -63,6 +63,19 @@ public:
 #ifdef SMKP4_SOUND_EDITOR
     edit::Mailbox edits;
     std::atomic<bool> storage_requested{false};
+    // The UI producer gets one Stop slot independent of normal queue pressure.
+    bool pushArpStop(const Command& stop) {
+        if(arp_stop_pending_.load(std::memory_order_acquire)) return false;
+        arp_stop_=stop;
+        arp_stop_pending_.store(true,std::memory_order_release);
+        return true;
+    }
+    bool popArpStop(Command& stop) {
+        if(!arp_stop_pending_.load(std::memory_order_acquire)) return false;
+        stop=arp_stop_;
+        arp_stop_pending_.store(false,std::memory_order_release);
+        return true;
+    }
 #endif
     fx::Mailbox fx;
     void panic(OutputReason reason=OutputReason::Panic) {
@@ -73,6 +86,11 @@ public:
         // SPSC discipline: do NOT mutate fx read_ cursor from producer task!
         // Incrementing generation_ in CommandQueue::panic invalidates stale requests.
     }
+private:
+#ifdef SMKP4_SOUND_EDITOR
+    Command arp_stop_{};
+    std::atomic<bool> arp_stop_pending_{false};
+#endif
 };
 inline constexpr uint32_t kRecallTimeoutMs=2000;
 inline bool atOrAfter(uint32_t a,uint32_t b) { return static_cast<int32_t>(a-b)>=0; }

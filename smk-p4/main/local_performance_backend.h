@@ -524,9 +524,11 @@ public:
         if(!ready_ || busy() || failed_) return 0;
         const uint32_t generation=commands_.generation();
         if(generation!=edit_snapshot_generation_) return 0;
-        amy::Command c{amy::CommandType::Arp,uint16_t(action),value,0,commands_.nextToken(),now_ms};
+        amy::Command c{amy::CommandType::Arp,uint16_t(action),value,generation,commands_.nextToken(),now_ms};
         c.version=arp::kProtocolVersion;
-        return c.token && commands_.pushForGeneration(c,generation)?c.token:0;
+        if(!c.token) return 0;
+        const bool accepted=action==arp::Action::Stop?commands_.pushArpStop(c):commands_.pushForGeneration(c,generation);
+        return accepted?c.token:0;
     }
 #endif
     bool setHarmony(harmony::Config config,uint32_t now_ms) override {

@@ -513,6 +513,9 @@ void Runtime::apply(uint32_t now_ms) {
         } else if(c.type==CommandType::Master && c.value<=127) state_.master=c.value;
         else ++state_.invalid_commands;
     }
+#ifdef SMKP4_SOUND_EDITOR
+    if(commands_.popArpStop(c)) applyArp(c,false,now_ms);
+#endif
 #ifdef SMKP4_UNIFIED_ENGINE
     if(state_.patch_state==PatchState::Ready) applyUsb(now_ms);
     else { usb_.commands.panic();usb_generation_=usb_.commands.generation(); }

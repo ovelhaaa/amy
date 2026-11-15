@@ -115,6 +115,8 @@ int main() {
     commands.panic();block();
     midi(0x90,60,100);block();
     assert(state.last_count==4 && state.active_notes==4);
+    const auto expected=harmony::transform(60,chord);
+    assert(std::memcmp(expected.notes,state.last_notes,expected.count)==0);
     assert(commands.push({amy::CommandType::Patch,135,0,0,0,now}));
     runtime.apply(now);runtime.loadPendingPatch();block();
     assert(!state.active_notes && !state.arp.length);
