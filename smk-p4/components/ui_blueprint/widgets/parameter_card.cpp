@@ -46,7 +46,7 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, IUiBackend& backend, const char*
     const bool enabled = backend.isParameterEditable(param_id);
     const char* title = (label_override && label_override[0] != '\0') ? label_override : desc->name;
 
-    const int32_t title_w = (level == PresentationLevel::StageMinimal) ? (w - 16) : (w - 64);
+    const int32_t title_w = level==PresentationLevel::BlueprintVerbose?w-64:w-16;
     createLabel(card, title, 6, 4, title_w, &lv_font_montserrat_14,
                 enabled ? palette::kTextPrimary : palette::kTextSecondary);
     if (level == PresentationLevel::BlueprintVerbose) {

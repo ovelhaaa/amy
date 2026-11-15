@@ -17,9 +17,10 @@ public:
         createParameterCard(parent,backend,"arp.restart",252,4,206,72,compact);
         createParameterCard(parent,backend,"arp.rate",8,130,142,82,compact);
         createParameterCard(parent,backend,"arp.octaves",156,130,146,82,compact);
-        createParameterCard(parent,backend,"arp.gate_pct",308,130,146,82,compact);
-        createParameterCard(parent,backend,"arp.swing_pct",460,130,146,82,compact);
-        createParameterCard(parent,backend,"perf.bpm",612,130,180,82,compact);
+        constexpr auto timing=PresentationLevel::StageStacked;
+        createParameterCard(parent,backend,"arp.gate_pct",308,130,146,82,timing);
+        createParameterCard(parent,backend,"arp.swing_pct",460,130,146,82,timing);
+        createParameterCard(parent,backend,"perf.bpm",612,130,180,82,timing);
 
         if(backend.isDemoMode()) {
             createLabel(parent,"DEMO / PREVIEW",8,226,784,&lv_font_montserrat_14,palette::kTextSecondary);

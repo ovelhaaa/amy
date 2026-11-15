@@ -57,7 +57,8 @@ struct UiCommandResult {
 // - BlueprintVerbose: Used on Editor/System/Diagnostics screens (full AVAIL/PLAN/N/A/DEMO badges)
 enum class PresentationLevel : uint8_t {
     StageMinimal     = 0,
-    BlueprintVerbose = 1
+    BlueprintVerbose = 1,
+    StageStacked     = 2
 };
 
 // Simulated level meters (explicitly tagged when simulated in demo mode)

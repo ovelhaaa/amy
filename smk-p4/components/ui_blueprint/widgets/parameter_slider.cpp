@@ -58,6 +58,10 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
         if (vlbl) {
             lv_obj_set_style_text_align(vlbl, LV_TEXT_ALIGN_RIGHT, 0);
         }
+    } else if(level==PresentationLevel::StageStacked) {
+        createLabel(card,title,6,4,w-16,&lv_font_montserrat_14,
+                    enabled?palette::kTextPrimary:palette::kTextSecondary);
+        vlbl=createLabel(card,vbuf,6,24,w-16,&lv_font_montserrat_14,palette::kAccentPrimary);
     } else {
         createLabel(card, title, 6, 4, w - 64, &lv_font_montserrat_14,
                     enabled ? palette::kTextPrimary : palette::kTextSecondary);
@@ -71,8 +75,9 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
         lv_obj_add_style(slider, &theme().slider_indicator, LV_PART_INDICATOR);
         lv_obj_add_style(slider, &theme().slider_knob, LV_PART_KNOB);
 
-        const int32_t bar_h = (level == PresentationLevel::StageMinimal && h >= 68) ? 18 : 14;
-        const int32_t bar_y = (level == PresentationLevel::StageMinimal && h >= 68) ? (h - 32) : (h - 26);
+        const bool stage=level!=PresentationLevel::BlueprintVerbose && h>=68;
+        const int32_t bar_h = stage ? 18 : 14;
+        const int32_t bar_y = stage ? (h - 32) : (h - 26);
         lv_obj_set_pos(slider, 10, bar_y);
         lv_obj_set_size(slider, w - 28, bar_h);
         lv_obj_set_ext_click_area(slider, 14);

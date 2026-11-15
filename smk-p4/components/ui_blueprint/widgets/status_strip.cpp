@@ -190,7 +190,7 @@ void StatusStrip::toggleTempo(lv_obj_t* parent,IUiBackend& backend) {
     lv_obj_set_pos(tempo_panel_,232,kStatusStripHeight+6);
     lv_obj_set_size(tempo_panel_,346,192);
     createLabel(tempo_panel_,"GLOBAL TEMPO  /  INTERNAL",8,4,260,&lv_font_montserrat_14,palette::kTextPrimary);
-    tempo_slider_=createParameterCard(tempo_panel_,backend,"perf.bpm",6,29,320,72,PresentationLevel::StageMinimal);
+    tempo_slider_=createParameterCard(tempo_panel_,backend,"perf.bpm",6,26,320,78,PresentationLevel::StageStacked);
     struct Control { StatusStrip* strip; IUiBackend* backend; int action; };
     const auto button=[&](const char* label,int x,int y,int width,int action) {
         auto* obj=createActionButton(tempo_panel_,label,x,y,width,34,nullptr,nullptr);
