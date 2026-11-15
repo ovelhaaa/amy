@@ -12,6 +12,7 @@ struct Snapshot {
 #ifdef SMKP4_SOUND_EDITOR
     edit::State edit;
     arp::Status arp;
+    uint32_t arp_service_max_us=0;
     bool storage_quiet=false;
 #endif
     fx::FxState fx;

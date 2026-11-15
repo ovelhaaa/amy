@@ -18,17 +18,22 @@ struct Config {
     bool enabled=false, latch=false;
 };
 
+struct Confirmation {
+    uint32_t token=0,generation=0;
+    Action action=Action::Enable;
+    uint8_t requested=0,applied=0,version=kProtocolVersion;
+    Error error=Error::None;
+};
+
 struct Status {
     Config config;
     std::array<uint8_t,kInputCapacity> held{};
     std::array<uint8_t,kPatternCapacity> pattern{};
     uint8_t held_count=0, length=0, step=UINT8_MAX;
     bool armed=false, sounding=false;
-    uint32_t rejected=0, revision=0, generation=0, token=0;
-    Action action=Action::Enable;
-    uint8_t requested=0, applied=0, version=kProtocolVersion;
-    Error error=Error::None;
-    bool usb=false;
+    uint32_t rejected=0, revision=0;
+    Confirmation touch,usb;
+
 };
 
 struct Input {
@@ -40,8 +45,8 @@ class Engine {
 public:
     const Status& status() const { return status_; }
     void acknowledge(Action action,uint8_t value,uint32_t token,uint32_t generation,bool usb,Error error) {
-        status_.action=action;status_.requested=value;status_.applied=applied(action);
-        status_.token=token;status_.generation=generation;status_.usb=usb;status_.error=error;
+        auto& confirmation=usb?status_.usb:status_.touch;
+        confirmation={token,generation,action,value,applied(action),kProtocolVersion,error};
         ++status_.revision;
     }
 
@@ -54,7 +59,7 @@ public:
             break;
         case Action::Mode:
             if(value>unsigned(Mode::AsPlayed)) return false;
-            if(c.mode!=Mode(value)) { c.mode=Mode(value); cursor_=0; rebuild(); }
+            if(c.mode!=Mode(value)) { c.mode=Mode(value); cursor_=0; markDirty(); }
             break;
         case Action::Rate:
             if(value>unsigned(Rate::ThirtySecond)) return false;
@@ -62,7 +67,7 @@ public:
             break;
         case Action::Octaves:
             if(value<1 || value>4) return false;
-            c.octaves=value;rebuild();
+            c.octaves=value;markDirty();
             break;
         case Action::Gate:
             if(value<10 || value>100) return false;
@@ -77,7 +82,7 @@ public:
             c.latch=value;
             if(!c.latch) {
                 for(unsigned i=count_; i>0; --i) if(!entries_[i-1].down) erase(i-1);
-                rebuild();
+                markDirty();
             }
             break;
         case Action::Bpm:
@@ -95,7 +100,7 @@ public:
     }
 
     void stop() {
-        count_=0;cursor_=0;random_=1;clock_.reset();
+        dirty_=false;count_=0;cursor_=0;random_=1;clock_.reset();
         status_.held_count=0;status_.length=0;status_.step=UINT8_MAX;
         status_.armed=false;status_.sounding=false;
     }
@@ -105,24 +110,30 @@ public:
         for(unsigned i=0;i<count_;++i) {
             auto& entry=entries_[i];
             if(matches(entry.note,note)) {
-                entry={note,true};status_.armed=true;rebuild();return;
+                entry={note,true};status_.armed=true;markDirty();return;
             }
         }
         if(count_==kInputCapacity) { ++status_.rejected;return; }
         entries_[count_++]={note,true};
-        status_.armed=true;rebuild();
+        status_.armed=true;markDirty();
     }
 
     void off(Input note) {
         for(unsigned i=0;i<count_;++i) if(matches(entries_[i].note,note)) {
             if(status_.config.latch) entries_[i].down=false;
             else erase(i);
-            rebuild();return;
+            markDirty();return;
         }
     }
 
     void clearChannel(uint8_t channel) {
         for(unsigned i=count_;i>0;--i) if(entries_[i-1].note.channel==channel) erase(i-1);
+        markDirty();
+    }
+
+    void prepare() {
+        if(!dirty_) return;
+        dirty_=false;
         rebuild();
     }
 
@@ -177,13 +188,16 @@ private:
         for(;i+1<count_;++i) entries_[i]=entries_[i+1];
         --count_;
     }
-    void rebuild() {
+    void markDirty() {
+        dirty_=true;
         status_.held_count=0;
-        const bool idle=!status_.length;
-        status_.length=0;
-        status_.step=UINT8_MAX;
         for(unsigned i=0;i<count_;++i) if(entries_[i].down)
             status_.held[status_.held_count++]=entries_[i].note.pitch;
+        if(!count_) { clock_.reset();cursor_=0; }
+    }
+    void rebuild() {
+        status_.length=0;
+        status_.step=UINT8_MAX;
         for(unsigned octave=0;octave<status_.config.octaves;++octave) {
             for(unsigned i=0;i<count_;++i) {
                 const unsigned pitch=entries_[i].note.pitch+12*octave;
@@ -198,7 +212,6 @@ private:
                 pattern_[j]=uint8_t(i+octave*kInputCapacity);
             }
         }
-        if(idle || !status_.length) { clock_.reset();cursor_=0; }
     }
 
     Status status_;
@@ -207,5 +220,6 @@ private:
     std::array<uint8_t,kPatternCapacity> pattern_{};
     unsigned count_=0,cursor_=0;
     uint32_t random_=1;
+    bool dirty_=false;
 };
 }

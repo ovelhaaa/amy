@@ -369,6 +369,9 @@ void Runtime::applyArp(const Command& c,bool usb,uint32_t now_ms) {
 }
 
 void Runtime::serviceArp() {
+#ifdef SMKP4_HARMONY
+    AdmissionTimer timing(state_.arp_service_max_us);
+#endif
     if(usb_.commands.generation()!=usb_generation_) {
         cancelUsb();
         usb_generation_=usb_.commands.generation();
@@ -376,6 +379,7 @@ void Runtime::serviceArp() {
     if(commands_.generation()!=state_.generation) {
         releaseArp();arp_.stop();state_.arp=arp_.status();return;
     }
+    arp_.prepare();
     if(!arp_.status().length || state_.blocks-arp_started_block_>=arp_gate_blocks_) releaseArp();
     arp::Input input;
     uint32_t gate_frames=0;
