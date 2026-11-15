@@ -40,7 +40,8 @@ Esta matriz classifica todas as funcionalidades e parâmetros do SMK-P4 na vers�
 | **Teclado Virtual & Panic** | `AVAILABLE` | `AVAILABLE` | `AVAILABLE` | **`AVAILABLE`** | `virtual_keyboard.cpp`, `performance_backend.h` |
 | **Telemetria de Sistema & Diagnósticos** | `AVAILABLE` | `AVAILABLE` | `AVAILABLE` | **`READ ONLY`** | `diagnostics_screen.cpp`, `PRESET_DIAG`, `FM_ALGO_DIAG` |
 | **Layers A/B & Split Zones** | `AVAILABLE` | `CONDITIONAL` (Layer A ativa) | `AVAILABLE` | **`PLANNED` (0.14)** | `layers_screen.cpp` |
-| **Arpeggiator, Sequencer & Drum Grid** | `AVAILABLE` | `PLANNED` | `AVAILABLE` | **`PLANNED` (0.14)** | `step_grid.cpp`, `sequencer_screen.cpp` |
+| **Arpeggiator** | `AVAILABLE` | `PLANNED` | `AVAILABLE` | **`AVAILABLE` (0.15 editor)** | [Internal clock and live controls](arp_015_ui.md) |
+| **Sequencer & Drum Grid** | `AVAILABLE` | `PLANNED` | `AVAILABLE` | **`PLANNED`** | `step_grid.cpp`, `sequencer_screen.cpp` |
 | **Performance Macros 1–8** | `AVAILABLE` | `CONDITIONAL` (M2, M5, M6 mapeados) | `AVAILABLE` | **`PLANNED` (0.14)** | `performance_screen.cpp` |
 
 ---
@@ -53,7 +54,8 @@ Esta matriz classifica todas as funcionalidades e parâmetros do SMK-P4 na vers�
 | Bancos virtuais P4 A-D, MIDI Learn, Pickup e perfis V1/V2 | Disponivel |
 | Monitor dos 16 pads, atalhos de patch/pagina, Home, MIDI Learn e Save As | Disponivel com perfil legado ativo |
 | Stop, Panic da origem USB | Disponivel com perfil legado ativo |
-| Play, Rec, Arpeggiator e Sequencer | Reservado |
+| Play e Arpeggiator | Disponíveis no editor 0.15 |
+| Rec e Sequencer | Reservados |
 
 [Perfil SMK25 e destinos](smk25_0142_legacy_profile.md) · [Validacao](smk25_0142_test_results.md).
 
@@ -72,4 +74,5 @@ Esta matriz classifica todas as funcionalidades e parâmetros do SMK-P4 na vers�
 | `fx.*` | 10 | `fx.chorus.mode`, `fx.delay.time_ms`, `fx.delay.feedback`, `fx.delay.mix`, `fx.reverb.size`, `fx.reverb.mix`, `fx.master_tone`: `AVAILABLE`. | — |
 | `layer_a.*` / `layer_b.*` | 14 | `layer_a.patch_id`, `layer_a.enable`: `AVAILABLE`. Demais: `PLANNED`. | — |
 | `mixer.*` | 9 | `PLANNED` (0.14) / Visualizável em Demo. | — |
-| `arp.*` / `seq.*` / `drums.*` | 24 | `PLANNED` (0.14) / Step grid interativo em Demo RAM. | — |
+| `arp.enable`, `arp.latch`, `arp.bpm`, `arp.rate`, `arp.direction`, `arp.octaves`, `arp.gate_pct`, `arp.swing_pct` | 8 | `AVAILABLE` (0.15 editor) | Valores confirmados pelo owner |
+| Seleção de clock externo, `seq.*`, `drums.*` | — | `PLANNED` | — |

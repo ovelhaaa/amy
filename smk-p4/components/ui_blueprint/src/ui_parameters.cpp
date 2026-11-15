@@ -26,7 +26,7 @@ constexpr const char* kChorusModes[] = {"OFF", "CLASSIC", "JUNO I", "JUNO II", "
 constexpr const char* kFxRouting[] = {"CHOR > DLY > REV", "DLY > CHOR > REV", "PARALLEL SEND", "BYPASS ALL"};
 constexpr const char* kClockSources[] = {"INTERNAL", "USB MIDI", "AUTO"};
 constexpr const char* kArpRates[] = {"1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32"};
-constexpr const char* kArpDirs[] = {"UP", "DOWN", "UP/DOWN", "RANDOM", "AS PLAYED", "CHORD"};
+constexpr const char* kArpDirs[] = {"UP", "DOWN", "UP/DOWN", "RANDOM", "AS PLAYED"};
 constexpr const char* kDrumVoices[] = {"808 KICK", "808 SNARE", "CLOSED HAT", "OPEN HAT", "LOW TOM", "MID TOM", "CLAP", "RIMSHOT"};
 constexpr const char* kRootNotes[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 constexpr const char* kScaleTypes[] = {
@@ -437,6 +437,9 @@ const ParameterDescriptor kDescriptors[] = {
      "Master effect chain order and bypass mode"},
 
     // ── ARPEGGIATOR ──────────────────────────────────────────────────────
+    {"arp.bpm", "arp", "TEMPO", ParameterValueType::Int, 40.0f, 240.0f, 120.0f, 1.0f, "BPM",
+     ParameterScale::Linear, "Arpeggiator", "TIMING", nullptr, 0, kStdCtrl,
+     FeatureStatus::Planned, nullptr, -1, "arp_clock.h", "Internal arpeggiator tempo"},
     {"arp.enable", "arp", "ARP ON", ParameterValueType::Bool, 0.0f, 1.0f, 0.0f, 1.0f, "",
      ParameterScale::Linear, "Arpeggiator", "MAIN", nullptr, 0, kStdCtrl,
      FeatureStatus::Planned, nullptr, -1, "smk-s3/components/sequencer/include/arpeggiator.h",
@@ -457,8 +460,8 @@ const ParameterDescriptor kDescriptors[] = {
      ParameterScale::Linear, "Arpeggiator", "PATTERN", nullptr, 0, kStdCtrl,
      FeatureStatus::Planned, nullptr, -1, "smk-s3/components/sequencer/include/arpeggiator.h",
      "Arpeggiator octave span (1..4 octaves)"},
-    {"arp.direction", "arp", "ARP DIR", ParameterValueType::Enum, 0.0f, 5.0f, 0.0f, 1.0f, "",
-     ParameterScale::Linear, "Arpeggiator", "PATTERN", kArpDirs, 6, kStdCtrl,
+    {"arp.direction", "arp", "ARP DIR", ParameterValueType::Enum, 0.0f, 4.0f, 0.0f, 1.0f, "",
+     ParameterScale::Linear, "Arpeggiator", "PATTERN", kArpDirs, 5, kStdCtrl,
      FeatureStatus::Planned, nullptr, -1, "smk-s3/components/sequencer/include/arpeggiator.h",
      "Arpeggiator traversal direction"},
     {"arp.latch", "arp", "HOLD LATCH", ParameterValueType::Bool, 0.0f, 1.0f, 0.0f, 1.0f, "",

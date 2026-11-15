@@ -1,6 +1,7 @@
 #pragma once
 #include "ui_model.h"
 #include <cstdint>
+#include "../../amy_runtime/arpeggiator.h"
 #include "../../amy_runtime/performance_macros.h"
 
 namespace smk::p4::ui {
@@ -111,6 +112,10 @@ public:
     virtual UiCommandResult requestParameterFloat(const char* id, float val) = 0;
     virtual UiCommandResult requestParameterInt(const char* id, int32_t val) = 0;
     virtual UiCommandResult requestParameterBool(const char* id, bool val) = 0;
+
+    virtual const arp::Status* arpStatus() const { return nullptr; }
+    virtual const char* arpNotice() const { return nullptr; }
+    virtual UiCommandResult requestArpTransport(bool) { return {}; }
 
     virtual bool patchNeedsDiscardConfirmation() const { return false; }
     virtual UiCommandResult confirmPatchDiscard(uint16_t, uint8_t) { return {}; }

@@ -231,6 +231,10 @@ void refreshWidgets(lv_obj_t* obj) {
     for(uint32_t i=0;i<count;++i) refreshWidgets(lv_obj_get_child(obj,static_cast<int32_t>(i)));
 }
 }
+void UiNavigationManager::refreshActiveView() {
+    if(active_view_ && backend_) active_view_->refresh(*backend_);
+}
+
 void UiNavigationManager::refreshActive() {
     if (active_view_ && backend_) {
         active_view_->refresh(*backend_);

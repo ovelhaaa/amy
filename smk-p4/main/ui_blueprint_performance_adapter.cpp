@@ -7,6 +7,12 @@
 namespace smk::p4 {
 using namespace ui;
 namespace {
+constexpr const char* kArpIds[]{"arp.enable","arp.direction","arp.rate","arp.octaves",
+    "arp.gate_pct","arp.swing_pct","arp.latch","arp.bpm"};
+int arpIndex(const char* id) {
+    if(id) for(unsigned i=0;i<8;++i) if(std::strcmp(id,kArpIds[i])==0) return int(i);
+    return -1;
+}
 constexpr const char* kHarmonyIds[]={"harmony.scale_enable","harmony.chord_enable","harmony.apply_touch",
     "harmony.root_note","harmony.scale_type","harmony.quant_mode","harmony.chord_type",
     "harmony.inversion","harmony.voicing","harmony.spread","harmony.usb_channel","harmony.preset"};
@@ -32,7 +38,7 @@ UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend&
 #endif
 #endif
 #if defined(SMKP4_SOUND_EDITOR) || defined(CONFIG_SMKP4_SOUND_EDITOR)
-    d.firmware_version="SMK-P4 PERFORMANCE 0.14.2";
+    d.firmware_version="SMK-P4 PERFORMANCE 0.15";
 #endif
     d.amy_status="WAIT SNAPSHOT"; d.i2s_status="NOT LIVE"; d.usb_status="DISCONNECTED";
     model_.setBool("harmony.scale_enable",false);
@@ -242,6 +248,7 @@ FeatureStatus UiBlueprintPerformanceAdapter::parameterStatus(const char* id) con
         const int p=editIndex(id);
         if(p>=0)return (state->available&edit::bit(unsigned(p)))?FeatureStatus::Available:FeatureStatus::Unavailable;
     }
+    if(backend_.arpStatus() && arpIndex(id)>=0) return FeatureStatus::Available;
     if(backend_.harmonyState() && harmonyIndex(id)>=0)return FeatureStatus::Available;
     if(backend_.fxState() && isFxId(id))return FeatureStatus::Available;
     return eq(id,"perf.master_volume") || eq(id,"perf.octave_shift") || eq(id,"perf.patch_id")
@@ -367,6 +374,15 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterInt(const char* i
         pending_edit_.generation=backend_.editGeneration();
         pending_edit_.requested_ms=now_ms_;
         return result(UiCommandState::Requested,id,"MACRO REQUESTED; WAIT OWNER",pending_edit_.token);
+    }
+    const int ai=arpIndex(id);
+    if(ai>=0 && backend_.arpStatus()) {
+        const auto* desc=ParameterRegistry::findById(id);
+        if(v<desc->minimum || v>desc->maximum) {
+            arp_notice_="ARP VALUE OUT OF RANGE";
+            return result(UiCommandState::Rejected,id,arp_notice_);
+        }
+        return submitArp(arp::Action(ai),uint8_t(v),kArpIds[ai]);
     }
     const int hi=harmonyIndex(id);
     if(hi>=0 && backend_.harmonyState()) {
@@ -736,7 +752,7 @@ void UiBlueprintPerformanceAdapter::midiLastBindingText(char* text,unsigned size
 
 void UiBlueprintPerformanceAdapter::midiPadText(unsigned pad,char* text,unsigned size) const {
     if(pad>=16 || !midi_legacy_) return;
-    static constexpr const char* actions[]{"PATCH PREVIOUS","PATCH NEXT","HOME","ARP RESERVED",
+    static constexpr const char* actions[]{"PATCH PREVIOUS","PATCH NEXT","HOME","ARP TOGGLE",
         "PAGE PREVIOUS","PAGE NEXT","MIDI LEARN","HOLD FOR SAVE AS"};
     std::snprintf(text,size,"%c%u  CH10 NOTE %u  %s  %s  VEL %u",pad<8 ? 'A' : 'B',pad%8+1,
         pad+36,pad<8 ? "MONITOR" : actions[pad-8],(midi_pads_held_&(1u<<pad)) ? "DOWN" : "UP",
@@ -801,7 +817,7 @@ void UiBlueprintPerformanceAdapter::serviceMidi() {
         midi_has_last_input_=true;
         model_.bumpRevision();
         if(event.kind==amy::MidiControlKind::Transport){
-            const char* label=event.controller==114 ? "PLAY RESERVED" :
+            const char* label=event.controller==114 ? (backend_.arpStatus()?"ARP PLAY":"PLAY RESERVED") :
                 event.controller==115 ? "STOP / USB PANIC" : "REC RESERVED";
             std::snprintf(midi_status_,sizeof(midi_status_),"%s / CC%u VALUE %u",label,event.controller,event.value);
             continue;
@@ -826,7 +842,7 @@ void UiBlueprintPerformanceAdapter::serviceMidi() {
                     midi_save_pad_ms_=event.timestamp_ms;
                     midi_save_pad_armed_=true;
                 }
-                if(pad==11)
+                if(pad==11 && !backend_.arpStatus())
                     std::snprintf(midi_status_,sizeof(midi_status_),"ARPEGGIATOR NOT AVAILABLE");
                 static constexpr MidiShortcut shortcuts[]{MidiShortcut::PreviousPatch,MidiShortcut::NextPatch,
                     MidiShortcut::Home,MidiShortcut::None,MidiShortcut::PreviousPage,MidiShortcut::NextPage,
@@ -885,8 +901,57 @@ void UiBlueprintPerformanceAdapter::serviceMidi() {
         }
     }
 }
+UiCommandResult UiBlueprintPerformanceAdapter::submitArp(arp::Action action,uint8_t value,const char* id) {
+    if(!usable() || (arp_token_ && action!=arp::Action::Stop)) {
+        arp_notice_=arp_token_?"WAITING FOR ARP OWNER":"ARP OWNER UNAVAILABLE";
+        return result(UiCommandState::Rejected,id,arp_notice_);
+    }
+    const uint32_t generation=backend_.arpGeneration();
+    const uint32_t token=backend_.setArp(action,value,now_ms_);
+    if(!token) {
+        arp_notice_="ARP REQUEST REJECTED / QUEUE BUSY";
+        return result(UiCommandState::Rejected,id,arp_notice_);
+    }
+    arp_token_=token;arp_generation_=generation;arp_id_=id;arp_requested_ms_=now_ms_;
+    arp_notice_="WAITING FOR ARP OWNER";
+    return result(UiCommandState::Requested,id,arp_notice_,arp_token_);
+}
+
+UiCommandResult UiBlueprintPerformanceAdapter::requestArpTransport(bool play) {
+    return submitArp(play?arp::Action::Play:arp::Action::Stop,1,"arp.transport");
+}
+
+void UiBlueprintPerformanceAdapter::serviceArp() {
+    const auto* status=backend_.arpStatus();
+    if(!status) return;
+    const auto& c=status->config;
+    const int values[]{c.enabled,int(c.mode),int(c.rate),c.octaves,c.gate,c.swing,c.latch,c.bpm};
+    for(unsigned i=0;i<8;++i) if(model_.getInt(kArpIds[i],-1)!=values[i])
+        model_.setInt(kArpIds[i],values[i]);
+    const auto& ack=status->touch;
+    if(arp_token_) {
+        const bool current=backend_.arpGeneration()==arp_generation_;
+        const bool matched=ack.token==arp_token_ && ack.generation==arp_generation_ &&
+                           ack.version==arp::kProtocolVersion;
+        if(!current || matched || uint32_t(now_ms_-arp_requested_ms_)>=kPatchConfirmationTimeoutMs) {
+            const bool success=current && matched && ack.error==arp::Error::None;
+            arp_notice_=success?nullptr:"ARP REQUEST NOT CONFIRMED";
+            result(success?UiCommandState::Confirmed:UiCommandState::Rejected,arp_id_,
+                   success?"ARP APPLIED":arp_notice_,arp_token_);
+            arp_token_=0;
+        }
+    }
+    if(status->usb.token!=arp_usb_token_) {
+        arp_usb_token_=status->usb.token;
+        if(status->usb.action==arp::Action::Toggle)
+            std::snprintf(midi_status_,sizeof(midi_status_),"%s",status->usb.error!=arp::Error::None?
+                "ARP TOGGLE REJECTED":status->usb.applied?"ARP ON":"ARP OFF");
+    }
+}
+
 void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     now_ms_=now_ms; backend_.service(now_ms);
+    serviceArp();
     if(was_connected_ && !backend_.connected()) {
         releaseAllUiNotes(); patch_.active=master_.active=false; have_snapshot_=false;
         result(UiCommandState::Rejected,"connection","ENGINE DISCONNECTED");

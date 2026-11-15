@@ -389,6 +389,10 @@ extern "C" void app_main() {
                     long(state.engine.patch_error),(unsigned long)state.engine.patch_changes,(unsigned long)state.engine.patch_failures);
 #ifdef SMKP4_HARMONY
 #ifdef SMKP4_SOUND_EDITOR
+                const auto& arp=state.engine.arp;
+                ESP_LOGI(kTag,"ARP015 enabled=%d armed=%d gate=%d bpm=%u inputs=%u steps=%u rejected=%lu service_max_us=%lu",
+                    arp.config.enabled,arp.armed,arp.sounding,arp.config.bpm,arp.held_count,arp.length,
+                    (unsigned long)arp.rejected,(unsigned long)state.engine.arp_service_max_us);
                 ESP_LOGI(kTag,"EDIT011 patch=%u epoch=%lu revision=%lu request=%lu mask=%lx compare=%d dirty=%d available=%lx errors=%lu apply_max_us=%lu quiet=%d coalesced=%lu",
                     state.engine.edit.patch,(unsigned long)state.engine.edit.epoch,(unsigned long)state.engine.edit.revision,
                     (unsigned long)state.engine.edit.request,(unsigned long)state.engine.edit.mask,state.engine.edit.compare,state.engine.edit.dirty,

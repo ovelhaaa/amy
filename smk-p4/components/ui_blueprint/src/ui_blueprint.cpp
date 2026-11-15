@@ -116,6 +116,8 @@ void UiBlueprint::service(uint32_t now_ms) {
         status_strip_.refresh(backend_, nav_);
         nav_bar_.refresh(nav_);
         nav_.refreshActive();
+    } else if(cur==ScreenId::Arpeggiator) {
+        nav_.refreshActiveView();
     }
 }
 

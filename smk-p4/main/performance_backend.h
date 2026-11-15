@@ -1,5 +1,6 @@
 #pragma once
 #include "smk_state.h"
+#include "../components/amy_runtime/arpeggiator.h"
 #include "../components/amy_runtime/sound_edit.h"
 #include "../components/amy_runtime/harmony.h"
 #include "../components/amy_runtime/fx_state.h"
@@ -63,6 +64,9 @@ public:
     virtual const char* status() const=0;
     virtual const char* takeNotice() { return nullptr; }
     virtual uint8_t voiceCapacity() const { return 4; }
+    virtual const arp::Status* arpStatus() const { return nullptr; }
+    virtual uint32_t arpGeneration() const { return 0; }
+    virtual uint32_t setArp(arp::Action,uint8_t,uint32_t) { return 0; }
     virtual const harmony::State* harmonyState() const { return nullptr; }
     virtual bool setHarmony(harmony::Config,uint32_t) { return false; }
     virtual const fx::FxState* fxState() const { return nullptr; }

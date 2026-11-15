@@ -28,6 +28,7 @@ public:
         harmony_.voices=snapshot.active_notes;harmony_.capacity=amy::kVoices;harmony_.available=true;
 #endif
 #ifdef SMKP4_SOUND_EDITOR
+        arp_=snapshot.arp;
         edit_snapshot_generation_=snapshot.generation;
         quiet_=snapshot.storage_quiet;
         if(edit_.patch!=snapshot.edit.patch || edit_.revision!=snapshot.edit.revision){
@@ -516,6 +517,18 @@ public:
         return nullptr;
 #endif
     }
+#ifdef SMKP4_SOUND_EDITOR
+    const arp::Status* arpStatus() const override { return ready_?&arp_:nullptr; }
+    uint32_t arpGeneration() const override { return commands_.generation(); }
+    uint32_t setArp(arp::Action action,uint8_t value,uint32_t now_ms) override {
+        if(!ready_ || busy() || failed_) return 0;
+        const uint32_t generation=commands_.generation();
+        if(generation!=edit_snapshot_generation_) return 0;
+        amy::Command c{amy::CommandType::Arp,uint16_t(action),value,0,commands_.nextToken(),now_ms};
+        c.version=arp::kProtocolVersion;
+        return c.token && commands_.pushForGeneration(c,generation)?c.token:0;
+    }
+#endif
     bool setHarmony(harmony::Config config,uint32_t now_ms) override {
 #ifdef SMKP4_HARMONY
         if(!ready_ || busy() || failed_ || !harmony::valid(config))return false;
@@ -744,6 +757,7 @@ private:
     edit::Preset save_preset_,recall_;
     unsigned save_slot_=0,recall_slot_=0;
     bool edit_pending_=false,saving_=false,quiet_=false,recalling_=false,profile_quiet_requested_=false;
+    arp::Status arp_;
     uint32_t edit_snapshot_generation_=0;
     uint32_t coalesced_=0,save_requested_ms_=0,last_service_ms_=0,edit_serial_=0;
     bool edit_error_=false,edit_timeout_=false;

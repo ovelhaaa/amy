@@ -35,6 +35,9 @@ public:
     ui::UiCommandResult requestParameterFloat(const char*, float) override;
     ui::UiCommandResult requestParameterInt(const char*, int32_t) override;
     ui::UiCommandResult requestParameterBool(const char*, bool) override;
+    const arp::Status* arpStatus() const override { return backend_.arpStatus(); }
+    const char* arpNotice() const override { return arp_notice_; }
+    ui::UiCommandResult requestArpTransport(bool play) override;
     bool patchNeedsDiscardConfirmation() const override { return backend_.patchHasUnsavedEdits(); }
     ui::UiCommandResult confirmPatchDiscard(uint16_t, uint8_t) override;
     ui::UiCommandResult requestSelectPatch(uint16_t, uint8_t layer=0) override;
@@ -80,6 +83,11 @@ public:
     void midiKnobText(unsigned knob,char* text,unsigned size) const override;
 
 private:
+    ui::UiCommandResult submitArp(arp::Action,uint8_t,const char*);
+    void serviceArp();
+    uint32_t arp_token_=0,arp_generation_=0,arp_requested_ms_=0,arp_usb_token_=0;
+    const char* arp_id_="arp.enable";
+    const char* arp_notice_=nullptr;
     void serviceMidi();
     const char* midiDestination(unsigned knob) const;
     bool midiTarget(unsigned knob,uint8_t& target) const;

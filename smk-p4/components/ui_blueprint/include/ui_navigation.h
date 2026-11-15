@@ -81,6 +81,7 @@ public:
     ScreenView* activeView() const { return active_view_; }
 
     void refreshActive();
+    void refreshActiveView();
     lv_obj_t* contentRoot() const { return content_root_; }
 
     // Nav bar bank toggle (0 = Primary 6: PERF/SOUND/LAYERS/FX/SEQ/HARMONY,
