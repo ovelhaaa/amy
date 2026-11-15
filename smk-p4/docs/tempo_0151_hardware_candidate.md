@@ -18,9 +18,16 @@ Os dois binários cresceram 10.592 B. A RAM reportada pelo PlatformIO cresceu
 PlatformIO. O ELF de cada perfil reserva 11.792 B para o Runtime e
 2.608 B para o mailbox da telemetria de áudio.
 
+## Gravação e teste em repouso · 2026-11-15
+
+- **PASS — gravação e leitura de volta.** Guition ESP32-P4 rev. 1.3, COM13. O esptool 5.1.0 gravou os 1.431.904 B do candidato bench em `0x10000`. A leitura de volta confirmou o SHA-256 da tabela. Os bytes anteriores à aplicação, incluindo bootloader, tabela de partições e NVS, coincidiram com o backup integral de 16 MiB.
+- **PASS — admissão e boot.** Havia 357.779 B internos livres, com maior bloco de 245.760 B e margem de 5.523 B acima da guarda de 352.256 B. O clock avançou com o ARP desligado, e o USB enumerou um dispositivo.
+- **PASS — produção I²S em repouso.** Na captura serial de 30 s, o último snapshot registrou 1.247.488 frames, render médio de 232 µs e máximo de 392 µs, zero deadlines perdidos, erros de escrita, timeouts ou OOM. O menor espaço livre observado na stack do owner foi de 932 B. Medir novamente sob carga. Underruns de DMA e saída analógica permanecem sem medição.
+- Evidência local em `build/backups/p4-0151-com13-20261115T165548597/` (`flash-before.bin`, `verify.log` e `boot.log`).
+
 ## Procedimento físico · MANUAL
 
-**Hardware e captura física — NOT RUN.** Referência elétrica na [qualificação 0.15](arp_015_hardware_candidate.md). Usar a Guition JC4880P433 com a montagem PCM5102A I²S 50/51/52 e USB Host 0 já aprovada. O perfil bench habilita essas saídas. O outro perfil mantém os gates elétricos desativados.
+**Ensaio musical e captura de áudio analógico — NOT RUN.** Referência elétrica na [qualificação 0.15](arp_015_hardware_candidate.md). Usar a Guition JC4880P433 com a montagem PCM5102A I²S 50/51/52 e USB Host 0 já aprovada. O perfil bench habilita essas saídas.
 
 1. Antes de gravar, identificar a unidade, a porta, o firmware instalado e o backup. A autorização deve identificar o SHA-256 exato do candidato bench. Preservar a NVS e o conteúdo original da flash.
 2. Após a gravação autorizada, capturar o boot serial. Confirmar AMY e LVGL funcionais, USB Host pronto, 48 kHz, 256 frames, PCM estéreo, oito vozes e ausência de notas de boot. Registrar memória interna livre e maior bloco antes/depois da admissão, PSRAM e stack disponível de owner/USB/UI. Esperar ao menos 352.256 B livres e maior bloco de 196.608 B na admissão.
@@ -33,6 +40,5 @@ PlatformIO. O ELF de cada perfil reserva 11.792 B para o Runtime e
 
 Se houver perda de áudio, falha de memória ou notas presas, interromper o teste, capturar o diagnóstico e usar o backup e a política de rollback da 0.15. Um downgrade pode encontrar registros FX V2 se já houve salvamento.
 
-**GO para revisão de software e teste de bancada após autorização do SHA-256
-bench. NO-GO para qualificação musical enquanto os testes acima estiverem
-pendentes.**
+**GO para prosseguir com o ensaio musical de bancada. NO-GO para uso musical
+até concluir a qualificação sob carga.**

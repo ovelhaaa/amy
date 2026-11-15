@@ -68,7 +68,7 @@ Esta matriz classifica todas as funcionalidades e parâmetros do SMK-P4 na vers�
 | Visualizador ARP, Clear Latch e Restart on New Chord | Implementado no editor |
 | K2 contextual e destino MIDI Learn de BPM | Implementado no perfil Legacy S3 |
 | Clock MIDI externo, Chorus Sync e sequenciador 0.16 | Planejado |
-| Validação física da 0.15.1 | NOT RUN |
+| Validação física da 0.15.1 | Gravação, boot e repouso verificados. Ensaio musical NOT RUN |
 
 [Ensaios de software](tempo_0151_test_results.md) · [Procedimento físico](tempo_0151_hardware_candidate.md).
 

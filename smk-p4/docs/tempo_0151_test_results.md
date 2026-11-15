@@ -21,7 +21,7 @@ Base de comparação `2db72a01292f1d93cc25301e294f3697afe97019`. Os ensaios host
 - ARP ON + FX FREE. PCM idêntico ao gerado pela partitura MIDI direta com os mesmos pitch, velocity, onset e gate. A lateness máxima no traço sintético foi de 5.291,666 µs, dentro dos 256 frames da fronteira de render.
 - Delay Sync. O ensaio de 869 blocos com até oito vozes e feedback de 95% mediu pico PCM de 2.115, maior diferença entre samples adjacentes de 643, zero clipping e zero OOM. A verificação cobre tap aplicado dentro de um sample, fallback fora da faixa, recuperação automática, bypass e ausência de alocações no owner durante as transições. Sem builds concorrentes, apply + render no host mediu 81,40 µs em média e 142,20 µs no máximo.
 - Runtime host de 11.688 B (referência 0.15) para 11.792 B na mesma ABI MinGW. O teste ARP host registrou serviço máximo de 17 µs na execução do fixture final.
-- Medição de RAM interna/PSRAM, maior bloco, stack, deadlines e áudio na Guition. **NOT RUN**. A referência em repouso da 0.15 é 358.003 B internos livres na admissão, com margem de 5.747 B, render médio de 214 µs e máximo de 459 µs.
+- **PASS em repouso na Guition.** Admissão com 357.779 B de RAM interna livre e margem de 5.523 B. Render médio de 232 µs e máximo de 392 µs, sem deadlines de render perdidos. A margem de stack do owner chegou a 932 B. Verificar stack, memória e áudio sob carga no ensaio musical. [Resultados físicos](tempo_0151_hardware_candidate.md)
 
 ## Gates
 
@@ -37,7 +37,7 @@ Base de comparação `2db72a01292f1d93cc25301e294f3697afe97019`. Os ensaios host
 | S | PASS de medições host. RAM de admissão, stacks, deadlines e integridade de áudio físico MANUAL |
 | T | PASS. Builds e verificadores da configuração dos dois perfis |
 | U | PASS. Procedimento físico preparado |
-| Hardware | NOT RUN |
+| Hardware | PASS para gravação, readback, boot e repouso. Ensaio musical NOT RUN |
 
 ## Builds executados
 
