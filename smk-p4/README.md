@@ -1,3 +1,8 @@
+# SMK-P4 0.15 — Arpeggiator
+
+The editor profiles provide an internal-clock arpeggiator with Harmony Assist, SMK25 B4/Play/Stop and live touchscreen controls.
+See the [engine policies](docs/arp_015_engine.md), [host results](docs/arp_015_test_results.md) and [Guition qualification procedure](docs/arp_015_hardware_candidate.md).
+
 # Sound Editor 0.11.1 - Gate C
 
 Native main/sub/noise mix, static pulse width where compatible, main detune,
