@@ -2,6 +2,7 @@
 #include "ui_model.h"
 #include <cstdint>
 #include "../../amy_runtime/arpeggiator.h"
+#include "../../amy_runtime/tap_tempo.h"
 #include "../../amy_runtime/performance_macros.h"
 
 namespace smk::p4::ui {
@@ -116,6 +117,9 @@ public:
     virtual const arp::Status* arpStatus() const { return nullptr; }
     virtual const char* arpNotice() const { return nullptr; }
     virtual UiCommandResult requestArpTransport(bool) { return {}; }
+    void tapTempo(uint32_t timestamp_ms) {
+        if(const unsigned bpm=tap_tempo_.tap(timestamp_ms)) requestParameterInt("perf.bpm",int(bpm));
+    }
 
     virtual bool patchNeedsDiscardConfirmation() const { return false; }
     virtual UiCommandResult confirmPatchDiscard(uint16_t, uint8_t) { return {}; }
@@ -193,6 +197,8 @@ public:
     virtual const UiSignalMeters& meters() const = 0;
     virtual uint8_t activeSequencerStep() const = 0;
     virtual bool isNoteHeld(uint8_t note) const = 0;
+private:
+    tempo::TapTempo tap_tempo_;
 };
 
 } // namespace smk::p4::ui

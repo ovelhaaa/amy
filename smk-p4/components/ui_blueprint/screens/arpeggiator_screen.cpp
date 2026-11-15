@@ -14,7 +14,7 @@ public:
         constexpr auto compact=PresentationLevel::StageMinimal;
         createParameterCard(parent,backend,"arp.enable",8,4,128,98,compact);
         createParameterCard(parent,backend,"arp.latch",144,4,128,98,compact);
-        createParameterCard(parent,backend,"arp.bpm",280,4,298,98,compact);
+        createParameterCard(parent,backend,"perf.bpm",280,4,298,98,compact);
         createLabel(parent,"CLOCK: INTERNAL",596,12,196,&lv_font_montserrat_14,palette::kTextSecondary);
         createParameterCard(parent,backend,"arp.rate",8,108,145,106,compact);
         createParameterCard(parent,backend,"arp.direction",161,108,190,106,compact);
@@ -28,14 +28,14 @@ public:
             return true;
         }
 
-        struct ActionContext { ArpeggiatorScreen* screen; IUiBackend* backend; unsigned action; };
+        struct ActionContext { IUiBackend* backend; unsigned action; };
         const auto addButton=[&](const char* text,int x,int y,int width,unsigned action) {
             auto* button=createActionButton(parent,text,x,y,width,36,nullptr,nullptr);
             if(!button) return;
             if(!backend.arpStatus()) lv_obj_add_state(button,LV_STATE_DISABLED);
-            attachLvContext<ActionContext>(button,{this,&backend,action},[](lv_event_t* e) {
+            attachLvContext<ActionContext>(button,{&backend,action},[](lv_event_t* e) {
                 auto* ctx=static_cast<ActionContext*>(lv_event_get_user_data(e));
-                if(ctx->action==2) ctx->screen->tap(*ctx->backend);
+                if(ctx->action==2) ctx->backend->tapTempo(lv_tick_get());
                 else ctx->backend->requestArpTransport(ctx->action==0);
             },LV_EVENT_CLICKED);
         };
@@ -88,17 +88,7 @@ private:
                 i==active?"[":"",names[note%12],int(note/12)-1,i==active?"]":""));
         }
     }
-    void tap(IUiBackend& backend) {
-        const uint32_t now=lv_tick_get();
-        const uint32_t elapsed=now-last_tap_;
-        const bool valid=tap_started_ && elapsed>=250 && elapsed<=1500;
-        tap_started_=true;last_tap_=now;
-        if(valid) backend.requestParameterInt("arp.bpm",int((60000+elapsed/2)/elapsed));
-    }
-
     lv_obj_t *state_=nullptr,*held_=nullptr,*pattern_=nullptr,*error_=nullptr;
-    uint32_t last_tap_=0;
-    bool tap_started_=false;
 };
 
 } // namespace
