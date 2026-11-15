@@ -58,7 +58,7 @@ public:
                     g_browser.page = 0;
                     break;
                 case 2:
-                    selectPatchWithConfirmation(*ctx->backend, *ctx->nav, ctx->value, g_browser.target_layer);
+                    selectPatchWithConfirmation(*ctx->backend, *ctx->nav, ctx->value, g_browser.target_layer, true);
                     return;
                 case 3:
                     if (g_browser.page > 0) --g_browser.page;

@@ -1,9 +1,12 @@
 #include "ui_widgets.h"
+#include "../../amy_runtime/performance_lock.h"
 #include <cstdio>
 
 namespace smk::p4::ui {
 
 namespace {
+static uint8_t s_session_lock_mask = perf_lock::kDefaultLockMask;
+
 struct PatchSelCtx {
     IUiBackend*          backend = nullptr;
     UiNavigationManager* nav     = nullptr;
@@ -11,49 +14,125 @@ struct PatchSelCtx {
 };
 } // namespace
 
-void selectPatchWithConfirmation(IUiBackend& backend, UiNavigationManager& nav, uint16_t patch, uint8_t layer) {
-    if (layer || !backend.patchNeedsDiscardConfirmation()) {
+uint8_t sessionLockMask() { return s_session_lock_mask; }
+void setSessionLockMask(uint8_t mask) { s_session_lock_mask = mask; }
+
+void selectPatchWithConfirmation(IUiBackend& backend, UiNavigationManager& nav, uint16_t patch, uint8_t layer, bool force_dialog) {
+    if (layer) {
         backend.requestSelectPatch(patch, layer);
         return;
     }
-    static lv_obj_t* confirmation=nullptr;
-    if(confirmation) return;
+    const bool dirty = backend.patchNeedsDiscardConfirmation();
+    if (!force_dialog && !dirty) {
+        backend.requestSelectPatch(patch, layer, s_session_lock_mask);
+        return;
+    }
+    static lv_obj_t* confirmation = nullptr;
+    if (confirmation) return;
     auto* root = lv_obj_create(nav.contentRoot());
     if (!root) return;
-    confirmation=root;
-    lv_obj_add_event_cb(root, [](lv_event_t*) { confirmation=nullptr; }, LV_EVENT_DELETE, nullptr);
+    confirmation = root;
+    lv_obj_add_event_cb(root, [](lv_event_t*) { confirmation = nullptr; }, LV_EVENT_DELETE, nullptr);
     lv_obj_remove_style_all(root);
     lv_obj_set_size(root, lv_pct(100), lv_pct(100));
     lv_obj_set_style_bg_color(root, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(root, LV_OPA_70, 0);
     lv_obj_remove_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+
     auto* panel = lv_obj_create(root);
     applyPanelStyle(panel, true);
-    lv_obj_set_size(panel, 550, 180);
+    lv_obj_set_size(panel, 620, 276);
     lv_obj_center(panel);
     lv_obj_remove_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
-    char heading[64];
-    std::snprintf(heading, sizeof(heading), "LOAD PATCH %03u?", unsigned(patch));
-    createLabel(panel, heading, 12, 10, 510);
-    createLabel(panel, "Unsaved changes to the current patch will be lost.", 12, 43, 510);
-    auto* status = createLabel(panel, "", 12, 70, 510);
-    auto* cancel = createActionButton(panel, "CANCEL", 12, 102, 150, 44, nullptr, nullptr);
-    auto* confirm = createActionButton(panel, "DISCARD & LOAD", 174, 102, 220, 44, nullptr, nullptr);
+
+    size_t count = 0;
+    const auto* cat = UiModel::catalog(count);
+    const char* patch_name = "";
+    for (size_t i = 0; i < count; ++i) {
+        if (cat[i].id == patch) { patch_name = cat[i].name; break; }
+    }
+
+    char heading[80];
+    if (patch_name[0]) {
+        std::snprintf(heading, sizeof(heading), "LOAD PATCH %03u \xE2\x80\x94 %s?", unsigned(patch), patch_name);
+    } else {
+        std::snprintf(heading, sizeof(heading), "LOAD PATCH %03u?", unsigned(patch));
+    }
+    createLabel(panel, heading, 16, 12, 588, &lv_font_montserrat_20, palette::kTextPrimary);
+
+    createLabel(panel,
+        dirty ? "Unsaved changes to the current patch will be lost."
+              : "Selective Performance Lock: choose settings to preserve.",
+        16, 42, 588, &lv_font_montserrat_14, dirty ? palette::kWarning : palette::kAccentPrimary);
+
+    auto make_cb = [&](const char* text, int x, int y, uint8_t flag) {
+        auto* cb = lv_checkbox_create(panel);
+        lv_checkbox_set_text(cb, text);
+        lv_obj_set_pos(cb, x, y);
+        lv_obj_set_size(cb, 280, 36);
+        constexpr auto checked_st = lv_style_selector_t(LV_PART_INDICATOR) | lv_style_selector_t(LV_STATE_CHECKED);
+        lv_obj_set_style_bg_color(cb, lv_color_hex(palette::kAccentPrimary), checked_st);
+        if (s_session_lock_mask & flag) lv_obj_add_state(cb, LV_STATE_CHECKED);
+        else lv_obj_clear_state(cb, LV_STATE_CHECKED);
+        struct CbCtx { uint8_t flag; };
+        attachLvContext<CbCtx>(cb, {flag}, [](lv_event_t* e) {
+            auto* c = static_cast<CbCtx*>(lv_event_get_user_data(e));
+            auto* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
+            if (lv_obj_has_state(target, LV_STATE_CHECKED)) s_session_lock_mask |= c->flag;
+            else s_session_lock_mask &= ~c->flag;
+        }, LV_EVENT_VALUE_CHANGED);
+        return cb;
+    };
+
+    make_cb("KEEP FX (CHORUS/DLY/REV/EQ)", 16, 78, perf_lock::Fx);
+    make_cb("KEEP HARMONY / CHORD", 310, 78, perf_lock::Harmony);
+    make_cb("KEEP ARPEGGIATOR (RATES/CFG)", 16, 122, perf_lock::Arp);
+    make_cb("KEEP MACROS (ADV)", 310, 122, perf_lock::Macros);
+
+    auto* status = createLabel(panel, "", 16, 168, 588, &lv_font_montserrat_14, palette::kWarning);
+
+    auto* cancel = createActionButton(panel, "CANCEL", 16, 206, 110, 44, nullptr, nullptr);
+    auto* clean_btn = createActionButton(panel, dirty ? "DISCARD & LOAD" : "LOAD PATCH",
+                                         136, 206, dirty ? 170 : 160, 44, nullptr, nullptr);
+    auto* locked_btn = createActionButton(panel, dirty ? "DISCARD & LOAD WITH LOCKS" : "LOAD WITH LOCKS",
+                                          dirty ? 316 : 306, 206, dirty ? 288 : 298, 44, nullptr, nullptr, false, true);
+
     lv_obj_add_event_cb(cancel, [](lv_event_t* event) {
         lv_obj_delete(static_cast<lv_obj_t*>(lv_event_get_user_data(event)));
     }, LV_EVENT_CLICKED, root);
-    struct Context { IUiBackend* backend; lv_obj_t* root; lv_obj_t* status; uint16_t patch; uint16_t original; };
-    attachLvContext<Context>(confirm, {&backend, root, status, patch, backend.model().activePatch().id},
-        [](lv_event_t* event) {
-            const auto& ctx = *static_cast<Context*>(lv_event_get_user_data(event));
-            if (ctx.original != ctx.backend->model().activePatch().id) {
-                lv_label_set_text(ctx.status, "Current patch changed. Cancel and select again.");
-                return;
-            }
-            const auto result = ctx.backend->confirmPatchDiscard(ctx.patch, 0);
-            if (result.accepted()) lv_obj_delete(ctx.root);
-            else lv_label_set_text(ctx.status, result.notice ? result.notice : "Patch change unavailable.");
-        }, LV_EVENT_CLICKED);
+
+    struct Context {
+        IUiBackend* backend;
+        lv_obj_t* root;
+        lv_obj_t* status;
+        uint16_t patch;
+        uint16_t original;
+        uint8_t layer;
+        bool dirty;
+        bool with_locks;
+    };
+
+    auto action_cb = [](lv_event_t* event) {
+        const auto& ctx = *static_cast<Context*>(lv_event_get_user_data(event));
+        if (ctx.original != ctx.backend->model().activePatch().id) {
+            lv_label_set_text(ctx.status, "Current patch changed. Cancel and select again.");
+            return;
+        }
+        const uint8_t mask = ctx.with_locks ? s_session_lock_mask : static_cast<uint8_t>(perf_lock::None);
+        UiCommandResult result{};
+        if (ctx.dirty) {
+            result = ctx.backend->confirmPatchDiscard(ctx.patch, ctx.layer, mask);
+        } else {
+            result = ctx.backend->requestSelectPatch(ctx.patch, ctx.layer, mask);
+        }
+        if (result.accepted()) lv_obj_delete(ctx.root);
+        else lv_label_set_text(ctx.status, result.notice ? result.notice : "Patch change unavailable.");
+    };
+
+    attachLvContext<Context>(clean_btn, {&backend, root, status, patch, backend.model().activePatch().id, layer, dirty, false},
+                            action_cb, LV_EVENT_CLICKED);
+    attachLvContext<Context>(locked_btn, {&backend, root, status, patch, backend.model().activePatch().id, layer, dirty, true},
+                            action_cb, LV_EVENT_CLICKED);
 }
 
 void stepPatchWithConfirmation(IUiBackend& backend, UiNavigationManager& nav, int direction) {

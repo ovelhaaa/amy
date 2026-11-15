@@ -9,7 +9,10 @@
 namespace smk::p4::ui {
 
 void stepPatchWithConfirmation(IUiBackend&, UiNavigationManager&, int direction);
-void selectPatchWithConfirmation(IUiBackend&, UiNavigationManager&, uint16_t, uint8_t);
+void selectPatchWithConfirmation(IUiBackend&, UiNavigationManager&, uint16_t, uint8_t, bool force_dialog = false);
+
+uint8_t sessionLockMask();
+void setSessionLockMask(uint8_t mask);
 
 // Helper to create a clipped label with explicit font and color
 lv_obj_t* createLabel(lv_obj_t* parent, const char* text, int32_t x, int32_t y, int32_t w,
