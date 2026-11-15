@@ -45,6 +45,18 @@ Esta matriz classifica todas as funcionalidades e parâmetros do SMK-P4 na vers�
 
 ---
 
+### MIDI e performance no firmware 0.14.2
+
+| Recurso | Status em software |
+|---|---|
+| Perfil SMK25 V2 Legacy S3, 16 fontes de knobs, 8 macros e 8 destinos FX | Disponivel |
+| Bancos virtuais P4 A-D, MIDI Learn, Pickup e perfis V1/V2 | Disponivel |
+| Monitor dos 16 pads, atalhos de patch/pagina, Home, MIDI Learn e Save As | Disponivel com perfil legado ativo |
+| Stop, Panic da origem USB | Disponivel com perfil legado ativo |
+| Play, Rec, Arpeggiator e Sequencer | Reservado |
+
+[Perfil SMK25 e destinos](smk25_0142_legacy_profile.md) · [Validacao](smk25_0142_test_results.md).
+
 ## 3. Matriz Canônica de Parâmetros por Namespace
 
 | Namespace | Total | Status 0.13.1 | Comportamento Dinâmico |
