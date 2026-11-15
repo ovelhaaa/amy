@@ -27,7 +27,8 @@ public:
         nvs_close(handle);
         if(error!=ESP_OK) return false;
         ControllerProfile check;
-        return load(check) && check.bank==profile.bank && check.knobs==profile.knobs && check.destinations==profile.destinations;
+        return load(check) && check.bank==profile.bank && check.knobs==profile.knobs && check.destinations==profile.destinations &&
+            check.legacy==profile.legacy && check.physical_b_destinations==profile.physical_b_destinations;
     }
 };
 
