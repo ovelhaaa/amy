@@ -6,7 +6,7 @@ status, o Panic, a tipografia e as cores do UI Blueprint.
 
 | Controle | Operação |
 | --- | --- |
-| PLAY / STOP / RESTART | Play arma o primeiro passo na fronteira da divisão global. Stop libera o grupo do sequenciador. Restart alinha novamente o passo 1 enquanto o transporte está em execução. |
+| PLAY / STOP / RESTART | Play arma o primeiro passo na próxima fronteira da divisão escolhida, sobre o clock global. Stop libera o grupo do sequenciador. Restart alinha novamente o passo 1 enquanto o transporte está em execução. |
 | BPM INT | Abre o controle global de tempo usado também pelo Arpeggiator e Delay SYNC. |
 | DIV | Percorre 1/4, 1/8, 1/16, 1/32, 1/8T e 1/16T. |
 | LENGTH / SWING / TRANSPOSE | Comprimento 1–16, swing 50–75% e transposição de −24 a +24 semitons. Tercinas têm espaçamento uniforme. |

@@ -3,7 +3,7 @@ $repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 Push-Location $repo
 try {
     if (!(Test-Path 'build/ui_blueprint_host/liblvgl_host.a')) {
-        & ./smk-p4/ui-preview/run_preview.ps1
+        & ./smk-p4/ui-preview/run_preview.ps1 -LvglOnly
     }
     if (!(Get-ChildItem 'build/harmony09/*.c.o' -ErrorAction SilentlyContinue)) {
         & ./smk-p4/tests/run_harmony.ps1 -ReuseObjects

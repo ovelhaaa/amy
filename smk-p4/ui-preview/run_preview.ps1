@@ -1,4 +1,4 @@
-param([ValidateSet(96,128)][int]$PoolKB=128)
+param([ValidateSet(96,128)][int]$PoolKB=128,[switch]$LvglOnly)
 $ErrorActionPreference = "Stop"
 
 $PreviewDir = $PSScriptRoot
@@ -89,6 +89,8 @@ if ($CompiledCount -gt 0 -or -not (Test-Path $LvglArchive)) {
     }
 }
 Write-Host "      LVGL 9.3.0 ready ($($LvglObjFiles.Count) objects, $CompiledCount compiled)."
+
+if ($LvglOnly) { return }
 
 Write-Host "[2/4] Compiling SMK-P4 UI Blueprint 1.0 C++ component ..."
 $UiCompDir = Join-Path $SmkP4Dir "components\ui_blueprint"
