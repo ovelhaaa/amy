@@ -170,7 +170,7 @@ int main() {
     assert(std::strcmp(name, "FX STRINGS") == 0 && origin == 4);
 
     // Switch to patch 135 (DX7 Piano) - FX defaults to neutral dry
-    assert(backend.setPatch(135, 100));
+    assert(backend.setPatch(135, 100, perf_lock::None));
     runtime.apply(100);
     runtime.loadPendingPatch();
     assert(runtime.render());

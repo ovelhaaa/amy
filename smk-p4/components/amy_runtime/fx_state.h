@@ -76,6 +76,23 @@ inline bool valid(const FxConfig& c) {
     return true;
 }
 
+inline bool fxEquivalent(const FxConfig& a, const FxConfig& b) {
+    if (a.chorus_mode != b.chorus_mode) return false;
+    if (std::lround(a.chorus_depth * 100.0f) != std::lround(b.chorus_depth * 100.0f)) return false;
+    if (std::lround(a.delay_time_ms) != std::lround(b.delay_time_ms)) return false;
+    if (a.delay_mode != b.delay_mode || a.delay_division != b.delay_division) return false;
+    if (std::lround(a.delay_feedback * 100.0f) != std::lround(b.delay_feedback * 100.0f)) return false;
+    if (std::lround(a.delay_mix * 100.0f) != std::lround(b.delay_mix * 100.0f)) return false;
+    if (std::lround(a.reverb_size * 100.0f) != std::lround(b.reverb_size * 100.0f)) return false;
+    if (std::lround(a.reverb_mix * 100.0f) != std::lround(b.reverb_mix * 100.0f)) return false;
+    if (std::lround(a.master_tone * 100.0f) != std::lround(b.master_tone * 100.0f)) return false;
+    if (std::lround(a.eq_low_db) != std::lround(b.eq_low_db)) return false;
+    if (std::lround(a.eq_mid_db) != std::lround(b.eq_mid_db)) return false;
+    if (std::lround(a.eq_high_db) != std::lround(b.eq_high_db)) return false;
+    if (a.bypass_all != b.bypass_all) return false;
+    return true;
+}
+
 struct FxState {
     FxConfig config, applied;
     uint8_t performance_sources[10]{};

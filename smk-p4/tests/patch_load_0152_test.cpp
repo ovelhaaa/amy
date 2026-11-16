@@ -89,9 +89,10 @@ void testPatchLoadPreservation() {
     // No active notes
     assert(runtime.snapshot().active_notes == 0);
 
-    // TEST B: Load DX7 patch 135 with NO LOCKS (clean load)
+    // TEST B: Load DX7 patch 135 with NO LOCKS (clean load / discard unsaved preserved FX)
     now += 30;
-    assert(backend.setPatch(135, now, perf_lock::None));
+    assert(backend.unsaved()); // Correctly identified as unsaved in 0.15.2a
+    assert(backend.discardEditsAndSetPatch(135, now, perf_lock::None));
     runtime.apply(now);
     runtime.loadPendingPatch();
     backend.publish(runtime.snapshot(), false, 0, 0);

@@ -49,13 +49,17 @@ public:
             }
         }
 #endif
-        if(snapshot.patch_id!=state_.patch_id
 #ifdef SMKP4_SOUND_EDITOR
-           && !recalling_
-#endif
-        ){
+        const bool patch_loaded = (snapshot.patch_changes != changes_) || (snapshot.patch_id != state_.patch_id);
+        if(patch_loaded && !recalling_){
+            original_fx_ = fx::FxConfig{};
+            desired_fx_ = snapshot.fx.config;
+        }
+#else
+        if(snapshot.patch_id!=state_.patch_id){
             desired_fx_=original_fx_=snapshot.fx.config;
         }
+#endif
         fx_state_=snapshot.fx;
 #ifdef SMKP4_SOUND_EDITOR
         if(recall_wait_ && commands_.generation()==recall_generation_ &&
@@ -151,7 +155,7 @@ public:
             recall_generation_=desired_.generation;
             recall_fx_errors_=fx_state_.errors;
             recall_fx_token_=0;
-            original_fx_=fx_state_.config;
+            original_fx_=fx::FxConfig{};
             desired_fx_=recall_fx_;
             fx_pending_=true;
         }
@@ -476,7 +480,7 @@ public:
             std::snprintf(preset_op_msg_, sizeof(preset_op_msg_), "RECALL REQUESTED: SLOT %02u", slot + 1);
             preset_op_status_ = { PresetOperationState::Requested, 3, uint8_t(slot), preset_op_msg_ };
             recall_started_ms_=last_service_ms_;
-            if(!setPatch(recall_.patch,recall_started_ms_)){
+            if(!setPatch(recall_.patch,recall_started_ms_,perf_lock::None)){
                 recalling_=false;
                 setRejectNotice(PresetRejectReason::Busy, "RECALL BLOCKED: ENGINE BUSY");
                 preset_op_status_ = { PresetOperationState::Rejected, 3, uint8_t(slot), reject_notice_ };
@@ -744,20 +748,7 @@ private:
              saved_edit_.macros[0] != 64 || saved_edit_.macros[1] != 64 || saved_edit_.macros[2] != 64);
     }
     static bool fxEquivalent(const fx::FxConfig& a, const fx::FxConfig& b) {
-        if (a.chorus_mode != b.chorus_mode) return false;
-        if (std::lround(a.chorus_depth * 100.0f) != std::lround(b.chorus_depth * 100.0f)) return false;
-        if (std::lround(a.delay_time_ms) != std::lround(b.delay_time_ms)) return false;
-        if (a.delay_mode!=b.delay_mode || a.delay_division!=b.delay_division) return false;
-        if (std::lround(a.delay_feedback * 100.0f) != std::lround(b.delay_feedback * 100.0f)) return false;
-        if (std::lround(a.delay_mix * 100.0f) != std::lround(b.delay_mix * 100.0f)) return false;
-        if (std::lround(a.reverb_size * 100.0f) != std::lround(b.reverb_size * 100.0f)) return false;
-        if (std::lround(a.reverb_mix * 100.0f) != std::lround(b.reverb_mix * 100.0f)) return false;
-        if (std::lround(a.master_tone * 100.0f) != std::lround(b.master_tone * 100.0f)) return false;
-        if (std::lround(a.eq_low_db) != std::lround(b.eq_low_db)) return false;
-        if (std::lround(a.eq_mid_db) != std::lround(b.eq_mid_db)) return false;
-        if (std::lround(a.eq_high_db) != std::lround(b.eq_high_db)) return false;
-        if (a.bypass_all != b.bypass_all) return false;
-        return true;
+        return fx::fxEquivalent(a, b);
     }
     uint32_t newEditToken(){edit_error_=edit_timeout_=false;edit_token_=++edit_serial_;return edit_token_;}
     void prepareEdit(){

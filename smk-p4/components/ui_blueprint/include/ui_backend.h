@@ -142,6 +142,8 @@ public:
         (void)preserve_mask;
         return requestSelectPatch(patch_id, target_layer);
     }
+    virtual bool isPatchLoading() const { return false; }
+    virtual bool hasPatchError() const { return false; }
 
     struct RoutingSnapshot {
         performance::Routes routes{};

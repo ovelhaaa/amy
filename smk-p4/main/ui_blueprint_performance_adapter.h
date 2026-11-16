@@ -50,6 +50,8 @@ public:
     ui::UiCommandResult confirmPatchDiscard(uint16_t id, uint8_t layer, uint8_t preserve_mask) override;
     ui::UiCommandResult requestSelectPatch(uint16_t, uint8_t layer=0) override;
     ui::UiCommandResult requestSelectPatch(uint16_t id, uint8_t layer, uint8_t preserve_mask) override;
+    bool isPatchLoading() const override { return patch_.active || backend_.busy(); }
+    bool hasPatchError() const override { return backend_.patchError(); }
     ui::UiCommandResult requestNoteOn(uint8_t, uint8_t) override;
     ui::UiCommandResult requestNoteOff(uint8_t, uint32_t token=0) override;
     void releaseAllUiNotes() override;

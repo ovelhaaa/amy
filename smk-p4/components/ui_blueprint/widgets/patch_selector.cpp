@@ -12,12 +12,61 @@ struct PatchSelCtx {
     UiNavigationManager* nav     = nullptr;
     int                  action  = 0; // -1=Prev, +1=Next, 2=Browse, 3=Fav, 4=SoundEdit
 };
+
+struct DialogState {
+    IUiBackend* backend = nullptr;
+    lv_obj_t* root = nullptr;
+    lv_obj_t* status = nullptr;
+    lv_obj_t* clean_btn = nullptr;
+    lv_obj_t* locked_btn = nullptr;
+    uint16_t target_patch = 0;
+    uint16_t original_patch = 0;
+    uint8_t layer = 0;
+    bool dirty = false;
+    bool in_flight = false;
+    uint32_t request_start_ms = 0;
+};
+
+static void executeLoad(DialogState* s, bool with_locks) {
+    if (!s || s->in_flight) return;
+    if (s->original_patch != s->backend->model().activePatch().id) {
+        lv_label_set_text(s->status, "Current patch changed. Cancel and select again.");
+        lv_obj_set_style_text_color(s->status, lv_color_hex(palette::kWarning), 0);
+        return;
+    }
+    const uint8_t mask = with_locks ? s_session_lock_mask : static_cast<uint8_t>(perf_lock::None);
+    UiCommandResult result{};
+    if (s->dirty) {
+        result = s->backend->confirmPatchDiscard(s->target_patch, s->layer, mask);
+    } else {
+        result = s->backend->requestSelectPatch(s->target_patch, s->layer, mask);
+    }
+    if (!result.accepted()) {
+        lv_label_set_text(s->status, result.notice ? result.notice : "Patch change unavailable.");
+        lv_obj_set_style_text_color(s->status, lv_color_hex(palette::kWarning), 0);
+        return;
+    }
+    if (result.state == UiCommandState::Confirmed) {
+        lv_obj_delete(s->root);
+        return;
+    }
+    s->in_flight = true;
+    s->request_start_ms = lv_tick_get();
+    lv_label_set_text(s->status, "LOADING PATCH...");
+    lv_obj_set_style_text_color(s->status, lv_color_hex(palette::kAccentPrimary), 0);
+    lv_obj_add_state(s->clean_btn, LV_STATE_DISABLED);
+    lv_obj_add_state(s->locked_btn, LV_STATE_DISABLED);
+}
+
+struct BtnContext { DialogState* state; bool with_locks; };
+
 } // namespace
 
 uint8_t sessionLockMask() { return s_session_lock_mask; }
 void setSessionLockMask(uint8_t mask) { s_session_lock_mask = mask; }
 
 void selectPatchWithConfirmation(IUiBackend& backend, UiNavigationManager& nav, uint16_t patch, uint8_t layer, bool force_dialog) {
+    if (backend.isBusy()) return;
     if (layer) {
         backend.requestSelectPatch(patch, layer);
         return;
@@ -91,51 +140,61 @@ void selectPatchWithConfirmation(IUiBackend& backend, UiNavigationManager& nav, 
 
     auto* status = createLabel(panel, "", 16, 168, 588, &lv_font_montserrat_14, palette::kWarning);
 
-    auto* cancel = createActionButton(panel, "CANCEL", 16, 206, 110, 44, nullptr, nullptr);
+    auto* cancel = createActionButton(panel, "CANCEL", 16, 206, 100, 44, nullptr, nullptr);
     auto* clean_btn = createActionButton(panel, dirty ? "DISCARD & LOAD" : "LOAD PATCH",
-                                         136, 206, dirty ? 170 : 160, 44, nullptr, nullptr);
+                                         128, 206, dirty ? 174 : 164, 44, nullptr, nullptr);
     auto* locked_btn = createActionButton(panel, dirty ? "DISCARD & LOAD WITH LOCKS" : "LOAD WITH LOCKS",
-                                          dirty ? 316 : 306, 206, dirty ? 288 : 298, 44, nullptr, nullptr, false, true);
+                                          dirty ? 314 : 304, 206, dirty ? 290 : 300, 44, nullptr, nullptr, false, true);
 
     lv_obj_add_event_cb(cancel, [](lv_event_t* event) {
         lv_obj_delete(static_cast<lv_obj_t*>(lv_event_get_user_data(event)));
     }, LV_EVENT_CLICKED, root);
 
-    struct Context {
-        IUiBackend* backend;
-        lv_obj_t* root;
-        lv_obj_t* status;
-        uint16_t patch;
-        uint16_t original;
-        uint8_t layer;
-        bool dirty;
-        bool with_locks;
-    };
+    auto* state = new DialogState{&backend, root, status, clean_btn, locked_btn, patch, backend.model().activePatch().id, layer, dirty, false, 0};
+    lv_obj_add_event_cb(root, [](lv_event_t* e) {
+        auto* s = static_cast<DialogState*>(lv_event_get_user_data(e));
+        delete s;
+    }, LV_EVENT_DELETE, state);
 
-    auto action_cb = [](lv_event_t* event) {
-        const auto& ctx = *static_cast<Context*>(lv_event_get_user_data(event));
-        if (ctx.original != ctx.backend->model().activePatch().id) {
-            lv_label_set_text(ctx.status, "Current patch changed. Cancel and select again.");
+    attachLvContext<BtnContext>(clean_btn, {state, false}, [](lv_event_t* e) {
+        auto* ctx = static_cast<BtnContext*>(lv_event_get_user_data(e));
+        ctx->state->clean_btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+        executeLoad(ctx->state, ctx->with_locks);
+    }, LV_EVENT_CLICKED);
+    attachLvContext<BtnContext>(locked_btn, {state, true}, [](lv_event_t* e) {
+        auto* ctx = static_cast<BtnContext*>(lv_event_get_user_data(e));
+        ctx->state->locked_btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+        executeLoad(ctx->state, ctx->with_locks);
+    }, LV_EVENT_CLICKED);
+
+    attachLvContext<DialogState*>(panel, state, [](lv_event_t* e) {
+        auto* s = *static_cast<DialogState**>(lv_event_get_user_data(e));
+        if (!s || !s->in_flight) return;
+        if (s->backend->model().activePatch().id == s->target_patch && !s->backend->isBusy()) {
+            lv_obj_delete(s->root);
             return;
         }
-        const uint8_t mask = ctx.with_locks ? s_session_lock_mask : static_cast<uint8_t>(perf_lock::None);
-        UiCommandResult result{};
-        if (ctx.dirty) {
-            result = ctx.backend->confirmPatchDiscard(ctx.patch, ctx.layer, mask);
-        } else {
-            result = ctx.backend->requestSelectPatch(ctx.patch, ctx.layer, mask);
+        if (s->backend->hasPatchError()) {
+            s->in_flight = false;
+            lv_obj_clear_state(s->clean_btn, LV_STATE_DISABLED);
+            lv_obj_clear_state(s->locked_btn, LV_STATE_DISABLED);
+            const char* notice = s->backend->statusText();
+            lv_label_set_text(s->status, (notice && notice[0]) ? notice : "PATCH LOAD FAILED. RETRY.");
+            lv_obj_set_style_text_color(s->status, lv_color_hex(palette::kWarning), 0);
+            return;
         }
-        if (result.accepted()) lv_obj_delete(ctx.root);
-        else lv_label_set_text(ctx.status, result.notice ? result.notice : "Patch change unavailable.");
-    };
-
-    attachLvContext<Context>(clean_btn, {&backend, root, status, patch, backend.model().activePatch().id, layer, dirty, false},
-                            action_cb, LV_EVENT_CLICKED);
-    attachLvContext<Context>(locked_btn, {&backend, root, status, patch, backend.model().activePatch().id, layer, dirty, true},
-                            action_cb, LV_EVENT_CLICKED);
+        if (lv_tick_elaps(s->request_start_ms) >= 2000) {
+            s->in_flight = false;
+            lv_obj_clear_state(s->clean_btn, LV_STATE_DISABLED);
+            lv_obj_clear_state(s->locked_btn, LV_STATE_DISABLED);
+            lv_label_set_text(s->status, "PATCH LOAD TIMEOUT. RETRY.");
+            lv_obj_set_style_text_color(s->status, lv_color_hex(palette::kWarning), 0);
+        }
+    }, LV_EVENT_REFRESH);
 }
 
 void stepPatchWithConfirmation(IUiBackend& backend, UiNavigationManager& nav, int direction) {
+    if (backend.isBusy()) return;
     size_t count = 0;
     const auto* cat = UiModel::catalog(count);
     const uint16_t cur_id = backend.model().activePatch().id;

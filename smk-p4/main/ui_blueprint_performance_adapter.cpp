@@ -447,6 +447,7 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestSelectPatch(uint16_t id,ui
 UiCommandResult UiBlueprintPerformanceAdapter::requestSelectPatch(uint16_t id,uint8_t layer,uint8_t preserve_mask) {
     if(layer || !isPatchSelectable(id)) return result(UiCommandState::Unsupported,"perf.patch_id","PATCH/LAYER UNAVAILABLE");
     if(!usable()) return result(UiCommandState::Rejected,"perf.patch_id","ENGINE/SNAPSHOT UNAVAILABLE");
+    if (backend_.busy()) return result(UiCommandState::Rejected,"perf.patch_id","PATCH REJECTED; ENGINE BUSY");
     if (patchNeedsDiscardConfirmation())
         return result(UiCommandState::Rejected,"perf.patch_id","UNSAVED CHANGES. CONFIRM DISCARD IN PATCH SELECTOR.");
     releaseAllUiNotes();
@@ -458,7 +459,11 @@ UiCommandResult UiBlueprintPerformanceAdapter::confirmPatchDiscard(uint16_t id, 
     return confirmPatchDiscard(id, layer, 0);
 }
 UiCommandResult UiBlueprintPerformanceAdapter::confirmPatchDiscard(uint16_t id, uint8_t layer, uint8_t preserve_mask) {
-    if (layer || !usable() || !isPatchSelectable(id) || !backend_.discardEditsAndSetPatch(id, now_ms_, preserve_mask))
+    if (layer || !usable() || !isPatchSelectable(id))
+        return result(UiCommandState::Rejected, "perf.patch_id", "PATCH CHANGE UNAVAILABLE. TRY AGAIN.");
+    if (backend_.busy())
+        return result(UiCommandState::Rejected, "perf.patch_id", "PATCH REJECTED; ENGINE BUSY");
+    if (!backend_.discardEditsAndSetPatch(id, now_ms_, preserve_mask))
         return result(UiCommandState::Rejected, "perf.patch_id", "PATCH CHANGE UNAVAILABLE. TRY AGAIN.");
     releaseAllUiNotes();
     patch_ = {true, id, backend_.stateRevision(), now_ms_};

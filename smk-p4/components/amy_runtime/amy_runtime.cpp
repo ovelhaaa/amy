@@ -694,7 +694,7 @@ void Runtime::loadPendingPatch() {
         state_.preserve_mask=mask;
         if(mask & perf_lock::Fx) {
             state_.fx.config=prev_fx;
-            state_.fx.dirty=true;
+            state_.fx.dirty=!fx::fxEquivalent(prev_fx, fx::FxConfig{});
         } else {
             state_.fx.config=fx::FxConfig{};
             state_.fx.dirty=false;

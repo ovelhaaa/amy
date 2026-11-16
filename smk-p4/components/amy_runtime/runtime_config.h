@@ -33,7 +33,7 @@ constexpr unsigned kUsbCommandCapacity = 64;
 constexpr unsigned kUsbCommandCapacity = kCommandCapacity;
 #endif
 static_assert(kVoices == 4 || kVoices == 6 || kVoices == 8, "Supported musical voice profiles: 4, 6, 8");
-constexpr unsigned kOwnerStackBytes = 12288;
+constexpr unsigned kOwnerStackBytes = 12800;
 #ifdef SMKP4_UNIFIED_ENGINE
 constexpr unsigned kOwnerPriority = 4; // Below independent DMA output owner.
 constexpr unsigned kOutputPriority = 6, kOutputStackBytes = 4096, kPcmQueueBlocks = 3;
