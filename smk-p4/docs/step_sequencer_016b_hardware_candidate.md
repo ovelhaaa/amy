@@ -16,6 +16,23 @@ Os binários estão em `smk-p4/.pio/build/<perfil>/firmware.bin`. Em
 relação à 0.16A, o arquivo cresceu 7.952 B no editor e 7.920 B no bench.
 A auditoria de configuração Blueprint passou nos dois perfis.
 
+## Gravação e inicialização verificadas
+
+Em 16 de novembro de 2026, após autorização, o esptool 5.1.0 gravou
+somente a aplicação bench em `0x10000` na Guition ESP32-P4 rev. 1.3
+(`COM13`, serial `80:F1:B2:D3:CC:86`). A leitura de volta confirmou o
+SHA-256 da tabela. Bootloader, tabela de partições e NVS coincidiram
+byte a byte com o backup anterior à gravação.
+
+**PASS** para gravação, verificação e inicialização. O log serial
+mostrou `AUDIO I2S_PRODUCING` e `SEQ016B` parado. Na amostra em repouso,
+a saída registrou zero erros de escrita, timeouts e riscos de refill.
+O pico de render foi de 491 µs, com zero deadlines perdidos. O log
+continua marcando underruns de DMA como `UNMEASURED`.
+
+**MANUAL** para áudio audível e operação física do sequenciador.
+Na Guition, abrir **SEQ → LOAD DEMO PATTERN → PLAY** e seguir o roteiro.
+
 ## Roteiro de bancada
 
 Após autorização explícita para a imagem de bancada identificada pelo
