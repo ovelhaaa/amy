@@ -13,6 +13,7 @@ struct Snapshot {
 #ifdef SMKP4_SOUND_EDITOR
     edit::State edit;
     arp::Status arp;
+    seq::Status sequencer;
     uint32_t arp_service_max_us=0;
     bool storage_quiet=false;
 #endif
@@ -59,6 +60,16 @@ private:
     void releaseArp();
     arp::Engine arp_;
     tempo::Clock tempo_;
+    seq::Engine sequencer_;
+    unsigned sequencer_group_=kVoices;
+    void applySequencer(const seq::Request& request);
+    void releaseSequencer();
+    void serviceSequencer();
+    void stopSequencer();
+    void publishSequencer() {
+        state_.sequencer=sequencer_.status();
+        state_.sequencer.bpm=tempo_.position().bpm;
+    }
     void publishArp() {
         state_.arp=arp_.status();
         state_.arp.tempo=tempo_.position();
@@ -95,7 +106,7 @@ private:
     void note(unsigned slot,uint8_t velocity);
     void release(unsigned slot);
     void cancelUsb();
-    enum class NoteOrigin : uint8_t { Touch, UsbDirect, Arpeggiator };
+    enum class NoteOrigin : uint8_t { Touch, UsbDirect, Arpeggiator, Sequencer };
     unsigned findGroup(NoteOrigin origin,uint8_t channel,uint8_t input) const;
     void releaseGroup(unsigned group);
     unsigned startGroup(NoteOrigin origin,const Command& c,uint32_t now_ms);
