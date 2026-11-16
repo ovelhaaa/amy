@@ -90,6 +90,7 @@ void UiBlueprint::service(uint32_t now_ms) {
     }
 
     backend_.service(now_ms);
+    servicePatchConfirmation(nav_);
     using Shortcut=IUiBackend::MidiShortcut;
     const auto shortcut=backend_.takeMidiShortcut();
     switch(shortcut) {

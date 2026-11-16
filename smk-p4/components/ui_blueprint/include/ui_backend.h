@@ -144,6 +144,7 @@ public:
     }
     virtual bool isPatchLoading() const { return false; }
     virtual bool hasPatchError() const { return false; }
+    virtual UiCommandResult patchLoadResult() const { return {}; }
 
     struct RoutingSnapshot {
         performance::Routes routes{};

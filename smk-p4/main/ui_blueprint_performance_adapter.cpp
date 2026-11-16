@@ -447,13 +447,14 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestSelectPatch(uint16_t id,ui
 UiCommandResult UiBlueprintPerformanceAdapter::requestSelectPatch(uint16_t id,uint8_t layer,uint8_t preserve_mask) {
     if(layer || !isPatchSelectable(id)) return result(UiCommandState::Unsupported,"perf.patch_id","PATCH/LAYER UNAVAILABLE");
     if(!usable()) return result(UiCommandState::Rejected,"perf.patch_id","ENGINE/SNAPSHOT UNAVAILABLE");
-    if (backend_.busy()) return result(UiCommandState::Rejected,"perf.patch_id","PATCH REJECTED; ENGINE BUSY");
+    if (isBusy()) return result(UiCommandState::Rejected,"perf.patch_id","PATCH REJECTED; ENGINE BUSY");
     if (patchNeedsDiscardConfirmation())
         return result(UiCommandState::Rejected,"perf.patch_id","UNSAVED CHANGES. CONFIRM DISCARD IN PATCH SELECTOR.");
     releaseAllUiNotes();
     if(!backend_.setPatch(id,now_ms_,preserve_mask)) return result(UiCommandState::Rejected,"perf.patch_id","PATCH REJECTED; NOTES CANCELED");
-    patch_={true,id,backend_.stateRevision(),now_ms_};
-    return result(UiCommandState::Requested,"perf.patch_id","PATCH REQUESTED; WAIT SNAPSHOT");
+    patch_={true,id,backend_.patchRevision(),now_ms_};
+    patch_failure_revision_=backend_.patchFailureRevision();
+    return patch_result_=result(UiCommandState::Requested,"perf.patch_id","PATCH REQUESTED; WAIT SNAPSHOT");
 }
 UiCommandResult UiBlueprintPerformanceAdapter::confirmPatchDiscard(uint16_t id, uint8_t layer) {
     return confirmPatchDiscard(id, layer, 0);
@@ -461,13 +462,14 @@ UiCommandResult UiBlueprintPerformanceAdapter::confirmPatchDiscard(uint16_t id, 
 UiCommandResult UiBlueprintPerformanceAdapter::confirmPatchDiscard(uint16_t id, uint8_t layer, uint8_t preserve_mask) {
     if (layer || !usable() || !isPatchSelectable(id))
         return result(UiCommandState::Rejected, "perf.patch_id", "PATCH CHANGE UNAVAILABLE. TRY AGAIN.");
-    if (backend_.busy())
+    if (isBusy())
         return result(UiCommandState::Rejected, "perf.patch_id", "PATCH REJECTED; ENGINE BUSY");
     if (!backend_.discardEditsAndSetPatch(id, now_ms_, preserve_mask))
         return result(UiCommandState::Rejected, "perf.patch_id", "PATCH CHANGE UNAVAILABLE. TRY AGAIN.");
     releaseAllUiNotes();
-    patch_ = {true, id, backend_.stateRevision(), now_ms_};
-    return result(UiCommandState::Requested, "perf.patch_id", "PATCH REQUESTED; WAIT SNAPSHOT");
+    patch_ = {true, id, backend_.patchRevision(), now_ms_};
+    patch_failure_revision_=backend_.patchFailureRevision();
+    return patch_result_=result(UiCommandState::Requested, "perf.patch_id", "PATCH REQUESTED; WAIT SNAPSHOT");
 }
 bool UiBlueprintPerformanceAdapter::isNoteHeld(uint8_t note) const {
     for(const auto& g:gestures_) if(g.token && g.note==note) return true;
@@ -504,6 +506,7 @@ void UiBlueprintPerformanceAdapter::releaseAllUiNotes() {
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestPanic() {
     releaseAllUiNotes(); backend_.panic();
+    if(patch_.active) patch_result_={UiCommandState::Rejected,0,"PATCH LOAD INTERRUPTED BY PANIC."};
     patch_.active=master_.active=false;
     return result(UiCommandState::Requested,"panic","PANIC REQUESTED; OWNER CANCELS ALL SOURCES");
 }
@@ -1044,7 +1047,9 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
         result(saved?UiCommandState::Confirmed:UiCommandState::Rejected,"perf.bpm",tempo_save_notice_);
     }
     if(was_connected_ && !backend_.connected()) {
-        releaseAllUiNotes(); patch_.active=master_.active=false; have_snapshot_=false;
+        releaseAllUiNotes();
+        if(patch_.active) patch_result_={UiCommandState::Rejected,0,"ENGINE DISCONNECTED DURING PATCH LOAD."};
+        patch_.active=master_.active=false; have_snapshot_=false;
         result(UiCommandState::Rejected,"connection","ENGINE DISCONNECTED");
     }
     was_connected_=backend_.connected();
@@ -1131,11 +1136,12 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
             if(model_.getInt("layer_a.patch_id")!=s.patch_id) model_.setInt("layer_a.patch_id",s.patch_id);
         }
         if(s.master<=127 && model_.getInt("perf.master_volume")!=s.master) model_.setInt("perf.master_volume",s.master);
-        if(patch_.active && backend_.patchError()) {
-            patch_.active=false; result(UiCommandState::Rejected,"perf.patch_id","PATCH LOAD FAILED; RETRY SAFE PATCH");
-        }
-        if(patch_.active && !backend_.busy() && rev!=patch_.revision && s.patch_id==patch_.value) {
-            patch_.active=false; result(UiCommandState::Confirmed,"perf.patch_id","PATCH CONFIRMED BY SNAPSHOT");
+        if(patch_.active && backend_.patchFailureRevision()!=patch_failure_revision_) {
+            patch_.active=false;
+            patch_result_=result(UiCommandState::Rejected,"perf.patch_id","PATCH LOAD FAILED; RETRY SAFE PATCH");
+        }else if(patch_.active && !backend_.busy() && backend_.patchRevision()!=patch_.revision && s.patch_id==patch_.value) {
+            patch_.active=false;
+            patch_result_=result(UiCommandState::Confirmed,"perf.patch_id","PATCH CONFIRMED BY SNAPSHOT");
         }
         if(master_.active && rev!=master_.revision && s.master==master_.value) {
             master_.active=false; result(UiCommandState::Confirmed,"perf.master_volume","MASTER CONFIRMED BY SNAPSHOT");
@@ -1146,7 +1152,7 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     }
     if(patch_.active && uint32_t(now_ms-patch_.requested_ms)>=kPatchConfirmationTimeoutMs) {
         patch_.active=false;
-        result(UiCommandState::Rejected,"perf.patch_id","PATCH NOT CONFIRMED; OWNER STATE RETAINED");
+        patch_result_=result(UiCommandState::Rejected,"perf.patch_id","PATCH LOAD TIMEOUT; CHECK CURRENT PATCH");
     }
     if(fx_requested_ && uint32_t(now_ms-fx_requested_ms_)>=kPatchConfirmationTimeoutMs) {
         fx_requested_=false;

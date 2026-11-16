@@ -17,7 +17,7 @@ public:
     const ui::UiModel& model() const override { return model_; }
     bool isDemoMode() const override { return false; }
     bool isConnected() const override { return backend_.connected(); }
-    bool isBusy() const override { return backend_.busy(); }
+    bool isBusy() const override { return patch_.active || backend_.busy(); }
     bool hasMidiError() const override { return backend_.midiError(); }
     const char* backendName() const override { return "LOCAL AMY / BLUEPRINT 1.1"; }
     const char* modeBadgeText() const override { return "P4 LIVE"; }
@@ -52,6 +52,7 @@ public:
     ui::UiCommandResult requestSelectPatch(uint16_t id, uint8_t layer, uint8_t preserve_mask) override;
     bool isPatchLoading() const override { return patch_.active || backend_.busy(); }
     bool hasPatchError() const override { return backend_.patchError(); }
+    ui::UiCommandResult patchLoadResult() const override { return patch_result_; }
     ui::UiCommandResult requestNoteOn(uint8_t, uint8_t) override;
     ui::UiCommandResult requestNoteOff(uint8_t, uint32_t token=0) override;
     void releaseAllUiNotes() override;
@@ -151,6 +152,8 @@ private:
     ui::UiSignalMeters meters_{};
     Gesture gestures_[kGestureCapacity]{};
     Pending patch_, master_;
+    uint32_t patch_failure_revision_=0;
+    ui::UiCommandResult patch_result_{};
     harmony::Config requested_harmony_;
     bool harmony_pending_=false;
     const char* harmony_id_="harmony.preset";

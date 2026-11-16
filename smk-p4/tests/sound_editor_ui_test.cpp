@@ -638,6 +638,89 @@ int main(){
     assert(r.snapshot().patch_id!=previous_patch && !reboot.unsaved());
     std::puts("PASS patch selector: cancel preserves edits, confirmed discard changes patch");
 
+    auto* content = ui.contentObject();
+    assert(!button(content, "DISCARD & LOAD"));
+    const auto click = [](lv_obj_t* object) {
+        assert(object);
+        lv_obj_send_event(object, LV_EVENT_CLICKED, nullptr);
+    };
+    const auto open_patch = [&](uint16_t id) {
+        selectPatchWithConfirmation(next, ui.navigation(), id, 0, true);
+        assert(button(content, "LOAD PATCH"));
+    };
+    const auto same_patch = r.snapshot().patch_id;
+    open_patch(same_patch);
+    click(button(content, "LOAD PATCH"));
+    const auto changes = r.snapshot().patch_changes;
+    const auto before_request = r.snapshot();
+    reboot.publish(before_request, false, 0, 0);
+    preview::pumpFrame(ui);
+    assert(labels(content, "LOADING PATCH...") == 1);
+    auto* cancel = button(content, "CANCEL");
+    assert(lv_obj_has_state(cancel, LV_STATE_DISABLED));
+    click(cancel); // Synthetic click also hits the callback guard.
+    assert(labels(content, "LOADING PATCH...") == 1);
+    selectPatchWithConfirmation(next, ui.navigation(), 128, 0, true);
+    click(button(content, "LOAD PATCH"));
+    assert(!next.requestSelectPatch(128).accepted());
+    next_apply();
+    assert(r.snapshot().patch_id == same_patch && r.snapshot().patch_changes == changes + 1);
+    assert(!button(content, "LOAD PATCH"));
+    std::puts("PASS popup success, same-patch owner confirmation, CANCEL guard and rapid selection");
+
+    open_patch(same_patch);
+    click(button(content, "LOAD PATCH"));
+    r.apply(preview::g_sim_tick_ms);
+    assert(r.snapshot().patch_state == amy::PatchState::Requested);
+    r.commands().panic(); // Owner reports failure without a UI Panic request.
+    next_apply();
+    assert(labels(content, "PATCH LOAD FAILED; RETRY SAFE PATCH") == 1);
+    assert(!lv_obj_has_state(button(content, "CANCEL"), LV_STATE_DISABLED));
+    click(button(content, "CANCEL"));
+    open_patch(same_patch);
+    click(button(content, "LOAD PATCH"));
+    preview::pumpFrame(ui);
+    assert(labels(content, "LOADING PATCH...") == 1); // Prior failure is stale.
+    next_apply();
+    assert(!button(content, "LOAD PATCH") && !reboot.patchError());
+    std::puts("PASS popup owner failure, reopen and successful retry");
+
+    open_patch(same_patch);
+    click(button(content, "LOAD PATCH"));
+    preview::pumpFrame(ui, UiBlueprintPerformanceAdapter::kPatchConfirmationTimeoutMs - 1);
+    assert(labels(content, "LOADING PATCH...") == 1);
+    preview::pumpFrame(ui, 1);
+    assert(labels(content, "PATCH LOAD TIMEOUT; CHECK CURRENT PATCH") == 1);
+    click(button(content, "CANCEL"));
+    assert(!button(content, "LOAD PATCH"));
+    next_apply();
+    assert(!button(content, "LOAD PATCH")); // Late owner completion cannot resurrect the modal.
+    std::puts("PASS popup timeout without model changes and late owner completion");
+
+    open_patch(same_patch);
+    click(button(content, "LOAD PATCH"));
+    click(button(ui.rootObject(), "PANIC"));
+    next_apply();
+    assert(!r.snapshot().active_notes);
+    assert(labels(content, "PATCH LOAD INTERRUPTED BY PANIC.") == 1);
+    click(button(content, "CANCEL"));
+    std::puts("PASS global PANIC with popup open");
+
+    preview::pumpFrame(ui);
+    lv_mem_monitor_t memory_before{}, memory_after{};
+    lv_mem_monitor(&memory_before);
+    for (unsigned i = 0; i < 32; ++i) {
+        open_patch(same_patch);
+        preview::pumpFrame(ui);
+        click(button(content, "CANCEL"));
+        preview::pumpFrame(ui);
+        assert(!button(content, "LOAD PATCH"));
+    }
+    lv_mem_monitor(&memory_after);
+    assert(memory_after.free_size == memory_before.free_size);
+    assert(lv_mem_test() == LV_RESULT_OK);
+    std::puts("PASS popup repeated open/close (32 cycles), LVGL heap stable");
+
     testSmk25LegacyUi(r,reboot,next,ui);
     std::puts("PASS 0.14.2 SMK25 native pickup, pad shortcuts, Save As safety and USB-only Stop");
     assert(lv_mem_test()==LV_RESULT_OK);ui.shutdown();r.end();

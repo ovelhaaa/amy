@@ -19,13 +19,16 @@ struct DialogState {
     lv_obj_t* status = nullptr;
     lv_obj_t* clean_btn = nullptr;
     lv_obj_t* locked_btn = nullptr;
+    lv_obj_t* cancel_btn = nullptr;
     uint16_t target_patch = 0;
     uint16_t original_patch = 0;
     uint8_t layer = 0;
     bool dirty = false;
     bool in_flight = false;
-    uint32_t request_start_ms = 0;
+    UiNavigationManager* nav = nullptr;
 };
+
+DialogState* confirmation = nullptr;
 
 static void executeLoad(DialogState* s, bool with_locks) {
     if (!s || s->in_flight) return;
@@ -46,12 +49,12 @@ static void executeLoad(DialogState* s, bool with_locks) {
         lv_obj_set_style_text_color(s->status, lv_color_hex(palette::kWarning), 0);
         return;
     }
-    if (result.state == UiCommandState::Confirmed) {
+    if (result.state != UiCommandState::Requested) {
         lv_obj_delete(s->root);
         return;
     }
     s->in_flight = true;
-    s->request_start_ms = lv_tick_get();
+    lv_obj_add_state(s->cancel_btn, LV_STATE_DISABLED);
     lv_label_set_text(s->status, "LOADING PATCH...");
     lv_obj_set_style_text_color(s->status, lv_color_hex(palette::kAccentPrimary), 0);
     lv_obj_add_state(s->clean_btn, LV_STATE_DISABLED);
@@ -66,7 +69,7 @@ uint8_t sessionLockMask() { return s_session_lock_mask; }
 void setSessionLockMask(uint8_t mask) { s_session_lock_mask = mask; }
 
 void selectPatchWithConfirmation(IUiBackend& backend, UiNavigationManager& nav, uint16_t patch, uint8_t layer, bool force_dialog) {
-    if (backend.isBusy()) return;
+    if (confirmation || backend.isBusy()) return;
     if (layer) {
         backend.requestSelectPatch(patch, layer);
         return;
@@ -76,12 +79,8 @@ void selectPatchWithConfirmation(IUiBackend& backend, UiNavigationManager& nav, 
         backend.requestSelectPatch(patch, layer, s_session_lock_mask);
         return;
     }
-    static lv_obj_t* confirmation = nullptr;
-    if (confirmation) return;
     auto* root = lv_obj_create(nav.contentRoot());
     if (!root) return;
-    confirmation = root;
-    lv_obj_add_event_cb(root, [](lv_event_t*) { confirmation = nullptr; }, LV_EVENT_DELETE, nullptr);
     lv_obj_remove_style_all(root);
     lv_obj_set_size(root, lv_pct(100), lv_pct(100));
     lv_obj_set_style_bg_color(root, lv_color_black(), 0);
@@ -146,51 +145,44 @@ void selectPatchWithConfirmation(IUiBackend& backend, UiNavigationManager& nav, 
     auto* locked_btn = createActionButton(panel, dirty ? "DISCARD & LOAD WITH LOCKS" : "LOAD WITH LOCKS",
                                           dirty ? 314 : 304, 206, dirty ? 290 : 300, 44, nullptr, nullptr, false, true);
 
+    auto* state = new DialogState{&backend, root, status, clean_btn, locked_btn, cancel,
+                                  patch, backend.model().activePatch().id, layer, dirty, false, &nav};
+    confirmation = state;
     lv_obj_add_event_cb(cancel, [](lv_event_t* event) {
-        lv_obj_delete(static_cast<lv_obj_t*>(lv_event_get_user_data(event)));
-    }, LV_EVENT_CLICKED, root);
-
-    auto* state = new DialogState{&backend, root, status, clean_btn, locked_btn, patch, backend.model().activePatch().id, layer, dirty, false, 0};
+        auto* s = static_cast<DialogState*>(lv_event_get_user_data(event));
+        if (!s->in_flight) lv_obj_delete(s->root);
+    }, LV_EVENT_CLICKED, state);
     lv_obj_add_event_cb(root, [](lv_event_t* e) {
         auto* s = static_cast<DialogState*>(lv_event_get_user_data(e));
+        confirmation = nullptr;
         delete s;
     }, LV_EVENT_DELETE, state);
 
     attachLvContext<BtnContext>(clean_btn, {state, false}, [](lv_event_t* e) {
         auto* ctx = static_cast<BtnContext*>(lv_event_get_user_data(e));
-        ctx->state->clean_btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
         executeLoad(ctx->state, ctx->with_locks);
     }, LV_EVENT_CLICKED);
     attachLvContext<BtnContext>(locked_btn, {state, true}, [](lv_event_t* e) {
         auto* ctx = static_cast<BtnContext*>(lv_event_get_user_data(e));
-        ctx->state->locked_btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
         executeLoad(ctx->state, ctx->with_locks);
     }, LV_EVENT_CLICKED);
+}
 
-    attachLvContext<DialogState*>(panel, state, [](lv_event_t* e) {
-        auto* s = *static_cast<DialogState**>(lv_event_get_user_data(e));
-        if (!s || !s->in_flight) return;
-        if (s->backend->model().activePatch().id == s->target_patch && !s->backend->isBusy()) {
-            lv_obj_delete(s->root);
-            return;
-        }
-        if (s->backend->hasPatchError()) {
-            s->in_flight = false;
-            lv_obj_clear_state(s->clean_btn, LV_STATE_DISABLED);
-            lv_obj_clear_state(s->locked_btn, LV_STATE_DISABLED);
-            const char* notice = s->backend->statusText();
-            lv_label_set_text(s->status, (notice && notice[0]) ? notice : "PATCH LOAD FAILED. RETRY.");
-            lv_obj_set_style_text_color(s->status, lv_color_hex(palette::kWarning), 0);
-            return;
-        }
-        if (lv_tick_elaps(s->request_start_ms) >= 2000) {
-            s->in_flight = false;
-            lv_obj_clear_state(s->clean_btn, LV_STATE_DISABLED);
-            lv_obj_clear_state(s->locked_btn, LV_STATE_DISABLED);
-            lv_label_set_text(s->status, "PATCH LOAD TIMEOUT. RETRY.");
-            lv_obj_set_style_text_color(s->status, lv_color_hex(palette::kWarning), 0);
-        }
-    }, LV_EVENT_REFRESH);
+void servicePatchConfirmation(UiNavigationManager& nav) {
+    auto* s = confirmation;
+    if (!s || s->nav != &nav || !s->in_flight) return;
+    const auto result = s->backend->patchLoadResult();
+    if (result.state == UiCommandState::Requested) return;
+    if (result.state == UiCommandState::Confirmed) {
+        lv_obj_delete(s->root);
+        return;
+    }
+    s->in_flight = false;
+    lv_obj_clear_state(s->cancel_btn, LV_STATE_DISABLED);
+    lv_obj_clear_state(s->clean_btn, LV_STATE_DISABLED);
+    lv_obj_clear_state(s->locked_btn, LV_STATE_DISABLED);
+    lv_label_set_text(s->status, result.notice ? result.notice : "PATCH LOAD FAILED. RETRY.");
+    lv_obj_set_style_text_color(s->status, lv_color_hex(palette::kWarning), 0);
 }
 
 void stepPatchWithConfirmation(IUiBackend& backend, UiNavigationManager& nav, int direction) {

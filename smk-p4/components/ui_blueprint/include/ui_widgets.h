@@ -8,6 +8,7 @@
 
 namespace smk::p4::ui {
 
+void servicePatchConfirmation(UiNavigationManager& nav);
 void stepPatchWithConfirmation(IUiBackend&, UiNavigationManager&, int direction);
 void selectPatchWithConfirmation(IUiBackend&, UiNavigationManager&, uint16_t, uint8_t, bool force_dialog = false);
 
