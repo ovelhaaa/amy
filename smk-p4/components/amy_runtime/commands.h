@@ -5,6 +5,9 @@
 #include "fx_state.h"
 #include "performance_lock.h"
 #include <atomic>
+#ifdef SMKP4_SOUND_EDITOR
+#include "step_sequencer_protocol.h"
+#endif
 namespace smk::p4::amy {
 enum class CommandType : uint8_t { NoteOn, Patch, Master, NoteOff, Control, Bend, Harmony, Arp };
 struct Command {
@@ -64,6 +67,8 @@ class Commands : public CommandQueue<kCommandCapacity> {
 public:
 #ifdef SMKP4_SOUND_EDITOR
     edit::Mailbox edits;
+    bool pushSequencer(const seq::Request& request) { return sequencer.push(request,generation()); }
+    seq::Mailbox sequencer;
     std::atomic<bool> storage_requested{false};
     // The UI producer gets one Stop slot independent of normal queue pressure.
     bool pushArpStop(const Command& stop) {

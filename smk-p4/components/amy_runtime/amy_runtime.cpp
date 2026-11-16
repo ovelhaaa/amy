@@ -56,6 +56,7 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
     state_=Snapshot{}; bank_=0; gain_q16_=0;
 #ifdef SMKP4_SOUND_EDITOR
     arp_=arp::Engine{};tempo_=tempo::Clock{};arp_identity_=0;
+    sequencer_=seq::Engine{};sequencer_group_=kVoices;
     echo_time_ms_=350.0f;echo_mix_=0.0f;echo_feedback_=0.0f;
     last_sync_ms_=0.0f;echo_sync_=false;
 #endif
@@ -140,6 +141,7 @@ void Runtime::end() {
 void Runtime::silence() {
 #ifdef SMKP4_SOUND_EDITOR
     arp_.stop();arp_identity_=0;publishArp();
+    stopSequencer();
 #endif
     amy_deltas_reset();
     for(size_t i=0;i<kAmyVoices;++i) {
@@ -228,14 +230,22 @@ void Runtime::releaseGroup(unsigned group) {
     for(unsigned i=0;i<kVoices;++i)if(voices_[i].used && voices_[i].group==group)release(i);
 }
 unsigned Runtime::startGroup(NoteOrigin origin,const Command& c,uint32_t now_ms) {
-    const bool usb=origin!=NoteOrigin::Touch;
+    const bool usb=origin==NoteOrigin::UsbDirect || origin==NoteOrigin::Arpeggiator;
 #ifdef SMKP4_HARMONY
     AdmissionTimer admission(state_.admission_max_us);
     const uint32_t transform_start=musicalTimeUs();
 #endif
     auto config=state_.harmony;
-    const bool eligible=usb?c.channel==config.channel:config.touch;
-    if(!eligible)config.scale_on=config.chord_on=false;
+#ifdef SMKP4_SOUND_EDITOR
+    if(origin==NoteOrigin::Sequencer) {
+        config.scale_on=config.scale_on && sequencer_.status().quantize;
+        config.chord_on=false;
+    } else
+#endif
+    {
+        const bool eligible=usb?c.channel==config.channel:config.touch;
+        if(!eligible)config.scale_on=config.chord_on=false;
+    }
     const auto notes=harmony::transform(uint8_t(c.id),config);
 #ifdef SMKP4_HARMONY
     const uint32_t transform_us=musicalTimeUs()-transform_start;
@@ -406,6 +416,82 @@ void Runtime::serviceArp() {
     }
     publishArp();
 }
+
+void Runtime::releaseSequencer() {
+    if(sequencer_group_<kVoices) releaseGroup(sequencer_group_);
+    sequencer_group_=kVoices;
+}
+
+void Runtime::stopSequencer() {
+    sequencer_.stop();
+    sequencer_group_=kVoices; // Global silence also clears the voice and group tables.
+    publishSequencer();
+}
+
+void Runtime::applySequencer(const seq::Request& request) {
+    using seq::Action;
+    bool accepted=request.token && request.version==seq::kProtocolVersion &&
+        request.generation==state_.generation && request.generation==commands_.generation() &&
+        state_.patch_state==PatchState::Ready;
+    if(accepted) {
+        switch(request.action) {
+        case Action::Play:
+            accepted=sequencer_.play(tempo_.position());
+            break;
+        case Action::Stop:
+            sequencer_.stop();
+            releaseSequencer();
+            break;
+        case Action::Restart:
+            if(sequencer_.status().playing && sequencer_.restart(tempo_.position())) releaseSequencer();
+            break;
+        case Action::SetStep:
+            accepted=sequencer_.setStep(request.index,request.step);
+            break;
+        case Action::SetLength:
+            accepted=sequencer_.setLength(request.value);
+            break;
+        case Action::SetDivision:
+            accepted=request.value>=0 && request.value<int(tempo::Division::Count) &&
+                sequencer_.setDivision(tempo::Division(request.value));
+            break;
+        case Action::SetPattern:
+            accepted=sequencer_.setPattern(request.pattern);
+            break;
+        case Action::SetEnabled:
+            accepted=request.value==0 || request.value==1;
+            if(accepted && sequencer_.setEnabled(request.value!=0)) releaseSequencer();
+            break;
+        case Action::SetSwing:
+            accepted=sequencer_.setSwing(request.value);
+            break;
+        case Action::SetTranspose:
+            accepted=sequencer_.setTranspose(request.value);
+            break;
+        case Action::SetQuantize:
+            accepted=request.value==0 || request.value==1;
+            if(accepted) sequencer_.setQuantize(request.value!=0);
+            break;
+        default:
+            accepted=false;
+            break;
+        }
+    }
+    sequencer_.acknowledge(request.token,accepted);
+    publishSequencer();
+}
+
+void Runtime::serviceSequencer() {
+    const auto events=sequencer_.update(tempo_.position());
+    if(events.release) releaseSequencer();
+    if(events.velocity) {
+        Command note{};
+        note.id=events.note;
+        note.value=events.velocity;
+        sequencer_group_=startGroup(NoteOrigin::Sequencer,note,0);
+    }
+    publishSequencer();
+}
 #endif
 void Runtime::applyFx(uint32_t now_ms) {
     fx::FxRequest req;
@@ -464,7 +550,7 @@ void Runtime::apply(uint32_t now_ms) {
     if(depth>state_.queue_high_water) state_.queue_high_water=depth;
     for(unsigned i=0;i<kVoices;++i) {
         const auto& v=voices_[i];
-        if(v.used && !v.usb) {
+        if(v.used && groups_[v.group].origin==NoteOrigin::Touch) {
             const bool expired=uint32_t(now_ms-v.started_ms)>=kLeaseMs;
             if(expired || atOrAfter(commands_.released(v.input),v.token)) {
                 release(i); if(expired) ++state_.expired_notes;
@@ -533,6 +619,16 @@ void Runtime::apply(uint32_t now_ms) {
     for(unsigned i=0;i<16;++i)if(sustain_[i])any_sustain=true;
     state_.sustain_active=any_sustain;
     applyEdit(now_ms);
+    for(unsigned i=0;i<seq::kQueueCapacity;++i) {
+        const auto* request=commands_.sequencer.front();
+        if(!request) break;
+        applySequencer(*request);
+        commands_.sequencer.consume();
+    }
+    if(const auto* stop=commands_.sequencer.stop()) {
+        applySequencer(*stop);
+        commands_.sequencer.consumeStop();
+    }
 #endif
     applyFx(now_ms);
     if(commands_.generation()!=state_.generation) {
@@ -555,6 +651,7 @@ const int16_t* Runtime::render() {
 #ifdef SMKP4_SOUND_EDITOR
     serviceDelay();
     if(arp_.status().config.enabled) serviceArp();
+    if(sequencer_.status().playing && commands_.generation()==state_.generation) serviceSequencer();
 #endif
     publishOutput(OutputReason::Ready);
     for(unsigned i=0;i<kVoices;++i)
@@ -582,6 +679,7 @@ const int16_t* Runtime::render() {
 #ifdef SMKP4_SOUND_EDITOR
     tempo_.advance(kBlockFrames);
     state_.arp.tempo=tempo_.position();
+    state_.sequencer.bpm=tempo_.position().bpm;
 #endif
     state_.peak=peak; ++state_.blocks; state_.oom_count=amy_get_oom_count();
     return pcm;
@@ -592,6 +690,7 @@ void Runtime::failRendering() {
     amy_deltas_reset();all_notes_off();
 #ifdef SMKP4_SOUND_EDITOR
     arp_.stop();arp_identity_=0;publishArp();
+    stopSequencer();
 #endif
     for(auto& voice:voices_)voice=Voice{};
     for(auto& g:groups_)g=Group{};
