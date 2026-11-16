@@ -62,8 +62,12 @@ private:
     arp::Engine arp_;
     tempo::Clock tempo_;
     seq::Engine sequencer_;
+    enum class UsbNoteRoute : uint8_t { None, Captured, Direct, Arp };
+    // Four channel/pitch routes per byte. Only the audio owner accesses these.
+    uint8_t usb_note_routes_[16][32]{};
+    uint32_t sequencer_device_generation_=0;
     unsigned sequencer_group_=kVoices;
-    void applySequencer(const seq::Request& request);
+    void applySequencer(const seq::Request& request,uint32_t now_ms);
     void releaseSequencer();
     void serviceSequencer();
     void stopSequencer();
