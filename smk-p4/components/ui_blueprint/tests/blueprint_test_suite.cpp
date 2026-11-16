@@ -639,17 +639,15 @@ void testInteractions(UiBlueprint& app) {
     pumpFrame(app);
     assert(backend.model().isFavorite(cur_patch) == !fav_before);
 
-    // 3. Sequencer step toggle & transport
+    // 3. The preview has no Audio Owner. Its demo model remains independently testable.
     assert(nav.navigateTo(ScreenId::Sequencer));
     pumpFrame(app);
+    assert(!backend.sequencerStatus());
+    assert(backend.requestSequencer({}).state==UiCommandState::Unsupported);
     const bool step0_before = backend.model().seqStep(0).active;
     backend.model().toggleSeqStep(0);
     assert(backend.model().seqStep(0).active == !step0_before);
-    lv_obj_t* play_btn = findButtonWithLabel(app.contentObject(), "PLAY DEMO SEQ");
-    assert(play_btn != nullptr);
-    lv_obj_send_event(play_btn, LV_EVENT_CLICKED, nullptr);
-    pumpFrame(app, 200);
-    assert(backend.model().getBool("seq.playing", false) == true);
+    assert(backend.requestParameterBool("seq.playing", true).accepted());
 
     // 4. Harmony Scale Quantizer & Chord Assist calculation verification
     backend.model().setBool("harmony.scale_enable", true);

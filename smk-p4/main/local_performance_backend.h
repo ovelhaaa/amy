@@ -35,6 +35,8 @@ public:
 #endif
 #ifdef SMKP4_SOUND_EDITOR
         arp_=snapshot.arp;
+        sequencer_=snapshot.sequencer;
+        sequencer_pattern_=snapshot.sequencer_pattern;
         edit_snapshot_generation_=snapshot.generation;
         quiet_=snapshot.storage_quiet;
         if(edit_.patch!=snapshot.edit.patch || edit_.revision!=snapshot.edit.revision){
@@ -100,6 +102,9 @@ public:
         state_.flags=(output_live?link::kAudioLive:0)|(midi_connected_?link::kUsbConnected:0);
         state_.max_render_us=max_render_us; state_.deadline_misses=deadlines;
         state_.commands_dropped=commands_.overflows();
+#ifdef SMKP4_SOUND_EDITOR
+        state_.commands_dropped+=commands_.sequencer.overflows();
+#endif
         const uint32_t generation=commands_.generation();
         if(generation_!=generation) { generation_=generation; clearTokens(); }
         ++revision_;
@@ -529,6 +534,13 @@ public:
     }
 #ifdef SMKP4_SOUND_EDITOR
     const arp::Status* arpStatus() const override { return ready_?&arp_:nullptr; }
+    const seq::Status* sequencerStatus() const override { return ready_?&sequencer_:nullptr; }
+    const seq::Pattern* sequencerPattern() const override { return ready_?&sequencer_pattern_:nullptr; }
+    uint32_t sequencerGeneration() const override { return commands_.generation(); }
+    uint32_t submitSequencer(seq::Request request,uint32_t generation) override {
+        request.token=commands_.nextToken();
+        return request.token && commands_.pushSequencer(request,generation)?request.token:0;
+    }
     uint32_t arpGeneration() const override { return commands_.generation(); }
     uint32_t setArp(arp::Action action,uint8_t value,uint32_t now_ms) override {
         if(!ready_ || busy() || failed_) return 0;
@@ -771,6 +783,8 @@ private:
     unsigned save_slot_=0,recall_slot_=0;
     bool edit_pending_=false,saving_=false,quiet_=false,recalling_=false,profile_quiet_requested_=false;
     arp::Status arp_;
+    seq::Status sequencer_;
+    seq::Pattern sequencer_pattern_;
     uint32_t edit_snapshot_generation_=0;
     uint32_t coalesced_=0,save_requested_ms_=0,last_service_ms_=0,edit_serial_=0;
     bool edit_error_=false,edit_timeout_=false;

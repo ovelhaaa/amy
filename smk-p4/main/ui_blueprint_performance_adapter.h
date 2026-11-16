@@ -59,7 +59,14 @@ public:
     ui::UiCommandResult requestPanic() override;
     void service(uint32_t now_ms) override;
     const ui::UiSignalMeters& meters() const override { return meters_; }
-    uint8_t activeSequencerStep() const override { return 0; }
+    const seq::Status* sequencerStatus() const override { return backend_.sequencerStatus(); }
+    const seq::Pattern* sequencerPattern() const override { return backend_.sequencerPattern(); }
+    ui::UiCommandResult sequencerResult() const override;
+    ui::UiCommandResult requestSequencer(const seq::Request&) override;
+    uint8_t activeSequencerStep() const override {
+        const auto* status=sequencerStatus();
+        return status?status->current_step:seq::kNoStep;
+    }
     bool isNoteHeld(uint8_t note) const override;
     bool routingValues(unsigned, RoutingValues&) const override;
     bool routingSnapshot(RoutingSnapshot&) const override;
@@ -101,6 +108,12 @@ private:
     uint16_t tempo_save_bpm_=0;
     ui::UiCommandResult submitArp(arp::Action,uint8_t,const char*);
     void serviceArp();
+    void serviceSequencer();
+    struct SequencerRequest {
+        uint32_t token=0, generation=0, requested_ms=0;
+    };
+    SequencerRequest seq_command_, seq_stop_;
+    ui::UiCommandResult seq_result_{ui::UiCommandState::Confirmed,0,nullptr};
     uint32_t arp_token_=0,arp_generation_=0,arp_requested_ms_=0,arp_usb_token_=0;
     const char* arp_id_="arp.enable";
     const char* arp_notice_=nullptr;

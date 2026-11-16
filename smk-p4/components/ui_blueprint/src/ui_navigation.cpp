@@ -13,7 +13,7 @@ const char* screenTitle(ScreenId id) {
         case ScreenId::Modulation:     return "06 MODULATION MATRIX";
         case ScreenId::Effects:        return "07 MASTER EFFECTS";
         case ScreenId::Arpeggiator:    return "08 ARPEGGIATOR";
-        case ScreenId::Sequencer:      return "09 STEP SEQUENCER";
+        case ScreenId::Sequencer:      return "SEQUENCER";
         case ScreenId::Drums:          return "10 DRUM MACHINE";
         case ScreenId::Harmony:        return "11 HARMONY ASSIST";
         case ScreenId::MidiSettings:   return "12 MIDI & MAPPING";

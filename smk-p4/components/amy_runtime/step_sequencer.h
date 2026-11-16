@@ -18,7 +18,14 @@ struct Pattern {
     uint8_t length=kSteps;
 };
 
+struct Acknowledgement {
+    uint32_t token=0;
+    bool rejected=false;
+};
+
 struct Status {
+    Acknowledgement command, stop;
+    uint32_t voice_drops=0;
     uint32_t revision=0, errors=0, token=0;
     uint16_t bpm=tempo::kDefaultBpm;
     tempo::Division division=tempo::Division::Sixteenth;
@@ -35,6 +42,9 @@ struct Events {
 class Engine {
 public:
     const Status& status() const { return status_; }
+
+    const Pattern& pattern() const { return pattern_; }
+    void countVoiceDrop() { ++status_.voice_drops; }
 
     static constexpr bool valid(Step step) {
         return step.note<=127 && step.velocity>=1 && step.velocity<=127 &&
@@ -62,6 +72,8 @@ public:
         if(!tempo::divisionNumerator(division) ||
            division==tempo::Division::DottedEighth ||
            division==tempo::Division::DottedSixteenth) return false;
+        // Deadlines already armed for the current step and gate stay intact.
+        // update() uses this division when scheduling from the next onset.
         status_.division=division;
         return true;
     }
@@ -106,7 +118,8 @@ public:
         return release;
     }
 
-    void acknowledge(uint32_t token,bool accepted) {
+    void acknowledge(uint32_t token,bool accepted,bool stop_command=false) {
+        (stop_command?status_.stop:status_.command)={token,!accepted};
         status_.token=token;
         status_.rejected=!accepted;
         if(!accepted) ++status_.errors;

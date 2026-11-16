@@ -1,6 +1,7 @@
 #pragma once
 #include "smk_state.h"
 #include "../components/amy_runtime/arpeggiator.h"
+#include "../components/amy_runtime/step_sequencer_protocol.h"
 #include "../components/amy_runtime/sound_edit.h"
 #include "../components/amy_runtime/harmony.h"
 #include "../components/amy_runtime/fx_state.h"
@@ -67,6 +68,10 @@ public:
     virtual const arp::Status* arpStatus() const { return nullptr; }
     virtual uint32_t arpGeneration() const { return 0; }
     virtual uint32_t setArp(arp::Action,uint8_t,uint32_t) { return 0; }
+    virtual const seq::Status* sequencerStatus() const { return nullptr; }
+    virtual const seq::Pattern* sequencerPattern() const { return nullptr; }
+    virtual uint32_t sequencerGeneration() const { return 0; }
+    virtual uint32_t submitSequencer(seq::Request,uint32_t) { return 0; }
     virtual const harmony::State* harmonyState() const { return nullptr; }
     virtual bool setHarmony(harmony::Config,uint32_t) { return false; }
     virtual const fx::FxState* fxState() const { return nullptr; }

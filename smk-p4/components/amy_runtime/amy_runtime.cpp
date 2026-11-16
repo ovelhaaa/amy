@@ -238,7 +238,7 @@ unsigned Runtime::startGroup(NoteOrigin origin,const Command& c,uint32_t now_ms)
     auto config=state_.harmony;
 #ifdef SMKP4_SOUND_EDITOR
     if(origin==NoteOrigin::Sequencer) {
-        config.scale_on=config.scale_on && sequencer_.status().quantize;
+        config.scale_on=sequencer_.status().quantize;
         config.chord_on=false;
     } else
 #endif
@@ -477,7 +477,9 @@ void Runtime::applySequencer(const seq::Request& request) {
             break;
         }
     }
-    sequencer_.acknowledge(request.token,accepted);
+    if(accepted && (request.action==Action::SetStep || request.action==Action::SetPattern ||
+                    request.action==Action::SetLength)) state_.sequencer_pattern=sequencer_.pattern();
+    sequencer_.acknowledge(request.token,accepted,request.action==Action::Stop);
     publishSequencer();
 }
 
@@ -488,7 +490,9 @@ void Runtime::serviceSequencer() {
         Command note{};
         note.id=events.note;
         note.value=events.velocity;
+        const auto dropped=state_.polyphony_rejected;
         sequencer_group_=startGroup(NoteOrigin::Sequencer,note,0);
+        if(dropped!=state_.polyphony_rejected) sequencer_.countVoiceDrop();
     }
     publishSequencer();
 }

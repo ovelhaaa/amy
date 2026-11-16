@@ -68,6 +68,9 @@ public:
 #ifdef SMKP4_SOUND_EDITOR
     edit::Mailbox edits;
     bool pushSequencer(const seq::Request& request) { return sequencer.push(request,generation()); }
+    bool pushSequencer(const seq::Request& request,uint32_t expected_generation) {
+        return sequencer.push(request,expected_generation);
+    }
     seq::Mailbox sequencer;
     std::atomic<bool> storage_requested{false};
     // The UI producer gets one Stop slot independent of normal queue pressure.

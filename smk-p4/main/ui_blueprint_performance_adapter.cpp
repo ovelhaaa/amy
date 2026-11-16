@@ -1036,9 +1036,49 @@ void UiBlueprintPerformanceAdapter::serviceArp() {
     }
 }
 
+UiCommandResult UiBlueprintPerformanceAdapter::sequencerResult() const {
+    if(!sequencerStatus()) return {UiCommandState::Unsupported,0,"ENGINE UNAVAILABLE"};
+    return seq_result_;
+}
+
+UiCommandResult UiBlueprintPerformanceAdapter::requestSequencer(const seq::Request& request) {
+    if(!sequencerStatus()) return sequencerResult();
+    const bool stop=request.action==seq::Action::Stop;
+    auto& pending=stop?seq_stop_:seq_command_;
+    if(pending.token)
+        return seq_result_={UiCommandState::Requested,pending.token,"OWNER BUSY / RETRY EDIT"};
+    if(!stop && (!usable() || isBusy()))
+        return seq_result_={UiCommandState::Rejected,0,"ENGINE BUSY"};
+    const auto generation=backend_.sequencerGeneration();
+    const auto token=backend_.submitSequencer(request,generation);
+    if(!token) return seq_result_={UiCommandState::Rejected,0,"COMMAND QUEUE FULL"};
+    pending={token,generation,now_ms_};
+    return seq_result_={UiCommandState::Requested,token,"COMMAND PENDING"};
+}
+
+void UiBlueprintPerformanceAdapter::serviceSequencer() {
+    const auto* status=sequencerStatus();
+    const auto finish=[&](SequencerRequest& pending,seq::Acknowledgement ack) {
+        if(!pending.token) return;
+        const bool current=status && pending.generation==backend_.sequencerGeneration();
+        const bool matched=ack.token==pending.token;
+        if(current && !matched && uint32_t(now_ms_-pending.requested_ms)<kPatchConfirmationTimeoutMs) return;
+        const bool accepted=current && matched && !ack.rejected;
+        if(seq_result_.token==pending.token) {
+            const char* notice=accepted?nullptr:!current?"COMMAND CANCELED":
+                matched?"REJECTED / INVALID VALUE":"CONFIRMATION TIMEOUT";
+            seq_result_={accepted?UiCommandState::Confirmed:UiCommandState::Rejected,pending.token,notice};
+        }
+        pending={};
+    };
+    finish(seq_command_,status?status->command:seq::Acknowledgement{});
+    finish(seq_stop_,status?status->stop:seq::Acknowledgement{});
+}
+
 void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     now_ms_=now_ms; backend_.service(now_ms);
     serviceArp();
+    serviceSequencer();
     if(tempo_save_bpm_ && (backend_.storageQuiet() || now_ms_-tempo_save_started_ms_>=2000)) {
         const bool saved=backend_.storageQuiet() && save_tempo_(tempo_save_bpm_);
         backend_.releaseStorageQuiet();
