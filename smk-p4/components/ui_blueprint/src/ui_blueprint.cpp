@@ -119,7 +119,7 @@ void UiBlueprint::service(uint32_t now_ms) {
         nav_.refreshActive();
     } else {
         status_strip_.refreshTempo(backend_);
-        if(cur==ScreenId::Arpeggiator || cur==ScreenId::Effects) nav_.refreshActiveView();
+        if(cur==ScreenId::Arpeggiator || cur==ScreenId::Effects || cur==ScreenId::Sequencer) nav_.refreshActiveView();
     }
 }
 

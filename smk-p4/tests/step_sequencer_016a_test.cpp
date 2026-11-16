@@ -241,6 +241,7 @@ void testOwner() {
     request(Action::Play);
     awaitStep();
     assert(snap.active_notes==amy::kVoices && snap.polyphony_rejected==rejected+1);
+    assert(snap.sequencer.voice_drops==1);
     request(Action::Stop);
     block();
     assert(snap.active_notes==amy::kVoices);
@@ -282,6 +283,7 @@ void testOwner() {
     for(unsigned i=0;i<seq::kQueueCapacity;++i) request(Action::Play);
     seq::Request overflow;
     assert(!commands.pushSequencer(overflow));
+    assert(commands.sequencer.overflows()==1);
     request(Action::Stop);
     block();
     assert(!snap.sequencer.playing && snap.active_notes<=1 && snap.arp.config.enabled);

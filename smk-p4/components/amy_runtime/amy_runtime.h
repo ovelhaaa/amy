@@ -14,6 +14,7 @@ struct Snapshot {
     edit::State edit;
     arp::Status arp;
     seq::Status sequencer;
+    seq::Pattern sequencer_pattern;
     uint32_t arp_service_max_us=0;
     bool storage_quiet=false;
 #endif

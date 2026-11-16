@@ -411,6 +411,11 @@ extern "C" void app_main() {
                 ESP_LOGI(kTag,"ARP015 enabled=%d armed=%d gate=%d bpm=%u inputs=%u steps=%u rejected=%lu service_max_us=%lu",
                     arp.config.enabled,arp.armed,arp.sounding,arp.tempo.bpm,arp.held_count,arp.length,
                     (unsigned long)arp.rejected,(unsigned long)state.engine.arp_service_max_us);
+                const auto& sequencer=state.engine.sequencer;
+                ESP_LOGI(kTag,"SEQ016B playing=%d step=%u length=%u cmd_errors=%lu overflow=%lu voice_drops=%lu",
+                    sequencer.playing,unsigned(sequencer.current_step),unsigned(sequencer.pattern_length),
+                    (unsigned long)sequencer.errors,(unsigned long)runtime.commands().sequencer.overflows(),
+                    (unsigned long)sequencer.voice_drops);
                 const auto& fx=state.engine.fx;
                 ESP_LOGI(kTag,"TEMPO0151 tick=%llu revision=%lu mode=%u division=%u manual_ms=%.2f target_ms=%.2f dsp_ms=%.2f out_of_range=%d snapshot_bytes=%u command_bytes=%u fx_request_bytes=%u",
                     (unsigned long long)arp.tempo.tick(),(unsigned long)arp.tempo.revision,

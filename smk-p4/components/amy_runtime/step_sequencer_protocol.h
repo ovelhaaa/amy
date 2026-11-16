@@ -27,14 +27,14 @@ class Mailbox {
 public:
     bool push(const Request& request,uint32_t generation) {
         if(request.action==Action::Stop) {
-            if(stop_pending_.load(std::memory_order_acquire)) return false;
+            if(stop_pending_.load(std::memory_order_acquire)) { ++overflows_; return false; }
             stop_=request;
             stop_.generation=generation;
             stop_pending_.store(true,std::memory_order_release);
             return true;
         }
         const auto write=write_.load(std::memory_order_relaxed);
-        if(write-read_.load(std::memory_order_acquire)>=kQueueCapacity) return false;
+        if(write-read_.load(std::memory_order_acquire)>=kQueueCapacity) { ++overflows_; return false; }
         auto& slot=entries_[write%kQueueCapacity];
         slot=request;
         slot.generation=generation;
@@ -55,7 +55,10 @@ public:
     }
     void consumeStop() { stop_pending_.store(false,std::memory_order_release); }
 
+    uint32_t overflows() const { return overflows_.load(std::memory_order_relaxed); }
+
 private:
+    std::atomic<uint32_t> overflows_{0};
     static_assert(std::atomic<uint32_t>::is_always_lock_free && std::atomic<bool>::is_always_lock_free);
     Request entries_[kQueueCapacity]{}, stop_{};
     std::atomic<uint32_t> write_{0},read_{0};
