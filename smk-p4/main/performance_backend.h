@@ -99,6 +99,8 @@ public:
     virtual bool local() const { return false; }
     virtual bool midiError() const { return false; }
     virtual bool patchError() const { return false; }
+    virtual uint32_t patchRevision() const { return stateRevision(); }
+    virtual uint32_t patchFailureRevision() const { return 0; }
     virtual uint16_t patchCount() const=0;
     virtual uint16_t patchAt(uint16_t index) const=0;
     virtual bool patchInfo(uint16_t index,PatchInfo& info,uint32_t now_ms)=0;

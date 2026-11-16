@@ -712,6 +712,7 @@ void Runtime::loadPendingPatch() {
             if(performance::valid(prev_routes, state_.edit.family, state_.edit.available)) {
                 state_.edit.performance_routes=prev_routes;
                 state_.edit.performance_macros=prev_macros;
+                state_.edit.dirty=prev_routes.custom || prev_macros!=performance::kNeutral;
             }
         }
         if(mask & perf_lock::Arp) {

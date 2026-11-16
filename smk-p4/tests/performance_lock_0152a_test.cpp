@@ -131,97 +131,134 @@ void testFxBaselineAndDirtyState() {
     std::printf("  PASS: FX baseline separation, dirty state, Compare/Revert, Save As and no false dirty\n");
 }
 
-// 2. Individual & Combined Locks Verification
-void testLockCombinations() {
-    std::printf("--- TEST 2: Lock Combinations ---\n");
+void testSamePatchReload(bool keep_fx) {
+    NvsUserPresets store;
+    fx::NvsFxPresets fx_store;
+    assert(store.begin() && fx_store.begin());
     LocalAmyPerformanceBackend backend(runtime.commands());
+    backend.presetStore(&store);
+    backend.fxPresetStore(&fx_store);
     backend.publish(runtime.snapshot(), false, 0, 0);
-
-    // Initial setup on patch 4
-    assert(backend.setPatch(4, now, perf_lock::None));
+    assert(backend.discardEditsAndSetPatch(4, now, perf_lock::None));
     advance(20, backend);
-
-    // Configure all 4 domains
-    // 1. FX
-    assert(backend.setFxParameter("fx.delay.mode", 1.0f, now)); // Sync
-    assert(backend.setFxParameter("fx.delay.division", float(int(tempo::Division::DottedEighth)), now));
     assert(backend.setFxParameter("fx.reverb.mix", 40.0f, now));
-
-    // 2. Harmony
-    harmony::Config harm{};
-    harm.scale_on = 1; harm.scale = 3; harm.chord_on = 1; harm.chord = 2; harm.root = 5;
-    assert(backend.setHarmony(harm, now));
-
-    // 3. Arp
-    amy::Command c_arp{amy::CommandType::Arp, uint16_t(arp::Action::Enable), 1, 0, runtime.commands().nextToken(), now};
-    c_arp.version = arp::kProtocolVersion;
-    assert(runtime.commands().push(c_arp));
-    c_arp.id = uint16_t(arp::Action::Rate);
-    c_arp.value = static_cast<uint8_t>(arp::Rate::Eighth);
-    assert(runtime.commands().push(c_arp));
-
-    // 4. Macros
-    performance::RouteConfiguration custom_routes{};
-    custom_routes.custom = true;
-    custom_routes.routes = performance::kFactoryRoutes;
-    custom_routes.routes[0][0] = performance::route(edit::Cutoff, 200, 4000, 500.0f, performance::Juno);
-    assert(backend.setPerformanceRoutes(custom_routes, 0));
     advance(20, backend);
-
-    // Verify initial states
-    assert(runtime.snapshot().fx.config.delay_mode == fx::DelayMode::Sync);
-    assert(runtime.snapshot().harmony.scale == 3);
-    assert(runtime.snapshot().arp.config.enabled);
-    assert(runtime.snapshot().edit.performance_routes.custom);
-
-    // TEST 2.1: Keep FX alone (0x01) -> FX preserved, others reset
-    assert(backend.discardEditsAndSetPatch(0, now, perf_lock::Fx));
+    const auto previous = runtime.snapshot();
+    assert(backend.discardEditsAndSetPatch(4, now, keep_fx ? perf_lock::Fx : perf_lock::None));
+    assert(backend.fxUnsaved()); // The queued request cannot change the reference.
     advance(20, backend);
-    assert(runtime.snapshot().patch_id == 0);
-    assert(runtime.snapshot().fx.config.delay_mode == fx::DelayMode::Sync);
-    assert(!runtime.snapshot().harmony.scale_on);
-    assert(!runtime.snapshot().arp.config.enabled);
-    assert(!runtime.snapshot().edit.performance_routes.custom);
+    assert(runtime.snapshot().patch_id == previous.patch_id);
+    assert(runtime.snapshot().patch_changes == previous.patch_changes + 1);
+    backend.publish(previous, false, 0, 0);
+    assert(backend.patchRevision() == previous.patch_changes + 1);
+    assert(backend.fxUnsaved() == keep_fx);
+    assert(backend.patchHasUnsavedEdits() == keep_fx);
 
-    // Re-arm harmony and arp
-    assert(backend.setHarmony(harm, now));
-    c_arp.id = uint16_t(arp::Action::Enable); c_arp.value = 1;
-    assert(runtime.commands().push(c_arp));
+    assert(backend.editAction(0));
     advance(20, backend);
-
-    // TEST 2.2: Keep Harmony alone (0x02) -> Harmony preserved, others reset
-    assert(backend.discardEditsAndSetPatch(4, now, perf_lock::Harmony));
+    assert(runtime.snapshot().edit.compare && runtime.snapshot().fx.config.reverb_mix == 0.0f);
+    assert(backend.editAction(0));
     advance(20, backend);
-    assert(runtime.snapshot().patch_id == 4);
-    assert(runtime.snapshot().fx.config.delay_mode == fx::DelayMode::Free); // FX reset
-    assert(runtime.snapshot().harmony.scale == 3); // Harmony preserved
-    assert(!runtime.snapshot().arp.config.enabled); // Arp reset
+    assert(!runtime.snapshot().edit.compare);
+    const float expected = keep_fx ? 0.4f : 0.0f;
+    assert(std::fabs(runtime.snapshot().fx.config.reverb_mix - expected) < 1e-4f);
 
-    // Re-arm arp
-    c_arp.id = uint16_t(arp::Action::Enable); c_arp.value = 1;
-    assert(runtime.commands().push(c_arp));
+    assert(backend.editAction(2, keep_fx ? 1 : 2, "SAME PATCH"));
+    for (unsigned i = 0; i < 4; ++i) advance(20, backend);
+    assert(!backend.patchHasUnsavedEdits());
+    assert(backend.setFxParameter("fx.reverb.mix", keep_fx ? 0.0f : 75.0f, now));
     advance(20, backend);
-
-    // TEST 2.3: Keep Arp alone (0x04) -> Arp preserved, others reset
-    assert(backend.setPatch(0, now, perf_lock::Arp));
+    assert(backend.fxUnsaved());
+    assert(backend.editAction(1));
     advance(20, backend);
-    assert(runtime.snapshot().patch_id == 0);
-    assert(runtime.snapshot().arp.config.enabled);
-    assert(!runtime.snapshot().harmony.scale_on);
+    assert(std::fabs(runtime.snapshot().fx.config.reverb_mix - expected) < 1e-4f);
+    assert(!backend.patchHasUnsavedEdits());
+    assert(backend.editAction(3, keep_fx ? 1 : 2));
+    for (unsigned i = 0; i < 6; ++i) advance(20, backend);
+    assert(backend.presetOperationStatus().state == PresetOperationState::Confirmed);
+    assert(!backend.patchHasUnsavedEdits());
+    assert(std::fabs(runtime.snapshot().fx.config.reverb_mix - expected) < 1e-4f);
 
-    // TEST 2.4: Combinations - FX + Harmony + Arp (0x07)
-    assert(backend.setFxParameter("fx.delay.mode", 1.0f, now));
-    assert(backend.setHarmony(harm, now));
+    assert(backend.setFxParameter("fx.reverb.mix", 65.0f, now));
     advance(20, backend);
-
-    assert(backend.discardEditsAndSetPatch(128, now, perf_lock::Fx | perf_lock::Harmony | perf_lock::Arp));
+    assert(backend.discardEditsAndSetPatch(4, now, perf_lock::None));
+    runtime.apply(now);
+    assert(runtime.snapshot().patch_state == amy::PatchState::Requested);
+    runtime.commands().panic();
     advance(20, backend);
-    assert(runtime.snapshot().patch_id == 128);
-    assert(runtime.snapshot().fx.config.delay_mode == fx::DelayMode::Sync);
-    assert(runtime.snapshot().harmony.scale == 3);
-    assert(runtime.snapshot().arp.config.enabled);
+    assert(backend.patchError());
+    assert(backend.fxUnsaved());
+    assert(std::fabs(backend.fxState()->config.reverb_mix - 0.65f) < 1e-4f);
+    std::printf("PASS same-patch reload, Keep FX=%d, Compare/Revert, Save As, Recall V4, stale and failed load\n", keep_fx);
+}
 
-    std::printf("  PASS: Individual and combined lock configurations validated\n");
+void testLockCombinations() {
+    for (uint8_t mask = 0; mask < 16; ++mask) {
+        LocalAmyPerformanceBackend backend(runtime.commands());
+        backend.publish(runtime.snapshot(), false, 0, 0);
+        assert(backend.discardEditsAndSetPatch(4, now, perf_lock::None));
+        advance(20, backend);
+        assert(!backend.patchHasUnsavedEdits());
+
+        assert(backend.setFxParameter("fx.delay.mode", 1, now));
+        assert(backend.setFxParameter("fx.reverb.mix", 40, now));
+        harmony::Config harm{};
+        harm.scale_on = harm.chord_on = true;
+        harm.scale = 3; harm.chord = 2; harm.root = 5;
+        assert(backend.setHarmony(harm, now));
+        const auto arp_command = [&](arp::Action action, uint8_t value) {
+            amy::Command cmd{amy::CommandType::Arp, uint16_t(action), value, 0,
+                             runtime.commands().nextToken(), now};
+            cmd.version = arp::kProtocolVersion;
+            assert(runtime.commands().push(cmd));
+        };
+        arp_command(arp::Action::Bpm, 137);
+        arp_command(arp::Action::Enable, 1);
+        arp_command(arp::Action::Rate, uint8_t(arp::Rate::Eighth));
+        arp_command(arp::Action::Latch, 1);
+        arp_command(arp::Action::Mode, uint8_t(arp::Mode::Down));
+        arp_command(arp::Action::Octaves, 3);
+        arp_command(arp::Action::Gate, 72);
+        arp_command(arp::Action::Swing, 60);
+        arp_command(arp::Action::Restart, 1);
+        performance::RouteConfiguration routes{performance::kFactoryRoutes, true};
+        routes.routes[0][0] = performance::route(performance::ReverbSize, 0, 1, 0.25f);
+        assert(backend.setPerformanceRoutes(routes, 0));
+        advance(25, backend);
+        assert(backend.setMacro(0, 100, now));
+        advance(25, backend);
+        assert(backend.noteOn(60, 100, now));
+        const uint8_t usb_note[]{0x09, 0x90, 64, 90};
+        assert(runtime.usbInput().packet(usb_note, now));
+        advance(25, backend);
+        const auto before = runtime.snapshot();
+        assert(before.active_notes && before.arp.held_count && before.arp.tempo.bpm == 137);
+        assert(before.fx.config.delay_mode == fx::DelayMode::Sync);
+        assert(harmony::pack(before.harmony) == harmony::pack(harm));
+        assert(before.edit.performance_routes == routes && before.edit.performance_macros[0] == 100);
+
+        assert(backend.discardEditsAndSetPatch(128, now, mask));
+        advance(25, backend);
+        const auto& after = runtime.snapshot();
+        assert(after.patch_id == 128 && before.edit.family != after.edit.family);
+        assert(after.preserve_mask == mask);
+        assert(fx::fxEquivalent(after.fx.config, mask & perf_lock::Fx ? before.fx.config : fx::FxConfig{}));
+        assert(harmony::pack(after.harmony) == harmony::pack(mask & perf_lock::Harmony ? harm : harmony::Config{}));
+        const auto& arp_cfg = after.arp.config;
+        const auto expected_arp = mask & perf_lock::Arp ? before.arp.config : arp::Config{};
+        assert(arp_cfg.enabled == expected_arp.enabled && arp_cfg.rate == expected_arp.rate &&
+               arp_cfg.latch == expected_arp.latch && arp_cfg.mode == expected_arp.mode &&
+               arp_cfg.octaves == expected_arp.octaves && arp_cfg.gate == expected_arp.gate &&
+               arp_cfg.swing == expected_arp.swing && arp_cfg.restart == expected_arp.restart);
+        assert(after.edit.performance_routes == (mask & perf_lock::Macros ? routes : performance::RouteConfiguration{}));
+        assert(after.edit.performance_macros == (mask & perf_lock::Macros ? before.edit.performance_macros : performance::kNeutral));
+        assert(after.arp.tempo.bpm == before.arp.tempo.bpm);
+        assert(!after.active_notes && !after.arp.held_count && !after.arp.sounding);
+        assert(backend.fxUnsaved() == bool(mask & perf_lock::Fx));
+        assert(backend.synthUnsaved() == bool(mask & perf_lock::Macros));
+        assert(backend.patchHasUnsavedEdits() == bool(mask & (perf_lock::Fx | perf_lock::Macros)));
+        std::printf("PASS lock mask 0x%02x\n", unsigned(mask));
+    }
 }
 
 // 3. Musical Integrity & Stuck-Note Prevention
@@ -259,10 +296,14 @@ void testMusicalIntegrity() {
     advance(10, backend);
 
     // Send note to arpeggiator
-    assert(backend.noteOn(60, 90, now));
+    const uint8_t usb_on[]{0x09, 0x90, 60, 90};
+    const uint8_t usb_off[]{0x08, 0x80, 60, 0};
+    assert(runtime.usbInput().packet(usb_on, now));
     advance(10, backend);
-    backend.noteOff(60);
+    assert(runtime.usbInput().packet(usb_off, now));
     advance(10, backend);
+
+    assert(runtime.snapshot().arp.held_count == 0 && runtime.snapshot().arp.length > 0);
 
     // Switch patch with Keep Arp
     assert(backend.setPatch(4, now, perf_lock::Arp));
@@ -272,7 +313,7 @@ void testMusicalIntegrity() {
     assert(runtime.snapshot().arp.config.enabled);
     assert(runtime.snapshot().active_notes == 0);
     assert(!runtime.snapshot().arp.sounding);
-    assert(runtime.snapshot().arp.held_count == 0);
+    assert(runtime.snapshot().arp.held_count == 0 && runtime.snapshot().arp.length == 0);
 
     // 3.3 Global BPM consistency
     const auto initial_bpm = runtime.snapshot().arp.tempo.bpm;
@@ -322,7 +363,7 @@ void testConcurrentPatchRequests() {
 
 // 5. Delay & Continuous Audio Tests
 void testDelayContinuity() {
-    std::printf("--- TEST 5: Delay & Audio Continuity ---\n");
+    std::printf("--- TEST 5: Delay Parameter Bounds ---\n");
     LocalAmyPerformanceBackend backend(runtime.commands());
     backend.publish(runtime.snapshot(), false, 0, 0);
 
@@ -358,14 +399,17 @@ void testDelayContinuity() {
     advance(20, backend);
     assert(runtime.snapshot().fx.config.delay_mode == fx::DelayMode::Free);
 
-    std::printf("  PASS: Delay bounds, division changes, feedback stability verified\n");
+    std::printf("  PASS: Delay bounds, division changes and feedback cap verified\n");
 }
 
 } // namespace
 
 int main() {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     assert(runtime.begin());
     testFxBaselineAndDirtyState();
+    testSamePatchReload(false);
+    testSamePatchReload(true);
     testLockCombinations();
     testMusicalIntegrity();
     testConcurrentPatchRequests();

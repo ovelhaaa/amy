@@ -158,7 +158,8 @@ int main() {
     assert(backend.editAction(1));
     tick(200);
     assert(!backend.unsaved());
-    assert(std::strcmp(backend.editNotice(), "FACTORY ORIGINAL") == 0);
+    assert(std::strcmp(backend.editNotice(), "EDITED / SAVED") == 0);
+    assert(backend.fxState()->config.chorus_mode == 2);
     std::puts("  PASS: Recall strictly guarded against discarding unsaved synth or FX edits");
 
     std::puts("--- Scenario 1.6: Recall of Valid Slot vs Empty/Invalid Slot ---");

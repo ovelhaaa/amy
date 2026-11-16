@@ -14,6 +14,12 @@ public:
     explicit LocalAmyPerformanceBackend(amy::Commands& commands):commands_(commands) {}
     void publish(const amy::Snapshot& snapshot,bool output_live,uint32_t max_render_us,uint32_t deadlines) {
 #ifdef SMKP4_UNIFIED_ENGINE
+        if(int32_t(snapshot.generation-published_generation_)<0) return;
+        published_generation_=snapshot.generation;
+#ifdef SMKP4_SOUND_EDITOR
+        const bool patch_loaded = snapshot.patch_state==amy::PatchState::Ready &&
+            (snapshot.patch_changes!=changes_ || snapshot.patch_id!=state_.patch_id);
+#endif
         if(snapshot.patch_changes!=changes_ || snapshot.patch_failures!=failures_) pending_=false;
         changes_=snapshot.patch_changes;failures_=snapshot.patch_failures;
         loading_=snapshot.patch_state==amy::PatchState::Requested || snapshot.patch_state==amy::PatchState::Loading || snapshot.patch_state==amy::PatchState::Verifying;
@@ -50,8 +56,10 @@ public:
         }
 #endif
 #ifdef SMKP4_SOUND_EDITOR
-        const bool patch_loaded = (snapshot.patch_changes != changes_) || (snapshot.patch_id != state_.patch_id);
-        if(patch_loaded && !recalling_){
+#ifndef SMKP4_UNIFIED_ENGINE
+        const bool patch_loaded = snapshot.patch_id!=state_.patch_id;
+#endif
+        if(patch_loaded && !recalling_ && !recall_wait_){
             original_fx_ = fx::FxConfig{};
             desired_fx_ = snapshot.fx.config;
         }
@@ -71,6 +79,7 @@ public:
                      fx_state_.request==recall_fx_token_ &&
                      fxEquivalent(fx_state_.config,recall_fx_)){
                 recall_wait_=false;
+                original_fx_=fx::FxConfig{};
                 saved_edit_=edit_;saved_fx_=fx_state_.config;saved_valid_=true;
                 std::snprintf(user_name_,sizeof(user_name_),"%s",recall_.name);
                 std::snprintf(preset_op_msg_,sizeof(preset_op_msg_),"SLOT %02u RECALLED",recall_slot_+1);
@@ -155,7 +164,6 @@ public:
             recall_generation_=desired_.generation;
             recall_fx_errors_=fx_state_.errors;
             recall_fx_token_=0;
-            original_fx_=fx::FxConfig{};
             desired_fx_=recall_fx_;
             fx_pending_=true;
         }
@@ -226,9 +234,7 @@ public:
     bool fxUnsaved() const {
         if(fx_pending_)return true;
         const bool fx_dirty = !fxEquivalent(desired_fx_, original_fx_);
-        if(!fx_dirty && !hasPresetReference())return false;
-        if(!saved_valid_)return true;
-        return !fxEquivalent(desired_fx_, saved_fx_);
+        return saved_valid_ ? !fxEquivalent(desired_fx_, saved_fx_) : fx_dirty;
     }
     const char* editNotice() const override {
         if(saving_)return "SAVE IN PROGRESS";
@@ -310,7 +316,7 @@ public:
         if(action<2){
             const bool use_saved = hasPresetReference();
             const auto fx_target = action == 0 ? (!edit_.compare ? original_fx_ : desired_fx_) :
-                (use_saved ? saved_fx_ : original_fx_);
+                (saved_valid_ ? saved_fx_ : original_fx_);
             if(edit_.family == 0 && (state_.active_notes > 0 || sustain_active_)) {
                 const unsigned current_algo = unsigned(std::lround(edit_.applied[edit::FmAlgorithm]));
                 unsigned target_algo = current_algo;
@@ -594,6 +600,10 @@ public:
         return true;
     }
     bool patchError() const override { return failed_; }
+#ifdef SMKP4_UNIFIED_ENGINE
+    uint32_t patchRevision() const override { return changes_; }
+    uint32_t patchFailureRevision() const override { return failures_; }
+#endif
     bool connected() const override { return ready_; }
     bool busy() const override { return pending_ || loading_
 #ifdef SMKP4_SOUND_EDITOR
@@ -658,13 +668,6 @@ private:
         (void)preserve_mask;
         if(!ready_ || busy() || amy::patchIndex(id)<0) return false;
         panic();
-#ifdef SMKP4_SOUND_EDITOR
-        if(!recalling_){
-            if(!(preserve_mask & perf_lock::Fx)) {
-                desired_fx_=original_fx_=fx::FxConfig{};
-            }
-        }
-#endif
         amy::Command request{amy::CommandType::Patch,id,0,0,0,now_ms};
 #ifdef SMKP4_SOUND_EDITOR
         request.preset_recall=recalling_;
@@ -849,6 +852,9 @@ private:
     bool midi_connected_=false,midi_error_=false,sustain_active_=false;
     bool pending_=false,loading_=false,failed_=false;
     uint32_t changes_=0,failures_=0;
+#ifdef SMKP4_UNIFIED_ENGINE
+    uint32_t published_generation_=0;
+#endif
     fx::FxState fx_state_{};
     fx::FxConfig desired_fx_{};
     fx::FxConfig original_fx_{};
