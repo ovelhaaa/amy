@@ -1,62 +1,34 @@
-# SMK-P4 0.15.2a — Candidato de Hardware e Roteiro de Ensaio Físico
+# SMK-P4 0.15.2a — Candidato para ensaio na Guition
 
-## 1. Binários Candidatos de Firmware
+## Imagens
 
-Os binários a seguir foram compilados no ambiente de desenvolvimento Windows utilizando PlatformIO e o toolchain ESP32-P4 (GCC 14.2.0, ESP-IDF 5.5.2):
+| Perfil | Build | Bytes do arquivo | SHA-256 de `firmware.bin` |
+| --- | --- | ---: | --- |
+| `guition-editor-8` | PASS | 1.334.400 | `1301793A92E9E912D89659B9D809E87F68830C67BFE00377EE1C14FB82A3F2A0` |
+| `guition-editor-8-bench` | PASS | 1.436.336 | `15055555C66D0131BE042E9E4CA407B0FCA57EB3667F9C2C7B4D1609FC530187` |
 
-### Perfil 1: `guition-editor-8` (Candidato de Produção / Release)
-- **Caminho do Binário:** `smk-p4/.pio/build/guition-editor-8/firmware.bin`
-- **Tamanho do Arquivo:** 1.334.976 bytes
-- **Ocupação de Flash:** 1.334.252 B / 16.777.216 B (8,0%)
-- **Ocupação de RAM Interna:** 42.124 B / 327.680 B (12,9%)
-- **SHA-256:**
-  ```text
-  021B8452DEA3B3E33D3D941736C4DC9B38247FFE6AB62717F3CE54E55BE64D76
-  ```
+As imagens de software foram geradas em `smk-p4/.pio/build/<perfil>/`.
+O perfil padrão mantém os gates elétricos desativados. O perfil de bancada
+habilita o I²S nos GPIOs 50/51/52 e USB HS0 da montagem existente.
 
-### Perfil 2: `guition-editor-8-bench` (Candidato para Bancada com Telemetria e Diagnósticos)
-- **Caminho do Binário:** `smk-p4/.pio/build/guition-editor-8-bench/firmware.bin`
-- **Tamanho do Arquivo:** 1.436.912 bytes
-- **Ocupação de Flash:** 1.436.188 B / 16.777.216 B (8,6%)
-- **Ocupação de RAM Interna:** 41.968 B / 327.680 B (12,8%)
-- **SHA-256:**
-  ```text
-  96A66A26D5F7A2DAE9502D3F8B32B175D3882D3D5A2238E554D092EEC0FDAF9F
-  ```
+## Qualificação física
 
----
+**PENDING** — Guition JC4880P433, ESP32-P4 rev. 1.3, com SMK25 V2 e PCM5102A
+na montagem de bancada existente. A gravação da imagem de bancada exige
+autorização explícita para o arquivo identificado pelo SHA-256. Use um slot
+de teste livre na verificação de Save As.
 
-## 2. Política Estrita de Gravação de Firmware
+| Métrica | Guition 0.15.2 | 0.15.2a |
+| --- | ---: | --- |
+| Stack livre do Audio Owner | 3.584 B | PENDING — projeção de 4.096 B. Confirmar mínimo de 4.000 B sob carga |
+| RAM interna livre na admissão | 357.763 B | PENDING — projeção de 357.251 B. Confirmar mínimo de 352.256 B |
+| Render 256 frames, média / máximo | 239 / 522 µs | PENDING — medir carga com oito vozes e FX |
+| Deadlines de render, erros de escrita I²S e timeouts | 0 na captura registrada | PENDING — medir novamente |
+| Qualidade auditiva, touchscreen e reconexão USB | — | PENDING — executar roteiro |
 
-> [!IMPORTANT]
-> **Nenhuma gravação de firmware será executada automaticamente sem autorização explícita do usuário.**
-> As partições existentes e a memória NVS contendo presets do usuário não serão apagadas ou reformatadas.
-
-### Instruções para Gravação Manual (quando autorizado)
-Após confirmação explícita do usuário e conferência do SHA-256 desejado, a gravação na porta COM da Guition (ex: `COM13`) deve ser realizada via:
-
-```powershell
-python -m esptool --chip esp32p4 -p COM13 -b 921600 write-flash 0x00010000 smk-p4/.pio/build/guition-editor-8-bench/firmware.bin
-```
-
----
-
-## 3. Auditoria de Stack e Memória Livre no Hardware
-
-### 3.1 Divergência Identificada na 0.15.2
-- **Medição Física 0.15.2:** `stack_free_bytes = 3584 B`.
-- **Requisito de Hardware:** Mínimo de 4.000 B de stack livre.
-- **Análise Técnica:** O overhead de salvamento de registros callee-saved da arquitetura RISC-V e as chamadas de interrupção DMA e context switches FreeRTOS utilizam aproximadamente 1.000 B a mais do que a pilha simplificada da emulação host.
-
-### 3.2 Solução Implementada em 0.15.2a
-- Incremento controlado de 512 B no stack do Audio Owner (`kOwnerStackBytes = 12800`).
-- **Margem Física Projetada:**
-  $$\text{Stack Livre} \approx 3.584 \text{ B} + 512 \text{ B} = 4.096 \text{ B} \quad (\ge 4.000 \text{ B})$$
-- **Margem de Admissão de RAM Interna:**
-  $$\text{RAM Livre na Admissão} \approx 357.763 \text{ B} - 512 \text{ B} = 357.251 \text{ B} \quad (\gg 352.256 \text{ B})$$
-  Preserva-se uma folga confortável de $\approx 5 \text{ KiB}$ acima do piso estrito de admissão.
-
----
+O orçamento de render é 5,333 ms por bloco de 256 frames a 48 kHz.
+Registre a telemetria `ADMISSION`, `AUDIO`, `ENGINE` e `PATCH08` com o
+hash da imagem durante as trocas de patch e ao final do ensaio.
 
 ## 4. Roteiro de Ensaio Físico na Bancada (Guition JC4880P433 + M-VAVE SMK25 V2)
 
@@ -72,7 +44,7 @@ Para validação em bancada, seguir a sequência de testes abaixo:
 1. No Patch 135, ajustar Delay (Mix 40%, Time 350 ms, Feedback 50%) e Reverb.
 2. Abrir o Patch Selector, marcar **Keep FX** e selecionar Patch 0.
 3. Tocar em **LOAD WITH LOCKS**.
-4. **Verificação:** O Patch 0 carrega imediatamente com os efeitos de delay e reverb preservados sem interrupção abrupta.
+4. **Verificação:** O Patch 0 mantém os valores de delay e reverb. Registre separadamente qualquer interrupção ou artefato audível.
 5. Observar a indicação na tela: deve exibir **UNSAVED** (dirty state correto).
 
 ### Passo 3: Troca com Keep Harmony e Arpeggiator
@@ -88,19 +60,29 @@ Para validação em bancada, seguir a sequência de testes abaixo:
 ### Passo 5: Dirty State, Save As e Revert
 1. Em um patch com Keep FX ativo (estado UNSAVED), acessar o menu de Presets.
 2. Executar **Save As** em um slot de usuário livre (ex: Slot 1).
-3. **Verificação:** A indicação muda imediatamente para **CLEAN**.
+3. **Verificação:** A indicação fica limpa após confirmação da gravação.
 4. Modificar o mix de delay e pressionar **Revert**.
 5. **Verificação:** O efeito retorna exatamente ao valor salvo no preset.
 
 ### Passo 6: PREV / NEXT Rápido em Performance
 1. Pressionar os botões físicos ou touch de PREV e NEXT repetidamente em rápida sucessão.
-2. **Verificação:** A interface não trava; requisições intermediárias são ignoradas de forma determinística enquanto o áudio estiver carregando o novo timbre; a troca é suave e o sistema não entra em estado inconsistente.
+2. **Verificação:** A interface não trava; requisições intermediárias são ignoradas de forma determinística enquanto o áudio estiver carregando o novo timbre; o patch mostrado corresponde ao confirmado pelo Owner.
 
 ### Passo 7: Teste sob Carga Musical Máxima
 1. Tocar polifonia de 8 vozes com acordes densos, delay sincronizado e reverb ativos.
 2. Alternar timbres durante a sustentação.
-3. **Verificação:** Ausência de underruns de áudio (I²S errors = 0), sem distorções no buffer circular e latência estável.
+3. **Verificação:** Registre render médio/máximo, deadlines, refill, write errors, timeouts e artefatos audíveis. O firmware reporta underruns de DMA como `UNMEASURED`.
 
 ### Passo 8: Panic e Recuperação de Emergência
-1. Com notas sustentadas e delay soando, pressionar o botão **PANIC** na UI ou o atalho no SMK25.
-2. **Verificação:** Todas as vozes são imediatamente silenciadas; o sistema permanece pronto e responsivo para novas notas.
+1. Com notas sustentadas e delay soando, pressionar o botão global **PANIC** na UI enquanto o popup está aberto.
+2. **Verificação:** Todas as vozes são imediatamente silenciadas; a UI informa a interrupção se a carga ainda estiver pendente e libera CANCEL. Verifique novas notas após confirmar um patch seguro.
+
+
+### Passo 9: Mesmo patch e recuperação USB
+1. Altere o mix do reverb e recarregue o mesmo patch com Keep FX. Confirme
+   o valor preservado, dirty state e Compare. Repita com carga limpa e
+   confirme a volta aos FX de fábrica.
+2. Desconecte o SMK25 com notas ativas. Confirme que as notas cessam e
+   registre os contadores de conexão, desconexão e erros USB.
+3. Reconecte o SMK25. Toque novas notas, confirme que o instrumento voltou
+   a responder e registre se houve reinício.
