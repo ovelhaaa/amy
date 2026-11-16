@@ -5,20 +5,26 @@
 
 namespace smk::p4::seq {
 
-constexpr uint8_t kProtocolVersion=1;
+constexpr uint8_t kProtocolVersion=2;
+constexpr uint32_t kConfirmationTimeoutMs=2000;
 constexpr unsigned kQueueCapacity=4;
 enum class Action : uint8_t {
     Play, Stop, Restart, SetStep, SetLength, SetDivision, SetPattern,
-    SetEnabled, SetSwing, SetTranspose, SetQuantize
+    SetEnabled, SetSwing, SetTranspose, SetQuantize,
+    SelectStep, SetInputMode, SetInputChannel, SetLiveChannel, SetRecordGate,
+    SetReference, SetLive, SetThru, SetSmkOnly, Rest, SetStepNote, SetStepVelocity, SetStepGate,
+    SetStepEnabled, ShiftStepNote, MoveStep, ToggleStepEnabled
 };
 
 struct Request {
     Pattern pattern;
     Step step;
     uint32_t token=0, generation=0;
+    uint32_t submitted_ms=0;
     int16_t value=0;
     uint8_t index=0, version=kProtocolVersion;
     Action action=Action::Play;
+    bool select=false, timed=false;
 };
 
 // SPSC, with an independent Stop slot. The returned entry remains owned by

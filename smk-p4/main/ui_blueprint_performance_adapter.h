@@ -113,6 +113,9 @@ private:
         uint32_t token=0, generation=0, requested_ms=0;
     };
     SequencerRequest seq_command_, seq_stop_;
+    std::array<seq::Request,seq::kQueueCapacity> seq_deferred_{};
+    unsigned seq_deferred_count_=0;
+    uint32_t seq_deferred_generation_=0;
     ui::UiCommandResult seq_result_{ui::UiCommandState::Confirmed,0,nullptr};
     uint32_t arp_token_=0,arp_generation_=0,arp_requested_ms_=0,arp_usb_token_=0;
     const char* arp_id_="arp.enable";

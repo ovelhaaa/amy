@@ -1044,13 +1044,48 @@ UiCommandResult UiBlueprintPerformanceAdapter::sequencerResult() const {
 UiCommandResult UiBlueprintPerformanceAdapter::requestSequencer(const seq::Request& request) {
     if(!sequencerStatus()) return sequencerResult();
     const bool stop=request.action==seq::Action::Stop;
+    auto timed=request;
+    timed.timed=true;
+    timed.submitted_ms=now_ms_;
     auto& pending=stop?seq_stop_:seq_command_;
-    if(pending.token)
-        return seq_result_={UiCommandState::Requested,pending.token,"OWNER BUSY / RETRY EDIT"};
     if(!stop && (!usable() || isBusy()))
         return seq_result_={UiCommandState::Rejected,0,"ENGINE BUSY"};
     const auto generation=backend_.sequencerGeneration();
-    const auto token=backend_.submitSequencer(request,generation);
+    if(stop && pending.token)
+        return seq_result_={UiCommandState::Requested,pending.token,"STOP PENDING"};
+    if(stop) {
+        unsigned retained=0;
+        for(unsigned i=0;i<seq_deferred_count_;++i) {
+            const auto action=seq_deferred_[i].action;
+            if(action!=seq::Action::Play && action!=seq::Action::Restart)
+                seq_deferred_[retained++]=seq_deferred_[i];
+        }
+        seq_deferred_count_=retained;
+    } else if(pending.token || seq_deferred_count_ || seq_stop_.token) {
+        if((pending.token && pending.generation!=generation) ||
+           (seq_deferred_count_ && seq_deferred_generation_!=generation))
+            return seq_result_={UiCommandState::Rejected,0,"COMMAND CANCELED"};
+        const auto compatible=[](const seq::Request& a,const seq::Request& b) {
+            if(a.action!=b.action || a.index!=b.index || a.select!=b.select) return false;
+            switch(a.action) {
+            case seq::Action::SetSwing: case seq::Action::SetTranspose:
+            case seq::Action::SetStepVelocity: case seq::Action::SetStepGate:
+            case seq::Action::SetRecordGate: case seq::Action::SetReference:
+                return true;
+            default: return false;
+            }
+        };
+        if(seq_deferred_count_ && compatible(seq_deferred_[seq_deferred_count_-1],request))
+            seq_deferred_[seq_deferred_count_-1]=timed;
+        else {
+            if(seq_deferred_count_==seq_deferred_.size())
+                return seq_result_={UiCommandState::Rejected,0,"EDIT BUFFER FULL"};
+            seq_deferred_[seq_deferred_count_++]=timed;
+            seq_deferred_generation_=generation;
+        }
+        return seq_result_={UiCommandState::Requested,pending.token,"EDITS QUEUED"};
+    }
+    const auto token=backend_.submitSequencer(timed,generation);
     if(!token) return seq_result_={UiCommandState::Rejected,0,"COMMAND QUEUE FULL"};
     pending={token,generation,now_ms_};
     return seq_result_={UiCommandState::Requested,token,"COMMAND PENDING"};
@@ -1062,9 +1097,9 @@ void UiBlueprintPerformanceAdapter::serviceSequencer() {
         if(!pending.token) return;
         const bool current=status && pending.generation==backend_.sequencerGeneration();
         const bool matched=ack.token==pending.token;
-        if(current && !matched && uint32_t(now_ms_-pending.requested_ms)<kPatchConfirmationTimeoutMs) return;
+        if(current && !matched && uint32_t(now_ms_-pending.requested_ms)<seq::kConfirmationTimeoutMs) return;
         const bool accepted=current && matched && !ack.rejected;
-        if(seq_result_.token==pending.token) {
+        if(!accepted || seq_result_.token==pending.token) {
             const char* notice=accepted?nullptr:!current?"COMMAND CANCELED":
                 matched?"REJECTED / INVALID VALUE":"CONFIRMATION TIMEOUT";
             seq_result_={accepted?UiCommandState::Confirmed:UiCommandState::Rejected,pending.token,notice};
@@ -1073,6 +1108,29 @@ void UiBlueprintPerformanceAdapter::serviceSequencer() {
     };
     finish(seq_command_,status?status->command:seq::Acknowledgement{});
     finish(seq_stop_,status?status->stop:seq::Acknowledgement{});
+    if(!seq_deferred_count_) return;
+    if(!status || seq_deferred_generation_!=backend_.sequencerGeneration() || !usable() || isBusy()) {
+        seq_deferred_count_=0;
+        seq_result_={UiCommandState::Rejected,0,"QUEUED EDITS CANCELED"};
+        return;
+    }
+    if(seq_command_.token || seq_stop_.token) return;
+    const bool expired=uint32_t(now_ms_-seq_deferred_[0].submitted_ms)>=seq::kConfirmationTimeoutMs;
+    const auto token=expired?0:backend_.submitSequencer(seq_deferred_[0],seq_deferred_generation_);
+    if(!token && !expired) {
+        seq_result_={UiCommandState::Rejected,0,"COMMAND QUEUE FULL / RETRYING"};
+        return;
+    }
+    const auto submitted_ms=seq_deferred_[0].submitted_ms;
+    for(unsigned i=1;i<seq_deferred_count_;++i) seq_deferred_[i-1]=seq_deferred_[i];
+    --seq_deferred_count_;
+    if(expired) {
+        seq_result_={UiCommandState::Rejected,0,"QUEUED EDIT TIMEOUT"};
+        return;
+    }
+    seq_command_={token,seq_deferred_generation_,submitted_ms};
+    if(seq_result_.state!=UiCommandState::Rejected)
+        seq_result_={UiCommandState::Requested,token,"COMMAND PENDING"};
 }
 
 void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {

@@ -24,6 +24,7 @@ lv_obj_t* findLabel(lv_obj_t* root,const char* text,bool prefix=false) {
 
 lv_obj_t* findButton(lv_obj_t* root,const char* text,bool prefix=false) {
     auto* label=findLabel(root,text,prefix);
+    if(!label) std::fprintf(stderr,"Button label missing: %s\n",text);
     assert(label);
     auto* button=lv_obj_get_parent(label);
     assert(lv_obj_check_type(button,&lv_button_class));
@@ -110,6 +111,7 @@ int main(int argc,char** argv) {
     };
     const auto publish=[&] {
         backend.publish(runtime.snapshot(),true,0,0);
+        backend.publishMidi(runtime.usbInput().isSmk25(),false,runtime.usbInput().events.load());
         frame();
     };
     const auto& snap=runtime.snapshot();
@@ -318,6 +320,107 @@ int main(int argc,char** argv) {
         lv_mem_monitor(&monitor);
         return monitor.free_size;
     };
+    click(content,"MIDI / REC");
+    assert(findLabel(content,"MIDI / RECORD SETTINGS"));
+    const size_t settings_free=freeBytes();
+    runtime.usbInput().identifyDevice(0x4353,0x4b4d);
+    click(content,"STEP INPUT");
+    block();
+    assert(findLabel(content,"STEP INPUT +12"));
+    const auto midi=[&](uint8_t status,uint8_t note,uint8_t velocity) {
+        const uint8_t packet[]{uint8_t(status>>4),status,note,velocity};
+        assert(runtime.usbInput().packet(packet,preview::g_sim_tick_ms));
+    };
+    midi(0x90,72,112);
+    block();
+    assert(snap.sequencer_pattern.steps[15].note==72);
+    assert(findLabel(content,"STEP 16   LAST C5 / VEL 112   SMK25 OK",true));
+    capture("midi-settings");
+    midi(0x80,72,0);
+    click(content,"CLOSE");
+    click(content,"04",true);
+    block();
+    click(content,"MIDI / REC");
+    click(content,"STEP RECORD");
+    block();
+    assert(snap.sequencer.midi.selected==3);
+    click(content,"CLOSE");
+    midi(0x90,64,83);
+    block();
+    assert(snap.sequencer.midi.selected==0 && snap.sequencer_pattern.steps[3].velocity==83);
+    assert(findLabel(content,"STEP 01  NOTE C4"));
+    capture("step-record");
+    click(content,"STEP 01  NOTE C4");
+    assert(findLabel(content,"EDIT SELECTED STEP"));
+    const size_t editor_free=freeBytes();
+    click(content,"SEMITONE +");
+    click(content,"SEMITONE +");
+    click(content,"OCTAVE +");
+    for(int i=0;i<3;++i) block();
+    assert(snap.sequencer_pattern.steps[0].note==74);
+    capture("step-editor");
+    click(content,"CLOSE");
+    click(content,"REST / NEXT");
+    block();
+    assert(snap.sequencer.midi.selected==1 && !snap.sequencer_pattern.steps[0].enabled);
+
+    // The queued slider value replaces only its adjacent, unsent predecessor.
+    seq::Request edit;
+    edit.action=seq::Action::SetStepGate;
+    edit.index=1;
+    for(int value:{51,52,53}) {
+        edit.value=int16_t(value);
+        assert(adapter.requestSequencer(edit).accepted());
+    }
+    midi(0x90,84,109);
+    block();
+    block();
+    assert(snap.sequencer_pattern.steps[1].note==84 && snap.sequencer_pattern.steps[1].velocity==109);
+    assert(snap.sequencer_pattern.steps[1].gate==53);
+    click(content,"MIDI / REC");
+    click(content,"LIVE TRANSPOSE OFF");
+    block();
+    click(content,"PLAY");
+    block();
+    midi(0x90,62,90);
+    block();
+    assert(snap.sequencer.playing && snap.sequencer.midi.effective==14 &&
+           findLabel(content,"LIVE TRANSPOSE ON"));
+    capture("live-transpose");
+    click(app.rootObject(),"FX");
+    click(app.rootObject(),"SEQ");
+    assert(snap.sequencer.midi.mode==seq::InputMode::StepRecord);
+    runtime.usbInput().disconnect();
+    block();
+    assert(!snap.sequencer.playing && snap.sequencer.midi.mode==seq::InputMode::Normal &&
+           findLabel(content,"NORMAL +12"));
+    click(content,"MIDI / REC");
+    assert(findLabel(content,"STEP 03   LAST -- / VEL 0   USB WAITING",true));
+    runtime.usbInput().identifyDevice(0x4353,0x4b4d);
+    block();
+    assert(snap.sequencer.midi.smk_connected);
+    click(content,"CLOSE");
+    capture("normal");
+    click(content,"MIDI / REC");
+    click(content,"STEP INPUT");
+    click(content,"STEP RECORD");
+    click(content,"NORMAL PLAY");
+    for(unsigned i=0;i<3;++i) block();
+    assert(snap.sequencer.midi.mode==seq::InputMode::Normal);
+    click(content,"CLOSE");
+    edit.action=seq::Action::ShiftStepNote;
+    edit.index=0;
+    edit.value=1;
+    for(unsigned i=0;i<=seq::kQueueCapacity;++i)
+        assert(adapter.requestSequencer(edit).accepted());
+    assert(adapter.requestSequencer(edit).state==UiCommandState::Rejected);
+    frame();
+    assert(findLabel(content,"EDIT BUFFER FULL"));
+    capture("edit-buffer-full");
+    for(unsigned i=0;i<=seq::kQueueCapacity;++i) block();
+    assert(snap.sequencer_pattern.steps[0].note==79);
+    std::printf("MEASURE LVGL panel heap free: settings=%zu bytes, editor=%zu bytes\n",settings_free,editor_free);
+
     click(app.rootObject(),"FX");
     click(app.rootObject(),"SEQ");
     const size_t mounted=freeBytes();

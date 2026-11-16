@@ -141,6 +141,9 @@ void Runtime::end() {
 void Runtime::silence() {
 #ifdef SMKP4_SOUND_EDITOR
     arp_.stop();arp_identity_=0;publishArp();
+    sequencer_.resetMidi();
+    std::memset(usb_note_routes_,0,sizeof(usb_note_routes_));
+    sequencer_device_generation_=usb_.deviceGeneration();
     stopSequencer();
 #endif
     amy_deltas_reset();
@@ -279,6 +282,15 @@ unsigned Runtime::startGroup(NoteOrigin origin,const Command& c,uint32_t now_ms)
 void Runtime::cancelUsb() {
 #ifdef SMKP4_SOUND_EDITOR
     arp_.stop();arp_identity_=0;publishArp();
+    std::memset(usb_note_routes_,0,sizeof(usb_note_routes_));
+    sequencer_.resetMidi();
+    const auto device_generation=usb_.deviceGeneration();
+    if(sequencer_device_generation_!=device_generation) {
+        sequencer_device_generation_=device_generation;
+        releaseSequencer();
+        sequencer_.stop();
+    }
+    publishSequencer();
 #endif
     for(unsigned i=0;i<kVoices;++i) if(voices_[i].used && voices_[i].usb) release(i);
     std::memset(sustain_,0,sizeof(sustain_));
@@ -289,6 +301,14 @@ void Runtime::cancelUsb() {
 }
 void Runtime::applyUsb(uint32_t now_ms) {
     auto& q=usb_.commands;
+#ifdef SMKP4_SOUND_EDITOR
+    bool pattern_changed=false, midi_changed=false;
+    const bool smk25=usb_.isSmk25();
+    if(sequencer_.status().midi.smk_connected!=smk25) {
+        sequencer_.setSmkConnected(smk25);
+        midi_changed=true;
+    }
+#endif
     if(q.generation()!=usb_generation_) { cancelUsb(); usb_generation_=q.generation(); }
     Command c;
     unsigned applied=0;
@@ -303,16 +323,40 @@ void Runtime::applyUsb(uint32_t now_ms) {
 #endif
         if(c.type==CommandType::NoteOn || c.type==CommandType::NoteOff) {
             if(c.id>=128 || c.value>127) { ++state_.invalid_commands; continue; }
+            const bool off=c.type==CommandType::NoteOff || !c.value;
 #ifdef SMKP4_SOUND_EDITOR
-            if(arp_.status().config.enabled) {
+            auto& routes=usb_note_routes_[c.channel][c.id/4];
+            const unsigned shift=2*(c.id%4);
+            const auto previous=UsbNoteRoute((routes>>shift)&3);
+            auto route=previous;
+            if(off) {
+                routes=uint8_t(routes&~(3u<<shift));
+                if(route==UsbNoteRoute::None || route==UsbNoteRoute::Captured) continue;
+            } else {
+                if(previous!=UsbNoteRoute::None) continue;
+                if(latency>=kLeaseMs) {
+                    sequencer_.countRoutingError();
+                    midi_changed=true;
+                    continue;
+                }
+                bool changed=false;
+                const bool consumed=sequencer_.midiOn(c.channel,uint8_t(c.id),c.value,smk25,changed);
+                pattern_changed|=changed;
+                midi_changed=true;
+                route=consumed?UsbNoteRoute::Captured:
+                    arp_.status().config.enabled?UsbNoteRoute::Arp:UsbNoteRoute::Direct;
+                routes=uint8_t(routes|(unsigned(route)<<shift));
+                if(consumed) continue;
+            }
+            if(route==UsbNoteRoute::Arp) {
                 const arp::Input input{uint8_t(c.id),c.value,c.channel,c.generation};
-                if(c.type==CommandType::NoteOff || !c.value) arp_.off(input);
-                else if(latency<kLeaseMs) arp_.on(input);
+                if(off) arp_.off(input);
+                else arp_.on(input);
                 continue;
             }
 #endif
             const unsigned found=findGroup(NoteOrigin::UsbDirect,c.channel,uint8_t(c.id));
-            if(c.type==CommandType::NoteOff || !c.value) {
+            if(off) {
                 if(found<kVoices) {
                     auto& g=groups_[found];g.held=false;g.sustained=sustain_[c.channel];
                     for(unsigned i=0;i<kVoices;++i)if(voices_[i].used && voices_[i].group==found)voices_[i].held=false;
@@ -334,6 +378,7 @@ void Runtime::applyUsb(uint32_t now_ms) {
             } else if(c.id==120 || c.id==123) {
 #ifdef SMKP4_SOUND_EDITOR
                 arp_.clearChannel(c.channel);
+                std::memset(usb_note_routes_[c.channel],0,sizeof(usb_note_routes_[c.channel]));
 #endif
                 // Safety policy: both release this USB channel immediately.
                 sustain_[c.channel]=false;
@@ -350,6 +395,10 @@ void Runtime::applyUsb(uint32_t now_ms) {
             for(unsigned i=0;i<kVoices;++i) if(voices_[i].used && voices_[i].usb && voices_[i].channel==c.channel) tune(i);
         } else ++state_.invalid_commands;
     }
+#ifdef SMKP4_SOUND_EDITOR
+    if(pattern_changed) state_.sequencer_pattern=sequencer_.pattern();
+    if(midi_changed) publishSequencer();
+#endif
     if(q.generation()!=usb_generation_) { cancelUsb(); usb_generation_=q.generation(); }
 }
 #ifdef SMKP4_SOUND_EDITOR
@@ -428,11 +477,13 @@ void Runtime::stopSequencer() {
     publishSequencer();
 }
 
-void Runtime::applySequencer(const seq::Request& request) {
+void Runtime::applySequencer(const seq::Request& request,uint32_t now_ms) {
     using seq::Action;
     bool accepted=request.token && request.version==seq::kProtocolVersion &&
         request.generation==state_.generation && request.generation==commands_.generation() &&
-        state_.patch_state==PatchState::Ready;
+        state_.patch_state==PatchState::Ready &&
+        (!request.timed || request.action==Action::Stop ||
+         eventAgeMs(now_ms,request.submitted_ms)<seq::kConfirmationTimeoutMs);
     if(accepted) {
         switch(request.action) {
         case Action::Play:
@@ -472,13 +523,69 @@ void Runtime::applySequencer(const seq::Request& request) {
             accepted=request.value==0 || request.value==1;
             if(accepted) sequencer_.setQuantize(request.value!=0);
             break;
+        case Action::SelectStep: accepted=sequencer_.select(request.value); break;
+        case Action::MoveStep: accepted=sequencer_.moveSelection(request.value); break;
+        case Action::SetInputMode:
+            accepted=request.index<seq::kSteps && sequencer_.setInputMode(request.value);
+            if(accepted) sequencer_.select(request.index);
+            break;
+        case Action::SetInputChannel: accepted=sequencer_.setMidiChannel(request.value,false); break;
+        case Action::SetLiveChannel: accepted=sequencer_.setMidiChannel(request.value,true); break;
+        case Action::SetRecordGate: accepted=sequencer_.setRecordGate(request.value); break;
+        case Action::SetReference: accepted=sequencer_.setReference(request.value); break;
+        case Action::SetLive:
+        case Action::SetThru:
+        case Action::SetSmkOnly:
+            accepted=request.value==0 || request.value==1;
+            if(accepted && request.action==Action::SetLive) sequencer_.setLive(request.value!=0);
+            if(accepted && request.action==Action::SetThru) sequencer_.setThru(request.value!=0);
+            if(accepted && request.action==Action::SetSmkOnly) sequencer_.setSmkOnly(request.value!=0);
+            break;
+        case Action::Rest: accepted=sequencer_.rest(); break;
+        case Action::SetStepNote:
+        case Action::SetStepVelocity:
+        case Action::SetStepGate:
+        case Action::SetStepEnabled:
+        case Action::ToggleStepEnabled:
+        case Action::ShiftStepNote: {
+            accepted=false;
+            if(request.index>=seq::kSteps) break;
+            auto step=sequencer_.pattern().steps[request.index];
+            const int value=request.value;
+            if(request.action==Action::SetStepNote && value>=0 && value<=127) {
+                step.note=uint8_t(value);
+                step.enabled=true;
+            } else if(request.action==Action::SetStepVelocity && value>=1 && value<=127)
+                step.velocity=uint8_t(value);
+            else if(request.action==Action::SetStepGate && value>=1 && value<=100)
+                step.gate=uint8_t(value);
+            else if(request.action==Action::SetStepEnabled && (value==0 || value==1))
+                step.enabled=value!=0;
+            else if(request.action==Action::ToggleStepEnabled)
+                step.enabled=!step.enabled;
+            else if(request.action==Action::ShiftStepNote)
+                step.note=uint8_t(std::clamp(int(step.note)+value,0,127));
+            else break;
+            accepted=sequencer_.setStep(request.index,step);
+            if(accepted && request.select) sequencer_.select(request.index);
+            break;
+        }
         default:
             accepted=false;
             break;
         }
     }
-    if(accepted && (request.action==Action::SetStep || request.action==Action::SetPattern ||
-                    request.action==Action::SetLength)) state_.sequencer_pattern=sequencer_.pattern();
+    if(accepted) {
+        switch(request.action) {
+        case Action::SetPattern: case Action::SetLength: case Action::SetStep:
+        case Action::Rest: case Action::SetStepNote: case Action::SetStepVelocity:
+        case Action::SetStepGate: case Action::SetStepEnabled: case Action::ShiftStepNote:
+        case Action::ToggleStepEnabled:
+            state_.sequencer_pattern=sequencer_.pattern();
+            break;
+        default: break;
+        }
+    }
     sequencer_.acknowledge(request.token,accepted,request.action==Action::Stop);
     publishSequencer();
 }
@@ -612,6 +719,18 @@ void Runtime::apply(uint32_t now_ms) {
 #ifdef SMKP4_SOUND_EDITOR
     if(commands_.popArpStop(c)) applyArp(c,false,now_ms);
 #endif
+#ifdef SMKP4_SOUND_EDITOR
+    for(unsigned i=0;i<seq::kQueueCapacity;++i) {
+        const auto* request=commands_.sequencer.front();
+        if(!request) break;
+        applySequencer(*request,now_ms);
+        commands_.sequencer.consume();
+    }
+    if(const auto* stop=commands_.sequencer.stop()) {
+        applySequencer(*stop,now_ms);
+        commands_.sequencer.consumeStop();
+    }
+#endif
 #ifdef SMKP4_UNIFIED_ENGINE
     if(state_.patch_state==PatchState::Ready) applyUsb(now_ms);
     else { usb_.commands.panic();usb_generation_=usb_.commands.generation(); }
@@ -623,16 +742,6 @@ void Runtime::apply(uint32_t now_ms) {
     for(unsigned i=0;i<16;++i)if(sustain_[i])any_sustain=true;
     state_.sustain_active=any_sustain;
     applyEdit(now_ms);
-    for(unsigned i=0;i<seq::kQueueCapacity;++i) {
-        const auto* request=commands_.sequencer.front();
-        if(!request) break;
-        applySequencer(*request);
-        commands_.sequencer.consume();
-    }
-    if(const auto* stop=commands_.sequencer.stop()) {
-        applySequencer(*stop);
-        commands_.sequencer.consumeStop();
-    }
 #endif
     applyFx(now_ms);
     if(commands_.generation()!=state_.generation) {
