@@ -156,6 +156,9 @@ void Runtime::silence() {
     }
     all_notes_off();
     std::memset(sustain_,0,sizeof(sustain_));
+#ifdef SMKP4_SOUND_EDITOR
+    state_.sustain_active=false;
+#endif
     std::memset(bend_,0,sizeof(bend_)); std::memset(modulation_,0,sizeof(modulation_));
     for(auto& v:voices_) v=Voice{};
     for(auto& g:groups_) g=Group{};
@@ -488,7 +491,7 @@ void Runtime::applySequencer(const seq::Request& request,uint32_t now_ms) {
     using seq::Action;
     bool accepted=request.token && request.version==seq::kProtocolVersion &&
         request.generation==state_.generation && request.generation==commands_.generation() &&
-        state_.patch_state==PatchState::Ready &&
+        (state_.patch_state==PatchState::Ready || request.action==Action::Stop) &&
         (!request.timed || request.action==Action::Stop ||
          eventAgeMs(now_ms,request.submitted_ms)<seq::kConfirmationTimeoutMs);
     if(accepted) {
@@ -676,7 +679,8 @@ void Runtime::finishScene(scene::RecallPhase phase,scene::RecallError error) {
         status.active_domains=status.effective;
         ++status.revision;
     }
-    status.phase=phase;
+    status.phase=phase!=scene::RecallPhase::Confirmed && status.applied_domains
+        ? scene::RecallPhase::PartialApply : phase;
     status.error=error;
     status.pending=seq::kNoSlot;
     commands_.scenes.consume();
@@ -690,26 +694,60 @@ void Runtime::cancelScene() {
         status.token=request->token;
         status.generation=request->generation;
         status.effective=0;
+        status.applied_domains=0;
         status.pattern_sequence=0;
+        status.patch_error=0;
         status.rejection=scene::Reject::None;
         status.due_phase=status.applied_phase=0;
+    }
+    if(status.phase==scene::RecallPhase::WaitingPatch && state_.patch_state==PatchState::Requested) {
+        state_.patch_state=PatchState::Failed;
+        state_.patch_error=-100;
+        status.patch_error=state_.patch_error;
+        ++state_.patch_failures;
     }
     finishScene(scene::RecallPhase::Cancelled,scene::RecallError::Cancelled);
 }
 
-void Runtime::serviceScene() {
+void Runtime::serviceScene(uint32_t now_ms) {
     using namespace scene;
     const auto* request=commands_.scenes.front();
     if(!request) return;
     auto& status=state_.scene;
     const auto position=tempo_.position();
-    if(status.phase!=RecallPhase::WaitingBoundary) {
+    const bool waiting_patch=status.phase==RecallPhase::WaitingPatch;
+    if(waiting_patch) {
+        if(commands_.scenes.cancelled(request->token) ||
+           usb_.commands.generation()!=usb_generation_) {
+            cancelScene();
+            return;
+        }
+        if(eventAgeMs(now_ms,scene_patch_started_ms_)>=kRecallTimeoutMs) {
+            if(state_.patch_state==PatchState::Requested) {
+                state_.patch_state=PatchState::Failed;
+                state_.patch_error=-103;
+                status.patch_error=state_.patch_error;
+                ++state_.patch_failures;
+            }
+            finishScene(RecallPhase::Failed,RecallError::PatchTimeout);
+            return;
+        }
+        if(state_.patch_state==PatchState::Requested) return;
+        status.patch_error=state_.patch_error;
+        if(state_.patch_state!=PatchState::Ready || state_.patch_id!=request->configuration.patch_id ||
+            status.generation!=state_.generation || status.generation!=commands_.generation()) {
+            finishScene(RecallPhase::Failed,RecallError::PatchFailed);
+            return;
+        }
+    } else if(status.phase!=RecallPhase::WaitingBoundary) {
         status.token=request->token;
         status.generation=request->generation;
         status.pending=request->slot;
         status.due_phase=status.applied_phase=0;
         status.effective=0;
+        status.applied_domains=0;
         status.pattern_sequence=0;
+        status.patch_error=0;
         status.rejection=Reject::None;
         constexpr auto lock_mask=perf_lock::Fx|perf_lock::Harmony|perf_lock::Arp|perf_lock::Macros;
         if(request->slot>=kSlots || request->mode>RecallMode::NextBar ||
@@ -719,13 +757,8 @@ void Runtime::serviceScene() {
         }
         status.effective=effectiveDomains(request->configuration.domains,request->requested,
                                           request->locks,request->apply_tempo);
-        if(status.effective&~(Pattern|Fx|Harmony|Arp|Tempo)) {
-            finishScene(RecallPhase::Failed,RecallError::UnsupportedDomains);
-            return;
-        }
-        const auto selection=validate(request->configuration,request->requested,request->locks,
-                                      request->apply_tempo,false,
-                                      request->pattern.sequence?&request->pattern:nullptr,0,0);
+        const auto selection=validateRecall(*request,state_.edit,
+            patchIndex(request->configuration.patch_id)>=0,request->pattern.sequence?&request->pattern:nullptr);
         status.rejection=selection.reason;
         if(selection.reason!=Reject::None) {
             finishScene(RecallPhase::Failed,RecallError::InvalidRequest);
@@ -739,20 +772,23 @@ void Runtime::serviceScene() {
             status.error=RecallError::None;
         }
     }
-    if(commands_.scenes.cancelled(request->token) || request->generation!=commands_.generation()) {
+    if(commands_.scenes.cancelled(request->token) ||
+        (!waiting_patch && request->generation!=commands_.generation())) {
         cancelScene();
         return;
     }
     const auto domains=status.effective;
     const auto& sequencer=sequencer_.status();
-    if(state_.patch_state!=PatchState::Ready || request->generation!=state_.generation ||
+    if(!waiting_patch && (state_.patch_state!=PatchState::Ready || request->generation!=state_.generation ||
         ((domains&Fx) && request->fx_revision!=state_.fx.revision) ||
         ((domains&Harmony) && request->harmony_revision!=state_.harmony_revision) ||
         ((domains&Arp) && request->arp_revision!=state_.arp.revision) ||
+        ((domains&Macros) && (request->edit_revision!=state_.edit.revision ||
+                              request->fx_revision!=state_.fx.revision)) ||
         ((domains&Pattern) && (sequencer.pending_slot!=seq::kNoSlot ||
             sequencer.active_slot!=request->expected_pattern_slot ||
             sequencer_.settings()!=request->expected_pattern)) ||
-        ((domains&Tempo) && request->tempo_revision!=position.revision)) {
+        ((domains&Tempo) && request->tempo_revision!=position.revision))) {
         finishScene(RecallPhase::Failed,RecallError::Stale);
         return;
     }
@@ -760,13 +796,44 @@ void Runtime::serviceScene() {
         finishScene(RecallPhase::Failed,RecallError::Busy);
         return;
     }
-    if(request->mode==RecallMode::NextBar &&
+    if(!waiting_patch && request->mode==RecallMode::NextBar &&
         uint64_t(position.phase-status.due_phase)>UINT64_MAX/2) return;
 
     const auto& config=request->configuration;
+    const bool swap=!waiting_patch && (domains&scene::Patch) && config.patch_id!=state_.patch_id;
+    if(!waiting_patch && ((domains&Macros) || swap)) {
+        const auto& current=state_.edit;
+        const auto& positions=(domains&Macros)?config.macros:current.performance_macros;
+        const auto& routes=(domains&Macros)?config.routes:current.performance_routes;
+        if(swap && !(domains&Macros) && !performance::valid(routes,
+            uint8_t(library::find(config.patch_id)->family),edit::factoryPatchCapabilities(config.patch_id))) {
+            status.rejection=Reject::IncompatibleMacros;
+            finishScene(RecallPhase::Failed,RecallError::InvalidRequest);
+            return;
+        }
+        const auto family=swap?uint8_t(library::find(config.patch_id)->family):current.family;
+        // MACROS alone may change synth parameters, but must preserve the
+        // effective FX configuration. An explicit FX selection composes both.
+        const auto proposed=performance::effectiveFx(state_.fx.config,family,!swap && current.compare,
+                                                     positions,routes);
+        if(!(domains&Fx) && !fx::fxEquivalent(proposed,performance::effectiveFx(state_.fx.config,current))) {
+            finishScene(RecallPhase::Failed,RecallError::FxConflict);
+            return;
+        }
+    }
     if((domains&Tempo) && (request->locks&perf_lock::Fx) && config.bpm!=position.bpm &&
         state_.fx.applied.delay_mode==fx::DelayMode::Sync) {
         finishScene(RecallPhase::Failed,RecallError::UnsupportedDomains);
+        return;
+    }
+    if(!waiting_patch) status.applied_phase=position.phase;
+    if(swap) {
+        status.phase=RecallPhase::WaitingPatch;
+        scene_patch_started_ms_=now_ms;
+        status.generation=request->generation+1;
+        const auto usb_before=usb_generation_;
+        requestPatch(config.patch_id,perf_lock::Fx|perf_lock::Harmony|perf_lock::Arp|perf_lock::Macros);
+        if(state_.generation!=status.generation || usb_generation_!=usb_before+1) cancelScene();
         return;
     }
     if(domains&Pattern) {
@@ -781,16 +848,43 @@ void Runtime::serviceScene() {
         if(release) releaseSequencer();
         state_.sequencer_pattern=sequencer_.pattern();
         sequencer_.updateLibraryStatus();
+        status.applied_domains|=Pattern;
     }
-    status.applied_phase=position.phase;
-    if(domains&Tempo) tempo_.setBpm(config.bpm);
+    if((domains&Macros) || waiting_patch) {
+        const auto& current=state_.edit;
+        edit::Request edit_request;
+        edit_request.patch=current.patch;
+        edit_request.generation=state_.generation;
+        edit_request.request=(domains&Macros)?request->token:current.request;
+        edit_request.mask=current.mask;
+        edit_request.compare=current.compare;
+        edit_request.slot=current.user_slot;
+        std::copy_n(current.macros,3,edit_request.macros);
+        std::copy_n(current.manual,edit::Count,edit_request.values);
+        edit_request.performance_macros=(domains&Macros)?config.macros:current.performance_macros;
+        edit_request.performance_routes=(domains&Macros)?config.routes:current.performance_routes;
+        const auto errors=current.errors;
+        applyEdit(edit_request);
+        if(current.errors!=errors || current.performance_macros!=edit_request.performance_macros ||
+           current.performance_routes!=edit_request.performance_routes) {
+            finishScene(RecallPhase::Failed,RecallError::Verification);
+            return;
+        }
+        status.applied_domains|=domains&Macros;
+    }
+    if(domains&Tempo) {
+        tempo_.setBpm(config.bpm);
+        status.applied_domains|=Tempo;
+    }
     if(domains&Harmony) {
         state_.harmony=config.harmony;
         ++state_.harmony_revision;
+        status.applied_domains|=Harmony;
     }
     if(domains&Arp) {
         if(!config.arp.enabled && state_.arp.config.enabled) releaseArp();
         arp_.applyConfiguration(config.arp);
+        status.applied_domains|=Arp;
     }
     bool fx_verified=true;
     if(domains&Fx) {
@@ -803,6 +897,7 @@ void Runtime::serviceScene() {
         state_.fx.config=config.fx;
         ++state_.fx.revision;
         state_.fx.dirty=true;
+        status.applied_domains|=Fx;
         applyPerformanceFx();
         fx_verified=fx::fxEquivalent(state_.fx.config,config.fx) &&
             fx::fxEquivalent(state_.fx.applied,expected);
@@ -811,12 +906,13 @@ void Runtime::serviceScene() {
     }
     publishArp();
     publishSequencer();
-    const bool verified=fx_verified &&
+    const bool verified=fx_verified && (!(domains&scene::Patch) || state_.patch_id==config.patch_id) &&
         (!(domains&Pattern) || (state_.sequencer.active_slot==config.pattern_slot &&
             sequencer_.settings()==request->pattern.settings)) &&
         (!(domains&Harmony) || harmony::pack(state_.harmony)==harmony::pack(config.harmony)) &&
         (!(domains&Arp) || state_.arp.config==config.arp) &&
         (!(domains&Tempo) || state_.arp.tempo.bpm==config.bpm);
+    if(verified) status.applied_domains|=domains&scene::Patch;
     finishScene(verified?RecallPhase::Confirmed:RecallPhase::Failed,
                 verified?RecallError::None:RecallError::Verification);
 }
@@ -868,6 +964,10 @@ void Runtime::apply(uint32_t now_ms) {
 #ifdef SMKP4_UNIFIED_ENGINE
         if(state_.patch_state!=PatchState::Ready && c.type!=CommandType::Patch && c.type!=CommandType::Master) continue;
 #endif
+#ifdef SMKP4_SOUND_EDITOR
+        if(state_.scene.phase==scene::RecallPhase::WaitingPatch &&
+           c.type!=CommandType::Patch && c.type!=CommandType::Master) continue;
+#endif
         const uint32_t latency=eventAgeMs(now_ms,c.timestamp_ms);
         if(latency>state_.command_latency_max_ms) state_.command_latency_max_ms=latency;
 #ifdef SMKP4_SOUND_EDITOR
@@ -897,14 +997,7 @@ void Runtime::apply(uint32_t now_ms) {
 #ifdef SMKP4_SOUND_EDITOR
             cancelScene();
 #endif
-            silence(); amy_execute_deltas(); gain_q16_=0;
-            // Barrier discards all events admitted before this request was applied.
-            commands_.panic(OutputReason::Patch); state_.generation=commands_.generation();
-            usb_.commands.panic(); usb_generation_=usb_.commands.generation();
-            state_.requested_patch_id=c.id; state_.patch_error=0;
-            requested_preserve_mask_=c.preserve_mask;
-            state_.patch_state=PatchState::Requested;
-            publishOutput(OutputReason::Patch);
+            requestPatch(c.id,c.preserve_mask);
             return;
 #else
             silence(); usb_.commands.panic(); usb_generation_=usb_.commands.generation();
@@ -915,6 +1008,15 @@ void Runtime::apply(uint32_t now_ms) {
     }
 #ifdef SMKP4_SOUND_EDITOR
     if(commands_.popArpStop(c)) applyArp(c,false,now_ms);
+    if(state_.scene.phase==scene::RecallPhase::WaitingPatch) {
+        if(const auto* stop=commands_.sequencer.stop(); stop && stop->generation==state_.generation) {
+            applySequencer(*stop,now_ms);
+            commands_.sequencer.consumeStop();
+        } else {
+            serviceScene(now_ms);
+        }
+        return;
+    }
 #endif
 #ifdef SMKP4_SOUND_EDITOR
     for(unsigned i=0;i<seq::kQueueCapacity;++i) {
@@ -932,7 +1034,9 @@ void Runtime::apply(uint32_t now_ms) {
 #endif
 #ifdef SMKP4_UNIFIED_ENGINE
     if(state_.patch_state==PatchState::Ready) applyUsb(now_ms);
-    else { usb_.commands.panic();usb_generation_=usb_.commands.generation(); }
+    else if(state_.patch_state!=PatchState::Requested) {
+        usb_generation_=usb_.commands.panic();
+    }
 #else
     applyUsb(now_ms);
 #endif
@@ -948,7 +1052,7 @@ void Runtime::apply(uint32_t now_ms) {
         usb_.commands.panic(); usb_generation_=usb_.commands.generation();
     }
 #ifdef SMKP4_SOUND_EDITOR
-    serviceScene();
+    serviceScene(now_ms);
 #endif
 }
 const int16_t* Runtime::render() {
@@ -960,6 +1064,10 @@ const int16_t* Runtime::render() {
     }
 #ifdef SMKP4_SOUND_EDITOR
     if(state_.storage_quiet){publishOutput(OutputReason::Patch);return silent_pcm_;}
+    if(state_.scene.phase==scene::RecallPhase::WaitingPatch) {
+        publishOutput(OutputReason::Patch);
+        return silent_pcm_;
+    }
 #endif
     if(amy_get_oom_count()!=state_.oom_count) { failRendering();return silent_pcm_; }
 #endif
@@ -1077,9 +1185,30 @@ bool Runtime::loadReusable(uint16_t patch_id) {
     amy_simple_fill_buffer();
     return verifyReusable(patch_id);
 }
+void Runtime::requestPatch(uint16_t patch_id,uint8_t preserve_mask) {
+    silence(); amy_execute_deltas(); gain_q16_=0;
+    // Discard all events admitted before this request was applied.
+    state_.generation=commands_.panic(OutputReason::Patch);
+    usb_generation_=usb_.commands.panic();
+    state_.requested_patch_id=patch_id;
+    state_.patch_error=0;
+    requested_preserve_mask_=preserve_mask;
+    state_.patch_state=PatchState::Requested;
+    publishOutput(OutputReason::Patch);
+}
 void Runtime::loadPendingPatch() {
 #ifdef SMKP4_UNIFIED_ENGINE
     if(!started_ || state_.patch_state!=PatchState::Requested) return;
+#ifdef SMKP4_SOUND_EDITOR
+    const bool scene_patch=state_.scene.phase==scene::RecallPhase::WaitingPatch;
+    if(scene_patch && (state_.scene.generation!=commands_.generation() ||
+        usb_.commands.generation()!=usb_generation_ ||
+        commands_.storage_requested.load(std::memory_order_acquire) ||
+        commands_.scenes.cancelled(state_.scene.token))) {
+        cancelScene();
+        return;
+    }
+#endif
     load_oom_baseline_=amy_get_oom_count();
     state_.patch_state=PatchState::Loading;
     publishOutput(OutputReason::Patch);
@@ -1094,10 +1223,13 @@ void Runtime::loadPendingPatch() {
     const bool cancelled=commands_.generation()!=state_.generation ||
         usb_.commands.generation()!=usb_generation_;
     // Invalidate all traffic admitted DURING loading, not only before it.
-    commands_.panic(OutputReason::Patch);state_.generation=commands_.generation();
-    usb_.commands.panic();usb_generation_=usb_.commands.generation();
+    const auto previous_generation=state_.generation;
+    state_.generation=commands_.panic(OutputReason::Patch);
+    const auto previous_usb_generation=usb_generation_;
+    usb_generation_=usb_.commands.panic();
     silence();amy_execute_deltas();gain_q16_=0;
-    if(!loaded || cancelled || amy_get_oom_count()!=load_oom_baseline_) {
+    if(!loaded || cancelled || state_.generation!=previous_generation+1 ||
+        usb_generation_!=previous_usb_generation+1 || amy_get_oom_count()!=load_oom_baseline_) {
         if(!state_.patch_error) state_.patch_error=cancelled?-100:-101;
         state_.patch_state=PatchState::Failed;++state_.patch_failures;
         // Explicit retry of a valid patch may reconstruct the full set. Until
@@ -1120,7 +1252,7 @@ void Runtime::loadPendingPatch() {
             state_.harmony=harmony::Config{};
         }
 #ifdef SMKP4_SOUND_EDITOR
-        last_sync_ms_=0.0f;
+        if(!scene_patch) last_sync_ms_=0.0f;
         captureEdit();
         if(mask & perf_lock::Macros) {
             if(performance::valid(prev_routes, state_.edit.family, state_.edit.available)) {
@@ -1153,6 +1285,20 @@ void Runtime::loadPendingPatch() {
 #endif
     }
     state_.oom_count=amy_get_oom_count();
+#ifdef SMKP4_SOUND_EDITOR
+    if(scene_patch) {
+        ++state_.scene.generation;
+        if(state_.patch_state==PatchState::Ready) {
+            state_.scene.applied_domains|=scene::Patch;
+            if(state_.edit.available!=edit::factoryPatchCapabilities(state_.patch_id))
+                finishScene(scene::RecallPhase::Failed,scene::RecallError::Verification);
+        }
+        else {
+            state_.scene.patch_error=state_.patch_error;
+            finishScene(scene::RecallPhase::Failed,scene::RecallError::PatchFailed);
+        }
+    }
+#endif
     publishOutput(state_.patch_state==PatchState::Ready?OutputReason::Ready:OutputReason::Failed);
 #endif
 }

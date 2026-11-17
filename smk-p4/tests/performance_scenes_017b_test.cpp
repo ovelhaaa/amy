@@ -17,6 +17,7 @@ static void persistence() {
     c.domains=scene::kAll;
     c.patch_id=128;
     c.pattern_slot=7;
+    c.pattern_sequence=42;
     c.bpm=110;
     c.fx.delay_time_ms=120;
     c.harmony.root=5;
@@ -24,12 +25,27 @@ static void persistence() {
     c.macros[0]=125;
     c.routes={performance::kFactoryRoutes,true};
     c.routes.routes[0][0]={};
+    {
+        auto legacy=value;
+        legacy.sequence=1;
+        uint8_t bytes[scene::kMaxBytes];
+        const auto size=scene::encode(legacy,bytes);
+        assert(size);
+        constexpr unsigned revision_offset=scene::kHeaderBytes+scene::kLegacyPayloadBytes;
+        std::memmove(bytes+revision_offset,bytes+revision_offset+4,size-revision_offset-4);
+        edit::put32(bytes+4,1);
+        edit::put32(bytes+size-8,edit::crc(bytes,size-8));
+        const auto decoded=scene::decode(bytes,size-4);
+        assert(decoded.state==seq::SlotState::Valid && decoded.config.pattern_slot==7);
+        assert(decoded.config.pattern_sequence==0 && decoded.config.routes==c.routes);
+    }
     for(unsigned i=0;i<scene::kSlots;++i) {
         assert(store.load(i).state==seq::SlotState::Empty);
         assert(store.commit(i,value));
         const auto read=store.load(i);
         assert(read.state==seq::SlotState::Valid && read.sequence==1);
-        assert(read.config.patch_id==128 && read.config.pattern_slot==7 && read.config.bpm==110);
+        assert(read.config.patch_id==128 && read.config.pattern_slot==7 &&
+               read.config.pattern_sequence==42 && read.config.bpm==110);
         assert(read.config.harmony.root==5 && read.config.fx.delay_time_ms==120);
         assert(read.config.arp.enabled && read.config.macros==c.macros && read.config.routes==c.routes);
     }
@@ -50,7 +66,7 @@ static void persistence() {
     assert(deleted.sequence==2 && deleted.state==seq::SlotState::Empty);
     assert(reopened.commit(1,value));
     auto& future=fake_nvs::blobs.at({5,"s01b"});
-    edit::put32(future.data()+4,2);
+    edit::put32(future.data()+4,3);
     edit::put32(future.data()+future.size()-4,edit::crc(future.data(),unsigned(future.size()-4)));
     const auto blobs=fake_nvs::blobs;
     assert(reopened.load(1).state==seq::SlotState::Incompatible);
@@ -89,6 +105,12 @@ int main() {
     pattern.state=seq::SlotState::Corrupted;
     assert(check(scene::Pattern|scene::Harmony).reason==scene::Reject::PatternUnavailable);
     assert(check(scene::Harmony).reason==scene::Reject::None);
+    config.pattern_sequence=2;
+    pattern.state=seq::SlotState::Valid;
+    pattern.sequence=1;
+    assert(check(scene::Pattern).reason==scene::Reject::PatternUnavailable);
+    pattern.sequence=2;
+    assert(check(scene::Pattern).reason==scene::Reject::None);
     config.arp.gate=0;
     assert(check(scene::Arp).reason==scene::Reject::InvalidArp);
     assert(check(scene::Harmony).reason==scene::Reject::None);

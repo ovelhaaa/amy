@@ -5,7 +5,7 @@
 namespace smk::p4::scene {
 
 constexpr uint32_t kMagic=0x314e4353; // SCN1
-constexpr unsigned kHeaderBytes=16, kCrcBytes=4, kPayloadBytes=72;
+constexpr unsigned kHeaderBytes=16, kCrcBytes=4, kLegacyPayloadBytes=72, kPayloadBytes=76;
 constexpr unsigned kRouteBytes=15, kRouteSlots=performance::kMacroCount*performance::kRoutesPerMacro;
 constexpr unsigned kMaxBytes=kHeaderBytes+kPayloadBytes+kRouteBytes*kRouteSlots+kCrcBytes;
 static_assert(sizeof(float)==4 && performance::EqHigh<256);
@@ -23,7 +23,7 @@ inline unsigned encode(const Slot& slot,uint8_t* bytes) {
     unsigned size=kHeaderBytes;
     std::memset(bytes,0,kHeaderBytes);
     put32(bytes,kMagic);
-    put32(bytes+4,1);
+    put32(bytes+4,2);
     put32(bytes+8,slot.sequence);
     if(slot.state==seq::SlotState::Valid) {
         if(!c.domains || (c.domains&~kAll) || !seq::validName(c.name) ||
@@ -37,7 +37,10 @@ inline unsigned encode(const Slot& slot,uint8_t* bytes) {
         std::memset(p,0,kPayloadBytes);
         std::memcpy(p,c.name,sizeof(c.name));
         if(c.domains&Patch) { p[17]=uint8_t(c.patch_id); p[18]=uint8_t(c.patch_id>>8); }
-        if(c.domains&Pattern) p[19]=c.pattern_slot;
+        if(c.domains&Pattern) {
+            p[19]=c.pattern_slot;
+            put32(p+kLegacyPayloadBytes,c.pattern_sequence);
+        }
         if(c.domains&Tempo) { p[20]=uint8_t(c.bpm); p[21]=uint8_t(c.bpm>>8); }
         if((c.domains&Fx) && !fx::encodeRecord(c.fx,0,p+22)) return 0;
         if(c.domains&Harmony) put32(p+54,harmony::pack(c.harmony));
@@ -80,14 +83,16 @@ inline Slot decode(const uint8_t* bytes,unsigned size) {
     Slot slot;
     slot.state=seq::SlotState::Corrupted;
     if(size<8 || get32(bytes)!=kMagic) return slot;
-    if(get32(bytes+4)!=1) { slot.state=seq::SlotState::Incompatible; return slot; }
+    const auto version=get32(bytes+4);
+    if(version!=1 && version!=2) { slot.state=seq::SlotState::Incompatible; return slot; }
+    const auto payload=version==1?kLegacyPayloadBytes:kPayloadBytes;
     if(size<kHeaderBytes+kCrcBytes || size>kMaxBytes ||
         get32(bytes+size-kCrcBytes)!=edit::crc(bytes,size-kCrcBytes) ||
         !get32(bytes+8) || bytes[14] || bytes[15] || (bytes[12]&~kAll)) return slot;
     const auto domains=bytes[12];
     const unsigned count=bytes[13];
     if(count>kRouteSlots || (count && !(domains&Macros)) ||
-        size!=kHeaderBytes+(domains?kPayloadBytes:0)+count*kRouteBytes+kCrcBytes) return slot;
+        size!=kHeaderBytes+(domains?payload:0)+count*kRouteBytes+kCrcBytes) return slot;
     if(!domains) {
         slot.state=seq::SlotState::Empty;
         slot.sequence=get32(bytes+8);
@@ -102,6 +107,7 @@ inline Slot decode(const uint8_t* bytes,unsigned size) {
     if(domains&Patch) c.patch_id=uint16_t(p[17] | (unsigned(p[18])<<8));
     if(domains&Pattern) {
         c.pattern_slot=p[19];
+        if(version==2) c.pattern_sequence=get32(p+kLegacyPayloadBytes);
         if(c.pattern_slot>=seq::kPatternSlots) return slot;
     }
     if(domains&Tempo) {
@@ -126,7 +132,7 @@ inline Slot decode(const uint8_t* bytes,unsigned size) {
         if(!performance::valid(c.macros)) return slot;
         if(count) c.routes={performance::kFactoryRoutes,true};
         unsigned next=0;
-        p+=kPayloadBytes;
+        p+=payload;
         for(unsigned i=0;i<count;++i,p+=kRouteBytes) {
             const unsigned index=p[0];
             if(index<next || index>=kRouteSlots || p[1]>performance::EqHigh) return slot;

@@ -117,11 +117,13 @@ inline bool fxRoutesChanged(const edit::State& state, const edit::Request& reque
     return false;
 }
 
-inline fx::FxConfig effectiveFx(fx::FxConfig manual, const edit::State& state, uint8_t* sources = nullptr) {
+inline fx::FxConfig effectiveFx(fx::FxConfig manual, uint8_t family, bool compare,
+                               const Positions& positions, const RouteConfiguration& routes,
+                               uint8_t* sources = nullptr) {
     if (sources) std::fill_n(sources, EqHigh - ChorusDepth + 1, 0);
-    if (state.compare || state.performance_macros == kNeutral) return manual;
+    if (compare || positions == kNeutral) return manual;
     const auto composeFx = [&](FxDestination destination, float base, float min, float max) {
-        const auto result = compose(activeRoutes(state.performance_routes), state.performance_macros, familyMask(state.family),
+        const auto result = compose(activeRoutes(routes), positions, familyMask(family),
                                     destination, base, min, max);
         if (sources) sources[destination - ChorusDepth] = result.sources;
         return result.value;
@@ -132,7 +134,7 @@ inline fx::FxConfig effectiveFx(fx::FxConfig manual, const edit::State& state, u
     manual.reverb_mix = composeFx(ReverbMix, manual.reverb_mix, 0, 1);
     manual.reverb_size = composeFx(ReverbSize, manual.reverb_size, 0, 1);
     manual.master_tone = composeFx(MasterTone, manual.master_tone, -1, 1);
-    if (state.performance_routes.custom) {
+    if (routes.custom) {
         if(manual.delay_mode==fx::DelayMode::Free)
             manual.delay_time_ms = composeFx(DelayTime, manual.delay_time_ms, 10, 1000);
         manual.eq_low_db = composeFx(EqLow, manual.eq_low_db, -12, 12);
@@ -140,6 +142,10 @@ inline fx::FxConfig effectiveFx(fx::FxConfig manual, const edit::State& state, u
         manual.eq_high_db = composeFx(EqHigh, manual.eq_high_db, -12, 12);
     }
     return manual;
+}
+
+inline fx::FxConfig effectiveFx(fx::FxConfig manual, const edit::State& state, uint8_t* sources = nullptr) {
+    return effectiveFx(manual,state.family,state.compare,state.performance_macros,state.performance_routes,sources);
 }
 
 }

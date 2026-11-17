@@ -1,13 +1,16 @@
 #pragma once
 
 #include "performance_scene.h"
+#include "factory_edit_capabilities.h"
+#include "patch_library.h"
 #include <atomic>
 
 namespace smk::p4::scene {
 
-enum class RecallPhase : uint8_t { Idle, WaitingBoundary, Confirmed, Failed, Cancelled };
+enum class RecallPhase : uint8_t { Idle, WaitingBoundary, Confirmed, Failed, Cancelled, PartialApply, WaitingPatch };
 enum class RecallError : uint8_t {
-    None, InvalidRequest, UnsupportedDomains, Stale, Busy, Cancelled, Verification
+    None, InvalidRequest, UnsupportedDomains, Stale, Busy, Cancelled, Verification, FxConflict,
+    PatchFailed, PatchTimeout
 };
 enum class RecallMode : uint8_t { Immediate, NextBar };
 
@@ -16,8 +19,9 @@ struct RecallRequest {
     seq::Slot pattern;
     seq::PatternSettings expected_pattern;
     uint32_t token=0, generation=0;
-    uint32_t fx_revision=0, harmony_revision=0, arp_revision=0, tempo_revision=0;
+    uint32_t fx_revision=0, harmony_revision=0, arp_revision=0, tempo_revision=0, edit_revision=0;
     uint8_t slot=seq::kNoSlot, requested=0, locks=0, expected_pattern_slot=seq::kNoSlot;
+    uint8_t resolved_pattern_slot=seq::kNoSlot;
     RecallMode mode=RecallMode::Immediate;
     bool apply_tempo=false, discard_pattern=false;
 };
@@ -29,8 +33,31 @@ struct RecallStatus {
     uint32_t token=0, generation=0, revision=0;
     uint32_t pattern_sequence=0;
     uint8_t active=seq::kNoSlot, pending=seq::kNoSlot, effective=0, active_domains=0;
+    uint8_t applied_domains=0;
+    int patch_error=0;
     uint64_t due_phase=0, applied_phase=0;
 };
+
+inline Selection validateRecall(const RecallRequest& request,const edit::State& resident,
+                                bool patch_available,const seq::Slot* pattern) {
+    const auto domains=effectiveDomains(request.configuration.domains,request.requested,
+                                        request.locks,request.apply_tempo);
+    const auto patch_id=request.configuration.patch_id;
+    const bool swap=(domains&Patch) && patch_available && patch_id!=resident.patch;
+    const auto* patch=swap?library::find(patch_id):nullptr;
+    const auto family=patch?uint8_t(patch->family):resident.family;
+    const auto available=patch?edit::factoryPatchCapabilities(patch_id):resident.available;
+    if(request.configuration.pattern_sequence && request.resolved_pattern_slot!=request.configuration.pattern_slot)
+        pattern=nullptr;
+    auto selection=validate(request.configuration,request.requested,request.locks,request.apply_tempo,
+                            patch_available,pattern,family,available);
+    if(selection.reason==Reject::None && (domains&Macros) && resident.compare)
+        selection.reason=Reject::CompareActive;
+    if(selection.reason==Reject::None && swap && !(domains&Macros) &&
+       !performance::valid(resident.performance_routes,family,available))
+        selection.reason=Reject::IncompatibleMacros;
+    return selection;
+}
 
 // One control producer. The owner retains the slot until its terminal result,
 // so a concurrent submission is rejected without overwriting the plan.

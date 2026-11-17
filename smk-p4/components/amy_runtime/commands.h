@@ -47,9 +47,10 @@ public:
     // Owner publishes reason + generation in one lock-free word. Mismatch is unknown.
     std::atomic<uint32_t> output_context{0};
     std::atomic<uint32_t> transition_context{0};
-    void panic(OutputReason reason=OutputReason::Panic) {
+    uint32_t panic(OutputReason reason=OutputReason::Panic) {
         const auto generation=generation_.fetch_add(1,std::memory_order_acq_rel)+1;
         transition_context.store(outputContext(generation,reason),std::memory_order_release);
+        return generation;
     }
     uint32_t generation() const { return generation_.load(std::memory_order_acquire); }
     uint32_t overflows() const { return overflows_.load(std::memory_order_relaxed); }
@@ -90,13 +91,14 @@ public:
     }
 #endif
     fx::Mailbox fx;
-    void panic(OutputReason reason=OutputReason::Panic) {
-        CommandQueue<kCommandCapacity>::panic(reason);
+    uint32_t panic(OutputReason reason=OutputReason::Panic) {
+        const auto generation=CommandQueue<kCommandCapacity>::panic(reason);
 #ifdef SMKP4_SOUND_EDITOR
         edits.clear();
 #endif
         // SPSC discipline: do NOT mutate fx read_ cursor from producer task!
         // Incrementing generation_ in CommandQueue::panic invalidates stale requests.
+        return generation;
     }
 private:
 #ifdef SMKP4_SOUND_EDITOR

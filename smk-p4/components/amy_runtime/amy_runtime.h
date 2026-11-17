@@ -72,9 +72,10 @@ private:
     void releaseSequencer();
     void serviceSequencer();
     void stopSequencer();
-    void serviceScene();
+    void serviceScene(uint32_t now_ms);
     void cancelScene();
     void finishScene(scene::RecallPhase phase,scene::RecallError error);
+    uint32_t scene_patch_started_ms_=0;
     void publishSequencer() {
         state_.sequencer=sequencer_.status();
         state_.sequencer.bpm=tempo_.position().bpm;
@@ -86,6 +87,7 @@ private:
     uint32_t arp_identity_=0,arp_started_block_=0,arp_gate_blocks_=0;
     void captureEdit();
     void applyEdit(uint32_t now_ms);
+    void applyEdit(const edit::Request& request);
     void applyPerformanceFx();
     void resolveDelay();
     void serviceDelay(bool immediate=false);
@@ -122,6 +124,7 @@ private:
     void applyUsb(uint32_t now_ms);
     void tune(unsigned slot);
     bool loadReusable(uint16_t patch_id);
+    void requestPatch(uint16_t patch_id,uint8_t preserve_mask);
     bool verifyReusable(uint16_t patch_id);
     void failRendering();
     Commands commands_;
