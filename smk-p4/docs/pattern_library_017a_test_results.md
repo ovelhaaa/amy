@@ -62,3 +62,39 @@ O mock NVS exercita o fluxo de banco inativo e a recuperação, mas
 capacidade real com presets legados e comportamento sob corte elétrico
 dependem da placa. Heap NVS, stack das tarefas ESP32-P4, underruns de
 DMA, continuidade audível e toque físico dependem de ensaio de bancada.
+
+## Benchmark host em blocos
+
+Mesmo GCC e mesmos objetos AMY para as duas revisões. Cinco rodadas
+alternadas, 5.000 blocos após 128 de aquecimento, quatro pares de
+Note Off/On USB por bloco e sequência ativa. Tempos em microssegundos,
+mediana das médias. As rodadas coexistiram com builds e os intervalos
+se sobrepõem, portanto a diferença não estima com precisão o overhead
+na placa.
+
+| Carga | Apply | Render |
+| --- | ---: | ---: |
+| 0.16C, sequência normal | 37,78 | 79,70 |
+| 0.17A, sequência normal | 37,60 | 85,32 |
+| 0.17A, trocas pendentes substituídas a cada 23 blocos | 37,04 | 81,17 |
+| 0.17A, somente 20 blocos com troca efetiva | 33,05 | 84,18 |
+
+Stack de função via GCC -fstack-usage, host. Apply geral e render
+ficaram em 176 B e 64 B. ApplySequencer subiu de 112 para 320 B e
+serviceSequencer de 128 para 176 B. A medição não inclui a cadeia de
+chamadas nem substitui o high-water de stack na placa.
+
+## Builds e recomendação
+
+| Comando | Resultado |
+| --- | --- |
+| ./smk-p4/tests/run_fx_tests.ps1 all | PASS. Suíte completa de DSP, interface, persistência V4/FX, capacidade e concorrência. |
+| pio run -d smk-p4 -e guition-editor-8 -j 8 | PASS. |
+| pio run -d smk-p4 -e guition-editor-8-bench -j 8 | PASS. |
+| python smk-p4/tests/check_blueprint_build.py --voices 8 --sound-editor --full-factory --harmony --unified-engine --sound-library --environment <perfil> | PASS para os dois perfis, com --musical apenas no bench. |
+
+**GO como candidato de software para ensaio de bancada. NO-GO para
+qualificação física e uso em palco** até validar persistência real,
+toque, notas sustentadas, áudio e recursos na Guition. Os hashes,
+comparação de RAM/Flash e roteiro físico estão no
+[relatório do candidato](pattern_library_017a_hardware_candidate.md).

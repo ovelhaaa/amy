@@ -43,3 +43,16 @@ mapa da placa. Preservar NVS, bootloader e partições.
    LVGL, heap NVS, stack mínimo das tarefas, tempo de comando/render,
    riscos de refill, falhas I2S e impacto audível de troca e escrita.
    O prazo por bloco é 5,33 ms.
+
+## Binários verificados
+
+PlatformIO 6.1.18, ESP-IDF 5.5.2. Comparação de RAM e Flash com
+a [0.16C](step_sequencer_016c_hardware_candidate.md).
+
+| Perfil | Build | Arquivo (B) | RAM PIO (B) | Flash PIO (B) | SHA-256 |
+| --- | --- | ---: | ---: | ---: | --- |
+| guition-editor-8 | PASS | 1.405.392 | 45.424 (+1.412) | 1.404.670 (+14.554) | `692A3AD5FFC0B5DE7BE86D731BA4C3894F2307D43C47A015A4AF5D4B3D6D2EBA` |
+| guition-editor-8-bench | PASS | 1.507.312 | 46.360 (+2.508) | 1.506.588 (+14.560) | `790A76718915AAA9A00B7A9A19B6E8C81FC87BEB071AAFAD9574004130C61706` |
+
+As cópias locais e seu manifesto SHA256SUMS estão em
+build/pattern017a-release/. Nenhuma gravação de placa foi executada.
