@@ -1,7 +1,7 @@
 # Guition JC4880P433 — qualificação da 0.17B
 
 **NO-GO para qualificação como firmware de Performance Scenes.**
-A fundação de persistência e validação roda em host. Recall ao vivo e UI permanecem PENDING. O pinout, USB, VBUS, I²S e partições seguem o candidato Guition da [0.17A](pattern_library_017a_hardware_candidate.md).
+A fundação de persistência e a aplicação de PATTERN, FX, HARMONY, ARP e TEMPO têm cobertura host. PATCH, MACROS e o acesso pela touchscreen permanecem PENDING. O pinout, USB, VBUS, I²S e partições seguem o candidato Guition da [0.17A](pattern_library_017a_hardware_candidate.md).
 
 Quando o Audio Owner e a interface consumirem cenas, qualificar na Guition com SMK25 e saída I²S:
 
@@ -11,7 +11,7 @@ Quando o Audio Owner e a interface consumirem cenas, qualificar na Guition com S
 4. Sob carga de oito vozes, registrar render médio e máximo, underruns, jitter, tempo de aplicação, RAM interna, heap e high-water do `amy_owner`. Comparar com a 0.17A na mesma placa e configuração.
 5. Conferir cartões, máscara efetiva, falha de Pattern ausente, feedback de fila e acesso ao Panic durante o modal na tela física 800×480.
 
-## Builds de regressão
+## Builds da fundação
 
 | Perfil | Resultado | RAM PIO | Flash PIO | SHA-256 |
 | --- | --- | ---: | ---: | --- |
@@ -19,3 +19,12 @@ Quando o Audio Owner e a interface consumirem cenas, qualificar na Guition com S
 | guition-editor-8-bench | PASS | 45.816 B (−544 B sobre 0.17A) | 1.506.160 B (−428 B) | `F8EA364124F66E87079E375758E03F12517FF6B760F041D6860ACEB9035F0311` |
 
 Os deltas são em relação aos builds publicados da 0.17A. A aprovação dos builds cobre o firmware atual e o hardening de Patterns. A persistência de cenas ainda é exercitada em host. Nenhuma gravação na Guition foi executada.
+
+## Builds do recall parcial
+
+| Perfil | Resultado | RAM PIO | Flash PIO | SHA-256 |
+| --- | --- | ---: | ---: | --- |
+| guition-editor-8 | PASS | 47.500 B | 1.410.838 B | `538CDAE74D9979698906E86D5002C19355A6E468FEB16AD9C59F19CE18E49ED0` |
+| guition-editor-8-bench | PASS | 47.360 B | 1.512.772 B | `5E9CFBEE21166FAC505CB4999351AC5C48EA08476EAB3FC3149BC4C4CC1397CC` |
+
+Frente à fundação da 0.17B, os perfis normal e bench cresceram 1.532 B e 1.544 B em RAM estática e 6.596 B e 6.612 B em Flash. Frente à 0.17A, cresceram 2.076 B e 1.000 B em RAM estática e 6.168 B e 6.184 B em Flash. A qualificação física permanece PENDING.
