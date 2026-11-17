@@ -1,4 +1,4 @@
-param([switch]$ReuseObjects)
+param([switch]$ReuseObjects,[switch]$RuntimeOnly)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 Push-Location $repo
@@ -9,7 +9,9 @@ try {
     if ($LASTEXITCODE) { throw 'Scene selection compile failed' }
     & $binary
     if ($LASTEXITCODE) { throw 'Scene selection test failed' }
-    & "$PSScriptRoot/run_harmony.ps1" -ReuseObjects:$ReuseObjects
+    if(!$ReuseObjects -or !(Get-ChildItem build/harmony09/*.c.o -ErrorAction SilentlyContinue) -or !$RuntimeOnly) {
+        & "$PSScriptRoot/run_harmony.ps1" -ReuseObjects:$ReuseObjects
+    }
     $objects = Get-ChildItem build/harmony09/*.c.o | ForEach-Object FullName
     $flags = @(
         '-std=c++17', '-pthread', '-O2', '-Wall', '-Wextra', '-Werror',
@@ -28,6 +30,9 @@ try {
     if ($LASTEXITCODE) { throw 'Scene runtime compile failed' }
     & $runtime
     if ($LASTEXITCODE) { throw 'Scene runtime test failed' }
+    if(!$RuntimeOnly) {
+        & "$PSScriptRoot/run_step_sequencer_ui_016b.ps1"
+    }
 } finally {
     Pop-Location
 }

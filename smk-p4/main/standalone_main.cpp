@@ -16,6 +16,7 @@
 #include "controller_profile_nvs.h"
 #include "global_tempo_nvs.h"
 #include "pattern_nvs.h"
+#include "performance_scene_nvs.h"
 #endif
 #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
 #include "ui_blueprint.h"
@@ -343,6 +344,9 @@ extern "C" void app_main() {
     static smk::p4::NvsPatternStore patterns;
     if(patterns.begin()) adapter.setPatternStore(patterns);
     else ESP_LOGE(kTag,"Pattern library NVS unavailable");
+    static smk::p4::NvsSceneStore scenes;
+    if(scenes.begin()) adapter.setSceneStore(scenes);
+    else ESP_LOGE(kTag,"Scene library NVS unavailable");
     const unsigned boot_bpm=smk::p4::tempo::NvsTempo{}.load();
     if(boot_bpm!=smk::p4::tempo::kDefaultBpm &&
        !backend.setArp(smk::p4::arp::Action::Bpm,uint8_t(boot_bpm),uint32_t(esp_timer_get_time()/1000)))

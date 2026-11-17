@@ -70,6 +70,14 @@ public:
     const char* patternNotice() const override { return pattern_notice_; }
     bool patternBusy() const override { return pattern_phase_!=PatternPhase::Idle; }
     void requestPattern(const ui::PatternOperation&) override;
+    void setSceneStore(scene::Store&);
+    const scene::Slot* sceneSlot(unsigned slot) const override {
+        return scene_store_ && slot<scene::kSlots?&scene_slots_[slot]:nullptr;
+    }
+    ui::SceneView sceneView() const override { return scene_view_; }
+    uint8_t sceneCaptureDomains() const override { return scene_current_.domains; }
+    scene::Reject sceneCompatibility(const ui::SceneOperation&) const override;
+    void requestScene(const ui::SceneOperation&) override;
     uint8_t activeSequencerStep() const override {
         const auto* status=sequencerStatus();
         return status?status->current_step:seq::kNoStep;
@@ -117,6 +125,10 @@ private:
     void serviceArp();
     void serviceSequencer();
     void servicePattern();
+    void captureScene(scene::Configuration&) const;
+    void serviceScenes();
+    void finishSceneWrite(const char*);
+    scene::Reject prepareSceneRecall(const ui::SceneOperation&,scene::RecallRequest&) const;
     void finishPattern(const char*);
     bool submitPattern(const seq::Request&);
     enum class PatternPhase { Idle, Quiet, ReadyToWrite, Resume, Ack, Boundary };
@@ -129,6 +141,15 @@ private:
     uint32_t pattern_started_=0, pattern_token_=0, pattern_generation_=0;
     uint8_t pattern_write_slot_=0;
     bool pattern_follow_load_=false,pattern_wait_boundary_=false;
+    scene::Store* scene_store_=nullptr;
+    scene::Slot scene_slots_[scene::kSlots]{}, scene_write_;
+    scene::Configuration scene_baseline_, scene_current_;
+    ui::SceneView scene_view_;
+    uint32_t scene_token_=0,scene_write_started_=0,scene_reference_sequence_=0;
+    uint8_t scene_pending_slot_=seq::kNoSlot,scene_write_slot_=seq::kNoSlot;
+    bool scene_write_ready_=false,scene_write_capture_=false;
+    bool replace_scene_=false;
+    ui::SceneOperation replacement_scene_;
     struct SequencerRequest {
         uint32_t token=0, generation=0, requested_ms=0;
     };

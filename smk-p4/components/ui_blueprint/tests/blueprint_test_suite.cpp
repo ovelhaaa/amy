@@ -390,7 +390,7 @@ void testNavigation(UiBlueprint& app) {
         pumpFrame(app);
     }
 
-    std::puts("PASS: [2/7] UiNavigationManager all 14 screens, deferred navigation, history back-stack and bank cycling");
+    std::puts("PASS: [2/7] UiNavigationManager screens, deferred navigation, history back-stack and bank cycling");
 }
 
 void testVirtualKeyboardLifecycle(UiBlueprint& app, UiDemoBackend& demo) {
@@ -692,7 +692,7 @@ void testInteractions(UiBlueprint& app) {
 void testLayoutAndMemory(UiBlueprint& app) {
     auto& nav = app.navigation();
 
-    // 1. Verify layout bounds across all 14 screens and all sub-tabs
+    // 1. Verify layout bounds across all screens and sub-tabs.
     for (uint8_t s = 0; s < static_cast<uint8_t>(ScreenId::Count); ++s) {
         const auto sid = static_cast<ScreenId>(s);
         const uint8_t max_tabs = (sid == ScreenId::SoundEditor) ? 7
@@ -710,13 +710,13 @@ void testLayoutAndMemory(UiBlueprint& app) {
             if (sid == ScreenId::Performance) {
                 // StageMinimal must eliminate per-control AVAIL/PLAN badges on Performance Stage
                 assert(badge_count == 0 && "Performance StageMinimal must not show technical AVAIL/PLAN badges");
-            } else {
+            } else if(sid!=ScreenId::Scenes) {
                 // BlueprintVerbose screens must retain AVAIL/PLAN/DEMO technical status badges
                 assert(badge_count >= 1 && "BlueprintVerbose screen missing technical status badges");
             }
         }
     }
-    std::puts("PASS: [6/7] All 14 screens and sub-tabs verified strictly within 800x480 (StageMinimal vs BlueprintVerbose)");
+    std::puts("PASS: [6/7] Screens and sub-tabs verified strictly within 800x480 (StageMinimal vs BlueprintVerbose)");
 
     // 2. Stress test memory across 50 full navigation cycles (700+ screen mounts/unmounts)
     for (int warmup = 0; warmup < 2; ++warmup) {

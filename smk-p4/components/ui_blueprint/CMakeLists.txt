@@ -27,6 +27,7 @@ set(blueprint_sources
         "screens/effects_screen.cpp"
         "screens/arpeggiator_screen.cpp"
         "screens/sequencer_screen.cpp"
+        "screens/scenes_screen.cpp"
         "screens/drums_screen.cpp"
         "screens/harmony_screen.cpp"
         "screens/midi_screen.cpp"

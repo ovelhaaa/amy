@@ -3,6 +3,7 @@
 #include "routing_editor.h"
 #include <memory>
 #include <cstdio>
+#include <cstring>
 
 namespace smk::p4::ui {
 
@@ -22,6 +23,7 @@ public:
         legacy_ = nullptr;
         confirm_ = nullptr;
         oct_lbl_ = status_lbl_ = kb_ = nullptr;
+        quick_status_=nullptr;
         const uint8_t view_mode = nav.subTab(ScreenId::Performance);
         if (view_mode == 3) {
             routing_ = std::make_unique<RoutingEditor>();
@@ -134,6 +136,27 @@ public:
                 createParameterSlider(parent, backend, kMacroIds[i], mx, my, 190, 74,
                                       PresentationLevel::StageMinimal, kMacroLabels[i]);
             }
+            if(backend.sceneSlot(0)) {
+                auto* browser=createActionButton(parent,"SCENES",8,227,80,34,nullptr,nullptr);
+                attachLvContext<UiNavigationManager*>(browser,&nav,[](lv_event_t* e) {
+                    auto* navigation=*static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
+                    navigation->requestNavigateTo(ScreenId::Scenes);
+                },LV_EVENT_CLICKED);
+                for(unsigned i=0;i<scene::kSlots;++i) {
+                    char number[4];
+                    std::snprintf(number,sizeof(number),"%u",i+1);
+                    quick_[i]=createActionButton(parent,number,91+40*i,227,37,34,nullptr,nullptr);
+                    attachLvContext<QuickScene>(quick_[i],{&backend,uint8_t(i)},[](lv_event_t* e) {
+                        const auto& quick=*static_cast<const QuickScene*>(lv_event_get_user_data(e));
+                        SceneOperation operation;
+                        operation.slot=quick.slot;
+                        operation.locks=sessionLockMask();
+                        quick.backend->requestScene(operation);
+                    },LV_EVENT_CLICKED);
+                }
+                quick_status_=status_lbl_;
+                lv_label_set_long_mode(quick_status_,LV_LABEL_LONG_SCROLL_CIRCULAR);
+            }
 
             if (backend.hasSoundEditor()) {
                 auto* routing = createActionButton(parent, "ROUTING EDITOR", 420, 226, 188, 34, nullptr, nullptr);
@@ -223,7 +246,25 @@ public:
         if (status_lbl_) {
             char st_buf[32];
             std::snprintf(st_buf, sizeof(st_buf), "CMD: %s", commandStateLabel(backend.lastCommandState()));
-            lv_label_set_text(status_lbl_, st_buf);
+            if(!quick_status_) lv_label_set_text(status_lbl_, st_buf);
+        }
+        if(quick_status_) {
+            const auto view=backend.sceneView();
+            for(unsigned i=0;i<scene::kSlots;++i) {
+                const auto* slot=backend.sceneSlot(i);
+                if(slot && slot->state==seq::SlotState::Valid) lv_obj_remove_state(quick_[i],LV_STATE_DISABLED);
+                else lv_obj_add_state(quick_[i],LV_STATE_DISABLED);
+                const bool active=view.recall.active==i || view.recall.pending==i;
+                if(active) lv_obj_add_state(quick_[i],LV_STATE_CHECKED);
+                else lv_obj_remove_state(quick_[i],LV_STATE_CHECKED);
+            }
+            const bool pending=view.recall.pending!=seq::kNoSlot;
+            const auto* selected=backend.sceneSlot(pending?view.recall.pending:view.recall.active);
+            char message[48];
+            const char* state=pending?"PENDING":view.dirty==scene::Dirty::Clean?"CLEAN":
+                view.dirty==scene::Dirty::Modified?"MODIFIED":view.dirty==scene::Dirty::Invalid?"INVALID":"NOW";
+            std::snprintf(message,sizeof(message),"%s%s%s",state,selected?" / ":"",selected?selected->config.name:"");
+            if(std::strcmp(lv_label_get_text(quick_status_),message)) lv_label_set_text(quick_status_,message);
         }
         if (kb_) {
             refreshVirtualKeyboard(kb_);
@@ -231,6 +272,9 @@ public:
     }
 
 private:
+    struct QuickScene { IUiBackend* backend; uint8_t slot; };
+    lv_obj_t* quick_[scene::kSlots]{};
+    lv_obj_t* quick_status_=nullptr;
     bool buildLegacy(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) {
         confirming_ = false;
         createLabel(parent, "LEGACY MACRO OFFSETS", 12, 14, 560, &lv_font_montserrat_14, palette::kAccentPrimary);

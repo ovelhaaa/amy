@@ -3,7 +3,7 @@
 
 namespace smk::p4::ui {
 
-// Factory functions for each of the 14 navigable screens (created on demand)
+// Factory functions for navigable screens, created on demand.
 ScreenView* createPerformanceScreen();
 ScreenView* createPatchBrowserScreen();
 ScreenView* createSoundEditorScreen();
@@ -18,6 +18,7 @@ ScreenView* createHarmonyScreen();
 ScreenView* createMidiScreen();
 ScreenView* createSettingsScreen();
 ScreenView* createDiagnosticsScreen();
+ScreenView* createScenesScreen();
 
 ScreenView* createScreenById(ScreenId id);
 

@@ -1,5 +1,6 @@
 #include "fake_nvs.h"
 #include "pattern_nvs.h"
+#include "performance_scene_nvs.h"
 #include "ui_blueprint_performance_adapter.h"
 #include "local_performance_backend.h"
 #include "../ui-preview/preview_harness.h"
@@ -536,6 +537,145 @@ int main(int argc,char** argv) {
     }
     std::printf("MEASURE pattern browser closed free before=%zu after=%zu bytes\n",browser_heap,freeBytes());
     puts("PASS 017A LVGL browser save/load, dirty confirmation, queued/cancel, rename/delete, errors and lifecycle");
+
+    NvsSceneStore scenes;
+    assert(scenes.begin());
+    adapter.setSceneStore(scenes);
+    setSessionLockMask(0);
+    assert(app.navigation().returnToPerformance());
+    frame();
+    click(content,"SCENES");
+    assert(app.navigation().currentScreen()==ScreenId::Scenes);
+    assert(findLabel(content,"08 EMPTY"));
+    capture("scenes-empty");
+    const auto empty_scene_heap=freeBytes();
+    click(content,"SAVE");
+    click(content,"SAVE SCENE");
+    block();
+    click(content,"CANCEL QUEUED");
+    block();
+    assert(adapter.sceneSlot(0)->state==seq::SlotState::Empty);
+
+    for(unsigned index=0;index<scene::kSlots;++index) {
+        click(content,"SAVE");
+        click(content,"SAVE SCENE");
+        for(unsigned i=0;i<8;++i) block();
+        assert(adapter.sceneSlot(index)->state==seq::SlotState::Valid);
+        assert(adapter.sceneView().reference==index && adapter.sceneView().dirty==scene::Dirty::Clean);
+        if(index+1<scene::kSlots) click(content,"NEXT");
+    }
+    capture("scenes-eight");
+    click(content,"RENAME");
+    auto* scene_name=findType(content,&lv_textarea_class);
+    assert(scene_name);
+    lv_textarea_set_text(scene_name,"CODA");
+    click(content,"RENAME SCENE");
+    for(unsigned i=0;i<8;++i) block();
+    assert(std::strcmp(scenes.load(7).config.name,"CODA")==0);
+
+    click(content,"LOAD");
+    assert(findLabel(content,"SELECTIVE RECALL 08",true));
+    capture("scenes-selective");
+    std::printf("MEASURE LVGL free with empty Scenes=%zu and Selective Recall modal=%zu bytes\n",
+                empty_scene_heap,freeBytes());
+    click(content,"IMMEDIATE");
+    click(content,"SCENE TEMPO OFF");
+    click(content,"FULL RECALL");
+    block();
+    assert(snap.scene.phase==scene::RecallPhase::WaitingBoundary);
+    capture("scenes-pending");
+    click(content,"CANCEL QUEUED");
+    block();
+    assert(snap.scene.phase==scene::RecallPhase::Cancelled);
+    click(content,"LOAD");
+    click(content,"NEXT BAR");
+    click(content,"FULL RECALL");
+    block();
+    assert(snap.scene.active==7 && snap.scene.phase==scene::RecallPhase::Confirmed);
+    assert(adapter.sceneView().dirty==scene::Dirty::Clean);
+    capture("scenes-active");
+
+    assert(backend.setArp(arp::Action::Bpm,180,preview::g_sim_tick_ms));
+    block();
+    assert(adapter.sceneView().dirty==scene::Dirty::Modified);
+    capture("scenes-dirty");
+    SceneOperation selective;
+    selective.slot=7;
+    selective.domains=scene::Patch;
+    adapter.requestScene(selective);
+    block();
+    assert(adapter.sceneView().dirty==scene::Dirty::Modified && adapter.sceneView().selective);
+    assert(snap.scene.active_domains==scene::Patch && snap.arp.tempo.bpm==180);
+    assert(backend.setArp(arp::Action::Bpm,181,preview::g_sim_tick_ms));
+    block();
+    assert(adapter.sceneView().dirty==scene::Dirty::Modified && !adapter.sceneView().selective);
+    click(content,"DELETE");
+    click(content,"DELETE SCENE");
+    for(unsigned i=0;i<8;++i) block();
+    assert(adapter.sceneSlot(7)->state==seq::SlotState::Empty);
+    assert(adapter.sceneView().dirty==scene::Dirty::Invalid);
+
+    scene::Slot interruption;
+    interruption.state=seq::SlotState::Valid;
+    auto& config=interruption.config;
+    std::strcpy(config.name,"PATCH TEST");
+    config.domains=scene::Patch|scene::Tempo;
+    config.patch_id=snap.patch_id==4?128:4;
+    config.bpm=140;
+    assert(scenes.commit(7,interruption));
+    adapter.setSceneStore(scenes);
+    click(content,"LOAD");
+    click(content,"FULL RECALL");
+    block();
+    assert(snap.scene.phase==scene::RecallPhase::WaitingPatch && snap.scene.applied_domains==scene::Patch);
+    click(content,"PANIC");
+    block();
+    assert(findLabel(content,"PARTIAL APPLY") && snap.active_notes==0);
+    capture("scenes-partial");
+    config.patch_id=UINT16_MAX;
+    assert(scenes.commit(7,interruption));
+    adapter.setSceneStore(scenes);
+    click(content,"LOAD");
+    click(content,"FULL RECALL");
+    block();
+    assert(findLabel(content,"RECALL FAILED"));
+    capture("scenes-failed");
+
+    SceneOperation queued;
+    queued.slot=0;
+    queued.mode=scene::RecallMode::NextBar;
+    adapter.requestScene(queued);
+    block();
+    assert(snap.scene.phase==scene::RecallPhase::WaitingBoundary);
+    SceneOperation replacement;
+    replacement.slot=1;
+    adapter.requestScene(replacement);
+    block();
+    block();
+    if(snap.scene.phase==scene::RecallPhase::WaitingPatch) block();
+    assert(snap.scene.phase==scene::RecallPhase::Confirmed && snap.scene.active==1);
+    assert(app.navigation().returnToPerformance());
+    frame();
+    click(content,"3");
+    block();
+    if(snap.scene.phase==scene::RecallPhase::WaitingPatch) block();
+    assert(snap.scene.phase==scene::RecallPhase::Confirmed && snap.scene.active==2);
+    capture("scenes-quick");
+
+    const auto pattern_id=scenes.load(2).config.pattern_slot;
+    auto revised_pattern=patterns.load(pattern_id);
+    assert(revised_pattern.state==seq::SlotState::Valid);
+    assert(patterns.commit(pattern_id,revised_pattern));
+    adapter.setPatternStore(patterns);
+    adapter.requestScene({SceneAction::Load,2});
+    block();
+    assert(adapter.sceneView().dirty==scene::Dirty::Invalid);
+    assert(std::strcmp(adapter.sceneView().notice,"PATTERN REFERENCE CHANGED")==0);
+
+    NvsSceneStore reopened;
+    assert(reopened.begin());
+    for(unsigned i=0;i<scene::kSlots;++i) assert(reopened.load(i).state==seq::SlotState::Valid);
+    puts("PASS 017B LVGL scene catalog, capture, write, rename, recall, cancellation, dirty, delete and partial apply");
 
     app.shutdown();
     lv_indev_delete(input);
