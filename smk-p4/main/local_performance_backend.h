@@ -37,6 +37,10 @@ public:
         arp_=snapshot.arp;
         sequencer_=snapshot.sequencer;
         sequencer_pattern_=snapshot.sequencer_pattern;
+        if(snapshot.scene.revision!=scene_.revision && (snapshot.scene.active_domains&scene::Fx) && !fx_pending_)
+            desired_fx_=snapshot.fx.config;
+        scene_=snapshot.scene;
+        scene_harmony_revision_=snapshot.harmony_revision;
         edit_snapshot_generation_=snapshot.generation;
         quiet_=snapshot.storage_quiet;
         if(edit_.patch!=snapshot.edit.patch || edit_.revision!=snapshot.edit.revision){
@@ -536,6 +540,25 @@ public:
     const arp::Status* arpStatus() const override { return ready_?&arp_:nullptr; }
     const seq::Status* sequencerStatus() const override { return ready_?&sequencer_:nullptr; }
     const seq::Pattern* sequencerPattern() const override { return ready_?&sequencer_pattern_:nullptr; }
+    const scene::RecallStatus& sceneStatus() const { return scene_; }
+    uint32_t submitScene(scene::RecallRequest request) {
+        const auto generation=commands_.generation();
+        if(!ready_ || busy() || failed_ || recalling_ || recall_wait_ || editPending() || fx_pending_ ||
+           generation!=edit_snapshot_generation_) return 0;
+        request.token=commands_.nextToken();
+        request.generation=generation;
+        request.fx_revision=fx_state_.revision;
+        request.harmony_revision=scene_harmony_revision_;
+        request.arp_revision=arp_.revision;
+        request.tempo_revision=arp_.tempo.revision;
+        request.expected_pattern={sequencer_pattern_,sequencer_.division,sequencer_.swing,
+                                  sequencer_.transpose,sequencer_.quantize};
+        request.expected_pattern_slot=sequencer_.active_slot;
+        // Pattern writes share the Storage Quiet barrier, which invalidates
+        // any queued plan before a cached slot can be replaced.
+        return commands_.scenes.push(request)?request.token:0;
+    }
+    void cancelScene(uint32_t token) { commands_.scenes.cancel(token); }
     uint32_t sequencerGeneration() const override { return commands_.generation(); }
     uint32_t submitSequencer(seq::Request request,uint32_t generation) override {
         request.token=commands_.nextToken();
@@ -785,6 +808,8 @@ private:
     arp::Status arp_;
     seq::Status sequencer_;
     seq::Pattern sequencer_pattern_;
+    scene::RecallStatus scene_;
+    uint32_t scene_harmony_revision_=0;
     uint32_t edit_snapshot_generation_=0;
     uint32_t coalesced_=0,save_requested_ms_=0,last_service_ms_=0,edit_serial_=0;
     bool edit_error_=false,edit_timeout_=false;

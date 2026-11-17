@@ -7,6 +7,7 @@
 #include <atomic>
 #ifdef SMKP4_SOUND_EDITOR
 #include "step_sequencer_protocol.h"
+#include "scene_recall.h"
 #endif
 namespace smk::p4::amy {
 enum class CommandType : uint8_t { NoteOn, Patch, Master, NoteOff, Control, Bend, Harmony, Arp };
@@ -72,6 +73,7 @@ public:
         return sequencer.push(request,expected_generation);
     }
     seq::Mailbox sequencer;
+    scene::RecallMailbox scenes;
     std::atomic<bool> storage_requested{false};
     // The UI producer gets one Stop slot independent of normal queue pressure.
     bool pushArpStop(const Command& stop) {

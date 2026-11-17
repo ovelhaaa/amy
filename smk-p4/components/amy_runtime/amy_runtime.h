@@ -15,6 +15,7 @@ struct Snapshot {
     arp::Status arp;
     seq::Status sequencer;
     seq::Pattern sequencer_pattern;
+    scene::RecallStatus scene;
     uint32_t arp_service_max_us=0;
     bool storage_quiet=false;
 #endif
@@ -71,6 +72,9 @@ private:
     void releaseSequencer();
     void serviceSequencer();
     void stopSequencer();
+    void serviceScene();
+    void cancelScene();
+    void finishScene(scene::RecallPhase phase,scene::RecallError error);
     void publishSequencer() {
         state_.sequencer=sequencer_.status();
         state_.sequencer.bpm=tempo_.position().bpm;

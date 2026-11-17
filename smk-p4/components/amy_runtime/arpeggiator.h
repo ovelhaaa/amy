@@ -16,6 +16,11 @@ struct Config {
     Mode mode=Mode::Up;
     Rate rate=Rate::Sixteenth;
     bool enabled=false, latch=false, restart=false;
+    bool operator==(const Config& other) const {
+        return octaves==other.octaves && gate==other.gate && swing==other.swing &&
+            mode==other.mode && rate==other.rate && enabled==other.enabled &&
+            latch==other.latch && restart==other.restart;
+    }
 };
 
 struct Confirmation {
@@ -46,6 +51,19 @@ struct Input {
 class Engine {
 public:
     const Status& status() const { return status_; }
+    // The owner has validated the whole configuration before committing it.
+    void applyConfiguration(const Config& config) {
+        if(config==status_.config) return;
+        configure(Action::Enable,config.enabled);
+        configure(Action::Mode,uint8_t(config.mode));
+        configure(Action::Rate,uint8_t(config.rate));
+        if(config.octaves!=status_.config.octaves) configure(Action::Octaves,config.octaves);
+        configure(Action::Gate,config.gate);
+        configure(Action::Swing,config.swing);
+        if(config.latch!=status_.config.latch) configure(Action::Latch,config.latch);
+        configure(Action::Restart,config.restart);
+        ++status_.revision;
+    }
     void acknowledge(Action action,uint8_t value,uint32_t token,uint32_t generation,bool usb,Error error,
                      const tempo::Position& position) {
         auto& confirmation=usb?status_.usb:status_.touch;
