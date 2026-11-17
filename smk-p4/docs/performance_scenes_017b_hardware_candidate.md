@@ -16,4 +16,6 @@ Quando o Audio Owner e a interface consumirem cenas, qualificar na Guition com S
 | Perfil | Resultado | RAM PIO | Flash PIO | SHA-256 |
 | --- | --- | ---: | ---: | --- |
 | guition-editor-8 | PASS | 45.968 B (+544 B sobre 0.17A) | 1.404.242 B (−428 B) | `DB5A2196FF398F0B890D142F5E6A3EBC0E02C6070B1731D72E1F91DFE5F5C78B` |
-| guition-editor-8-bench | PENDING | — | — | — |
+| guition-editor-8-bench | PASS | 45.816 B (−544 B sobre 0.17A) | 1.506.160 B (−428 B) | `F8EA364124F66E87079E375758E03F12517FF6B760F041D6860ACEB9035F0311` |
+
+Os deltas são em relação aos builds publicados da 0.17A. A aprovação dos builds cobre o firmware atual e o hardening de Patterns. A persistência de cenas ainda é exercitada em host. Nenhuma gravação na Guition foi executada.

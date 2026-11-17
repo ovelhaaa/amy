@@ -10,7 +10,7 @@
 | GCC host com `-O2 -fstack-usage` no runtime | PASS. `applySequencer()` usa 208 B, ante 320 B registrados na 0.17A. `serviceSequencer()`, `apply()` e `render()` medem 176 B, 176 B e 64 B. A medição é por função e não mede o high-water da tarefa. |
 | Toolchain ESP-IDF, flags de `standalone_main.cpp` e `-fsyntax-only` | PASS para uma unidade de tradução que instancia `NvsSceneStore` e chama `begin()` e `commit()`. |
 | `pio run -d smk-p4 -e guition-editor-8 -j 8` | PASS com `C:/.platformio/penv/Scripts/pio.exe`. |
-| `pio run -d smk-p4 -e guition-editor-8-bench -j 8` | PENDING. |
+| `pio run -d smk-p4 -e guition-editor-8-bench -j 8` | PASS com `C:/.platformio/penv/Scripts/pio.exe`. |
 | Transação ao vivo, rollback, timeout, troca com sustains e jitter de Scene | PENDING. O Audio Owner ainda não consome planos de cena. |
 | Scene Browser, modal, acesso rápido e screenshots 800×480 | PENDING. O teste LVGL cobre o browser de Patterns. |
 | Heap real NVS/LVGL, métricas de áudio com Scenes e high-water da Guition | PENDING. Dependem da integração e da placa. |
