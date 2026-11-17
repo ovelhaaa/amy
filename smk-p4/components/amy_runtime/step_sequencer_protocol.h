@@ -17,24 +17,18 @@ enum class Action : uint8_t {
     LoadSlot, MarkSlotSaved, DetachSlot, CancelSwitch
 };
 
-struct Request {
-    Pattern pattern;
+struct Request : PatternSettings {
     Step step;
     uint32_t token=0, generation=0;
     uint32_t submitted_ms=0;
     int16_t value=0;
     uint8_t index=0, version=kProtocolVersion;
-    tempo::Division division=tempo::Division::Sixteenth;
-    uint8_t swing=50;
-    int8_t transpose=0;
-    bool quantize=false, discard=false;
+    bool discard=false;
     Action action=Action::Play;
     bool select=false, timed=false;
 
-    PatternSettings settings() const { return {pattern,division,swing,transpose,quantize}; }
-    void setSettings(const PatternSettings& s) {
-        pattern=s.pattern; division=s.division; swing=s.swing; transpose=s.transpose; quantize=s.quantize;
-    }
+    const PatternSettings& settings() const { return *this; }
+    void setSettings(const PatternSettings& s) { static_cast<PatternSettings&>(*this)=s; }
 };
 
 // SPSC, with an independent Stop slot. The returned entry remains owned by

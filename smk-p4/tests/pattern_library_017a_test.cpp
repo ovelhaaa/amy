@@ -43,11 +43,17 @@ static void persistence() {
     auto& invalid=fake_nvs::blobs[{4,"p01a"}];
     invalid.back()^=1;
     assert(reboot.load(1).state==seq::SlotState::Corrupted);
+    assert(reboot.commit(2,slot));
     auto& future=fake_nvs::blobs[{4,"p02a"}];
     edit::put32(future.data()+4,2);
     edit::put32(future.data()+100,edit::crc(future.data(),100));
+    const auto before=fake_nvs::blobs;
+    assert(seq::decodeSlot(before.at({4,"p02b"}).data(),seq::kPatternRecordBytes).state==
+           seq::SlotState::Valid);
     assert(reboot.load(2).state==seq::SlotState::Incompatible);
     assert(!reboot.commit(2,slot));
+    assert(!reboot.commit(2,{}));
+    assert(fake_nvs::blobs==before);
     fake_nvs::free_entries=126;
     assert(!reboot.commit(3,slot));
     assert(std::strcmp(reboot.load(3).name,"Original")==0);

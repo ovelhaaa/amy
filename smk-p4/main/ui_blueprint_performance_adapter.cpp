@@ -1164,7 +1164,7 @@ void UiBlueprintPerformanceAdapter::requestPattern(const ui::PatternOperation& o
         return;
     }
     if(operation.action==PatternAction::Cancel) {
-        if(pattern_phase_==PatternPhase::Quiet || pattern_phase_==PatternPhase::Writing) {
+        if(pattern_phase_==PatternPhase::Quiet || pattern_phase_==PatternPhase::ReadyToWrite) {
             backend_.releaseStorageQuiet();
             finishPattern("CANCELLED");
         } else if(pattern_phase_==PatternPhase::Boundary || status->pending_slot!=seq::kNoSlot) {
@@ -1239,14 +1239,16 @@ void UiBlueprintPerformanceAdapter::servicePattern() {
     case PatternPhase::Idle: return;
     case PatternPhase::Quiet:
         if(backend_.storageQuiet()) {
-            pattern_phase_=PatternPhase::Writing;
-            pattern_notice_="WRITING / AUDIO SILENCED";
+            pattern_phase_=PatternPhase::ReadyToWrite;
+            pattern_notice_="READY TO WRITE / CANCEL AVAILABLE";
         } else if(expired) {
             backend_.releaseStorageQuiet();
             finishPattern("TIMEOUT / STORAGE QUIET");
         }
         return;
-    case PatternPhase::Writing: {
+    case PatternPhase::ReadyToWrite: {
+        // NVS runs synchronously on the UI task. Cancellation is serviced
+        // before this call or after it returns, never during set_blob/commit.
         const auto* pattern=sequencerPattern();
         const bool save=pattern_op_.action==PatternAction::Save || pattern_follow_load_;
         if(save && status && pattern)

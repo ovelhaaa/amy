@@ -119,7 +119,7 @@ private:
     void servicePattern();
     void finishPattern(const char*);
     bool submitPattern(const seq::Request&);
-    enum class PatternPhase { Idle, Quiet, Writing, Resume, Ack, Boundary };
+    enum class PatternPhase { Idle, Quiet, ReadyToWrite, Resume, Ack, Boundary };
     PatternPhase pattern_phase_=PatternPhase::Idle;
     seq::PatternStore* pattern_store_=nullptr;
     seq::Slot pattern_slots_[seq::kPatternSlots]{};

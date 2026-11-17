@@ -454,6 +454,15 @@ int main(int argc,char** argv) {
     const auto browser_heap=freeBytes();
     click(content,"PATTERNS");
     assert(findLabel(content,"01 EMPTY") && findLabel(content,"16 EMPTY"));
+    const auto writes_before_cancel=fake_nvs::writes;
+    click(content,"SAVE");
+    for(int i=0;i<10 && std::strcmp(adapter.patternNotice(),"READY TO WRITE / CANCEL AVAILABLE");++i)
+        block();
+    assert(std::strcmp(adapter.patternNotice(),"READY TO WRITE / CANCEL AVAILABLE")==0);
+    adapter.requestPattern({ui::PatternAction::Cancel,0});
+    assert(std::strcmp(adapter.patternNotice(),"CANCELLED")==0 && !adapter.patternBusy());
+    for(int i=0;i<3;++i) block();
+    assert(fake_nvs::writes==writes_before_cancel && patterns.load(0).state==seq::SlotState::Empty);
     click(content,"SAVE");
     assert(adapter.patternBusy());
     assert(findLabel(content,"PATTERN MODIFIED   REQUESTED",true));
