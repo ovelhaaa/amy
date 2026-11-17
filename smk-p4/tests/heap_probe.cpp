@@ -12,6 +12,7 @@ static size_t sizes[4096]{};
 static void* callers[4096]{};
 static uint32_t live=0,calls=0;
 static size_t live_bytes=0,peak_bytes=0;
+static uint64_t allocated_bytes=0,released_bytes=0;
 static bool realtime=false;
 static size_t fail_bytes=0;
 static unsigned fail_remaining=0;
@@ -26,14 +27,14 @@ static bool fail_allocation(size_t bytes) {
 }
 static void remember(void* p,size_t bytes,void* caller) {
     if(!p) return;
-    assert(!realtime); ++calls;
+    assert(!realtime); ++calls; allocated_bytes+=bytes;
     for(unsigned i=0;i<4096;++i) if(!allocations[i]) { allocations[i]=p; sizes[i]=bytes; callers[i]=caller; ++live; live_bytes+=bytes; if(live_bytes>peak_bytes) peak_bytes=live_bytes; return; }
     assert(false);
 }
 static void forget(void* p) {
     if(!p) return;
     assert(!realtime);
-    for(unsigned i=0;i<4096;++i) if(allocations[i]==p) { allocations[i]=nullptr; --live; live_bytes-=sizes[i]; return; }
+    for(unsigned i=0;i<4096;++i) if(allocations[i]==p) { allocations[i]=nullptr; --live; live_bytes-=sizes[i]; released_bytes+=sizes[i]; return; }
 }
 void* __wrap_malloc(size_t n) { if(fail_allocation(n)) return nullptr; void* p=__real_malloc(n); remember(p,n,__builtin_return_address(0)); return p; }
 void* __wrap_calloc(size_t n,size_t bytes) { void* p=__real_calloc(n,bytes); remember(p,n*bytes,__builtin_return_address(0)); return p; }
@@ -48,6 +49,8 @@ uint32_t probe_live() { return live; }
 void probe_dump() { for(unsigned i=0;i<4096;++i) if(allocations[i]) std::fprintf(stderr,"LIVE size=%zu caller=%p\n",sizes[i],callers[i]); }
 size_t probe_bytes() { return live_bytes; }
 size_t probe_peak_bytes() { return peak_bytes; }
+uint64_t probe_allocated_bytes() { return allocated_bytes; }
+uint64_t probe_released_bytes() { return released_bytes; }
 void probe_fail_nth(size_t bytes,unsigned occurrence) { fail_bytes=bytes; fail_remaining=occurrence; }
 void probe_fail_next(unsigned occurrence) { fail_next=occurrence; }
 void probe_on_allocation(unsigned occurrence,void (*callback)()) { callback_remaining=occurrence;allocation_callback=callback; }

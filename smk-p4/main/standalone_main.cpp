@@ -17,6 +17,7 @@
 #include "global_tempo_nvs.h"
 #include "pattern_nvs.h"
 #include "performance_scene_nvs.h"
+#include "nvs.h"
 #endif
 #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
 #include "ui_blueprint.h"
@@ -49,6 +50,7 @@ struct Snapshot {
     UnifiedOutput::Metrics output;
     uint32_t swap_free_before=0,swap_largest_before=0,swap_psram_before=0,swap_psram_largest_before=0;
     uint32_t swap_free_after=0,swap_largest_after=0,swap_psram_after=0,swap_psram_largest_after=0;
+    uint32_t swap_last_us=0,swap_max_us=0,swap_generation_before=0,swap_generation_after=0;
 #endif
     smk::p4::amy::Snapshot engine;
     uint64_t frames = 0, render_total_us = 0, command_total_us = 0, dma_total_us = 0;
@@ -165,10 +167,15 @@ void runAudio() {
             state.swap_psram_largest_before=heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
             state.engine=runtime.snapshot();xQueueOverwrite(snapshots,&state);
         }
+        const auto load_start=loading?esp_timer_get_time():0;
 #endif
         runtime.loadPendingPatch(); // No-op in legacy profiles; worker-only in0.8.
 #ifdef SMKP4_UNIFIED_ENGINE
         if(loading) {
+            state.swap_last_us=static_cast<uint32_t>(esp_timer_get_time()-load_start);
+            if(state.swap_last_us>state.swap_max_us)state.swap_max_us=state.swap_last_us;
+            state.swap_generation_before=state.engine.generation;
+            state.swap_generation_after=runtime.snapshot().generation;
             state.swap_free_after=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
             state.swap_largest_after=heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
             state.swap_psram_after=heap_caps_get_free_size(MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
@@ -239,6 +246,10 @@ void runAudio() {
     }
     const esp_err_t stop_error = output.stop();
     if (state.error == ESP_OK) state.error = stop_error;
+#if defined(CONFIG_SMKP4_PCM_WIRING_CONFIRMED) && defined(SMKP4_UNIFIED_ENGINE)
+    state.output=output.metrics();
+    state.frames=state.output.frames;
+#endif
     runtime.end(); state.engine=runtime.snapshot();
     state.running = false;
     xQueueOverwrite(snapshots, &state);
@@ -416,6 +427,11 @@ extern "C" void app_main() {
                     long(state.engine.patch_error),(unsigned long)state.engine.patch_changes,(unsigned long)state.engine.patch_failures);
 #ifdef SMKP4_HARMONY
 #ifdef SMKP4_SOUND_EDITOR
+                const auto& scene=state.engine.scene;
+                ESP_LOGI(kTag,"SCENE token=%lu generation=%lu phase=%u requested_slot=%u active_slot=%u effective=%x applied=%x error=%u patch_error=%ld",
+                    (unsigned long)scene.token,(unsigned long)scene.generation,unsigned(scene.phase),
+                    unsigned(scene.pending),unsigned(scene.active),unsigned(scene.effective),unsigned(scene.applied_domains),
+                    unsigned(scene.error),long(scene.patch_error));
                 const auto& arp=state.engine.arp;
                 ESP_LOGI(kTag,"ARP015 enabled=%d armed=%d gate=%d bpm=%u inputs=%u steps=%u rejected=%lu service_max_us=%lu",
                     arp.config.enabled,arp.armed,arp.sounding,arp.tempo.bpm,arp.held_count,arp.length,
@@ -449,11 +465,15 @@ extern "C" void app_main() {
                     (unsigned long)state.output.gaps.panic,(unsigned long)state.output.gaps.stale,
                     (unsigned long)state.output.gaps.unexpected_active,(unsigned long)state.output.gaps.other,
                     (unsigned long)state.output.stale_discarded);
-                ESP_LOGI(kTag,"OUTPUT08 frames=%llu blocks=%lu gaps=%lu barriers=%lu write_avg/max_us=%llu/%lu errors=%lu timeouts=%lu refill_risks=%lu stack_free=%lu underruns=UNMEASURED",
+                ESP_LOGI(kTag,"OUTPUT08 frames=%llu blocks=%lu gaps=%lu barriers=%lu write_avg/max_us=%llu/%lu errors=%lu timeouts=%lu refill_risks=%lu stack_free=%lu underruns=UNMEASURED refill_gap_max_us=%lu",
                     (unsigned long long)state.output.frames,(unsigned long)state.output.blocks,(unsigned long)state.output.silence_blocks,
                     (unsigned long)state.output.barriers,(unsigned long long)(state.output.blocks?state.output.write_total_us/state.output.blocks:0),
                     (unsigned long)state.output.write_max_us,(unsigned long)state.output.write_errors,(unsigned long)state.output.timeouts,
-                    (unsigned long)state.output.refill_risks,(unsigned long)state.output.stack_free);
+                    (unsigned long)state.output.refill_risks,(unsigned long)state.output.stack_free,
+                    (unsigned long)state.output.refill_gap_max_us);
+                ESP_LOGI(kTag,"PATCH_LOAD last_us=%lu max_us=%lu generation_before=%lu generation_after=%lu",
+                    (unsigned long)state.swap_last_us,(unsigned long)state.swap_max_us,
+                    (unsigned long)state.swap_generation_before,(unsigned long)state.swap_generation_after);
                 ESP_LOGI(kTag,"SWAP08 changes=%lu failures=%lu internal_before/free_largest=%lu/%lu after=%lu/%lu psram_before/free_largest=%lu/%lu after=%lu/%lu",
                     (unsigned long)state.engine.patch_changes,(unsigned long)state.engine.patch_failures,
                     (unsigned long)state.swap_free_before,(unsigned long)state.swap_largest_before,
@@ -463,6 +483,13 @@ extern "C" void app_main() {
 #endif
             }
             smk::p4::reportMemory();
+#if defined(SMKP4_SOUND_EDITOR) && defined(CONFIG_SMKP4_PCM_WIRING_CONFIRMED)
+            nvs_stats_t nvs{};
+            const auto nvs_error=nvs_get_stats(nullptr,&nvs);
+            ESP_LOGI(kTag,"NVS status=%s used_entries=%u free_entries=%u total_entries=%u",
+                esp_err_to_name(nvs_error),unsigned(nvs.used_entries),unsigned(nvs.free_entries),
+                unsigned(nvs.total_entries));
+#endif
 #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
             if(ui_ready) {
                 lv_mem_monitor_t memory{}; lv_mem_monitor(&memory);
@@ -472,8 +499,9 @@ extern "C" void app_main() {
                 d.lvgl_peak_used=memory.max_used; d.lvgl_frag_pct=memory.frag_pct;
                 d.free_internal_ram=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
                 d.free_psram=heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-                ESP_LOGI(kTag,"UI_BLUEPRINT stack_free_bytes=%u screen_switches=%lu",
-                    unsigned(uxTaskGetStackHighWaterMark(nullptr)),(unsigned long)d.screen_switches);
+                ESP_LOGI(kTag,"UI_BLUEPRINT stack_free_bytes=%u screen_switches=%lu lvgl_free=%u lvgl_largest=%u lvgl_peak_used=%u",
+                    unsigned(uxTaskGetStackHighWaterMark(nullptr)),(unsigned long)d.screen_switches,
+                    unsigned(memory.free_size),unsigned(memory.free_biggest_size),unsigned(memory.max_used));
                 adapter.model().bumpRevision();
             }
 #endif

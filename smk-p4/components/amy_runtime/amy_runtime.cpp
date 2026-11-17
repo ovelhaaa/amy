@@ -913,6 +913,13 @@ void Runtime::serviceScene(uint32_t now_ms) {
         (!(domains&Arp) || state_.arp.config==config.arp) &&
         (!(domains&Tempo) || state_.arp.tempo.bpm==config.bpm);
     if(verified) status.applied_domains|=domains&scene::Patch;
+    if(commands_.generation()!=state_.generation ||
+       usb_.commands.generation()!=usb_generation_ ||
+       commands_.storage_requested.load(std::memory_order_acquire) ||
+       commands_.scenes.cancelled(request->token)) {
+        cancelScene();
+        return;
+    }
     finishScene(verified?RecallPhase::Confirmed:RecallPhase::Failed,
                 verified?RecallError::None:RecallError::Verification);
 }

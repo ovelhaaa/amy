@@ -8,11 +8,20 @@
 
 extern "C" void probe_realtime(bool);
 extern "C" void probe_fail_next(unsigned);
+extern "C" void probe_on_allocation(unsigned,void (*)());
+extern "C" uint32_t probe_calls();
+extern "C" uint32_t probe_live();
+extern "C" size_t probe_bytes();
+extern "C" size_t probe_peak_bytes();
+extern "C" uint64_t probe_allocated_bytes();
+extern "C" uint64_t probe_released_bytes();
 
 using namespace smk::p4;
 
 int main() {
     static amy::Runtime runtime;
+    const auto initial_bytes=probe_bytes();
+    const auto initial_live=probe_live();
     assert(runtime.begin());
     auto& commands=runtime.commands();
     LocalAmyPerformanceBackend backend(commands);
@@ -407,8 +416,117 @@ int main() {
     }
     std::printf("PASS AMY scene audio owner recall, Next Bar lateness %.2f frames\n",
                 double(late)/units_per_frame);
+    double max_load_us=0,total_load_us=0;
+    unsigned load_attempts=0,over_budget=0,max_allocs=0;
+    uint64_t max_allocated=0,max_released=0;
+    size_t stable_bytes[2]{};
+    uint32_t stable_live[2]{};
+    const auto usb=[&](uint8_t status,uint8_t id,uint8_t value) {
+        const uint8_t packet[]={uint8_t(status>>4),status,id,value};
+        assert(runtime.usbInput().transfer(packet,sizeof(packet),block*amy::kBlockFrames*1000/amy::kSampleRateHz));
+    };
+    const auto setArpEnabled=[&](bool enabled) {
+        amy::Command command{amy::CommandType::Arp,uint16_t(arp::Action::Enable),uint8_t(enabled),0,
+                            commands.nextToken(),block*amy::kBlockFrames*1000/amy::kSampleRateHz};
+        command.version=arp::kProtocolVersion;
+        assert(commands.push(command));
+    };
+    for(unsigned i=0;i<1000;++i) {
+        const auto kind=i%4;
+        const auto domains=kind==0?scene::kAll:kind==1?uint8_t(scene::Patch|scene::Fx):
+                           kind==2?uint8_t(scene::Pattern):uint8_t(scene::Fx);
+        const bool swaps=domains&scene::Patch;
+        if(swaps) {
+            assert(commands.push({amy::CommandType::Harmony,0,0,0,harmony::pack(harmony::Config{})}));
+            setArpEnabled(false);
+            usb(0xb0,64,127);
+            for(uint8_t note=60;note<68;++note)usb(0x90,note,100);
+            advance();
+            assert(snapshot.active_notes==8);
+            usb(0x80,60,0);
+            advance();
+            assert(snapshot.active_notes==8);
+        }
+        const bool concurrent_transport=kind==3 && i%16==3;
+        if(concurrent_transport) {
+            seq::Request play;
+            play.action=seq::Action::Play;
+            play.token=commands.nextToken();
+            play.submitted_ms=block*amy::kBlockFrames*1000/amy::kSampleRateHz;
+            assert(commands.pushSequencer(play));
+            setArpEnabled(true);
+            usb(0x90,72,100);
+            advance();
+            assert(snapshot.sequencer.playing && snapshot.arp.held_count==1);
+        }
+        request=makeRequest(domains);
+        request.configuration.patch_id=snapshot.patch_id==4?128:4;
+        request.configuration.pattern_slot=5;
+        request.pattern.state=seq::SlotState::Valid;
+        request.pattern.sequence=9;
+        request.pattern.settings=request.expected_pattern;
+        request.discard_pattern=true;
+        backend.publish(snapshot,true,0,0);
+        const auto token=backend.submitScene(request);
+        assert(token && !backend.submitScene(request));
+        advance();
+        const bool fail=swaps && i%64==0;
+        const bool panic=swaps && i%64==1;
+        if(swaps) {
+            assert(snapshot.scene.phase==scene::RecallPhase::WaitingPatch && !snapshot.active_notes);
+            assert(snapshot.scene.generation==request.generation+1);
+            if(fail)probe_fail_next(1);
+            if(panic)probe_on_allocation(1,[] { runtime.commands().panic(); });
+            const auto calls=probe_calls();
+            const auto allocated=probe_allocated_bytes();
+            const auto released=probe_released_bytes();
+            const auto start=Clock::now();
+            runtime.loadPendingPatch();
+            const auto elapsed=Micros(Clock::now()-start).count();
+            ++load_attempts;
+            total_load_us+=elapsed;
+            max_load_us=std::max(max_load_us,elapsed);
+            over_budget+=elapsed>amy::kBlockFrames*1e6/amy::kSampleRateHz;
+            max_allocs=std::max(max_allocs,probe_calls()-calls);
+            max_allocated=std::max(max_allocated,probe_allocated_bytes()-allocated);
+            max_released=std::max(max_released,probe_released_bytes()-released);
+            advance();
+        }
+        backend.publish(snapshot,true,0,0);
+        assert(snapshot.scene.token==token && backend.sceneStatus().token==token);
+        assert(backend.sceneStatus().phase==snapshot.scene.phase);
+        if(concurrent_transport) {
+            assert(snapshot.sequencer.playing && snapshot.arp.held_count==1);
+            commands.panic();
+            advance();
+            assert(!snapshot.arp.held_count && !snapshot.sequencer.playing);
+        }
+        assert(!snapshot.active_notes);
+        if(fail || panic) {
+            assert(snapshot.scene.phase==scene::RecallPhase::Failed && !snapshot.scene.applied_domains);
+            assert(snapshot.patch_state==amy::PatchState::Failed);
+            retryPatch();
+        } else {
+            assert(snapshot.scene.phase==scene::RecallPhase::Confirmed && snapshot.scene.applied_domains==domains);
+            assert(snapshot.scene.generation==request.generation+(swaps?2:0));
+        }
+        const unsigned topology=snapshot.patch_id==128;
+        if(!stable_bytes[topology]) {
+            stable_bytes[topology]=probe_bytes();
+            stable_live[topology]=probe_live();
+        }
+        assert(stable_bytes[topology]==probe_bytes() && stable_live[topology]==probe_live());
+    }
+    std::printf("PASS 1000 scene recalls, %u measured load attempts, stable tracked heap by topology\n",load_attempts);
+    std::printf("MEASURE host patch avg/max %.1f/%.1f us over_block_budget=%u max_allocations=%u "
+                "max_allocated=%llu max_released=%llu peak_tracked=%zu bytes\n",
+                total_load_us/load_attempts,max_load_us,over_budget,max_allocs,
+                static_cast<unsigned long long>(max_allocated),static_cast<unsigned long long>(max_released),
+                probe_peak_bytes());
     std::printf("MEASURE host runtime=%zu snapshot=%zu scene mailbox=%zu bytes\n",
                 sizeof(runtime),sizeof(snapshot),sizeof(commands.scenes));
     std::printf("MEASURE host owner apply avg/max %.1f/%.1f us, render %.1f/%.1f us (%u blocks)\n",
                 apply_us/measured_blocks,max_apply_us,render_us/measured_blocks,max_render_us,measured_blocks);
+    runtime.end();
+    assert(probe_bytes()==initial_bytes && probe_live()==initial_live);
 }

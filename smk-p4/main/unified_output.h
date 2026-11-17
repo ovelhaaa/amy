@@ -18,7 +18,7 @@ public:
         uint32_t stale_discarded=0;
         uint64_t frames=0,write_total_us=0;
         uint32_t blocks=0,silence_blocks=0,barriers=0,write_max_us=0;
-        uint32_t write_errors=0,timeouts=0,refill_risks=0,stack_free=0;
+        uint32_t write_errors=0,timeouts=0,refill_risks=0,refill_gap_max_us=0,stack_free=0;
     };
     explicit UnifiedOutput(amy::Commands& commands):commands_(commands) {}
     ~UnifiedOutput() { stop(); }
@@ -70,7 +70,11 @@ private:
         Metrics m{};int64_t previous_start=0;bool primed=false;
         while(error==ESP_OK && running_.load(std::memory_order_acquire)) {
             const auto start=esp_timer_get_time();
-            if(previous_start && start-previous_start>int64_t(kDmaDescriptors*amy::kBlockFrames*1000000ULL/amy::kSampleRateHz))++m.refill_risks;
+            if(previous_start) {
+                const auto gap_us=static_cast<uint32_t>(start-previous_start);
+                if(gap_us>m.refill_gap_max_us)m.refill_gap_max_us=gap_us;
+                if(gap_us>kDmaDescriptors*amy::kBlockFrames*1000000ULL/amy::kSampleRateHz)++m.refill_risks;
+            }
             previous_start=start;
             const auto generation=commands_.generation();
             const bool barrier=generation!=output_generation;
