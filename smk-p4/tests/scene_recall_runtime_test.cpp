@@ -1,4 +1,6 @@
 #include "amy_runtime.h"
+#include "fake_nvs.h"
+#include "local_performance_backend.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -11,6 +13,7 @@ int main() {
     static amy::Runtime runtime;
     assert(runtime.begin());
     auto& commands=runtime.commands();
+    LocalAmyPerformanceBackend backend(commands);
     auto makeRequest=[&](uint8_t mask) {
         const auto& snapshot=runtime.snapshot();
         scene::RecallRequest request;
@@ -43,10 +46,15 @@ int main() {
         probe_realtime(false);
     };
     auto request=makeRequest(scene::Fx|scene::Harmony|scene::Arp|scene::Tempo);
-    assert(commands.scenes.push(request));
+    backend.publish(runtime.snapshot(),true,0,0);
+    const auto backend_token=backend.submitScene(request);
+    assert(backend_token);
     assert(!commands.scenes.push(request));
     advance();
     const auto& snapshot=runtime.snapshot();
+    backend.publish(snapshot,true,0,0);
+    assert(backend.sceneStatus().token==backend_token &&
+           backend.sceneStatus().phase==scene::RecallPhase::Confirmed);
     assert(snapshot.scene.phase==scene::RecallPhase::Confirmed);
     assert(snapshot.scene.revision==1 && snapshot.scene.active==3);
     assert(snapshot.fx.config.delay_mix==0.35f && snapshot.fx.applied.delay_mix==0.35f);
@@ -142,6 +150,28 @@ int main() {
     assert(commands.scenes.push(request));
     advance();
     assert(snapshot.scene.rejection==scene::Reject::PatternUnavailable);
+
+    for(const auto bpm:{40,120}) {
+        request=makeRequest(scene::Tempo);
+        request.configuration.bpm=uint16_t(bpm);
+        assert(commands.scenes.push(request));
+        advance();
+        assert(snapshot.scene.phase==scene::RecallPhase::Confirmed);
+        request=makeRequest(scene::Tempo);
+        request.configuration.bpm=180;
+        request.mode=scene::RecallMode::NextBar;
+        assert(commands.scenes.push(request));
+        advance();
+        assert(snapshot.scene.phase==scene::RecallPhase::WaitingBoundary);
+        assert(snapshot.arp.tempo.bpm==bpm);
+        for(unsigned i=0;i<1200 && snapshot.scene.phase==scene::RecallPhase::WaitingBoundary;++i)
+            advance();
+        assert(snapshot.scene.phase==scene::RecallPhase::Confirmed && snapshot.arp.tempo.bpm==180);
+        const auto lateness=snapshot.scene.applied_phase-snapshot.scene.due_phase;
+        const auto speed=tempo::Position{0,0,uint16_t(bpm)}.unitsPerFrame();
+        assert(lateness<speed*amy::kBlockFrames);
+        std::printf("PASS Next Bar at %d BPM, lateness %.2f frames\n",bpm,double(lateness)/speed);
+    }
     std::printf("PASS AMY scene audio owner recall, Next Bar lateness %.2f frames\n",
                 double(late)/units_per_frame);
     std::printf("MEASURE host runtime=%zu snapshot=%zu scene mailbox=%zu bytes\n",

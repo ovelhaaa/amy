@@ -20,7 +20,8 @@ try {
         '-DAMY_BLOCK_SIZE=256', '-DBLOCK_SIZE_BITS=8',
         '-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1',
         '-DAMY_EXCLUSIVE_FM_PHASE_RESTART=1',
-        '-Isrc', '-Ismk-p4/main', '-Ismk-p4/components/amy_runtime', '-Ishared/smk_protocol'
+        '-Isrc', '-Ismk-p4/main', '-Ismk-p4/components/amy_runtime', '-Ishared/smk_protocol',
+        '-Ismk-p4/tests/nvs_mocks'
     )
     $runtime = 'build/scene_recall_runtime_test.exe'
     & g++ @flags smk-p4/tests/scene_recall_runtime_test.cpp smk-p4/components/amy_runtime/amy_runtime.cpp smk-p4/tests/heap_probe.cpp @objects '-Wl,--wrap=malloc' '-Wl,--wrap=calloc' '-Wl,--wrap=realloc' '-Wl,--wrap=free' -lm -o $runtime
