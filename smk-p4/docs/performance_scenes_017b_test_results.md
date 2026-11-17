@@ -145,3 +145,20 @@ Nesta execução host, 500 cargas tiveram média de 1.635,2 µs e máximo de 6.9
 | Final merge | NO-GO |
 
 O kit está pronto para a sessão física. A decisão de merge depende de evidência real de áudio, clock, stack, heap, USB e persistência, e de aprovação explícita da exceção do loader. Os limites e as fontes de evidência estão no [guia da bancada](performance_scenes_017b_bench_guide.md).
+
+## Hardening final da cobertura temporal
+
+O avaliador anterior podia aprovar critérios automáticos com duas observações e contadores zerados, mesmo com uma jornada de captura subobservada. Os critérios 0.17B.2 exigem 120 s observados, 24 relatórios completos, lacunas de no máximo 12 s, dois relatórios de baseline e dois de recuperação. O avaliador confronta a janela de uptime com os tempos e o código de saída do capturador, verifica cada família periódica e liga os marcadores de F aos timestamps e ao hash do log bruto. Os passes automáticos ficam `INCONCLUSIVE` quando a cobertura falha. Violações observadas continuam visíveis como `FAIL`.
+
+O fluxo real verifica novamente o bundle, hash ELF do console, metadados e bytes do log, e compara a reanálise com `metrics.json`. Anexos passam por verificação de vínculo à sessão e de SHA-256. A revisão da captura lógica e analógica permanece física. O reboot de B usa uma captura de persistência separada com seus próprios metadados.
+
+| Validação | Resultado |
+| --- | --- |
+| `python -m unittest discover -s smk-p4/tests/hardware_017b -v` | **PASS**, 32 testes. Inclui captura curta e interrompida, lacuna por família, snapshot único, timestamps inválidos, reboots, stress sem baseline/recuperação, divergência de identidade e adulteração do log/anexo. |
+| Fixture via CLI, dos metadados ao gate | **PASS**. Gerou `metrics.json`, `summary.csv`, `warnings.txt`, `session_report.md`, `gate.json` e `release_gate.md`; preservou o SHA-256 do bruto; 125 s e 26 relatórios produziram `TEST FIXTURE / PASS / NO-GO`. |
+| `firmware.py check --profile <perfil> --bundle build/release-017b/<perfil>` | **PASS** para editor e bench. Os hashes conferidos estão no candidato de hardware. |
+| Parse PowerShell 7 e auditoria do runner, preflight e capturador | **PASS**. A chamada usa captura exclusiva, RTS/DTR desativados e ausência de `--reset`. O fluxo não chama upload, erase, NVS ou escrita de partições. |
+| Builds e regressões musicais/LVGL desta rodada | **NOT RUN**. O diff se limita a scripts/testes de bancada e Markdown. Os resultados de AMY real, 1.000 recalls, regressões, LVGL e builds acima são evidências históricas do candidato preservado. |
+| Guition / SMK25 / PCM5102A | **MANUAL / PENDING** para I²S, silêncio, stack, heap/PSRAM, USB e Scenes persistentes. |
+
+Exemplo sintético incompleto com 1.200 s solicitados e 5 s observados. `MINIMUM_SESSION_DURATION = FAIL`, `i2s_write_errors = INCONCLUSIVE` apesar de zero erros amostrados, e `release = NO-GO`. A exceção do loader segue **PROPOSED**, condicionada a dados físicos e aprovação explícita. O merge segue **NO-GO**.

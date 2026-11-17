@@ -90,3 +90,14 @@ Builds sequenciais no commit `453add7b3a21168a0dc0b3a24fa513e414952588` com Plat
 | guition-editor-8-bench | PASS | 62.144 B | 1.554.100 B | 1.554.816 B | `45ef5cfe0f9b3b82daa71e5cc2edb91ef7d3e356274fc8e813cd59e9bd8ff07e` |
 
 O manifesto usa 0.17B como versão de produto. A versão do descritor do projeto ESP-IDF permanece 0.1.0. No perfil bench, o console publica `BENCH_ID` com o hash ELF `6b353619f4cdcbb036ed104b66395b1f0315f6b54c40afc18f19f9098586b5eb`. As duas imagens usam a mesma tabela compilada e offset de aplicação `0x10000`.
+
+### Identidade preservada no handoff
+
+O hardening final altera apenas o kit de bancada e a documentação. Os dois bundles acima, do commit `453add7b3a21168a0dc0b3a24fa513e414952588`, continuam sendo os candidatos. `firmware.py check` verificou novamente o binário, o descritor ELF, a tabela de partições e o sdkconfig dos dois perfis locais. Builds nesta rodada **NOT RUN**.
+
+| Perfil | ELF SHA-256 no descritor | SHA-256 de `manifest.json` |
+| --- | --- | --- |
+| guition-editor-8 | `21f26ab6b7cd4dea9133bed6fbd15546262fe6ab6ec7702a427b2cd34badbb93` | `03ca2cba6f88a8fadb21aab9115ef6507a948114b1c5321ed62e1b7dd639de52` |
+| guition-editor-8-bench | `6b353619f4cdcbb036ed104b66395b1f0315f6b54c40afc18f19f9098586b5eb` | `c035f2daadb8d588169a8f52709d3f139f4e6a70f6b5f214b7b0c95424d8c61d` |
+
+Antes da sessão física, confira a unidade, pinagem, VBUS e configuração do PCM5102A. Qualificação da saída I²S e do silêncio, high-water, heap interno/PSRAM, reconexão USB e persistência de Scenes seguem **MANUAL / PENDING**. O [guia do kit](performance_scenes_017b_bench_guide.md) reúne o Quick Start e a cobertura temporal exigida.

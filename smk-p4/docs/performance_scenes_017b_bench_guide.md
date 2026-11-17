@@ -1,11 +1,57 @@
 # Bancada de qualificação 0.17B
 
+## QUICK START — FIRST HARDWARE SESSION
+
+1. Confirme a porta COM pelo cabo do console. Na raiz do repositório, abra PowerShell 7 e configure a sessão. Substitua o exemplo de porta e placa pelos identificadores observados.
+
+   ```powershell
+   $kit = 'smk-p4/tests/hardware_017b'
+   $pio = 'pio' # ou caminho do executável PlatformIO
+   $port = 'COM13'
+   $board = 'Guition-unidade-revisao'
+   $bundle = 'build/release-017b/guition-editor-8-bench'
+   $id = 'guition-017b-01'
+   $session = "build/hardware-017b/$id"
+   $raw = "$session/serial.log"
+   [IO.Ports.SerialPort]::GetPortNames()
+   ```
+
+2. Verifique a integridade do bundle bench local.
+3. Confira o SHA-256 do binário e o ELF do manifesto contra o [candidato Guition](performance_scenes_017b_hardware_candidate.md).
+
+   ```powershell
+   python "$kit/firmware.py" check --profile guition-editor-8-bench --bundle $bundle
+   Get-FileHash -LiteralPath "$bundle/firmware.bin" -Algorithm SHA256
+   ```
+
+4. Confirme backup verificável de flash/NVS, tabela de partições e autorização para a unidade e o hash exatos. Veja a preparação abaixo.
+5. Quando autorizado, instale manualmente somente a aplicação bench no offset confirmado. Se a imagem já estiver instalada, confirme sua identidade pela serial durante a coleta.
+6. Execute o preflight.
+7. Inicie a coleta temporizada.
+
+   ```powershell
+   & "$kit/preflight.ps1" -Port $port -Bundle $bundle -Pio $pio
+   & "$kit/run_bench.ps1" -Port $port -BoardId $board -Bundle $bundle -SessionId $id -Seconds 1200 -Pio $pio
+   ```
+
+8. Execute o roteiro A–H durante a coleta. Faça B em uma captura complementar independente. Em outro PowerShell, acompanhe `Get-Content -LiteralPath $raw -Wait` com o caminho definido também nessa janela. Registre os timestamps de F conforme a seção de cobertura.
+9. Aguarde o timer para encerrar a coleta e gravar os metadados. Use uma duração maior se o roteiro exigir. A captura e o runner operam passivamente, com RTS/DTR desativados.
+10. Confira `session_report.md`, `warnings.txt` e `release_gate.md` na pasta da sessão.
+11. Copie o modelo, preencha os marcadores e anexe as evidências conforme abaixo.
+12. Reavalie a sessão com o log original, os metadados e o bundle.
+
+   ```powershell
+   Copy-Item "$kit/evidence.example.json" "$session/evidence.json"
+   # Preencha evidence.json antes de reavaliar.
+   python "$kit/evaluate.py" "$session/metrics.json" --raw $raw --metadata "$raw.metadata.json" --bundle $bundle --evidence "$session/evidence.json" --out $session
+   ```
+
 O perfil `guition-editor-8-bench` habilita a montagem USB/I²S documentada e a telemetria desta bancada. Use PowerShell 7, Python 3.10 ou superior com pyserial, PlatformIO Core e um console serial que preserve o primeiro canal da Guition. Separe um analisador lógico para BCLK/WS/DATA e uma interface de captura para as duas saídas do PCM5102A. Sem os instrumentos, complete as etapas auditivas e deixe as medições físicas em aberto.
 
 ## Preparação
 
 1. Registre unidade e serigrafia da Guition, revisão de chip, console COM, fonte e VBUS do USB Host, versão/serial do SMK25, módulo PCM5102A, straps, terra comum, pinagem efetiva e instrumentos. Confira a montagem do [candidato Guition](performance_scenes_017b_hardware_candidate.md). O identificador de hardware no log Gate 0 vem da configuração histórica do P4SDM. A revisão e a serigrafia devem ser comprovadas na unidade.
-2. Compile a partir de um commit limpo. Execute os perfis em sequência na raiz do repositório. Em instalações fora do PATH, defina `$pio` com o executável local.
+2. Prefira os bundles preservados em `build/release-017b/<perfil>/`. Para reproduzir os builds do candidato, use o commit de código indicado no manifesto em um checkout limpo separado. Execute os perfis em sequência na raiz desse checkout. Em instalações fora do PATH, defina `$pio` com o executável local.
 
    ```powershell
    $pio = 'pio'
@@ -28,19 +74,44 @@ O perfil `guition-editor-8-bench` habilita a montagem USB/I²S documentada e a t
    ```
 
 4. Antes de qualquer gravação autorizada, faça backup verificável da flash ou da tabela, aplicação atual e NVS com a ferramenta e o modo de leitura aprovados para a placa. Registre SHA-256, offsets e tamanho de cada backup e confirme o plano de restauração. Compare a tabela lida da unidade com a tabela compilada. O perfil atual usa aplicação `factory` em `0x10000` e NVS em `0x9000` com 0x6000 bytes. Após autorização para o hash concreto, use a ferramenta de gravação da bancada em modo somente aplicação, no offset confirmado, preservando configurações de flash e dados. Interrompa o procedimento se a tabela da placa divergir. O kit opera com o firmware já instalado.
-5. Feche outros monitores seriais. Inicie captura passiva antes do primeiro teste, com a placa já ligada se a porta desaparecer no boot. Reserve dois relatórios periódicos antes da carga e dois após a última ação. A maioria das métricas sai a cada 5 s. Se a porta cair no reboot, anexe captura separada do boot ou vídeo para A/B. Use um único boot para o ensaio principal de contadores e nenhuma outra fonte MIDI.
+5. Feche outros monitores seriais. Inicie a captura antes do primeiro teste, com a placa já ligada se a porta desaparecer no boot. Reserve relatórios periódicos antes e depois de F e após a última ação. A maioria das métricas sai a cada 5 s. Se a porta cair no reboot, anexe captura separada do boot ou vídeo para A/B. Use um único boot no ensaio principal e somente o SMK25 como fonte MIDI externa.
 
    ```powershell
    & "$kit/run_bench.ps1" -Port $port -BoardId 'Guition-unidade-revisao' -Bundle $bundle -SessionId 'guition-017b-01' -Seconds 1200 -Pio $pio
    ```
 
-   Captura avulsa e reanálise do log bruto:
+   Captura complementar de persistência (etapa B) e reanálise da sessão principal.
 
    ```powershell
    $session = 'build/hardware-017b/guition-017b-01'
-   & "$kit/capture.ps1" -Port $port -BoardId 'Guition-unidade-revisao' -Bundle $bundle -SessionId 'guition-017b-persistencia' -Seconds 180 -Output "$session/persistencia.log"
-   python "$kit/analyze.py" "$session/serial.log" --metadata "$session/serial.log.metadata.json" --out $session
+   & "$kit/capture.ps1" -Port $port -BoardId $board -Bundle $bundle -SessionId 'guition-017b-persistencia' -Seconds 180 -Output "$session/persistencia.log" -Persistence
+   python "$kit/analyze.py" "$session/serial.log" --metadata "$session/serial.log.metadata.json" --bundle $bundle --out $session
    ```
+
+## Cobertura temporal
+
+| Critério em `criteria.json` 0.17B.2 | Limiar |
+| --- | --- |
+| `MINIMUM_SESSION_DURATION` | Pelo menos **120 s** entre o primeiro e o último `AUDIO` válidos. |
+| `MINIMUM_PERIODIC_SNAPSHOTS` | Pelo menos **24 relatórios completos**. Cada relatório agrupa as famílias obrigatórias de `AUDIO` até `USB`. |
+| `MAXIMUM_TELEMETRY_GAP` | No máximo **12 s** entre relatórios completos ou amostras da mesma família, incluindo as bordas da janela `AUDIO` para cada família. |
+| `PRE_STRESS_BASELINE` e `POST_STRESS_RECOVERY` | Pelo menos **dois relatórios completos** em cada janela. |
+
+Os pisos correspondem à cadência nominal de 5 s, aos dois relatórios por grupo de F e às janelas de referência e recuperação. Planeje tempo adicional para A e C–H. Uma lacuna de até 12 s acomoda um relatório perdido e 2 s de variação. A janela observada usa o tempo da placa, em milissegundos, e a janela do host serve como verificação de interrupção. O gate sinaliza encerramento mais de 12 s antes da duração solicitada ou mais de 24 s da janela do host sem cobertura observada, margem que inclui entrada e saída da coleta. Reboot no ensaio principal e timestamps omitidos ou regressivos impedem a qualificação.
+
+Para marcar F, use o número entre parênteses da linha `I (…) P4_AMY: AUDIO …`. Antes da primeira troca, aguarde pelo menos dois ciclos completos até `USB` e anote o timestamp `AUDIO` do último ciclo em `stress.start_ms`. Ao terminar F, registre em `stress.end_ms` o timestamp `AUDIO` do primeiro ciclo completo visto após o fim. Deixe passar mais dois ciclos completos antes de encerrar a coleta. Os dois números pertencem ao log da sessão principal. O avaliador confere a ordem, os anchors e o vínculo entre o arquivo de evidência e o SHA-256 do log. Marcadores ausentes ficam `NOT MEASURED`.
+
+Exemplo de registro de campo, com valores a preencher na bancada:
+
+```text
+Sessão guition-017b-01 | serial.log e serial.log.metadata.json
+F início | último AUDIO anterior à primeira troca | start_ms=<copiar do log>
+F fim    | primeiro AUDIO após a última troca    | end_ms=<copiar do log>
+B        | persistencia.log e persistencia.log.metadata.json | reboot manual
+H        | dac-estereo.wav e i2s.vcd | instrumentos, resolução e intervalos no diário
+```
+
+`INCONCLUSIVE` indica que o kit precisa de evidência adicional ou consistente para decidir. Procure em `gate.json` as famílias sem amostras, a duração observada, as linhas da evidência e a diferença para a janela do host. Preserve a sessão incompleta. Para cobrir uma interrupção da coleta principal, repita A e C–H sob um novo ID em um único boot. Para documentar B, use `-Persistence` e anexe os dois arquivos complementares e o registro de releitura. O reboot intencional dessa captura fica fora dos contadores do ensaio principal. A avaliação usa um único log principal, com as capturas complementares anexadas como evidência.
 
 ## Roteiro musical e físico
 
@@ -73,11 +144,11 @@ Registre hora aproximada, ação, resultado e referência à captura. Mantenha a
 ## Relatório e decisão
 
 1. Leia `session_report.md`, `warnings.txt` e `release_gate.md`. `metrics.json` e `summary.csv` preservam número da linha, timestamp e campos observados. O log bruto preserva mensagens desconhecidas. `PASS` do parser identifica cobertura da leitura. O avaliador decide os critérios de release.
-2. Copie `evidence.example.json` para `$session/evidence.json`. Use o SHA-256 do log principal, identifique o revisor e preencha somente medições observadas. Cada entrada precisa de valor, anotação, e arquivo relativo à pasta da sessão, como nota de bancada datada com timestamps, vídeo, log complementar, WAV ou captura lógica. Para os critérios de áudio físico, indique instrumento e configuração e anexe a captura correspondente. Para a exceção, anexe a aprovação explícita do responsável técnico. Critérios sem instrumentos ou revisão permanecem `NOT MEASURED` ou `INCONCLUSIVE`.
+2. Copie `evidence.example.json` para `$session/evidence.json`. Copie de `serial.log.metadata.json` os identificadores de sessão e placa, o perfil e os hashes do log, firmware, ELF e manifesto. Identifique o revisor. Para cada observação, preencha o valor medido, a nota, o caminho relativo e o SHA-256 do anexo em minúsculas. Use `(Get-FileHash -LiteralPath "$session/<arquivo>" -Algorithm SHA256).Hash.ToLowerInvariant()`. Para o clock I²S, anexe a exportação lógica CSV, VCD, SR ou SAL. Para os critérios analógicos instrumentais, anexe a captura DAC WAV ou FLAC. Indique instrumento, configuração, intervalo e correspondência com o log. O revisor interpreta a captura física. Para a exceção, anexe a aprovação explícita do responsável técnico. Critérios sem instrumentos ou revisão permanecem `NOT MEASURED` ou `INCONCLUSIVE`.
 3. Reavalie e envie o diretório da sessão, manifesto, evidências e a versão de `criteria.json`. Inclua negativos, lacunas e sessões complementares. Se o console desconectar ou o equipamento reiniciar fora da etapa B, preserve a captura com falha e repita em diretório novo após diagnosticar.
 
    ```powershell
-   python "$kit/evaluate.py" "$session/metrics.json" --evidence "$session/evidence.json" --out $session
+   python "$kit/evaluate.py" "$session/metrics.json" --raw "$session/serial.log" --metadata "$session/serial.log.metadata.json" --bundle $bundle --evidence "$session/evidence.json" --out $session
    python -m unittest discover -s $kit -v
    ```
 
