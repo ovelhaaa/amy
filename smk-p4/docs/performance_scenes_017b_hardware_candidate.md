@@ -10,3 +10,10 @@ Quando o Audio Owner e a interface consumirem cenas, qualificar na Guition com S
 3. Segurar um acorde com sustain enquanto o sequenciador e o Arp tocam. Trocar só PATTERN e conferir que o teclado permanece audível. Trocar PATCH, ligar e desligar sustain, depois disparar Stop, Panic e desconectar o SMK25 durante uma troca pendente. Conferir que os indicadores de notas e transporte se recuperam e que não sobram notas presas.
 4. Sob carga de oito vozes, registrar render médio e máximo, underruns, jitter, tempo de aplicação, RAM interna, heap e high-water do `amy_owner`. Comparar com a 0.17A na mesma placa e configuração.
 5. Conferir cartões, máscara efetiva, falha de Pattern ausente, feedback de fila e acesso ao Panic durante o modal na tela física 800×480.
+
+## Builds de regressão
+
+| Perfil | Resultado | RAM PIO | Flash PIO | SHA-256 |
+| --- | --- | ---: | ---: | --- |
+| guition-editor-8 | PASS | 45.968 B (+544 B sobre 0.17A) | 1.404.242 B (−428 B) | `DB5A2196FF398F0B890D142F5E6A3EBC0E02C6070B1731D72E1F91DFE5F5C78B` |
+| guition-editor-8-bench | PENDING | — | — | — |

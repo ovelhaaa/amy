@@ -96,8 +96,12 @@ int main() {
     assert(check(scene::Macros).reason==scene::Reject::IncompatibleMacros);
     config.macros=performance::kNeutral;
     config.routes={performance::kFactoryRoutes,true};
-    config.routes.routes[0][0].minimum=100000;
-    assert(check(scene::Macros).reason==scene::Reject::IncompatibleMacros);
+    config.routes.routes[0][0]=performance::route(edit::Cutoff,20,18000,3000,performance::Juno);
+    assert(check(scene::Macros).reason==scene::Reject::None);
+    assert(scene::validate(config,scene::Macros,0,true,true,&pattern,0,edit::familyParameterMask(0))
+           .reason==scene::Reject::IncompatibleMacros);
+    assert(scene::validate(config,scene::Macros,0,true,true,&pattern,1,caps&~edit::bit(edit::Cutoff))
+           .reason==scene::Reject::IncompatibleMacros);
     assert(check(scene::Fx|scene::Macros,perf_lock::Macros).domains==scene::Fx);
     config.domains=scene::Tempo;
     for(const uint16_t bpm:{40,120,240}) {
