@@ -48,4 +48,44 @@ PATTERN usa o carregamento imediato da 0.17A na fase de aplicação e libera ape
 
 Panic, Stop, reset de USB, troca de patch externa e Storage Quiet invalidam um plano pendente. A confirmação de FX verifica a configuração manual e o alvo efetivo publicado para o DSP, cuja suavização pode continuar em blocos posteriores. Uma divergência de verificação publica falha e preserva a última referência de recall. A verificação ocorre após a aplicação, sem rollback dos domínios já escritos.
 
-PATCH e MACROS ainda são rejeitados quando fazem parte da máscara efetiva. Permanecem pendentes a barreira de patch, a resolução de capacidades do patch resultante, a integração do store com as operações da aplicação, o dirty state de Scene, a touchscreen e os destinos MIDI. Os estados terminais do owner, por si sós, não satisfazem o release gate.
+No HEAD auditado, PATCH e MACROS eram rejeitados e o store de cenas ainda não estava ligado à aplicação.
+
+## Integração dos sete domínios
+
+```mermaid
+flowchart LR
+    UI["Touchscreen e catálogo"] --> P["Resolver Pattern e preparar plano"]
+    P --> V["Owner valida seleção e revisões"]
+    V --> B["Immediate ou próxima barra"]
+    B --> S{"Patch muda?"}
+    S -->|Sim| M["Silenciar e invalidar geração"]
+    M --> L["Loader AMY existente"]
+    L --> A["Confirmar patch e segunda geração"]
+    S -->|Não| D["Aplicar domínios selecionados"]
+    A --> D
+    D --> T["Verificar e publicar resultado"]
+    T --> UI
+```
+
+| Domínio | Precondição e aplicação | Verificação |
+| --- | --- | --- |
+| PATCH | ID admitido pelo catálogo. Em troca de timbre, reutiliza `requestPatch()` e `loadPendingPatch()`. | Loader verifica vozes e osciladores. Cena verifica identidade, geração e máscara capturada da topologia. |
+| PATTERN | Sequência e slot persistidos, plano materializado de tamanho fixo. Respeita edição do Pattern e confirmação de descarte. | Slot e configuração lidos do sequenciador. |
+| FX | Aplica configuração manual e compõe com as macros resultantes. | Configuração manual e alvo efetivo, incluindo Delay SYNC. |
+| HARMONY | Valida configuração e preserva ownership das notas já admitidas. | Configuração empacotada no snapshot. |
+| ARP | Usa o engine existente e libera saídas quando desativado. | Configuração publicada do Arp. |
+| MACROS | Valida posições e rotas conforme a topologia resultante. Usa o mesmo caminho de aplicação do Sound Editor. | Confirma posições e rotas depois de aplicar os deltas AMY. |
+| TEMPO | Altera BPM no clock global e preserva sua fase. | BPM publicado. |
+
+O plano permanece na mailbox durante a barreira. O pedido de patch e a conclusão do loader produzem duas gerações esperadas. Panic, Stop, troca externa, USB e Storage Quiet invalidam a transação. A saída fica muda durante a barreira e a troca libera vozes de todas as origens. Se um cancelamento ou erro ocorrer após confirmação de um domínio, o owner publica `PARTIAL_APPLY` com a máscara de domínios aplicados e conserva a última referência confirmada. Falha destrutiva de carregamento requer nova tentativa explícita do patch.
+
+As 229 máscaras de topologia de fábrica foram coletadas após materialização de cada timbre pelo próprio runtime. O teste com AMY real compara todas as máscaras com `captureEdit()`. O worker compara novamente a topologia efetiva antes de continuar uma troca. Com FX fora da máscara efetiva, MACROS precisa preservar a composição de FX. A seleção conjunta usa os dois valores da cena. Compare ativo impede recall de MACROS porque o DSP estaria em bypass de edição.
+
+## Catálogo e touchscreen
+
+- O adaptador lê oito slots em `scenes017b`. Save captura os domínios selecionados do snapshot confirmado. Save, Rename e Delete passam por Storage Quiet na tarefa de controle, com cancelamento até a chamada de escrita e leitura de verificação do banco.
+- O codec v2 adiciona quatro bytes para a revisão de Pattern. Registros v1 continuam legíveis. Um v1 com PATTERN precisa ser recapturado para recuperar esse domínio com uma revisão fixada. Serão rejeitadas referências cuja revisão persistida já mudou. Os passos permanecem na biblioteca de Patterns.
+- A referência e o baseline do último Save ou Recall confirmado alimentam CLEAN, MODIFIED, UNSAVED, INVALID e PENDING. Na seleção parcial, a interface sinaliza a configuração híbrida enquanto ela corresponder ao snapshot obtido no recall. Mudanças posteriores nos domínios persistentes marcam MODIFIED. Playhead, transporte, sustain e Live Transpose transitório ficam fora da comparação.
+- O painel SCENES abre pela área de acesso rápido da tela Performance. Os botões numerados solicitam troca imediata, com os locks atuais e sem aplicar o tempo da cena. O modal mostra seleção, locks, máscara efetiva, compatibilidade, modo de troca e opção de descarte de Pattern. Panic permanece disponível no modal.
+- O snapshot distingue espera de fronteira, espera do patch e resultados terminais. Validação, preparação, aplicação e verificação síncronas cabem na mesma passagem do owner e não aparecem como animações separadas.
+- O perfil MIDI existente permanece preservado. Os destinos específicos de Scene e sua exposição no MIDI Learn ficam pendentes.
