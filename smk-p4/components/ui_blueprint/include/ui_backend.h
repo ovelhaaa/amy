@@ -3,6 +3,7 @@
 #include <cstdint>
 #include "../../amy_runtime/arpeggiator.h"
 #include "../../amy_runtime/step_sequencer_protocol.h"
+#include "../../amy_runtime/pattern_library.h"
 #include "../../amy_runtime/tap_tempo.h"
 #include "../../amy_runtime/performance_macros.h"
 
@@ -51,6 +52,15 @@ struct UiCommandResult {
                state == UiCommandState::Requested ||
                state == UiCommandState::DemoApplied;
     }
+};
+
+enum class PatternAction : uint8_t { Load, Save, Rename, Delete, SaveAndLoad, Cancel };
+struct PatternOperation {
+    PatternAction action=PatternAction::Load;
+    uint8_t slot=0;
+    seq::SwitchMode mode=seq::SwitchMode::Immediate;
+    bool discard=false;
+    char name[seq::kPatternNameBytes]{};
 };
 
 // Presentation density level (Section 7):
@@ -124,6 +134,10 @@ public:
     virtual const seq::Pattern* sequencerPattern() const { return nullptr; }
     virtual UiCommandResult sequencerResult() const { return {UiCommandState::Unsupported,0,"ENGINE UNAVAILABLE"}; }
     virtual UiCommandResult requestSequencer(const seq::Request&) { return sequencerResult(); }
+    virtual const seq::Slot* patternSlot(unsigned) const { return nullptr; }
+    virtual const char* patternNotice() const { return ""; }
+    virtual bool patternBusy() const { return false; }
+    virtual void requestPattern(const PatternOperation&) {}
     struct DelayStatus {
         float target_ms=0,applied_ms=0;
         bool sync=false,out_of_range=false,bypassed=false;

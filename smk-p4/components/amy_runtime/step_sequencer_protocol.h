@@ -5,7 +5,7 @@
 
 namespace smk::p4::seq {
 
-constexpr uint8_t kProtocolVersion=2;
+constexpr uint8_t kProtocolVersion=3;
 constexpr uint32_t kConfirmationTimeoutMs=2000;
 constexpr unsigned kQueueCapacity=4;
 enum class Action : uint8_t {
@@ -13,7 +13,8 @@ enum class Action : uint8_t {
     SetEnabled, SetSwing, SetTranspose, SetQuantize,
     SelectStep, SetInputMode, SetInputChannel, SetLiveChannel, SetRecordGate,
     SetReference, SetLive, SetThru, SetSmkOnly, Rest, SetStepNote, SetStepVelocity, SetStepGate,
-    SetStepEnabled, ShiftStepNote, MoveStep, ToggleStepEnabled
+    SetStepEnabled, ShiftStepNote, MoveStep, ToggleStepEnabled,
+    LoadSlot, MarkSlotSaved, DetachSlot, CancelSwitch
 };
 
 struct Request {
@@ -23,8 +24,17 @@ struct Request {
     uint32_t submitted_ms=0;
     int16_t value=0;
     uint8_t index=0, version=kProtocolVersion;
+    tempo::Division division=tempo::Division::Sixteenth;
+    uint8_t swing=50;
+    int8_t transpose=0;
+    bool quantize=false, discard=false;
     Action action=Action::Play;
     bool select=false, timed=false;
+
+    PatternSettings settings() const { return {pattern,division,swing,transpose,quantize}; }
+    void setSettings(const PatternSettings& s) {
+        pattern=s.pattern; division=s.division; swing=s.swing; transpose=s.transpose; quantize=s.quantize;
+    }
 };
 
 // SPSC, with an independent Stop slot. The returned entry remains owned by

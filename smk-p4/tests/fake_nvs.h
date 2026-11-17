@@ -12,7 +12,7 @@ inline unsigned writes=0;
 }
 extern "C" {
 esp_err_t nvs_flash_init(){return ESP_OK;}
-esp_err_t nvs_open(const char* name,int,nvs_handle_t* h){if(std::strcmp(name,"sound011")==0)*h=1;else if(std::strcmp(name,"sound012fx")==0)*h=3;else *h=2;return ESP_OK;}
+esp_err_t nvs_open(const char* name,int,nvs_handle_t* h){if(std::strcmp(name,"sound011")==0)*h=1;else if(std::strcmp(name,"sound012fx")==0)*h=3;else if(std::strcmp(name,"patterns017")==0)*h=4;else *h=2;return ESP_OK;}
 void nvs_close(nvs_handle_t){}
 esp_err_t nvs_get_blob(nvs_handle_t h,const char* key,void* data,size_t* n){
     if(fake_nvs::read_error)return ESP_FAIL;

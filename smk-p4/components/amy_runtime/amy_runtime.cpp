@@ -397,7 +397,10 @@ void Runtime::applyUsb(uint32_t now_ms) {
     }
 #ifdef SMKP4_SOUND_EDITOR
     if(pattern_changed) state_.sequencer_pattern=sequencer_.pattern();
-    if(midi_changed) publishSequencer();
+    if(midi_changed) {
+        sequencer_.updateLibraryStatus();
+        publishSequencer();
+    }
 #endif
     if(q.generation()!=usb_generation_) { cancelUsb(); usb_generation_=q.generation(); }
 }
@@ -486,6 +489,23 @@ void Runtime::applySequencer(const seq::Request& request,uint32_t now_ms) {
          eventAgeMs(now_ms,request.submitted_ms)<seq::kConfirmationTimeoutMs);
     if(accepted) {
         switch(request.action) {
+        case Action::LoadSlot: {
+            bool release=false;
+            accepted=request.value>=0 && request.value<=int(seq::SwitchMode::NextBar) &&
+                sequencer_.load(request.index,request.settings(),seq::SwitchMode(request.value),
+                                request.discard,request.token,tempo_.position(),release);
+            if(release) releaseSequencer();
+            break;
+        }
+        case Action::MarkSlotSaved:
+            accepted=request.index<seq::kPatternSlots && seq::Engine::valid(request.settings());
+            if(accepted) sequencer_.markSaved(request.index,request.settings());
+            break;
+        case Action::DetachSlot:
+            accepted=request.index<seq::kPatternSlots;
+            if(accepted) sequencer_.detachSlot(request.index);
+            break;
+        case Action::CancelSwitch: sequencer_.cancelSwitch(); break;
         case Action::Play:
             accepted=sequencer_.play(tempo_.position());
             break;
@@ -577,7 +597,7 @@ void Runtime::applySequencer(const seq::Request& request,uint32_t now_ms) {
     }
     if(accepted) {
         switch(request.action) {
-        case Action::SetPattern: case Action::SetLength: case Action::SetStep:
+        case Action::LoadSlot: case Action::SetPattern: case Action::SetLength: case Action::SetStep:
         case Action::Rest: case Action::SetStepNote: case Action::SetStepVelocity:
         case Action::SetStepGate: case Action::SetStepEnabled: case Action::ShiftStepNote:
         case Action::ToggleStepEnabled:
@@ -586,12 +606,18 @@ void Runtime::applySequencer(const seq::Request& request,uint32_t now_ms) {
         default: break;
         }
     }
+    sequencer_.updateLibraryStatus();
     sequencer_.acknowledge(request.token,accepted,request.action==Action::Stop);
     publishSequencer();
 }
 
 void Runtime::serviceSequencer() {
+    const auto previous_slot=sequencer_.status().pending_slot;
     const auto events=sequencer_.update(tempo_.position());
+    if(previous_slot!=seq::kNoSlot && sequencer_.status().pending_slot==seq::kNoSlot) {
+        state_.sequencer_pattern=sequencer_.pattern();
+        sequencer_.updateLibraryStatus();
+    }
     if(events.release) releaseSequencer();
     if(events.velocity) {
         Command note{};
@@ -605,11 +631,16 @@ void Runtime::serviceSequencer() {
 }
 #endif
 void Runtime::applyFx(uint32_t now_ms) {
-    fx::FxRequest req;
     bool updated = false;
-    while(commands_.fx.pop(req)) {
+    for(unsigned i=0;i<fx::Mailbox::capacity;++i) {
+        const auto* entry=commands_.fx.front();
+        // Observe publication before sampling the generation. A request from
+        // after a concurrent Panic must survive until the owner catches up.
+        if(!entry || commands_.generation()!=state_.generation) break;
+        const auto req=*entry;
+        commands_.fx.consume();
         if(req.preset_recall && eventAgeMs(now_ms,req.recall_started_ms)>=kRecallTimeoutMs) continue;
-        if(req.generation != 0 && (req.generation != state_.generation || req.generation != commands_.generation())) {
+        if(req.generation != 0 && req.generation != state_.generation) {
             ++state_.fx.rejected;
             continue;
         }
@@ -722,11 +753,13 @@ void Runtime::apply(uint32_t now_ms) {
 #ifdef SMKP4_SOUND_EDITOR
     for(unsigned i=0;i<seq::kQueueCapacity;++i) {
         const auto* request=commands_.sequencer.front();
-        if(!request) break;
+        if(!request || (request->generation!=state_.generation &&
+                        request->generation==commands_.generation())) break;
         applySequencer(*request,now_ms);
         commands_.sequencer.consume();
     }
-    if(const auto* stop=commands_.sequencer.stop()) {
+    if(const auto* stop=commands_.sequencer.stop(); stop &&
+       (stop->generation==state_.generation || stop->generation!=commands_.generation())) {
         applySequencer(*stop,now_ms);
         commands_.sequencer.consumeStop();
     }

@@ -1,4 +1,5 @@
 #include "fake_nvs.h"
+#include "pattern_nvs.h"
 #include "ui_blueprint_performance_adapter.h"
 #include "local_performance_backend.h"
 #include "../ui-preview/preview_harness.h"
@@ -29,6 +30,13 @@ lv_obj_t* findButton(lv_obj_t* root,const char* text,bool prefix=false) {
     auto* button=lv_obj_get_parent(label);
     assert(lv_obj_check_type(button,&lv_button_class));
     return button;
+}
+
+lv_obj_t* findType(lv_obj_t* root,const lv_obj_class_t* type) {
+    if(lv_obj_check_type(root,type)) return root;
+    for(uint32_t i=0;i<lv_obj_get_child_count(root);++i)
+        if(auto* child=findType(lv_obj_get_child(root,int32_t(i)),type)) return child;
+    return nullptr;
 }
 
 lv_point_t touch_point;
@@ -379,6 +387,9 @@ int main(int argc,char** argv) {
     assert(snap.sequencer_pattern.steps[1].gate==53);
     click(content,"MIDI / REC");
     click(content,"LIVE TRANSPOSE OFF");
+    assert(findLabel(content,"ANY CAPTURES ALL MUSICAL NOTES.",true));
+    assert(!snap.sequencer.midi.live);
+    click(content,"LIVE TRANSPOSE OFF");
     block();
     click(content,"PLAY");
     block();
@@ -433,6 +444,90 @@ int main(int argc,char** argv) {
         assert(freeBytes()==unmounted);
     }
     std::printf("MEASURE LVGL heap free: sequencer=%zu bytes, FX=%zu bytes\n",mounted,unmounted);
+    NvsPatternStore patterns;
+    assert(patterns.begin());
+    adapter.setPatternStore(patterns);
+    click(app.rootObject(),"FX");
+    click(app.rootObject(),"SEQ");
+    runtime.commands().panic();
+    block();
+    const auto browser_heap=freeBytes();
+    click(content,"PATTERNS");
+    assert(findLabel(content,"01 EMPTY") && findLabel(content,"16 EMPTY"));
+    click(content,"SAVE");
+    assert(adapter.patternBusy());
+    assert(findLabel(content,"PATTERN MODIFIED   REQUESTED",true));
+    for(int i=0;i<10;++i) block();
+    assert(!adapter.patternBusy() && snap.sequencer.active_slot==0 && !snap.sequencer.modified);
+    assert(findLabel(content,"01 PATTERN 01 *"));
+    capture("pattern-library");
+    auto* name=findType(content,&lv_textarea_class);
+    assert(name);
+    lv_obj_send_event(name,LV_EVENT_CLICKED,nullptr);
+    auto* keyboard=findType(content,&lv_keyboard_class);
+    assert(keyboard);
+    lv_textarea_set_text(name,"Opening");
+    lv_obj_send_event(keyboard,LV_EVENT_READY,nullptr);
+    click(content,"RENAME");
+    for(int i=0;i<10;++i) block();
+    assert(findLabel(content,"01 Opening *"));
+    click(content,"02 EMPTY");
+    click(content,"SAVE");
+    for(int i=0;i<10;++i) block();
+    assert(snap.sequencer.active_slot==1 && !snap.sequencer.modified);
+    click(content,"CLOSE");
+    edit.value=40;
+    assert(adapter.requestSequencer(edit).accepted());
+    block();
+    assert(snap.sequencer.modified);
+    click(content,"PATTERNS");
+    click(content,"01 Opening");
+    click(content,"LOAD");
+    assert(findLabel(content,"PATTERN MODIFIED   CHOOSE",true));
+    capture("pattern-discard");
+    click(content,"DISCARD & LOAD");
+    block();
+    assert(snap.sequencer.active_slot==0 && !snap.sequencer.modified);
+    click(content,"CLOSE");
+    click(content,"PLAY");
+    block();
+    click(content,"PATTERNS");
+    click(content,"02 PATTERN 02");
+    click(content,"SWITCH MODE");
+    click(content,"LOAD");
+    block();
+    assert(snap.sequencer.pending_slot==1);
+    assert(findLabel(content,"02 PATTERN 02 >"));
+    capture("pattern-next-bar");
+    click(content,"CANCEL QUEUE");
+    block();
+    assert(snap.sequencer.pending_slot==seq::kNoSlot);
+    click(content,"CLOSE");
+    click(content,"STOP");
+    block();
+    click(content,"PATTERNS");
+    click(content,"02 PATTERN 02");
+    click(content,"DELETE");
+    click(content,"DELETE");
+    for(int i=0;i<10;++i) block();
+    assert(findLabel(content,"02 EMPTY"));
+    click(content,"LOAD");
+    assert(findLabel(content,"PATTERN CLEAN   REJECTED",true));
+    capture("pattern-error");
+    click(content,"CLOSE");
+    capture("pattern-active");
+    // LVGL alternates two allocations after a close. Warm both paths and
+    // compare the same point in that cycle to catch cumulative leakage.
+    size_t settled[2]{};
+    for(int i=0;i<28;++i) {
+        click(content,"PATTERNS");
+        click(content,"CLOSE");
+        if(i==2 || i==3) settled[i%2]=freeBytes();
+        if(i>=4) assert(freeBytes()==settled[i%2]);
+    }
+    std::printf("MEASURE pattern browser closed free before=%zu after=%zu bytes\n",browser_heap,freeBytes());
+    puts("PASS 017A LVGL browser save/load, dirty confirmation, queued/cancel, rename/delete, errors and lifecycle");
+
     app.shutdown();
     lv_indev_delete(input);
     runtime.end();

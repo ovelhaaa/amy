@@ -1133,10 +1133,180 @@ void UiBlueprintPerformanceAdapter::serviceSequencer() {
         seq_result_={UiCommandState::Requested,token,"COMMAND PENDING"};
 }
 
+void UiBlueprintPerformanceAdapter::setPatternStore(seq::PatternStore& store) {
+    pattern_store_=&store;
+    for(unsigned i=0;i<seq::kPatternSlots;++i) pattern_slots_[i]=store.load(i);
+}
+
+void UiBlueprintPerformanceAdapter::finishPattern(const char* notice) {
+    pattern_phase_=PatternPhase::Idle;
+    pattern_wait_boundary_=pattern_follow_load_=false;
+    pattern_notice_=notice;
+}
+
+bool UiBlueprintPerformanceAdapter::submitPattern(const seq::Request& request) {
+    if(seq_command_.token || seq_stop_.token || seq_deferred_count_) return false;
+    const auto result=requestSequencer(request);
+    if(result.state!=UiCommandState::Requested || !result.token) return false;
+    pattern_token_=result.token;
+    pattern_generation_=backend_.sequencerGeneration();
+    pattern_started_=now_ms_;
+    pattern_phase_=PatternPhase::Ack;
+    pattern_notice_="REQUESTED";
+    return true;
+}
+
+void UiBlueprintPerformanceAdapter::requestPattern(const ui::PatternOperation& operation) {
+    using ui::PatternAction;
+    const auto* status=sequencerStatus();
+    if(!pattern_store_ || !status || operation.slot>=seq::kPatternSlots) {
+        pattern_notice_="REJECTED / LIBRARY UNAVAILABLE";
+        return;
+    }
+    if(operation.action==PatternAction::Cancel) {
+        if(pattern_phase_==PatternPhase::Quiet || pattern_phase_==PatternPhase::Writing) {
+            backend_.releaseStorageQuiet();
+            finishPattern("CANCELLED");
+        } else if(pattern_phase_==PatternPhase::Boundary || status->pending_slot!=seq::kNoSlot) {
+            seq::Request request;
+            request.action=seq::Action::CancelSwitch;
+            pattern_wait_boundary_=false;
+            if(!submitPattern(request)) pattern_notice_="REJECTED / QUEUE BUSY";
+        } else if(!patternBusy()) finishPattern("CANCELLED");
+        return;
+    }
+    if(patternBusy() && !(pattern_phase_==PatternPhase::Boundary && operation.action==PatternAction::Load))
+        return;
+
+    const auto& selected=pattern_slots_[operation.slot];
+    if(operation.action==PatternAction::Load) {
+        if(selected.state!=seq::SlotState::Valid || (status->modified && !operation.discard)) {
+            pattern_notice_="REJECTED / CHECK SLOT AND UNSAVED EDITS";
+            return;
+        }
+        seq::Request request;
+        request.action=seq::Action::LoadSlot;
+        request.index=operation.slot;
+        request.value=int16_t(operation.mode);
+        request.discard=operation.discard;
+        request.setSettings(selected.settings);
+        const bool wait_boundary=operation.mode==seq::SwitchMode::NextBar;
+        if(submitPattern(request)) pattern_wait_boundary_=wait_boundary;
+        else pattern_notice_="REJECTED / QUEUE BUSY";
+        return;
+    }
+
+    const bool save=operation.action==PatternAction::Save || operation.action==PatternAction::SaveAndLoad;
+    const bool follow=operation.action==PatternAction::SaveAndLoad;
+    const auto write_slot=follow?status->active_slot:operation.slot;
+    if(write_slot>=seq::kPatternSlots || (follow && selected.state!=seq::SlotState::Valid) ||
+       (!save && selected.state!=seq::SlotState::Valid) ||
+       (save && pattern_slots_[write_slot].state==seq::SlotState::Incompatible)) {
+        pattern_notice_="REJECTED / CHECK SLOT";
+        return;
+    }
+    auto next=pattern_slots_[write_slot];
+    if(operation.action==PatternAction::Delete) next=seq::Slot{};
+    else {
+        next.state=seq::SlotState::Valid;
+        if(!follow && (operation.name[0] || operation.action==PatternAction::Rename))
+            std::memcpy(next.name,operation.name,sizeof(next.name));
+        if(save && !next.name[0]) std::snprintf(next.name,sizeof(next.name),"PATTERN %02u",write_slot+1u);
+        if(!seq::validName(next.name)) {
+            pattern_notice_="REJECTED / INVALID NAME";
+            return;
+        }
+    }
+    if(status->playing || seq_command_.token || seq_stop_.token || seq_deferred_count_ ||
+       !backend_.requestStorageQuiet()) {
+        pattern_notice_="REJECTED / STOP AND RELEASE NOTES TO WRITE";
+        return;
+    }
+    pattern_write_=next;
+    pattern_op_=operation;
+    pattern_write_slot_=write_slot;
+    pattern_follow_load_=follow;
+    pattern_started_=now_ms_;
+    pattern_phase_=PatternPhase::Quiet;
+    pattern_notice_="REQUESTED / WAITING FOR STORAGE QUIET";
+}
+
+void UiBlueprintPerformanceAdapter::servicePattern() {
+    using ui::PatternAction;
+    const auto* status=sequencerStatus();
+    const bool expired=uint32_t(now_ms_-pattern_started_)>=seq::kConfirmationTimeoutMs;
+    switch(pattern_phase_) {
+    case PatternPhase::Idle: return;
+    case PatternPhase::Quiet:
+        if(backend_.storageQuiet()) {
+            pattern_phase_=PatternPhase::Writing;
+            pattern_notice_="WRITING / AUDIO SILENCED";
+        } else if(expired) {
+            backend_.releaseStorageQuiet();
+            finishPattern("TIMEOUT / STORAGE QUIET");
+        }
+        return;
+    case PatternPhase::Writing: {
+        const auto* pattern=sequencerPattern();
+        const bool save=pattern_op_.action==PatternAction::Save || pattern_follow_load_;
+        if(save && status && pattern)
+            pattern_write_.settings={*pattern,status->division,status->swing,status->transpose,status->quantize};
+        const bool saved=backend_.storageQuiet() && (!save || (status && pattern)) &&
+            pattern_store_->commit(pattern_write_slot_,pattern_write_);
+        pattern_slots_[pattern_write_slot_]=pattern_store_->load(pattern_write_slot_);
+        backend_.releaseStorageQuiet();
+        if(!saved) finishPattern("REJECTED / WRITE NOT VERIFIED");
+        else if(pattern_op_.action==PatternAction::Rename) finishPattern("CONFIRMED / RENAMED");
+        else {
+            pattern_phase_=PatternPhase::Resume;
+            pattern_started_=now_ms_;
+            pattern_notice_="REQUESTED / WAITING FOR AUDIO OWNER";
+        }
+        return;
+    }
+    case PatternPhase::Resume: {
+        if(!backend_.busy() && status) {
+            seq::Request request;
+            request.action=pattern_op_.action==PatternAction::Delete?seq::Action::DetachSlot:seq::Action::MarkSlotSaved;
+            request.index=pattern_write_slot_;
+            request.setSettings(pattern_write_.settings);
+            if(submitPattern(request)) return;
+        }
+        if(expired) finishPattern("TIMEOUT / SLOT WRITTEN, OWNER UNCONFIRMED");
+        return;
+    }
+    case PatternPhase::Ack:
+        if(!status || backend_.sequencerGeneration()!=pattern_generation_) finishPattern("CANCELLED / GENERATION CHANGED");
+        else if(status->command.token==pattern_token_) {
+            if(status->command.rejected) finishPattern("REJECTED / OWNER");
+            else if(pattern_wait_boundary_ && status->switch_token==pattern_token_ &&
+                    status->pending_slot!=seq::kNoSlot) {
+                pattern_phase_=PatternPhase::Boundary;
+                pattern_notice_="CONFIRMED / NEXT BAR QUEUED";
+            } else if(pattern_wait_boundary_ && status->switch_token==pattern_token_ && status->switch_cancelled) {
+                finishPattern("CANCELLED / PENDING SWITCH");
+            } else if(pattern_follow_load_) {
+                auto follow=pattern_op_;
+                follow.action=PatternAction::Load;
+                finishPattern("CONFIRMED / SAVED");
+                requestPattern(follow);
+            } else finishPattern("CONFIRMED");
+        } else if(expired) finishPattern("TIMEOUT / OWNER CONFIRMATION");
+        return;
+    case PatternPhase::Boundary:
+        if(!status || backend_.sequencerGeneration()!=pattern_generation_ || status->switch_token!=pattern_token_)
+            finishPattern("CANCELLED / PENDING SWITCH");
+        else if(status->pending_slot==seq::kNoSlot)
+            finishPattern(status->switch_cancelled?"CANCELLED / PENDING SWITCH":"CONFIRMED / LOADED");
+        return;
+    }
+}
+
 void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     now_ms_=now_ms; backend_.service(now_ms);
     serviceArp();
     serviceSequencer();
+    servicePattern();
     if(tempo_save_bpm_ && (backend_.storageQuiet() || now_ms_-tempo_save_started_ms_>=2000)) {
         const bool saved=backend_.storageQuiet() && save_tempo_(tempo_save_bpm_);
         backend_.releaseStorageQuiet();

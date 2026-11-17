@@ -63,6 +63,13 @@ public:
     const seq::Pattern* sequencerPattern() const override { return backend_.sequencerPattern(); }
     ui::UiCommandResult sequencerResult() const override;
     ui::UiCommandResult requestSequencer(const seq::Request&) override;
+    void setPatternStore(seq::PatternStore&);
+    const seq::Slot* patternSlot(unsigned slot) const override {
+        return pattern_store_ && slot<seq::kPatternSlots?&pattern_slots_[slot]:nullptr;
+    }
+    const char* patternNotice() const override { return pattern_notice_; }
+    bool patternBusy() const override { return pattern_phase_!=PatternPhase::Idle; }
+    void requestPattern(const ui::PatternOperation&) override;
     uint8_t activeSequencerStep() const override {
         const auto* status=sequencerStatus();
         return status?status->current_step:seq::kNoStep;
@@ -109,6 +116,19 @@ private:
     ui::UiCommandResult submitArp(arp::Action,uint8_t,const char*);
     void serviceArp();
     void serviceSequencer();
+    void servicePattern();
+    void finishPattern(const char*);
+    bool submitPattern(const seq::Request&);
+    enum class PatternPhase { Idle, Quiet, Writing, Resume, Ack, Boundary };
+    PatternPhase pattern_phase_=PatternPhase::Idle;
+    seq::PatternStore* pattern_store_=nullptr;
+    seq::Slot pattern_slots_[seq::kPatternSlots]{};
+    seq::Slot pattern_write_;
+    ui::PatternOperation pattern_op_;
+    const char* pattern_notice_="";
+    uint32_t pattern_started_=0, pattern_token_=0, pattern_generation_=0;
+    uint8_t pattern_write_slot_=0;
+    bool pattern_follow_load_=false,pattern_wait_boundary_=false;
     struct SequencerRequest {
         uint32_t token=0, generation=0, requested_ms=0;
     };
