@@ -130,13 +130,16 @@ public:
 
         if (view_mode == 0) {
             // ── MACRO FOCUS (SMK25 Physical Controller Stage View) ────────────
+            const bool scenes=backend.sceneSlot(0)!=nullptr;
+            const int32_t macro_height=scenes?56:74;
+            const int32_t macro_spacing=scenes?60:78;
             for (uint8_t i = 0; i < 8; ++i) {
                 const int32_t mx = 8 + (i % 4) * 198;
-                const int32_t my = 108 + (i / 4) * 78;
-                createParameterSlider(parent, backend, kMacroIds[i], mx, my, 190, 74,
+                const int32_t my = 108 + (i / 4) * macro_spacing;
+                createParameterSlider(parent, backend, kMacroIds[i], mx, my, 190, macro_height,
                                       PresentationLevel::StageMinimal, kMacroLabels[i]);
             }
-            if(backend.sceneSlot(0)) {
+            if(scenes) {
                 auto* browser=createActionButton(parent,"SCENES",8,227,80,34,nullptr,nullptr);
                 attachLvContext<UiNavigationManager*>(browser,&nav,[](lv_event_t* e) {
                     auto* navigation=*static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
@@ -254,16 +257,24 @@ public:
                 const auto* slot=backend.sceneSlot(i);
                 if(slot && slot->state==seq::SlotState::Valid) lv_obj_remove_state(quick_[i],LV_STATE_DISABLED);
                 else lv_obj_add_state(quick_[i],LV_STATE_DISABLED);
-                const bool active=view.recall.active==i || view.recall.pending==i;
-                if(active) lv_obj_add_state(quick_[i],LV_STATE_CHECKED);
-                else lv_obj_remove_state(quick_[i],LV_STATE_CHECKED);
+                const auto color=view.recall.pending==i?palette::kWarning:
+                    view.recall.active==i?palette::kActive:palette::kPanelHighlight;
+                const auto next=lv_color_hex(color);
+                if(!lv_color_eq(next,lv_obj_get_style_bg_color(quick_[i],LV_PART_MAIN)))
+                    lv_obj_set_style_bg_color(quick_[i],next,0);
+                auto* label=lv_obj_get_child(quick_[i],0);
+                const auto ink=lv_color_hex(color==palette::kPanelHighlight?palette::kTextPrimary:palette::kBackground);
+                if(!lv_color_eq(ink,lv_obj_get_style_text_color(label,LV_PART_MAIN)))
+                    lv_obj_set_style_text_color(label,ink,0);
             }
             const bool pending=view.recall.pending!=seq::kNoSlot;
             const auto* selected=backend.sceneSlot(pending?view.recall.pending:view.recall.active);
             char message[48];
             const char* state=pending?"PENDING":view.dirty==scene::Dirty::Clean?"CLEAN":
-                view.dirty==scene::Dirty::Modified?"MODIFIED":view.dirty==scene::Dirty::Invalid?"INVALID":"NOW";
-            std::snprintf(message,sizeof(message),"%s%s%s",state,selected?" / ":"",selected?selected->config.name:"");
+                view.dirty==scene::Dirty::Modified?"MODIFIED":view.dirty==scene::Dirty::Invalid?"INVALID":"UNSAVED";
+            const char* mode=view.recall.phase==scene::RecallPhase::WaitingBoundary?"NEXT BAR / ":"NOW / ";
+            std::snprintf(message,sizeof(message),"%s%s%s%s",mode,state,
+                selected?" / ":"",selected?selected->config.name:"");
             if(std::strcmp(lv_label_get_text(quick_status_),message)) lv_label_set_text(quick_status_,message);
         }
         if (kb_) {

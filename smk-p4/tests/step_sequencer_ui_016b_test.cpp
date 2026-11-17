@@ -656,6 +656,10 @@ int main(int argc,char** argv) {
     assert(snap.scene.phase==scene::RecallPhase::Confirmed && snap.scene.active==1);
     assert(app.navigation().returnToPerformance());
     frame();
+    lv_area_t macro_bounds{},quick_bounds{};
+    lv_obj_get_coords(lv_obj_get_parent(findLabel(content,"ATTACK")),&macro_bounds);
+    lv_obj_get_coords(findButton(content,"SCENES"),&quick_bounds);
+    assert(macro_bounds.y2<quick_bounds.y1);
     click(content,"3");
     block();
     if(snap.scene.phase==scene::RecallPhase::WaitingPatch) block();
