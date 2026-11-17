@@ -66,3 +66,52 @@ Capturas de 800×480: [vazio](performance_scenes_017b_shots/scenes-empty.png), [
 **PASS** nos dois builds da Guition. RAM, Flash e SHA-256 estão no [candidato de hardware](performance_scenes_017b_hardware_candidate.md).
 
 **NO-GO para aceitação integral da 0.17B.** O loader existente ainda aloca na fase silenciada da tarefa `amy_owner`. O probe confirmou ausência de alocação em `apply()` e `render()`, mas não cobre o requisito de ausência de alocação durante toda a tarefa. A UI também agrega VALIDATING, PREPARING, APPLYING e VERIFYING dentro de uma passagem síncrona, sem snapshots observáveis para cada etapa. A qualificação física permanece PENDING.
+
+## Auditoria de hardening
+
+`./smk-p4/tests/run_performance_scenes_017b.ps1 -ReuseObjects -RuntimeOnly` executa AMY real com wrappers de `malloc`, `calloc`, `realloc` e `free`. A primeira execução do stress **FAIL**: o teste enviou Disable do Arp sem versão e token aceitos, e o acorde USB foi roteado ao Arp. O fixture passou a usar o protocolo real.
+
+**PASS** em 1.000 recalls imediatos, 250 de cada máscara FULL, PATCH+FX, Pattern-only e FX-only. O teste alterna Juno/DX7, libera oito vozes sustentadas nas barreiras, liga Arp e sequenciador juntos em recalls FX-only, injeta OOM e Panic durante a carga e rejeita um segundo pedido durante a transação. Checa máscaras, tokens, gerações, notas, estados terminais, heap vivo por topologia e liberação na parada. Os casos dirigidos precedentes cobrem NEXT BAR, timeout lógico, Stop, Storage Quiet, desconexão, revisão obsoleta e PARTIAL_APPLY. O probe permaneceu ativo em `apply()` e `render()`.
+
+| Métrica host | Resultado |
+| --- | --- |
+| Loader, 500 tentativas, execução anterior com builds/regressões concorrentes | Média 1.968,3 µs, máximo 7.968,4 µs. Três cargas passaram de 5.333 µs. |
+| Loader, 500 tentativas, execução com a verificação final de cancelamento e caso Arp/sequenciador | Média 1.595,0 µs, máximo 3.434,1 µs. Zero cargas passaram de 5.333 µs. |
+| Trabalho de heap por tentativa | Até 24 alocações bem-sucedidas e até 2.880 B alocados e 2.880 B liberados. Pico observado de 880.618 B rastreados no processo durante toda a execução, incluindo boot e pools. Heap e objetos vivos estáveis por topologia, com retorno ao baseline no teardown. |
+| Caminho normal, 6.227 blocos | `apply()` média/máximo 8,6/459,2 µs. `render()` 36,2/787,7 µs. |
+
+As durações usam `steady_clock` e incluem preempção do host. Os wrappers cobrem chamadas interceptadas pelos objetos do harness. O ponto de injeção de OOM e o de Panic foram exercitados 16 vezes cada. O heap contíguo, buffers no driver e lacunas físicas são medições MANUAL.
+
+### Regressões executadas no hardening
+
+| Scripts em `smk-p4/tests/` | Resultado |
+| --- | --- |
+| `run_performance_scenes_017b.ps1 -ReuseObjects -RuntimeOnly` | PASS. Recall, persistência simulada, stress, máscaras e heap descritos acima. |
+| `run_pattern_library_017a.ps1`, `run_step_sequencer_016a.ps1`, `run_step_sequencer_midi_016c.ps1` | PASS. Biblioteca, clock, notas, controle, captura e Live Transpose. |
+| `run_performance_lock_0152a.ps1`, `run_patch_load_0152.ps1`, `run_owner_stack_0152.ps1` | PASS. Locks, loader e casos de pressão de stack. |
+| `run_step_sequencer_ui_016b.ps1 -LvglRoot build/scene-lvgl-locked` | PASS. LVGL 9.3 fixado e AMY real. Patterns e Scenes, escrita/cancelamento, navegação, lifecycle e aplicação parcial. Heap livre no host 66.376 B na tela vazia e 52.280 B com modal. |
+| `run_sound_editor.ps1`, `run_harmony.ps1 -ReuseObjects` | PASS. Edição, V4, 687 trocas da biblioteca de fábrica, Harmony e testes musicais de USB. |
+| `run_usb.ps1`, `run_smk25_0142.ps1` | PASS. Enumeração e recuperação simuladas, eventos e roteamento SMK25. |
+| `run_arp_015.ps1 -Runtime -BaselineRoot build/arp_015_baseline` | PASS. Arp, Harmony, USB/Touch, Panic e PCM com Arp desligado idêntico ao baseline 0.14.2. |
+| `run_host.ps1` | PASS. Boot, geometria, PCM, preload I²S e erros injetados no driver simulado, mais 34 testes Python. |
+| `run_fx_tests.ps1 all` | PASS. 19 executáveis cobriram Global Tempo, Delay SYNC, mudanças ao vivo, FX, geração, concorrência e persistência V4 com falhas simuladas. |
+| `pio run -d smk-p4 -e <perfil> -j 8` | PASS com `C:/.platformio/penv/Scripts/pio.exe` nos perfis `guition-editor-8` e `guition-editor-8-bench`. Configurações efetivas, tamanhos e hashes no candidato de hardware. |
+
+Os primeiros builds pós-hardening tiveram uma passagem intermediária do editor e uma falha na tentativa concorrente dos perfis finais. **FAIL** no editor com `WinError 32` ao substituir LVGL e no bench com `lv_group.c` ausente na pasta gerenciada compartilhada. O componente 9.3.0 foi restaurado a partir da cópia local com o mesmo hash do lockfile e os perfis foram repetidos em sequência.
+
+### Stack e memória
+
+**PASS** na compilação local de cinco unidades com o RISC-V do perfil bench e `-fstack-usage` acrescentado às entradas de `compile_commands.json`: `standalone_main.cpp`, `amy_runtime.cpp`, `amy.c`, `patches.c` e `instrument.c`. Frames estáticos em bytes: `runAudio` 3.488, `apply` 128, `serviceScene` 1.680, `applyEdit(Request)` 1.312, `render` 32, `loadPendingPatch` 1.344, `loadReusable` 1.568, corpo de `patches_load_patch_checked` 304, `parse_patch_string_to_queue` 816, `instrument_init` 48 e `UnifiedOutput::run` 1.200 (outra tarefa).
+
+A soma dos frames listados no caminho de MACROS permanece em 6.608 B, igual ao baseline de integração. O caminho do parser no loader soma aproximadamente 7.520 B dos frames identificados. São somas parciais, sem descendentes adicionais do parser, DSP, IDF, heap e interrupções. A stack configurada continua 12.800 B. Usar o high-water de `AUDIO` e `OUTPUT08` para fechar a margem. O runtime, snapshot e mailbox de Scene no host continuam 14.880 B, 2.584 B e 1.472 B. Catálogo NVS, buffers fixos e catálogo LVGL mantêm o desenho da integração; a ocupação real varia com montagem e dados. O perfil bench deve amostrar heap interno, PSRAM e maior bloco antes/depois da troca.
+
+### Gate
+
+| Gate | Classificação | Evidência e condição restante |
+| --- | --- | --- |
+| SOFTWARE FUNCTIONALITY | PASS | Regressões host e builds com perfis verificados. |
+| REAL-TIME SAFETY | EXCEPTION PROPOSED | Alocações restritas ao loader com barreira ativa. Aceitação explícita e prova física da saída independente pendentes. |
+| HARDWARE QUALIFICATION | PENDING / MANUAL | Continuidade do I²S, duração de silêncio, stack e pressão de heap na Guition ainda precisam de medição. |
+| MERGE | NO-GO | Concluir qualificação física e decidir a exceção do loader e o gate de fases da UI. |
+
+O roteiro e os limiares propostos estão no [candidato de hardware](performance_scenes_017b_hardware_candidate.md). O mapa e a proposta para as fases da UI estão no [registro de decisão](performance_scenes_017b_loader_decision.md).

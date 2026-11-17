@@ -89,3 +89,9 @@ As 229 máscaras de topologia de fábrica foram coletadas após materialização
 - O painel SCENES abre pela área de acesso rápido da tela Performance. Os botões numerados solicitam troca imediata, com os locks atuais e sem aplicar o tempo da cena. O modal mostra seleção, locks, máscara efetiva, compatibilidade, modo de troca e opção de descarte de Pattern. Panic permanece disponível no modal.
 - O snapshot distingue espera de fronteira, espera do patch e resultados terminais. Validação, preparação, aplicação e verificação síncronas cabem na mesma passagem do owner e não aparecem como animações separadas.
 - O perfil MIDI existente permanece preservado. Os destinos específicos de Scene e sua exposição no MIDI Learn ficam pendentes.
+
+## Hardening do release gate
+
+Antes da confirmação, o owner volta a consultar as gerações UI e USB, o cancelamento pelo token e o pedido de Storage Quiet. Uma invalidação observada após escrita de domínios produz PARTIAL_APPLY e preserva a última referência confirmada. Os snapshots mantêm REQUESTED, espera de fronteira, espera de patch e resultados terminais. A proposta de aceitar as quatro fases síncronas como passos internos está no [registro de decisão](performance_scenes_017b_loader_decision.md).
+
+Na barreira, a tarefa `pcm_output08` mantém o I²S independente da reconstrução síncrona em `amy_owner`. O relatório serial mede a duração do loader, as gerações antes e depois e o maior intervalo entre inícios de refill. A qualificação física deve correlacionar esses dados com o áudio capturado e a margem de stack. O orçamento de um bloco é 5,333 ms. O refill tem uma fila DMA finita e a continuidade não pode ser deduzida apenas do tempo do loader.
