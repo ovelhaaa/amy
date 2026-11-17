@@ -79,3 +79,14 @@ Firmware do commit de código `5651ca1c9b6448d1939095cc5ffd4c051072327d`, compil
 ## Kit de qualificação 0.17B
 
 A captura, o inventário de telemetria e o protocolo A–H estão no [guia do kit](performance_scenes_017b_bench_guide.md). Os hashes da construção anterior permanecem como histórico. Use o manifesto novo do perfil bench e confirme `BENCH_ID` antes de associar medições à imagem. Continuidade I²S, RAM física, recuperação USB e persistência continuam PENDING sem evidência desta unidade.
+
+## Builds do kit de qualificação
+
+Builds sequenciais no commit `453add7b3a21168a0dc0b3a24fa513e414952588` com PlatformIO 6.1.18 e ESP-IDF 5.5.2. Os bundles locais estão em `build/release-017b/<perfil>/`. Cada pasta contém `firmware.bin`, tabela de partições, `sdkconfig`, log de build e `manifest.json` com SHA-256, hash ELF e flags efetivas.
+
+| Perfil | Resultado | RAM PIO | Flash PIO | Imagem | SHA-256 de firmware.bin |
+| --- | --- | ---: | ---: | ---: | --- |
+| guition-editor-8 | PASS | 61.632 B | 1.450.606 B | 1.451.328 B | `f55bd8d735ecf0871e2ecd3c6d6a0a676ea0642dad56a8f702ab9b11bd340d68` |
+| guition-editor-8-bench | PASS | 62.144 B | 1.554.100 B | 1.554.816 B | `45ef5cfe0f9b3b82daa71e5cc2edb91ef7d3e356274fc8e813cd59e9bd8ff07e` |
+
+O manifesto usa 0.17B como versão de produto. A versão do descritor do projeto ESP-IDF permanece 0.1.0. No perfil bench, o console publica `BENCH_ID` com o hash ELF `6b353619f4cdcbb036ed104b66395b1f0315f6b54c40afc18f19f9098586b5eb`. As duas imagens usam a mesma tabela compilada e offset de aplicação `0x10000`.

@@ -115,3 +115,33 @@ A soma dos frames listados no caminho de MACROS permanece em 6.608 B, igual ao b
 | MERGE | NO-GO | Concluir qualificação física e decidir a exceção do loader e o gate de fases da UI. |
 
 O roteiro e os limiares propostos estão no [candidato de hardware](performance_scenes_017b_hardware_candidate.md). O mapa e a proposta para as fases da UI estão no [registro de decisão](performance_scenes_017b_loader_decision.md).
+
+## Qualificação do kit
+
+Os comandos abaixo foram executados na raiz do repositório. Os builds usaram `C:/.platformio/penv/Scripts/pio.exe` conforme o [guia da bancada](performance_scenes_017b_bench_guide.md).
+
+| Validação | Comando | Resultado |
+| --- | --- | --- |
+| TEST FIXTURE | `python -m unittest discover -s smk-p4/tests/hardware_017b -v` | PASS, 18 testes. Exercitou cenários positivos e negativos, dados ausentes, geração, CSV/JSON, identidade, proveniência e preservação do log. |
+| HOST TEST | `./smk-p4/tests/run_performance_scenes_017b.ps1 -ReuseObjects -RuntimeOnly` | PASS, 1.000 recalls e 500 tentativas de carga medidas com AMY real. Heap rastreado estável por topologia. |
+| HOST TEST | `./smk-p4/tests/run_host.ps1`, `run_usb.ps1`, `run_pattern_library_017a.ps1`, `run_step_sequencer_016a.ps1`, `run_step_sequencer_midi_016c.ps1`, `run_performance_lock_0152a.ps1`, `run_patch_load_0152.ps1`, `run_owner_stack_0152.ps1`, `run_sound_editor.ps1` na pasta `smk-p4/tests` | PASS. Cobertura de boot, áudio/USB simulados, persistência, sequenciador/MIDI, Lock, loader, stack e editor. |
+| HOST TEST | `./smk-p4/tests/run_step_sequencer_ui_016b.ps1 -LvglRoot build/scene-lvgl-locked` | PASS. LVGL 9.3 e AMY real, incluindo catálogo de Scenes, recalls, cancelamento, Partial Apply e Panic. |
+| Build normal e bench em sequência | `pio run -d smk-p4 -e guition-editor-8 -j 8`, depois `pio run -d smk-p4 -e guition-editor-8-bench -j 8` | PASS nos dois perfis. `check_blueprint_build.py` aprovou ambas as configurações efetivas e o grep binário confirmou as novas linhas no perfil bench. |
+| Preflight local | `./smk-p4/tests/hardware_017b/preflight.ps1 -Port COM13 -Bundle build/release-017b/guition-editor-8-bench -Pio C:/.platformio/penv/Scripts/pio.exe` | PASS. Conferiu o bundle e enumerou a porta. O runner recusou COM9999 antes de iniciar uma sessão. |
+| REAL HARDWARE SESSION | Roteiro A–H na Guition com SMK25 e PCM5102A | MANUAL / PENDING. |
+
+Nesta execução host, 500 cargas tiveram média de 1.635,2 µs e máximo de 6.911,7 µs, com até 24 alocações por tentativa. O tempo de render host foi 38,5/4.874,2 µs (média/máximo, 6.227 blocos). A execução host inclui escalonamento do computador. O limite físico de 5.333 µs aplica-se a render, enquanto o loader opera durante a barreira musical.
+
+| Gate | Status |
+| --- | --- |
+| Software functionality | PASS |
+| Host regression | PASS |
+| Bench toolkit | PASS |
+| Hardware audio | PENDING |
+| Physical memory | PENDING |
+| USB recovery | PENDING |
+| Scene persistence | PENDING |
+| Loader exception | PROPOSED |
+| Final merge | NO-GO |
+
+O kit está pronto para a sessão física. A decisão de merge depende de evidência real de áudio, clock, stack, heap, USB e persistência, e de aprovação explícita da exceção do loader. Os limites e as fontes de evidência estão no [guia da bancada](performance_scenes_017b_bench_guide.md).
