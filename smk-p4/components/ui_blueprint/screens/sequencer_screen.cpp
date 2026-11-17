@@ -43,7 +43,7 @@ class SequencerScreen final : public ScreenView {
     enum Control : uint8_t {
         Play, Stop, Restart, Division, Quantize, OctaveDown, OctaveUp, Enabled,
         Demo, Clear, Settings, Editor, Close, Normal, StepInput, StepRecord, Live, Thru, Source,
-        PitchDown, PitchUp, PitchOctaveDown, PitchOctaveUp, InsertRest, ToggleStep, PrevStep, NextStep, SelectFirst
+        PitchDown, PitchUp, PitchOctaveDown, PitchOctaveUp, InsertRest, ToggleStep, PrevStep, NextStep, Patterns, SelectFirst
     };
     enum Parameter { Length, Swing, Transpose, Velocity, Gate, InputChannel, LiveChannel,
                      RecordGate, Reference, ParameterCount };
@@ -82,7 +82,15 @@ public:
         quantize_=button(parent,"",548,48,150,38,Quantize);
         button(parent,"MIDI / REC",700,48,92,38,Settings);
 
-        auto* grid=rectangle(parent,kGridX,kGridY,kGridWidth,kPitchRows*kRowHeight,palette::kBackground);
+        const bool library=backend.patternSlot(0)!=nullptr;
+        const int grid_y=library?153:kGridY;
+        row_height_=library?15:kRowHeight;
+        if(library) {
+            button(parent,"PATTERNS",8,88,123,34,Patterns);
+            pattern_summary_=createLabel(parent,"",144,97,630,&lv_font_montserrat_14,palette::kTextPrimary);
+        }
+
+        auto* grid=rectangle(parent,kGridX,grid_y,kGridWidth,kPitchRows*row_height_,palette::kBackground);
         lv_obj_add_flag(grid,LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(grid,[](lv_event_t* event) {
             auto* self=static_cast<SequencerScreen*>(lv_event_get_user_data(event));
@@ -98,19 +106,19 @@ public:
         for(int row=0;row<kPitchRows;++row) {
             const int pitch=11-row;
             const bool black=pitch==1 || pitch==3 || pitch==6 || pitch==8 || pitch==10;
-            rectangle(grid,0,row*kRowHeight,kGridWidth,kRowHeight-1,
+            rectangle(grid,0,row*row_height_,kGridWidth,row_height_-1,
                       pitch==0?palette::kPanelHighlight:black?palette::kKeyBlack:palette::kPanel);
-            pitches_[row]=createLabel(parent,"",8,kGridY+row*kRowHeight+1,50,&lv_font_montserrat_14,
+            pitches_[row]=createLabel(parent,"",8,grid_y+row*row_height_+1,50,&lv_font_montserrat_14,
                                       pitch==0?palette::kAccentPrimary:palette::kTextSecondary);
         }
         for(unsigned i=0;i<seq::kSteps;++i) {
             const auto x=int(i)*kColumnWidth;
-            headers_[i]=button(parent,"",kGridX+x,93,kColumnWidth-1,31,Control(SelectFirst+i));
-            if(i>0) rectangle(grid,x-1,0,i%4?1:2,kPitchRows*kRowHeight,palette::kBorder);
-            notes_[i]=rectangle(grid,x+4,0,kColumnWidth-9,kRowHeight-4,palette::kActive);
+            headers_[i]=button(parent,"",kGridX+x,grid_y-33,kColumnWidth-1,31,Control(SelectFirst+i));
+            if(i>0) rectangle(grid,x-1,0,i%4?1:2,kPitchRows*row_height_,palette::kBorder);
+            notes_[i]=rectangle(grid,x+4,0,kColumnWidth-9,row_height_-4,palette::kActive);
             show(notes_[i],false);
         }
-        playhead_=rectangle(grid,0,0,3,kPitchRows*kRowHeight,palette::kAccentPrimary);
+        playhead_=rectangle(grid,0,0,3,kPitchRows*row_height_,palette::kAccentPrimary);
         show(playhead_,false);
 
         button(parent,"OCT -",8,343,68,38,OctaveDown);
@@ -145,6 +153,19 @@ public:
             return;
         }
 
+        if(pattern_summary_) {
+            char active[64]="RAM";
+            char pending[24]{};
+            if(const auto* slot=backend.patternSlot(status->active_slot))
+                std::snprintf(active,sizeof(active),"%02u %s",status->active_slot+1u,
+                              slot->state==seq::SlotState::Valid?slot->name:"RAM");
+            if(status->pending_slot<seq::kPatternSlots)
+                std::snprintf(pending,sizeof(pending),"  NEXT %02u",status->pending_slot+1u);
+            char summary[112];
+            std::snprintf(summary,sizeof(summary),"%s  %s%s",active,status->modified?"MODIFIED":"CLEAN",pending);
+            text(pattern_summary_,summary);
+            refreshBrowser();
+        }
         const auto& midi=status->midi;
         const bool editing=midi.mode!=seq::InputMode::Normal;
         if(midi_revision_!=midi.revision) {
@@ -173,7 +194,7 @@ public:
                 selected_+1,last,midi.last_velocity,midi.smk_connected?"SMK25 OK":
                 backend.model().diagnostics().midi_connected?"USB MIDI OK":"USB WAITING",
                 status->transpose,midi.live_offset);
-            text(settings_info_,buf);
+            text(settings_info_,confirm_==Live?"ANY CAPTURES ALL MUSICAL NOTES. SET TRANSPOSE CH OR TAP LIVE AGAIN.":buf);
             text(lv_obj_get_child(live_,0),midi.live?"LIVE TRANSPOSE ON":"LIVE TRANSPOSE OFF");
             text(lv_obj_get_child(thru_,0),midi.thru?"AUDITION ON":"AUDITION OFF");
             text(lv_obj_get_child(source_,0),midi.smk_only?"SMK25 ONLY":"ANY USB MIDI");
@@ -233,7 +254,7 @@ public:
                     lv_color_hex(current || i==selected_?palette::kBackground:palette::kTextPrimary),0);
                 show(notes_[i],visible);
                 if(visible) {
-                    lv_obj_set_y(notes_[i],row*kRowHeight+2);
+                    lv_obj_set_y(notes_[i],row*row_height_+2);
                     const auto note_color=i>=pattern->length?palette::kTextSecondary:
                         i==selected_?palette::kTextPrimary:palette::kActive;
                     lv_obj_set_style_bg_color(notes_[i],lv_color_hex(note_color),0);
@@ -325,8 +346,8 @@ private:
 
     void chooseCell(int x,int y) {
         const auto* pattern=backend_->sequencerPattern();
-        if(!pattern || x<0 || x>=kGridWidth || y<0 || y>=kPitchRows*kRowHeight) return;
-        const int pitch=octave_*12+11-y/kRowHeight;
+        if(!pattern || x<0 || x>=kGridWidth || y<0 || y>=kPitchRows*row_height_) return;
+        const int pitch=octave_*12+11-y/row_height_;
         if(pitch>127) return;
         selected_=unsigned(x/kColumnWidth);
         saveSelection();
@@ -395,6 +416,183 @@ private:
         refresh(*backend_);
     }
 
+    enum class BrowserAction : uint8_t { Load, Save, Rename, Delete, Mode, Close, Cancel, Discard, SaveLoad };
+    struct BrowserContext { SequencerScreen* view; BrowserAction action; };
+    struct SlotContext { SequencerScreen* view; uint8_t slot; };
+
+    void browserButton(const char* label,int x,int y,int w,BrowserAction action) {
+        auto* obj=createActionButton(browser_,label,x,y,w,40,nullptr,nullptr);
+        attachLvContext<BrowserContext>(obj,{this,action},[](lv_event_t* event) {
+            auto* ctx=static_cast<BrowserContext*>(lv_event_get_user_data(event));
+            ctx->view->browserPress(ctx->action);
+        },LV_EVENT_CLICKED);
+    }
+
+    void openBrowser() {
+        if(browser_) return;
+        closePanel();
+        browser_=rectangle(parent_,0,0,800,385,palette::kPanel);
+        lv_obj_add_flag(browser_,LV_OBJ_FLAG_CLICKABLE);
+        createLabel(browser_,"PATTERNS",12,12,105,&lv_font_montserrat_14,palette::kTextPrimary);
+        browser_mode_=createLabel(browser_,"",128,12,170,&lv_font_montserrat_14,palette::kTextPrimary);
+        browserButton("SWITCH MODE",305,4,136,BrowserAction::Mode);
+        browserButton("CANCEL QUEUE",447,4,151,BrowserAction::Cancel);
+        browserButton("CLOSE",656,4,132,BrowserAction::Close);
+        for(uint8_t i=0;i<seq::kPatternSlots;++i) {
+            auto* obj=browser_slots_[i]=createActionButton(browser_,"",12+196*(i%4),53+46*(i/4),188,42,nullptr,nullptr);
+            auto* label=lv_obj_get_child(obj,0);
+            lv_obj_set_width(label,174);
+            lv_label_set_long_mode(label,LV_LABEL_LONG_DOT);
+            attachLvContext<SlotContext>(obj,{this,i},[](lv_event_t* event) {
+                auto* ctx=static_cast<SlotContext*>(lv_event_get_user_data(event));
+                ctx->view->browser_slot_=ctx->slot;
+                ctx->view->browser_confirm_=BrowserAction::Close;
+                ctx->view->fillName();
+                ctx->view->refreshBrowser();
+            },LV_EVENT_CLICKED);
+        }
+        browser_name_=lv_textarea_create(browser_);
+        lv_obj_set_pos(browser_name_,12,241);
+        lv_obj_set_size(browser_name_,216,40);
+        lv_textarea_set_one_line(browser_name_,true);
+        lv_textarea_set_max_length(browser_name_,seq::kPatternNameBytes-1);
+        lv_textarea_set_placeholder_text(browser_name_,"Pattern name");
+        lv_obj_add_event_cb(browser_name_,[](lv_event_t* event) {
+            auto* view=static_cast<SequencerScreen*>(lv_event_get_user_data(event));
+            view->showNameKeyboard();
+        },LV_EVENT_CLICKED,this);
+        browserButton("LOAD",236,241,128,BrowserAction::Load);
+        browserButton("SAVE",371,241,128,BrowserAction::Save);
+        browserButton("RENAME",506,241,128,BrowserAction::Rename);
+        browserButton("DELETE",641,241,147,BrowserAction::Delete);
+        browserButton("DISCARD & LOAD",12,292,186,BrowserAction::Discard);
+        browserButton("SAVE & LOAD",205,292,175,BrowserAction::SaveLoad);
+        browser_info_=createLabel(browser_,"",12,346,776,&lv_font_montserrat_14,palette::kWarning);
+        const auto* status=backend_->sequencerStatus();
+        if(status && status->active_slot<seq::kPatternSlots) browser_slot_=status->active_slot;
+        fillName();
+        refreshBrowser();
+    }
+
+    void showNameKeyboard() {
+        if(browser_keyboard_) return;
+        browser_keyboard_=lv_keyboard_create(browser_);
+        lv_obj_set_size(browser_keyboard_,776,168);
+        lv_obj_align(browser_keyboard_,LV_ALIGN_TOP_LEFT,12,65);
+        lv_keyboard_set_textarea(browser_keyboard_,browser_name_);
+        lv_obj_add_event_cb(browser_keyboard_,[](lv_event_t* event) {
+            const auto code=lv_event_get_code(event);
+            if(code!=LV_EVENT_READY && code!=LV_EVENT_CANCEL) return;
+            auto* view=static_cast<SequencerScreen*>(lv_event_get_user_data(event));
+            if(code==LV_EVENT_CANCEL) view->fillName();
+            lv_obj_delete(view->browser_keyboard_);
+            view->browser_keyboard_=nullptr;
+        },LV_EVENT_ALL,this);
+    }
+
+    void fillName() {
+        const auto* slot=backend_->patternSlot(browser_slot_);
+        lv_textarea_set_text(browser_name_,slot && slot->state==seq::SlotState::Valid?slot->name:"");
+    }
+
+    void refreshBrowser() {
+        if(!browser_) return;
+        const auto* status=backend_->sequencerStatus();
+        text(browser_mode_,browser_switch_==seq::SwitchMode::Immediate?"IMMEDIATE":"NEXT BAR / 4/4");
+        for(unsigned i=0;i<seq::kPatternSlots;++i) {
+            const auto* slot=backend_->patternSlot(i);
+            const bool active=status && i==status->active_slot;
+            const bool pending=status && i==status->pending_slot;
+            const char* name="UNAVAILABLE";
+            if(slot) {
+                switch(slot->state) {
+                case seq::SlotState::Empty: name="EMPTY"; break;
+                case seq::SlotState::Valid: name=slot->name; break;
+                case seq::SlotState::Corrupted: name="CORRUPTED"; break;
+                case seq::SlotState::Incompatible: name="INCOMPATIBLE"; break;
+                }
+            }
+            auto* obj=browser_slots_[i];
+            char label[40];
+            std::snprintf(label,sizeof(label),"%02u %s%s",i+1,name,pending?" >":active?" *":"");
+            auto* child=lv_obj_get_child(obj,0);
+            text(child,label);
+            const bool selected=i==browser_slot_;
+            if(browser_shown_slot_!=browser_slot_) {
+                lv_obj_set_style_bg_color(obj,lv_color_hex(selected?palette::kActive:palette::kPanelHighlight),0);
+                lv_obj_set_style_text_color(child,lv_color_hex(selected?palette::kBackground:palette::kTextPrimary),0);
+            }
+        }
+        browser_shown_slot_=browser_slot_;
+        const char* operation=backend_->patternNotice();
+        if(browser_confirm_==BrowserAction::Delete) operation="TAP DELETE AGAIN TO CONFIRM";
+        else if(browser_confirm_==BrowserAction::Load) operation="CHOOSE SAVE & LOAD, DISCARD & LOAD, OR CLOSE";
+        else if(browser_confirm_==BrowserAction::Save) operation="TAP SAVE AGAIN TO OVERWRITE THIS SLOT";
+        char message[112];
+        std::snprintf(message,sizeof(message),"%s   %s",
+                      status && status->modified?"PATTERN MODIFIED":"PATTERN CLEAN",
+                      *operation?operation:"STOP PLAYBACK TO SAVE, RENAME OR DELETE");
+        text(browser_info_,message);
+    }
+
+    void browserPress(BrowserAction action) {
+        if(action==BrowserAction::Close) {
+            lv_obj_delete(browser_);
+            browser_=browser_keyboard_=nullptr;
+            browser_shown_slot_=seq::kNoSlot;
+            browser_confirm_=BrowserAction::Close;
+            return;
+        }
+        if(action==BrowserAction::Mode) {
+            browser_switch_=browser_switch_==seq::SwitchMode::Immediate?seq::SwitchMode::NextBar:seq::SwitchMode::Immediate;
+            refreshBrowser();
+            return;
+        }
+        const auto* status=backend_->sequencerStatus();
+        const auto* slot=backend_->patternSlot(browser_slot_);
+        PatternOperation operation;
+        operation.slot=browser_slot_;
+        operation.mode=browser_switch_;
+        switch(action) {
+        case BrowserAction::Load:
+            if(status && status->modified && slot && slot->state==seq::SlotState::Valid) {
+                browser_confirm_=BrowserAction::Load;
+                refreshBrowser();
+                return;
+            }
+            break;
+        case BrowserAction::Discard:
+        case BrowserAction::SaveLoad:
+            if(browser_confirm_!=BrowserAction::Load) return;
+            operation.discard=action==BrowserAction::Discard;
+            if(!operation.discard) operation.action=PatternAction::SaveAndLoad;
+            break;
+        case BrowserAction::Save:
+            if(slot && slot->state==seq::SlotState::Valid && browser_confirm_!=action) {
+                browser_confirm_=action;
+                refreshBrowser();
+                return;
+            }
+            operation.action=PatternAction::Save;
+            break;
+        case BrowserAction::Delete:
+            if(browser_confirm_!=action) {
+                browser_confirm_=action;
+                refreshBrowser();
+                return;
+            }
+            operation.action=PatternAction::Delete;
+            break;
+        case BrowserAction::Rename: operation.action=PatternAction::Rename; break;
+        case BrowserAction::Cancel: operation.action=PatternAction::Cancel; break;
+        default: return;
+        }
+        browser_confirm_=BrowserAction::Close;
+        std::snprintf(operation.name,sizeof(operation.name),"%s",lv_textarea_get_text(browser_name_));
+        backend_->requestPattern(operation);
+        refreshBrowser();
+    }
+
     void press(Control control) {
         const auto* status=backend_->sequencerStatus();
         const auto* pattern=backend_->sequencerPattern();
@@ -418,6 +616,7 @@ private:
 
         seq::Request request;
         switch(control) {
+        case Patterns: openBrowser(); return;
         case Settings: case Editor: openPanel(control==Settings); return;
         case Close: closePanel(); return;
         case Normal: case StepInput: case StepRecord:
@@ -430,6 +629,11 @@ private:
             request.value=!status->midi.smk_only;
             break;
         case Live: case Thru:
+            if(control==Live && !status->midi.live && status->midi.transpose_channel==seq::kAnyChannel && !confirmed) {
+                confirm_=Live;
+                refresh(*backend_);
+                return;
+            }
             request.action=control==Live?seq::Action::SetLive:seq::Action::SetThru;
             request.value=control==Live?!status->midi.live:!status->midi.thru;
             break;
@@ -536,6 +740,12 @@ private:
 
     lv_obj_t *parent_=nullptr,*panel_=nullptr,*midi_=nullptr,*settings_info_=nullptr,
              *editor_note_=nullptr,*live_=nullptr,*thru_=nullptr,*source_=nullptr;
+    lv_obj_t *browser_=nullptr,*browser_mode_=nullptr,*browser_name_=nullptr,*browser_keyboard_=nullptr,
+             *browser_info_=nullptr,*pattern_summary_=nullptr;
+    lv_obj_t* browser_slots_[seq::kPatternSlots]{};
+    uint8_t browser_slot_=0,browser_shown_slot_=seq::kNoSlot;
+    seq::SwitchMode browser_switch_=seq::SwitchMode::Immediate;
+    BrowserAction browser_confirm_=BrowserAction::Close;
     uint32_t midi_revision_=0,capture_revision_=0;
     IUiBackend* backend_=nullptr;
     UiNavigationManager* nav_=nullptr;
@@ -548,6 +758,7 @@ private:
     lv_obj_t* notes_[seq::kSteps]{};
     std::array<seq::Step,seq::kSteps> shown_steps_{};
     int octave_=5,shown_octave_=-1;
+    int row_height_=kRowHeight;
     unsigned selected_=0,shown_selected_=seq::kSteps,shown_length_=0;
     uint8_t shown_playhead_=seq::kNoStep;
     seq::InputMode shown_mode_=seq::InputMode::Normal;

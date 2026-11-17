@@ -118,6 +118,7 @@ struct FxRequest {
 template<unsigned Capacity = 8>
 class FxQueue {
 public:
+    static constexpr unsigned capacity=Capacity;
     bool push(const FxRequest& r) {
         const uint32_t w = write_.load(std::memory_order_relaxed);
         if (w - read_.load(std::memory_order_acquire) >= Capacity) return false;
@@ -125,11 +126,18 @@ public:
         write_.store(w + 1, std::memory_order_release);
         return true;
     }
-    bool pop(FxRequest& r) {
+    const FxRequest* front() const {
         const uint32_t r_idx = read_.load(std::memory_order_relaxed);
-        if (r_idx == write_.load(std::memory_order_acquire)) return false;
-        r = slots_[r_idx % Capacity];
-        read_.store(r_idx + 1, std::memory_order_release);
+        return r_idx==write_.load(std::memory_order_acquire)?nullptr:&slots_[r_idx % Capacity];
+    }
+    void consume() {
+        read_.store(read_.load(std::memory_order_relaxed)+1,std::memory_order_release);
+    }
+    bool pop(FxRequest& r) {
+        const auto* entry=front();
+        if(!entry) return false;
+        r=*entry;
+        consume();
         return true;
     }
     // SPSC discipline: ONLY the consumer (audio task) advances read_.

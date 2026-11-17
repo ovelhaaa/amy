@@ -15,6 +15,7 @@
 #include "user_preset_fx_nvs.h"
 #include "controller_profile_nvs.h"
 #include "global_tempo_nvs.h"
+#include "pattern_nvs.h"
 #endif
 #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
 #include "ui_blueprint.h"
@@ -338,6 +339,10 @@ extern "C" void app_main() {
 #ifdef SMKP4_SOUND_EDITOR
     static smk::p4::performance::NvsControllerProfile controller_profile;
     adapter.setControllerProfileStore(controller_profile);
+    // Open at boot, before a control-task transaction can require storage quiet.
+    static smk::p4::NvsPatternStore patterns;
+    if(patterns.begin()) adapter.setPatternStore(patterns);
+    else ESP_LOGE(kTag,"Pattern library NVS unavailable");
     const unsigned boot_bpm=smk::p4::tempo::NvsTempo{}.load();
     if(boot_bpm!=smk::p4::tempo::kDefaultBpm &&
        !backend.setArp(smk::p4::arp::Action::Bpm,uint8_t(boot_bpm),uint32_t(esp_timer_get_time()/1000)))

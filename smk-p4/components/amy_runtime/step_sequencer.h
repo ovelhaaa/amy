@@ -12,12 +12,40 @@ constexpr uint8_t kNoStep=UINT8_MAX;
 struct Step {
     uint8_t note=60, velocity=100, gate=50;
     bool enabled=false;
+    bool operator==(const Step& other) const {
+        return note==other.note && velocity==other.velocity && gate==other.gate && enabled==other.enabled;
+    }
 };
 
 struct Pattern {
     std::array<Step,kSteps> steps{};
     uint8_t length=kSteps;
+    bool operator==(const Pattern& other) const {
+        return length==other.length && steps==other.steps;
+    }
 };
+
+constexpr uint8_t kPatternSlots=16;
+constexpr uint8_t kNoSlot=UINT8_MAX;
+enum class SwitchMode : uint8_t { Immediate, NextBar };
+
+struct PatternSettings {
+    Pattern pattern;
+    tempo::Division division=tempo::Division::Sixteenth;
+    uint8_t swing=50;
+    int8_t transpose=0;
+    bool quantize=false;
+    bool operator==(const PatternSettings& other) const {
+        return division==other.division && swing==other.swing && transpose==other.transpose &&
+            quantize==other.quantize && pattern==other.pattern;
+    }
+    bool operator!=(const PatternSettings& other) const { return !(*this==other); }
+};
+
+constexpr bool validDivision(tempo::Division division) {
+    return tempo::divisionNumerator(division) && division!=tempo::Division::DottedEighth &&
+        division!=tempo::Division::DottedSixteenth;
+}
 
 struct Acknowledgement {
     uint32_t token=0;
@@ -46,6 +74,9 @@ struct Status {
     uint8_t current_step=kNoStep, pattern_length=kSteps, swing=50;
     int8_t transpose=0;
     bool playing=false, enabled=true, quantize=false, rejected=false;
+    uint32_t switch_token=0;
+    uint8_t active_slot=kNoSlot, pending_slot=kNoSlot;
+    bool modified=false, switch_cancelled=false;
 };
 
 struct Events {
@@ -58,6 +89,58 @@ public:
     const Status& status() const { return status_; }
 
     const Pattern& pattern() const { return pattern_; }
+    PatternSettings settings() const {
+        return {pattern_,status_.division,status_.swing,status_.transpose,status_.quantize};
+    }
+    void updateLibraryStatus() {
+        status_.modified=!clean_reference_ || settings()!=clean_;
+    }
+    void markSaved(uint8_t slot,const PatternSettings& saved) {
+        clean_=saved;
+        clean_reference_=true;
+        status_.active_slot=slot;
+    }
+    void detachSlot(uint8_t slot) {
+        if(status_.active_slot==slot) {
+            status_.active_slot=kNoSlot;
+            clean_reference_=false;
+        }
+        if(status_.pending_slot==slot) cancelSwitch();
+    }
+    static bool valid(const PatternSettings& settings) {
+        if(!validLength(settings.pattern.length) || !validDivision(settings.division) ||
+           settings.swing<50 || settings.swing>75 || settings.transpose<-24 || settings.transpose>24)
+            return false;
+        for(const auto step:settings.pattern.steps) if(!valid(step)) return false;
+        return true;
+    }
+
+    bool load(uint8_t slot,const PatternSettings& target,SwitchMode mode,bool discard,
+              uint32_t token,const tempo::Position& position,bool& release) {
+        const auto current=settings();
+        if(slot>=kPatternSlots || !valid(target) ||
+           ((!clean_reference_ || current!=clean_) && !discard)) return false;
+        if(mode==SwitchMode::NextBar && status_.playing) {
+            constexpr uint64_t bar=uint64_t(4)*tempo::kPpqn*tempo::kUnitsPerTick;
+            swap_due_=position.phase+bar-position.phase%bar;
+            pending_=target;
+            before_switch_=current;
+            status_.pending_slot=slot;
+            status_.switch_token=token;
+            status_.switch_cancelled=false;
+            return true;
+        }
+        cancelSwitch();
+        status_.switch_token=token;
+        status_.switch_cancelled=false;
+        release=install(slot,target,position.phase);
+        return true;
+    }
+    void cancelSwitch() {
+        if(status_.pending_slot==kNoSlot) return;
+        status_.pending_slot=kNoSlot;
+        status_.switch_cancelled=true;
+    }
     void countVoiceDrop() { ++status_.voice_drops; }
 
     static constexpr bool valid(Step step) {
@@ -85,9 +168,7 @@ public:
         return true;
     }
     bool setDivision(tempo::Division division) {
-        if(!tempo::divisionNumerator(division) ||
-           division==tempo::Division::DottedEighth ||
-           division==tempo::Division::DottedSixteenth) return false;
+        if(!validDivision(division)) return false;
         // Deadlines already armed for the current step and gate stay intact.
         // update() uses this division when scheduling from the next onset.
         status_.division=division;
@@ -213,6 +294,7 @@ public:
         return release;
     }
     bool stop() {
+        cancelSwitch();
         const bool release=clearGate();
         if(status_.playing) ++status_.revision;
         status_.playing=false;
@@ -232,6 +314,13 @@ public:
         status_.bpm=position.bpm;
         Events events;
         if(!status_.playing) return events;
+        if(status_.pending_slot!=kNoSlot) {
+            if(settings()!=before_switch_) cancelSwitch();
+            else if(reached(position.phase,swap_due_)) {
+                events.release=install(status_.pending_slot,pending_,swap_due_);
+                status_.pending_slot=kNoSlot;
+            }
+        }
         if(gated_ && reached(position.phase,gate_due_)) events.release=clearGate();
         if(!reached(position.phase,step_due_)) return events;
 
@@ -261,6 +350,20 @@ public:
     }
 
 private:
+    bool install(uint8_t slot,const PatternSettings& target,uint64_t onset) {
+        const bool release=clearGate();
+        setPattern(target.pattern);
+        setDivision(target.division);
+        setSwing(target.swing);
+        setTranspose(target.transpose);
+        setQuantize(target.quantize);
+        markSaved(slot,target);
+        status_.current_step=kNoStep;
+        cursor_=0;
+        odd_=false;
+        step_due_=onset;
+        return release;
+    }
     void updateTranspose() {
         auto& midi=status_.midi;
         midi.effective=int8_t(std::clamp(int(status_.transpose)+midi.live_offset,-127,127));
@@ -290,10 +393,12 @@ private:
     }
 
     Pattern pattern_{};
+    PatternSettings clean_,pending_,before_switch_;
+    uint64_t swap_due_=0;
     Status status_{};
     uint64_t step_due_=0, gate_due_=0;
     uint8_t cursor_=0,transpose_note_=kNoStep;
-    bool gated_=false, odd_=false;
+    bool gated_=false, odd_=false, clean_reference_=true;
 };
 
 }
