@@ -1,0 +1,106 @@
+{
+  "kind": "REAL HARDWARE SESSION",
+  "raw_sha256": "",
+  "reviewer": "",
+  "observations": {
+    "boot_playable": {
+      "value": null,
+      "file": "",
+      "note": ""
+    },
+    "crashes": {
+      "value": null,
+      "file": "",
+      "note": ""
+    },
+    "stuck_notes": {
+      "value": null,
+      "file": "",
+      "note": ""
+    },
+    "recovery_failures": {
+      "value": null,
+      "file": "",
+      "note": ""
+    },
+    "scene_corruption": {
+      "value": null,
+      "file": "",
+      "note": ""
+    },
+    "valid_scenes_after_reboot": {
+      "value": null,
+      "file": "",
+      "note": ""
+    },
+    "patterns_preserved": {
+      "value": null,
+      "file": "",
+      "note": ""
+    },
+    "presets_v4_preserved": {
+      "value": null,
+      "file": "",
+      "note": ""
+    },
+    "pattern_only_preserved_chord": {
+      "value": null,
+      "file": "",
+      "note": ""
+    },
+    "full_recall": {
+      "value": null,
+      "file": "",
+      "note": ""
+    },
+    "stress_swaps": {
+      "value": null,
+      "file": "",
+      "note": ""
+    },
+    "usb_playable_cycles": {
+      "value": null,
+      "file": "",
+      "note": ""
+    },
+    "unexpected_audio_interruptions": {
+      "value": null,
+      "file": "",
+      "note": "",
+      "instrument": ""
+    },
+    "physical_clock_interruptions": {
+      "value": null,
+      "file": "",
+      "note": "",
+      "instrument": ""
+    },
+    "unexpected_transients": {
+      "value": null,
+      "file": "",
+      "note": "",
+      "instrument": ""
+    },
+    "heap_stable": {
+      "value": null,
+      "file": "",
+      "note": ""
+    },
+    "memory_review": {
+      "value": null,
+      "file": "",
+      "note": ""
+    },
+    "patch_silence_recorded": {
+      "value": null,
+      "file": "",
+      "note": "",
+      "instrument": ""
+    },
+    "loader_exception_approved": {
+      "value": null,
+      "file": "",
+      "note": ""
+    }
+  }
+}

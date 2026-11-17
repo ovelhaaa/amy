@@ -75,3 +75,7 @@ Firmware do commit de código `5651ca1c9b6448d1939095cc5ffd4c051072327d`, compil
 `riscv32-esp-elf-size -A` reporta, no editor, DRAM0 data/bss de 37.908/23.724 B e DRAM1 bss de 138.944 B. No bench, DRAM0 data/bss de 38.292/23.180 B e DRAM1 bss de 139.528 B. A soma de data/bss das duas regiões é 200.576 B e 201.000 B respectivamente. A linha RAM do PIO corresponde à DRAM0 e não representa heap livre.
 
 **PASS** em `smk-p4/tests/check_blueprint_build.py --voices 8 --sound-library --unified-engine --harmony --full-factory --sound-editor --environment <perfil>`, com `--musical` no bench. Foram verificados oito vozes, 48 kHz/256 frames, LVGL único com pool de 128 KiB, e gates elétricos corretos por perfil.
+
+## Kit de qualificação 0.17B
+
+A captura, o inventário de telemetria e o protocolo A–H estão no [guia do kit](performance_scenes_017b_bench_guide.md). Os hashes da construção anterior permanecem como histórico. Use o manifesto novo do perfil bench e confirme `BENCH_ID` antes de associar medições à imagem. Continuidade I²S, RAM física, recuperação USB e persistência continuam PENDING sem evidência desta unidade.

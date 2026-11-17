@@ -28,6 +28,9 @@
 #include "usb_midi_host.h"
 #include "standalone_boot.h"
 #include "esp_heap_caps.h"
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+#include "esp_app_desc.h"
+#endif
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -51,6 +54,10 @@ struct Snapshot {
     uint32_t swap_free_before=0,swap_largest_before=0,swap_psram_before=0,swap_psram_largest_before=0;
     uint32_t swap_free_after=0,swap_largest_after=0,swap_psram_after=0,swap_psram_largest_after=0;
     uint32_t swap_last_us=0,swap_max_us=0,swap_generation_before=0,swap_generation_after=0;
+#endif
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    uint64_t apply_total_us=0;
+    uint32_t apply_count=0, apply_max_us=0;
 #endif
     smk::p4::amy::Snapshot engine;
     uint64_t frames = 0, render_total_us = 0, command_total_us = 0, dma_total_us = 0;
@@ -158,6 +165,12 @@ void runAudio() {
         const uint16_t previous_patch=runtime.snapshot().patch_id;
         const int64_t command_start=esp_timer_get_time();
         runtime.apply(static_cast<uint32_t>(command_start/1000));
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+        const auto apply_us=static_cast<uint32_t>(esp_timer_get_time()-command_start);
+        state.apply_total_us+=apply_us;
+        ++state.apply_count;
+        if(apply_us>state.apply_max_us)state.apply_max_us=apply_us;
+#endif
 #ifdef SMKP4_UNIFIED_ENGINE
         const bool loading=runtime.snapshot().patch_state==smk::p4::amy::PatchState::Requested;
         if(loading) {
@@ -432,6 +445,12 @@ extern "C" void app_main() {
                     (unsigned long)scene.token,(unsigned long)scene.generation,unsigned(scene.phase),
                     unsigned(scene.pending),unsigned(scene.active),unsigned(scene.effective),unsigned(scene.applied_domains),
                     unsigned(scene.error),long(scene.patch_error));
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+                ESP_LOGI(kTag,"BENCH_SCENE token=%lu due_phase=%llu applied_phase=%llu units_per_frame=%lu request_ms=%lu start_ms=%lu elapsed_us=%lu",
+                    (unsigned long)scene.token,(unsigned long long)scene.due_phase,(unsigned long long)scene.applied_phase,
+                    (unsigned long)scene.bench_units_per_frame,(unsigned long)scene.bench_request_ms,
+                    (unsigned long)scene.bench_start_ms,(unsigned long)scene.bench_elapsed_us);
+#endif
                 const auto& arp=state.engine.arp;
                 ESP_LOGI(kTag,"ARP015 enabled=%d armed=%d gate=%d bpm=%u inputs=%u steps=%u rejected=%lu service_max_us=%lu",
                     arp.config.enabled,arp.armed,arp.sounding,arp.tempo.bpm,arp.held_count,arp.length,
@@ -471,6 +490,16 @@ extern "C" void app_main() {
                     (unsigned long)state.output.write_max_us,(unsigned long)state.output.write_errors,(unsigned long)state.output.timeouts,
                     (unsigned long)state.output.refill_risks,(unsigned long)state.output.stack_free,
                     (unsigned long)state.output.refill_gap_max_us);
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+                ESP_LOGI(kTag,"BENCH_AUDIO apply_count=%lu apply_avg_us=%llu apply_max_us=%lu generation=%lu ramps=%lu patch_gap_blocks=%lu patch_gap_max_blocks=%lu loads=%lu global_panics=%lu usb_invalidations=%lu",
+                    (unsigned long)state.apply_count,
+                    (unsigned long long)(state.apply_count?state.apply_total_us/state.apply_count:0),
+                    (unsigned long)state.apply_max_us,(unsigned long)state.engine.generation,
+                    (unsigned long)state.output.ramps,(unsigned long)state.output.patch_gap_blocks,
+                    (unsigned long)state.output.patch_gap_max_blocks,
+                    (unsigned long)state.engine.bench_load_attempts,(unsigned long)state.engine.bench_global_panics,
+                    (unsigned long)state.engine.bench_usb_invalidations);
+#endif
                 ESP_LOGI(kTag,"PATCH_LOAD last_us=%lu max_us=%lu generation_before=%lu generation_after=%lu",
                     (unsigned long)state.swap_last_us,(unsigned long)state.swap_max_us,
                     (unsigned long)state.swap_generation_before,(unsigned long)state.swap_generation_after);
@@ -482,6 +511,17 @@ extern "C" void app_main() {
                     (unsigned long)state.swap_psram_after,(unsigned long)state.swap_psram_largest_after);
 #endif
             }
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+            char elf_sha[65]{};
+            const auto* descriptor=esp_app_get_description();
+            constexpr char hex[]="0123456789abcdef";
+            for(unsigned i=0;i<32;++i) {
+                const auto byte=descriptor->app_elf_sha256[i];
+                elf_sha[2*i]=hex[byte>>4];
+                elf_sha[2*i+1]=hex[byte&15];
+            }
+            ESP_LOGI(kTag,"BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=%s",elf_sha);
+#endif
             smk::p4::reportMemory();
 #if defined(SMKP4_SOUND_EDITOR) && defined(CONFIG_SMKP4_PCM_WIRING_CONFIRMED)
             nvs_stats_t nvs{};

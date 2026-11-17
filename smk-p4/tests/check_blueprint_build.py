@@ -34,6 +34,8 @@ def main():
     require((defines.get("CONFIG_SMKP4_SOUND_LIBRARY")=="1")==args.sound_library, "effective resident library profile")
     require((defines.get("CONFIG_SMKP4_UNIFIED_ENGINE")=="1")==args.unified_engine, "effective unified engine profile")
     require(defines.get("CONFIG_SMKP4_AMY_VOICES") == str(args.voices), "compiled polyphony differs from selected profile")
+    require((defines.get("CONFIG_SMKP4_HARDWARE_017B_TELEMETRY") == "1") ==
+            (environment == "guition-editor-8-bench"), "0.17B bench-only telemetry")
     for key in ("CONFIG_IDF_TARGET_ESP32P4", "CONFIG_SMKP4_STANDALONE", "CONFIG_SMKP4_UI_BLUEPRINT", "CONFIG_LV_FONT_MONTSERRAT_14"):
         require(defines.get(key) == "1", key)
     for key in ("CONFIG_SMK_LINK_ENABLED", "CONFIG_SMKP4_PCM_DIAGNOSTIC"):

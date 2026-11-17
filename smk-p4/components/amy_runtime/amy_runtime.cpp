@@ -313,7 +313,12 @@ void Runtime::applyUsb(uint32_t now_ms) {
         midi_changed=true;
     }
 #endif
-    if(q.generation()!=usb_generation_) { cancelUsb(); usb_generation_=q.generation(); }
+    if(q.generation()!=usb_generation_) {
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+        ++state_.bench_usb_invalidations;
+#endif
+        cancelUsb(); usb_generation_=q.generation();
+    }
     Command c;
     unsigned applied=0;
     for(unsigned scanned=0;scanned<kUsbCommandCapacity && applied<kCommandCapacity && q.pop(c);++scanned) {
@@ -406,7 +411,12 @@ void Runtime::applyUsb(uint32_t now_ms) {
         publishSequencer();
     }
 #endif
-    if(q.generation()!=usb_generation_) { cancelUsb(); usb_generation_=q.generation(); }
+    if(q.generation()!=usb_generation_) {
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+        ++state_.bench_usb_invalidations;
+#endif
+        cancelUsb(); usb_generation_=q.generation();
+    }
 }
 #ifdef SMKP4_SOUND_EDITOR
 void Runtime::releaseArp() {
@@ -674,6 +684,9 @@ void Runtime::applyFx(uint32_t now_ms) {
 #ifdef SMKP4_SOUND_EDITOR
 void Runtime::finishScene(scene::RecallPhase phase,scene::RecallError error) {
     auto& status=state_.scene;
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    if(status.bench_started)status.bench_elapsed_us=musicalTimeUs()-status.bench_start_us;
+#endif
     if(phase==scene::RecallPhase::Confirmed) {
         status.active=status.pending;
         status.active_domains=status.effective;
@@ -699,6 +712,11 @@ void Runtime::cancelScene() {
         status.patch_error=0;
         status.rejection=scene::Reject::None;
         status.due_phase=status.applied_phase=0;
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+        status.bench_units_per_frame=status.bench_start_ms=status.bench_elapsed_us=0;
+        status.bench_request_ms=0;
+        status.bench_started=false;
+#endif
     }
     if(status.phase==scene::RecallPhase::WaitingPatch && state_.patch_state==PatchState::Requested) {
         state_.patch_state=PatchState::Failed;
@@ -744,6 +762,11 @@ void Runtime::serviceScene(uint32_t now_ms) {
         status.generation=request->generation;
         status.pending=request->slot;
         status.due_phase=status.applied_phase=0;
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+        status.bench_units_per_frame=status.bench_start_ms=status.bench_elapsed_us=0;
+        status.bench_request_ms=now_ms;
+        status.bench_started=false;
+#endif
         status.effective=0;
         status.applied_domains=0;
         status.pattern_sequence=0;
@@ -826,7 +849,15 @@ void Runtime::serviceScene(uint32_t now_ms) {
         finishScene(RecallPhase::Failed,RecallError::UnsupportedDomains);
         return;
     }
-    if(!waiting_patch) status.applied_phase=position.phase;
+    if(!waiting_patch) {
+        status.applied_phase=position.phase;
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+        status.bench_units_per_frame=position.unitsPerFrame();
+        status.bench_start_ms=now_ms;
+        status.bench_start_us=musicalTimeUs();
+        status.bench_started=true;
+#endif
+    }
     if(swap) {
         status.phase=RecallPhase::WaitingPatch;
         scene_patch_started_ms_=now_ms;
@@ -949,6 +980,9 @@ void Runtime::apply(uint32_t now_ms) {
             state_.patch_state=PatchState::Failed;state_.patch_error=-100;++state_.patch_failures;
         }
 #endif
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+        ++state_.bench_global_panics;
+#endif
         silence(); state_.generation=generation;
         publishOutput(OutputReason::Panic);
         // Global Panic also invalidates queued USB notes/controls.
@@ -1055,6 +1089,9 @@ void Runtime::apply(uint32_t now_ms) {
 #endif
     applyFx(now_ms);
     if(commands_.generation()!=state_.generation) {
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+        ++state_.bench_global_panics;
+#endif
         silence(); state_.generation=commands_.generation();
         usb_.commands.panic(); usb_generation_=usb_.commands.generation();
     }
@@ -1215,6 +1252,9 @@ void Runtime::loadPendingPatch() {
         cancelScene();
         return;
     }
+#endif
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    ++state_.bench_load_attempts;
 #endif
     load_oom_baseline_=amy_get_oom_count();
     state_.patch_state=PatchState::Loading;

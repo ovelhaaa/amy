@@ -37,6 +37,9 @@ struct Snapshot {
     uint16_t requested_patch_id=kPatches[0].id;
     int32_t patch_error=0;
     uint32_t patch_changes=0, patch_failures=0;
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    uint32_t bench_load_attempts=0,bench_global_panics=0,bench_usb_invalidations=0;
+#endif
     uint8_t preserve_mask=0;
 };
 // All methods except commands() are called only by the owner. No I2S/LVGL here.

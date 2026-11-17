@@ -4,6 +4,9 @@
 #include "factory_edit_capabilities.h"
 #include "patch_library.h"
 #include <atomic>
+#ifdef ESP_PLATFORM
+#include "sdkconfig.h"
+#endif
 
 namespace smk::p4::scene {
 
@@ -36,6 +39,11 @@ struct RecallStatus {
     uint8_t applied_domains=0;
     int patch_error=0;
     uint64_t due_phase=0, applied_phase=0;
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    uint32_t bench_units_per_frame=0, bench_request_ms=0, bench_start_ms=0;
+    uint32_t bench_start_us=0, bench_elapsed_us=0;
+    bool bench_started=false;
+#endif
 };
 
 inline Selection validateRecall(const RecallRequest& request,const edit::State& resident,

@@ -30,6 +30,7 @@ jobs:
         run: |
           ./tests/run_smk_link.ps1
           ./smk-p4/tests/run_host.ps1
+          python -m unittest discover -s smk-p4/tests/hardware_017b -v
           ./smk-p4/tests/run_usb.ps1
           ./smk-p4/tests/run_performance_014.ps1
           ./smk-p4/tests/run_smk25_0142.ps1

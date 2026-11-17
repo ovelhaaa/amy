@@ -33,3 +33,9 @@ Panic ou desconexão antes da carga invalida o pedido. Durante a carga, geraçõ
 ## Estados da UI
 
 Proposta para o release gate: aceitar estados assíncronos de solicitação e espera e o resultado terminal vinculado ao token, geração e máscara aplicada. VALIDATING, PREPARING, APPLYING e VERIFYING são passos síncronos na mesma passagem. A mudança verifica novamente geração UI/USB, Storage Quiet e cancelamento antes de publicar confirmação. Se a transação foi interrompida após aplicar domínios, o snapshot preserva a máscara e a referência anterior. Uma invalidação posterior à decisão de commit é tratada como um evento posterior.
+
+## Evidência requerida do kit 0.17B
+
+**EXCEPTION PROPOSED.** O relatório exige medidas da Guition e aprovação explícita do responsável técnico. Os novos contadores descrevem inícios de carga, serviço do owner, gaps e rampas na saída. Relacione `PATCH_LOAD`, o maior bloco livre de `SWAP08`, as amostras após aquecimento e as formas de onda da saída. O contador de fallback PATCH é proxy da janela de silêncio. A captura de DAC e dos sinais I²S estabelece sua duração e continuidade físicas. Contagem de alocações permanece evidência do host.
+
+O [guia do kit](performance_scenes_017b_bench_guide.md) registra limites, arquivos a anexar e tratamento de evidência incompleta.
