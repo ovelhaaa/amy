@@ -7,12 +7,15 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9._-]*$')][string]$SessionId,
     [ValidateRange(1,3600)][int]$Seconds = 180,
     [ValidateRange(1,4000000)][int]$Baud = 115200,
+    [switch]$Persistence,
     [string]$Python = 'python'
 )
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
 $json = & $Python "$PSScriptRoot/firmware.py" check --profile guition-editor-8-bench --bundle $Bundle
 if ($LASTEXITCODE) { throw 'Manifesto ou firmware inválido' }
 $manifest = $json | ConvertFrom-Json -AsHashtable
+$manifestSha = (Get-FileHash -LiteralPath (Join-Path $Bundle 'manifest.json')).Hash.ToLowerInvariant()
 $metadataPath = "$Output.metadata.json"
 if ((Test-Path -LiteralPath $Output) -or (Test-Path -LiteralPath $metadataPath)) {
     throw 'Escolha um caminho novo para a coleta.'
@@ -23,6 +26,7 @@ $exitCode = $LASTEXITCODE
 if (!(Test-Path -LiteralPath $Output)) { throw "Falha ao abrir $Port (saída $exitCode)" }
 $metadata = @{
     kind = 'REAL HARDWARE SESSION'
+    role = if ($Persistence) { 'persistence' } else { 'primary' }
     session_id = $SessionId
     board_id = $BoardId
     port = $Port
@@ -38,6 +42,7 @@ $metadata = @{
     firmware_sha256 = $manifest.firmware_sha256
     elf_sha256 = $manifest.elf_sha256
     commit = $manifest.commit
+    manifest_sha256 = $manifestSha
 }
 $metadata | ConvertTo-Json | Set-Content -LiteralPath $metadataPath -Encoding utf8
 if ($exitCode) { Write-Warning "Coleta retornou $exitCode. O avaliador manterá a evidência incompleta." }

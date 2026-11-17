@@ -19,9 +19,10 @@ $preflight | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $sess
 $raw = Join-Path $session 'serial.log'
 Write-Host 'Inicie a coleta antes de energizar, se a porta permanecer acessível. Execute A e C–H no boot principal.'
 Write-Host 'Mantenha a captura por dois relatórios no início e no fim. Faça B em captura complementar.'
+Write-Host "Em outro PowerShell, acompanhe Get-Content -LiteralPath '$raw' -Wait. Anote os timestamps AUDIO ao iniciar e terminar F."
 & "$PSScriptRoot/capture.ps1" -Port $Port -BoardId $BoardId -Bundle $Bundle -Output $raw -SessionId $SessionId -Seconds $Seconds -Baud $Baud -Python $Python
-& $Python "$PSScriptRoot/analyze.py" $raw --metadata "$raw.metadata.json" --out $session
+& $Python "$PSScriptRoot/analyze.py" $raw --metadata "$raw.metadata.json" --bundle $Bundle --out $session
 if ($LASTEXITCODE) { throw 'Falha de análise' }
-& $Python "$PSScriptRoot/evaluate.py" (Join-Path $session 'metrics.json') --out $session
+& $Python "$PSScriptRoot/evaluate.py" (Join-Path $session 'metrics.json') --raw $raw --metadata "$raw.metadata.json" --bundle $Bundle --out $session
 if ($LASTEXITCODE) { throw 'Falha do avaliador' }
 Write-Host "Relatório em $session. Depois da revisão física, execute evaluate.py com --evidence."

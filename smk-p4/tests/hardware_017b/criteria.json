@@ -1,7 +1,67 @@
 {
   "schema": 1,
-  "version": "0.17B.1",
+  "version": "0.17B.2",
   "criteria": [
+    {
+      "id": "MINIMUM_SESSION_DURATION",
+      "group": "cobertura",
+      "required": true,
+      "method": "temporal",
+      "op": "ge",
+      "limit": 120,
+      "unit": "s",
+      "rationale": "Piso de 20 períodos de 5 s para os dez grupos de F, mais quatro períodos de referência e recuperação. O roteiro A–H exige tempo adicional."
+    },
+    {
+      "id": "MINIMUM_PERIODIC_SNAPSHOTS",
+      "group": "cobertura",
+      "required": true,
+      "method": "temporal",
+      "op": "ge",
+      "limit": 24,
+      "unit": "relatórios completos",
+      "rationale": "Dois relatórios por grupo de F, mais dois antes e dois depois da carga."
+    },
+    {
+      "id": "MAXIMUM_TELEMETRY_GAP",
+      "group": "cobertura",
+      "required": true,
+      "method": "temporal",
+      "op": "le",
+      "limit": 12,
+      "unit": "s",
+      "rationale": "Dois períodos de 5 s mais 2 s de margem para jitter, aplicados às famílias obrigatórias e aos relatórios completos."
+    },
+    {
+      "id": "PRE_STRESS_BASELINE",
+      "group": "cobertura",
+      "required": true,
+      "method": "temporal",
+      "op": "ge",
+      "limit": 2,
+      "unit": "relatórios completos",
+      "rationale": "Dois relatórios até o último AUDIO registrado antes de iniciar F."
+    },
+    {
+      "id": "POST_STRESS_RECOVERY",
+      "group": "cobertura",
+      "required": true,
+      "method": "temporal",
+      "op": "ge",
+      "limit": 2,
+      "unit": "relatórios completos",
+      "rationale": "Dois relatórios após o primeiro AUDIO registrado após terminar F."
+    },
+    {
+      "id": "capture_continuity",
+      "group": "cobertura",
+      "required": true,
+      "method": "temporal",
+      "op": "eq",
+      "limit": 1,
+      "unit": "booleano",
+      "rationale": "Exigir captura íntegra, timestamps válidos e duração observada compatível com a janela do host."
+    },
     {
       "id": "fatal_errors",
       "group": "integridade",

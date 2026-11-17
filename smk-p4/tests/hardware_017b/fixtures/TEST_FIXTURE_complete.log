@@ -16,17 +16,327 @@ I (6002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM t
 I (6003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
 I (6003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
 I (6003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (11000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (11000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (11000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (11000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (11000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
 I (11000) P4_AMY: SCENE token=2 generation=10 phase=2 requested_slot=255 active_slot=2 effective=0a applied=0a error=0 patch_error=0
 I (11001) P4_AMY: BENCH_SCENE token=2 due_phase=13824000000 applied_phase=13824360000 units_per_frame=72000 request_ms=6500 start_ms=8000 elapsed_us=65
-I (61000) P4_AMY: AUDIO I2S_PRODUCING frames_written=2688000 blocks_rendered=10078 render_max_us=4200 render_deadlines=0 write_errors=0 timeouts=0 stack_free_bytes=3500 error=ESP_OK DMA_underruns=UNMEASURED
-I (61000) P4_AMY: ENGINE ready=1 oom=0
-I (61000) P4_AMY: OUTPUT08 frames=2688000 blocks=10500 gaps=500 barriers=200 errors=0 timeouts=0 refill_risks=7 stack_free=2900 underruns=UNMEASURED
-I (61000) P4_AMY: SWAP08 changes=101 failures=0
-I (61000) P4_AMY: SCENE token=103 generation=214 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
-I (61001) P4_AMY: BENCH_SCENE token=103 due_phase=20736000000 applied_phase=20736720000 units_per_frame=144000 request_ms=60000 start_ms=60400 elapsed_us=5000
-I (61001) P4_AMY: PATCH_LOAD last_us=5000 max_us=5300 generation_before=213 generation_after=214
-I (61002) P4_AMY: NVS status=ESP_OK used_entries=420 free_entries=67 total_entries=487
-I (61003) P4_AMY: USB state=2 connects=11 disconnects=10 errors=0 events=455
-I (61004) P4_AMY: BENCH_AUDIO apply_count=10500 loads=101 global_panics=1 usb_invalidations=10
-I (61004) P4_AMY: UI_BLUEPRINT lvgl_free=60000
-I (61004) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (11002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (11002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (11002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (11003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (11003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (11003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (16000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (16000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (16000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (16000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (16000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (16000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (16001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (16002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (16002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (16002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (16003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (16003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (16003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (21000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (21000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (21000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (21000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (21000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (21000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (21001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (21002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (21002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (21002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (21003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (21003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (21003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (26000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (26000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (26000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (26000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (26000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (26000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (26001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (26002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (26002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (26002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (26003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (26003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (26003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (31000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (31000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (31000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (31000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (31000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (31000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (31001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (31002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (31002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (31002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (31003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (31003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (31003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (36000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (36000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (36000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (36000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (36000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (36000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (36001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (36002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (36002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (36002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (36003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (36003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (36003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (41000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (41000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (41000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (41000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (41000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (41000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (41001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (41002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (41002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (41002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (41003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (41003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (41003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (46000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (46000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (46000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (46000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (46000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (46000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (46001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (46002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (46002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (46002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (46003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (46003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (46003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (51000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (51000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (51000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (51000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (51000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (51000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (51001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (51002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (51002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (51002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (51003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (51003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (51003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (56000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (56000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (56000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (56000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (56000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (56000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (56001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (56002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (56002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (56002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (56003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (56003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (56003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (61000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (61000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (61000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (61000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (61000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (61000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (61001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (61002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (61002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (61002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (61003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (61003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (61003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (66000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (66000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (66000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (66000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (66000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (66000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (66001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (66002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (66002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (66002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (66003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (66003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (66003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (71000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (71000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (71000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (71000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (71000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (71000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (71001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (71002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (71002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (71002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (71003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (71003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (71003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (76000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (76000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (76000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (76000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (76000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (76000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (76001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (76002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (76002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (76002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (76003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (76003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (76003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (81000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (81000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (81000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (81000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (81000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (81000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (81001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (81002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (81002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (81002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (81003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (81003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (81003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (86000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (86000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (86000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (86000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (86000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (86000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (86001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (86002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (86002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (86002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (86003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (86003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (86003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (91000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (91000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (91000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (91000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (91000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (91000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (91001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (91002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (91002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (91002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (91003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (91003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (91003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (96000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (96000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (96000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (96000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (96000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (96000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (96001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (96002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (96002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (96002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (96003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (96003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (96003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (101000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (101000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (101000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (101000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (101000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (101000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (101001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (101002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (101002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (101002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (101003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (101003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (101003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (106000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (106000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (106000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (106000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (106000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (106000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (106001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (106002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (106002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (106002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (106003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (106003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (106003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (111000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (111000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (111000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (111000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (111000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (111000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (111001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (111002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (111002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (111002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (111003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (111003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (111003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (116000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (116000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (116000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (116000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (116000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (116000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (116001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (116002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (116002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (116002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (116003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (116003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (116003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (121000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (121000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (121000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (121000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (121000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (121000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (121001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (121002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (121002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (121002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (121003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (121003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (121003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (126000) P4_AMY: AUDIO I2S_PRODUCING frames_written=48000 blocks_rendered=188 render_avg_us=100 render_max_us=4000 render_deadlines=0 service_max_us=8000 refill_risks=2 write_errors=0 timeouts=0 stack_free_bytes=4000 error=ESP_OK DMA_underruns=UNMEASURED
+I (126000) P4_AMY: ENGINE ready=1 patch=128 notes=8 peak=500 clipped=0 oom=0 queue=0 high=1 overflow=0 expired=0 latency_max_ms=2 cmd_avg/max=54/5210 dsp_avg/max=100/4000 compute_deadlines=3 patch_max_us=5210 dma_avg/max=200/5000
+I (126000) P4_AMY: OUTPUT08 frames=48000 blocks=188 gaps=5 barriers=2 write_avg/max_us=360/5000 errors=0 timeouts=0 refill_risks=1 stack_free=3000 underruns=UNMEASURED refill_gap_max_us=22000
+I (126000) P4_AMY: PATCH_LOAD last_us=5100 max_us=5100 generation_before=7 generation_after=8
+I (126000) P4_AMY: SWAP08 changes=1 failures=0 internal_before/free_largest=48000/30000 after=48000/30000 psram_before/free_largest=1000000/800000 after=1000000/800000
+I (126000) P4_AMY: SCENE token=1 generation=8 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (126001) P4_AMY: BENCH_SCENE token=1 due_phase=6912000000 applied_phase=6912240000 units_per_frame=24000 request_ms=1200 start_ms=4000 elapsed_us=5210
+I (126002) P4_AMY: BENCH_AUDIO apply_count=188 apply_avg_us=19 apply_max_us=200 generation=8 ramps=2 patch_gap_blocks=3 patch_gap_max_blocks=2 loads=1 global_panics=0 usb_invalidations=0
+I (126002) P4_AMY: BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac
+I (126002) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (126003) P4_AMY: NVS status=ESP_OK used_entries=367 free_entries=120 total_entries=487
+I (126003) P4_AMY: UI_BLUEPRINT stack_free_bytes=4200 screen_switches=25 lvgl_free=62000 lvgl_largest=25000 lvgl_peak_used=39000
+I (126003) P4_AMY: USB state=2 connects=1 disconnects=0 errors=0 events=20
+I (131000) P4_AMY: AUDIO I2S_PRODUCING frames_written=2688000 blocks_rendered=10078 render_max_us=4200 render_deadlines=0 write_errors=0 timeouts=0 stack_free_bytes=3500 error=ESP_OK DMA_underruns=UNMEASURED
+I (131000) P4_AMY: ENGINE ready=1 oom=0
+I (131000) P4_AMY: OUTPUT08 frames=2688000 blocks=10500 gaps=500 barriers=200 errors=0 timeouts=0 refill_risks=7 stack_free=2900 underruns=UNMEASURED
+I (131000) P4_AMY: SWAP08 changes=101 failures=0
+I (131000) P4_AMY: SCENE token=103 generation=214 phase=2 requested_slot=255 active_slot=1 effective=7f applied=7f error=0 patch_error=0
+I (131001) P4_AMY: BENCH_SCENE token=103 due_phase=20736000000 applied_phase=20736720000 units_per_frame=144000 request_ms=60000 start_ms=60400 elapsed_us=5000
+I (131001) P4_AMY: PATCH_LOAD last_us=5000 max_us=5300 generation_before=213 generation_after=214
+I (131002) P4_AMY: NVS status=ESP_OK used_entries=420 free_entries=67 total_entries=487
+I (131004) P4_AMY: BENCH_AUDIO apply_count=10500 loads=101 global_panics=1 usb_invalidations=10
+I (131004) P4_AMY: UI_BLUEPRINT lvgl_free=60000
+I (131004) SMK_P4_GATE0: heap internal free=48000 min=44000 largest=30000; PSRAM total=32000000 free=1000000 min=900000 largest=800000
+I (131005) P4_AMY: USB state=2 connects=11 disconnects=10 errors=0 events=455
