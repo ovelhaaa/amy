@@ -5,6 +5,7 @@
 #include "../components/amy_runtime/sound_edit.h"
 #include "../components/amy_runtime/harmony.h"
 #include "../components/amy_runtime/fx_state.h"
+#include "../components/amy_runtime/scene_recall.h"
 namespace smk::p4 {
 // Shared presentation DTO; local state is owner-applied AMY state, never a
 // simulated S3 session. No transport frames in the widget/backend contract.
@@ -72,6 +73,11 @@ public:
     virtual const seq::Pattern* sequencerPattern() const { return nullptr; }
     virtual uint32_t sequencerGeneration() const { return 0; }
     virtual uint32_t submitSequencer(seq::Request,uint32_t) { return 0; }
+    virtual const scene::RecallStatus* sceneRecallStatus() const { return nullptr; }
+    virtual uint32_t submitScene(scene::RecallRequest) { return 0; }
+    virtual scene::Reject validateScene(const scene::RecallRequest&) const { return scene::Reject::InvalidScene; }
+    virtual void cancelScene(uint32_t) {}
+    virtual bool sceneCaptureReady() const { return false; }
     virtual const harmony::State* harmonyState() const { return nullptr; }
     virtual bool setHarmony(harmony::Config,uint32_t) { return false; }
     virtual const fx::FxState* fxState() const { return nullptr; }

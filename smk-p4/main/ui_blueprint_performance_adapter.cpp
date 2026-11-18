@@ -506,6 +506,8 @@ void UiBlueprintPerformanceAdapter::releaseAllUiNotes() {
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestPanic() {
     releaseAllUiNotes(); backend_.panic();
+    replace_scene_=false;
+    if(scene_write_slot_!=seq::kNoSlot) finishSceneWrite("CANCELLED BEFORE WRITE");
     if(patch_.active) patch_result_={UiCommandState::Rejected,0,"PATCH LOAD INTERRUPTED BY PANIC."};
     patch_.active=master_.active=false;
     return result(UiCommandState::Requested,"panic","PANIC REQUESTED; OWNER CANCELS ALL SOURCES");
@@ -1138,6 +1140,234 @@ void UiBlueprintPerformanceAdapter::setPatternStore(seq::PatternStore& store) {
     for(unsigned i=0;i<seq::kPatternSlots;++i) pattern_slots_[i]=store.load(i);
 }
 
+void UiBlueprintPerformanceAdapter::setSceneStore(scene::Store& store) {
+    scene_store_=&store;
+    for(unsigned i=0;i<scene::kSlots;++i) scene_slots_[i]=store.load(i);
+}
+
+void UiBlueprintPerformanceAdapter::captureScene(scene::Configuration& target) const {
+    target.domains=0;
+    if(const auto* edit=backend_.soundEdit()) {
+        target.patch_id=edit->patch;
+        target.macros=edit->performance_macros;
+        target.routes=edit->performance_routes;
+        target.domains|=scene::Patch|scene::Macros;
+    }
+    if(const auto* fx=backend_.fxState()) {
+        target.fx=fx->config;
+        target.domains|=scene::Fx;
+    }
+    if(const auto* harmony=backend_.harmonyState()) {
+        target.harmony=harmony->configuration;
+        target.domains|=scene::Harmony;
+    }
+    if(const auto* arp=arpStatus()) {
+        target.arp=arp->config;
+        target.bpm=arp->tempo.bpm;
+        target.domains|=scene::Arp|scene::Tempo;
+    }
+    target.pattern_slot=seq::kNoSlot;
+    target.pattern_sequence=0;
+    if(const auto* status=sequencerStatus()) {
+        const auto* pattern=sequencerPattern();
+        const auto* slot=patternSlot(status->active_slot);
+        if(pattern && slot && slot->state==seq::SlotState::Valid && status->pending_slot==seq::kNoSlot &&
+           !status->modified && slot->settings==seq::PatternSettings{*pattern,status->division,
+               status->swing,status->transpose,status->quantize}) {
+            target.pattern_slot=status->active_slot;
+            target.pattern_sequence=slot->sequence;
+            target.domains|=scene::Pattern;
+        }
+    }
+}
+
+void UiBlueprintPerformanceAdapter::finishSceneWrite(const char* notice) {
+    backend_.releaseStorageQuiet();
+    scene_write_slot_=seq::kNoSlot;
+    scene_write_ready_=false;
+    scene_view_.notice=notice;
+}
+
+scene::Reject UiBlueprintPerformanceAdapter::prepareSceneRecall(const SceneOperation& op,
+                                                                scene::RecallRequest& request) const {
+    const auto* selected=sceneSlot(op.slot);
+    if(!selected || selected->state!=seq::SlotState::Valid) return scene::Reject::InvalidScene;
+    request.configuration=selected->config;
+    request.requested=op.domains;
+    request.locks=op.locks;
+    request.apply_tempo=op.apply_tempo;
+    request.discard_pattern=op.discard_pattern;
+    request.mode=op.mode;
+    request.slot=op.slot;
+    const auto domains=scene::effectiveDomains(selected->config.domains,op.domains,op.locks,op.apply_tempo);
+    if(domains&scene::Pattern) {
+        const auto* slot=patternSlot(selected->config.pattern_slot);
+        if(!slot || slot->state!=seq::SlotState::Valid || !selected->config.pattern_sequence ||
+           slot->sequence!=selected->config.pattern_sequence)
+            return scene::Reject::PatternUnavailable;
+        request.pattern=*slot;
+        request.resolved_pattern_slot=selected->config.pattern_slot;
+    }
+    return backend_.validateScene(request);
+}
+
+scene::Reject UiBlueprintPerformanceAdapter::sceneCompatibility(const SceneOperation& op) const {
+    scene::RecallRequest request;
+    return prepareSceneRecall(op,request);
+}
+
+void UiBlueprintPerformanceAdapter::requestScene(const SceneOperation& op) {
+    if(op.action==SceneAction::Cancel) {
+        replace_scene_=false;
+        if(scene_write_slot_!=seq::kNoSlot) finishSceneWrite("CANCELLED BEFORE WRITE");
+        if(scene_token_) backend_.cancelScene(scene_token_);
+        return;
+    }
+    if(!scene_store_ || op.slot>=scene::kSlots || scene_write_slot_!=seq::kNoSlot ||
+       patternBusy()) {
+        scene_view_.notice="SCENE UNAVAILABLE OR BUSY";
+        return;
+    }
+    const auto& selected=scene_slots_[op.slot];
+    if(op.action==SceneAction::Load) {
+        if(selected.state!=seq::SlotState::Valid) {
+            scene_view_.notice="SELECT A VALID SCENE";
+            return;
+        }
+        scene::RecallRequest request;
+        const auto rejection=prepareSceneRecall(op,request);
+        if(rejection==scene::Reject::PatternUnavailable) {
+            scene_view_.notice="PATTERN REFERENCE CHANGED";
+            return;
+        }
+        if(scene_token_) {
+            if(rejection==scene::Reject::None && scene_view_.recall.token==scene_token_ &&
+               scene_view_.recall.phase==scene::RecallPhase::WaitingBoundary) {
+                replacement_scene_=op;
+                replace_scene_=true;
+                backend_.cancelScene(scene_token_);
+            } else scene_view_.notice="SCENE RECALL BUSY";
+            return;
+        }
+        scene_token_=backend_.submitScene(request);
+        scene_pending_slot_=scene_token_?op.slot:seq::kNoSlot;
+        scene_view_.notice=scene_token_?"RECALL REQUESTED":"RECALL REJECTED / OWNER BUSY";
+        return;
+    }
+
+    if(scene_token_) {
+        scene_view_.notice="SCENE RECALL BUSY";
+        return;
+    }
+    scene_write_=selected;
+    const bool save=op.action==SceneAction::Save;
+    if(selected.state==seq::SlotState::Incompatible ||
+       (!save && selected.state!=seq::SlotState::Valid)) {
+        scene_view_.notice="SCENE SLOT UNAVAILABLE";
+        return;
+    }
+    if(save) {
+        if(!backend_.sceneCaptureReady() || arp_token_ || seq_command_.token ||
+           seq_stop_.token || seq_deferred_count_) {
+            scene_view_.notice="WAIT FOR OWNER CONFIRMATION";
+            return;
+        }
+        captureScene(scene_write_.config);
+        if(!op.domains || (op.domains&~scene_write_.config.domains)) {
+            scene_view_.notice="CHECK DOMAINS AND SAVED PATTERN";
+            return;
+        }
+        scene_write_.config.domains=op.domains;
+        scene_write_.state=seq::SlotState::Valid;
+    }
+    if(op.action==SceneAction::Delete) scene_write_=scene::Slot{};
+    else {
+        auto& name=scene_write_.config.name;
+        if(op.name[0] || !save) std::memcpy(name,op.name,sizeof(name));
+        if(!name[0] && save) std::snprintf(name,sizeof(name),"SCENE %u",unsigned(op.slot)+1);
+        if(!seq::validName(name)) {
+            scene_view_.notice="INVALID SCENE NAME";
+            return;
+        }
+    }
+    if(!backend_.requestStorageQuiet()) {
+        scene_view_.notice="RELEASE NOTES TO WRITE SCENE";
+        return;
+    }
+    scene_write_slot_=op.slot;
+    scene_write_started_=now_ms_;
+    scene_write_capture_=save;
+    scene_view_.notice="WAITING FOR STORAGE QUIET";
+}
+
+void UiBlueprintPerformanceAdapter::serviceScenes() {
+    if(!scene_store_) return;
+    if(scene_write_slot_!=seq::kNoSlot) {
+        if(!backend_.storageQuiet()) {
+            if(uint32_t(now_ms_-scene_write_started_)>=seq::kConfirmationTimeoutMs)
+                finishSceneWrite("STORAGE QUIET TIMEOUT");
+        } else if(!scene_write_ready_) {
+            scene_write_ready_=true;
+            scene_view_.notice="READY TO WRITE / CANCEL AVAILABLE";
+        } else {
+            const auto index=scene_write_slot_;
+            const bool saved=scene_store_->commit(index,scene_write_);
+            scene_slots_[index]=scene_store_->load(index);
+            if(saved && scene_write_capture_) {
+                scene_view_.reference=index;
+                scene_reference_sequence_=scene_slots_[index].sequence;
+                scene_baseline_=scene_slots_[index].config;
+            } else if(saved && scene_view_.reference==index &&
+                      scene_slots_[index].state==seq::SlotState::Valid) {
+                scene_reference_sequence_=scene_slots_[index].sequence; // Rename changes only identity metadata.
+            }
+            finishSceneWrite(saved?"SCENE WRITE CONFIRMED":"SCENE WRITE NOT VERIFIED");
+        }
+    }
+    captureScene(scene_current_);
+    if(const auto* status=backend_.sceneRecallStatus()) {
+        scene_view_.recall=*status;
+        if(scene_token_ && status->token==scene_token_) scene_view_.notice="";
+        if(scene_token_ && status->token==scene_token_ && status->pending==seq::kNoSlot) {
+            scene_token_=0;
+            scene_pending_slot_=seq::kNoSlot;
+            if(status->phase==scene::RecallPhase::Confirmed) {
+                scene_view_.reference=status->active;
+                scene_reference_sequence_=scene_slots_[status->active].sequence;
+                scene_baseline_=scene_current_;
+            }
+            if(replace_scene_) {
+                replace_scene_=false;
+                if(status->phase==scene::RecallPhase::Cancelled &&
+                   status->generation==backend_.sequencerGeneration())
+                    requestScene(replacement_scene_);
+            }
+        }
+    }
+    if(scene_token_ && scene_view_.recall.pending==seq::kNoSlot)
+        scene_view_.recall.pending=scene_pending_slot_;
+    const auto* reference=sceneSlot(scene_view_.reference);
+    scene_view_.selective=false;
+    if(scene_token_ || scene_write_slot_!=seq::kNoSlot) scene_view_.dirty=scene::Dirty::Pending;
+    else if(!reference) scene_view_.dirty=scene::Dirty::Unsaved;
+    else if(reference->state!=seq::SlotState::Valid || reference->sequence!=scene_reference_sequence_)
+        scene_view_.dirty=scene::Dirty::Invalid;
+    else {
+        const auto& config=reference->config;
+        const auto* pattern=patternSlot(config.pattern_slot);
+        if((config.domains&scene::Pattern) && (!pattern || pattern->state!=seq::SlotState::Valid ||
+            pattern->sequence!=config.pattern_sequence)) {
+            scene_view_.dirty=scene::Dirty::Invalid;
+        } else {
+            scene_view_.selective=scene::differences(config,scene_baseline_,config.domains)!=0;
+            scene_view_.dirty=scene::differences(config,scene_current_,config.domains)
+                ?scene::Dirty::Modified:scene::Dirty::Clean;
+            if(scene_view_.selective && scene_view_.dirty==scene::Dirty::Modified)
+                scene_view_.selective=scene::differences(scene_baseline_,scene_current_,config.domains)==0;
+        }
+    }
+}
+
 void UiBlueprintPerformanceAdapter::finishPattern(const char* notice) {
     pattern_phase_=PatternPhase::Idle;
     pattern_wait_boundary_=pattern_follow_load_=false;
@@ -1164,7 +1394,7 @@ void UiBlueprintPerformanceAdapter::requestPattern(const ui::PatternOperation& o
         return;
     }
     if(operation.action==PatternAction::Cancel) {
-        if(pattern_phase_==PatternPhase::Quiet || pattern_phase_==PatternPhase::Writing) {
+        if(pattern_phase_==PatternPhase::Quiet || pattern_phase_==PatternPhase::ReadyToWrite) {
             backend_.releaseStorageQuiet();
             finishPattern("CANCELLED");
         } else if(pattern_phase_==PatternPhase::Boundary || status->pending_slot!=seq::kNoSlot) {
@@ -1239,14 +1469,16 @@ void UiBlueprintPerformanceAdapter::servicePattern() {
     case PatternPhase::Idle: return;
     case PatternPhase::Quiet:
         if(backend_.storageQuiet()) {
-            pattern_phase_=PatternPhase::Writing;
-            pattern_notice_="WRITING / AUDIO SILENCED";
+            pattern_phase_=PatternPhase::ReadyToWrite;
+            pattern_notice_="READY TO WRITE / CANCEL AVAILABLE";
         } else if(expired) {
             backend_.releaseStorageQuiet();
             finishPattern("TIMEOUT / STORAGE QUIET");
         }
         return;
-    case PatternPhase::Writing: {
+    case PatternPhase::ReadyToWrite: {
+        // NVS runs synchronously on the UI task. Cancellation is serviced
+        // before this call or after it returns, never during set_blob/commit.
         const auto* pattern=sequencerPattern();
         const bool save=pattern_op_.action==PatternAction::Save || pattern_follow_load_;
         if(save && status && pattern)
@@ -1307,6 +1539,7 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     serviceArp();
     serviceSequencer();
     servicePattern();
+    serviceScenes();
     if(tempo_save_bpm_ && (backend_.storageQuiet() || now_ms_-tempo_save_started_ms_>=2000)) {
         const bool saved=backend_.storageQuiet() && save_tempo_(tempo_save_bpm_);
         backend_.releaseStorageQuiet();

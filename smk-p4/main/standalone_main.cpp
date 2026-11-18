@@ -16,6 +16,8 @@
 #include "controller_profile_nvs.h"
 #include "global_tempo_nvs.h"
 #include "pattern_nvs.h"
+#include "performance_scene_nvs.h"
+#include "nvs.h"
 #endif
 #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
 #include "ui_blueprint.h"
@@ -26,6 +28,12 @@
 #include "usb_midi_host.h"
 #include "standalone_boot.h"
 #include "esp_heap_caps.h"
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+#include "esp_app_desc.h"
+#include "esp_memory_utils.h"
+#include "esp_system.h"
+#include <atomic>
+#endif
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -48,6 +56,11 @@ struct Snapshot {
     UnifiedOutput::Metrics output;
     uint32_t swap_free_before=0,swap_largest_before=0,swap_psram_before=0,swap_psram_largest_before=0;
     uint32_t swap_free_after=0,swap_largest_after=0,swap_psram_after=0,swap_psram_largest_after=0;
+    uint32_t swap_last_us=0,swap_max_us=0,swap_generation_before=0,swap_generation_after=0;
+#endif
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    uint64_t apply_total_us=0;
+    uint32_t apply_count=0, apply_max_us=0;
 #endif
     smk::p4::amy::Snapshot engine;
     uint64_t frames = 0, render_total_us = 0, command_total_us = 0, dma_total_us = 0;
@@ -64,6 +77,36 @@ struct Snapshot {
 StaticQueue_t snapshot_control;
 uint8_t snapshot_storage[sizeof(Snapshot)];
 QueueHandle_t snapshots = nullptr;
+
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+std::atomic<uint32_t> allocation_failures{0};
+static_assert(decltype(allocation_failures)::is_always_lock_free);
+
+void countAllocationFailure(size_t, uint32_t, const char*) {
+    allocation_failures.fetch_add(1, std::memory_order_relaxed);
+}
+
+void reportHeap(const char* stage) {
+    multi_heap_info_t internal{}, dma{}, psram{};
+    heap_caps_get_info(&internal, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    heap_caps_get_info(&dma, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+    heap_caps_get_info(&psram, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    ESP_LOGI(kTag, "BOOT_HEAP stage=%s internal=%zu largest=%zu min=%zu blocks=%zu"
+                  " dma=%zu dma_largest=%zu dma_min=%zu"
+                  " psram=%zu psram_largest=%zu psram_min=%zu psram_blocks=%zu alloc_failures=%" PRIu32,
+             stage, internal.total_free_bytes, internal.largest_free_block,
+             internal.minimum_free_bytes, internal.allocated_blocks,
+             dma.total_free_bytes, dma.largest_free_block, dma.minimum_free_bytes,
+             psram.total_free_bytes, psram.largest_free_block, psram.minimum_free_bytes,
+             psram.allocated_blocks, allocation_failures.load(std::memory_order_relaxed));
+}
+
+void checkBootHeap(const char* stage) {
+    const bool intact = heap_caps_check_integrity_all(true);
+    ESP_LOGI(kTag, "HEAP_INTEGRITY stage=%s ok=%d", stage, intact);
+    if (!intact) esp_system_abort("Audio boot heap corruption");
+}
+#endif
 
 void runAudio() {
 #ifdef SMKP4_UNIFIED_ENGINE
@@ -92,12 +135,22 @@ void runAudio() {
     // Boot admission before LVGL starts allocating. Upstream amy_start is void
     // and still contains unchecked boot allocations; fail before entering it
     // when the conservative internal reserve is absent.
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    checkBootHeap("before_amy");
+    reportHeap("before_amy");
+    ESP_LOGI(kTag, "BOOT_SNAPSHOT bytes=%zu memory=%s", sizeof(Snapshot),
+             esp_ptr_external_ram(state_storage) ? "PSRAM" : "internal");
+#endif
     state.boot_free=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
     state.boot_largest=heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
     state.boot_admitted=smk::p4::amy::Runtime::hasBootMemory(state.boot_free,state.boot_largest);
     if(!state.boot_admitted || !runtime.begin()) state.error=ESP_ERR_NO_MEM;
     state.engine_free=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
     state.engine_largest=heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    if (state.boot_admitted) checkBootHeap("after_amy");
+    reportHeap(state.boot_admitted ? "after_amy" : "admission_rejected");
+#endif
     if(smk::p4::amy::kVoices>4 && state.error==ESP_OK &&
        (heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)<smk::p4::amy::kPostBootFreeInternalBytes ||
         heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)<smk::p4::amy::kPostBootLargestInternalBytes)) {
@@ -155,6 +208,12 @@ void runAudio() {
         const uint16_t previous_patch=runtime.snapshot().patch_id;
         const int64_t command_start=esp_timer_get_time();
         runtime.apply(static_cast<uint32_t>(command_start/1000));
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+        const auto apply_us=static_cast<uint32_t>(esp_timer_get_time()-command_start);
+        state.apply_total_us+=apply_us;
+        ++state.apply_count;
+        if(apply_us>state.apply_max_us)state.apply_max_us=apply_us;
+#endif
 #ifdef SMKP4_UNIFIED_ENGINE
         const bool loading=runtime.snapshot().patch_state==smk::p4::amy::PatchState::Requested;
         if(loading) {
@@ -164,10 +223,15 @@ void runAudio() {
             state.swap_psram_largest_before=heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
             state.engine=runtime.snapshot();xQueueOverwrite(snapshots,&state);
         }
+        const auto load_start=loading?esp_timer_get_time():0;
 #endif
         runtime.loadPendingPatch(); // No-op in legacy profiles; worker-only in0.8.
 #ifdef SMKP4_UNIFIED_ENGINE
         if(loading) {
+            state.swap_last_us=static_cast<uint32_t>(esp_timer_get_time()-load_start);
+            if(state.swap_last_us>state.swap_max_us)state.swap_max_us=state.swap_last_us;
+            state.swap_generation_before=state.engine.generation;
+            state.swap_generation_after=runtime.snapshot().generation;
             state.swap_free_after=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
             state.swap_largest_after=heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
             state.swap_psram_after=heap_caps_get_free_size(MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
@@ -238,7 +302,14 @@ void runAudio() {
     }
     const esp_err_t stop_error = output.stop();
     if (state.error == ESP_OK) state.error = stop_error;
+#if defined(CONFIG_SMKP4_PCM_WIRING_CONFIRMED) && defined(SMKP4_UNIFIED_ENGINE)
+    state.output=output.metrics();
+    state.frames=state.output.frames;
+#endif
     runtime.end(); state.engine=runtime.snapshot();
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    reportHeap("owner_stopped");
+#endif
     state.running = false;
     xQueueOverwrite(snapshots, &state);
     heap_caps_free(state_storage);
@@ -250,6 +321,11 @@ void audioTask(void*) {
 }
 
 extern "C" void app_main() {
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    const esp_err_t hook_error = heap_caps_register_failed_alloc_callback(countAllocationFailure);
+    if (hook_error != ESP_OK) ESP_LOGE(kTag, "Allocation failure counter: %s", esp_err_to_name(hook_error));
+    reportHeap("app_main");
+#endif
     if (!smk::p4::reportHardware()) return;
 #ifdef SMKP4_SOUND_EDITOR
     // This backend belongs to the control task. Reserve its preset and edit
@@ -284,6 +360,9 @@ extern "C" void app_main() {
 #endif
              CONFIG_SMKP4_PCM_TEST_HZ, double(kTestAmplitude));
     if (!snapshots) ESP_LOGE(kTag,"Snapshot mailbox creation failed; diagnostics continue without audio/USB");
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    reportHeap("before_owner");
+#endif
     const bool owner_started=snapshots && xTaskCreate(audioTask, "amy_owner", smk::p4::amy::kOwnerStackBytes, nullptr,
                                   smk::p4::amy::kOwnerPriority, nullptr) == pdPASS;
     if (!owner_started) {
@@ -302,6 +381,9 @@ extern "C" void app_main() {
         [] { vTaskDelay(pdMS_TO_TICKS(10)); });
     if(!snapshot_received) ESP_LOGE(kTag,"Initial audio snapshot unavailable: %s; diagnostics continue; no automatic restart",
         !snapshots?"mailbox unavailable":owner_started?"timeout":"owner task not started");
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    reportHeap("after_owner");
+#endif
 #if defined(CONFIG_SMKP4_USB_WIRING_CONFIRMED)
     // This opt-in config records operator electrical qualification and enables
     // USB mode. Compilation never supplies that qualification.
@@ -343,6 +425,9 @@ extern "C" void app_main() {
     static smk::p4::NvsPatternStore patterns;
     if(patterns.begin()) adapter.setPatternStore(patterns);
     else ESP_LOGE(kTag,"Pattern library NVS unavailable");
+    static smk::p4::NvsSceneStore scenes;
+    if(scenes.begin()) adapter.setSceneStore(scenes);
+    else ESP_LOGE(kTag,"Scene library NVS unavailable");
     const unsigned boot_bpm=smk::p4::tempo::NvsTempo{}.load();
     if(boot_bpm!=smk::p4::tempo::kDefaultBpm &&
        !backend.setArp(smk::p4::arp::Action::Bpm,uint8_t(boot_bpm),uint32_t(esp_timer_get_time()/1000)))
@@ -355,6 +440,9 @@ extern "C" void app_main() {
     static smk::p4::PerformanceUi ui(backend);
 #endif
 #if defined(CONFIG_SMKP4_USB_WIRING_CONFIRMED)
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    reportHeap("before_usb");
+#endif
 #if defined(CONFIG_SMKP4_USB_MIDI_TRACE)
     runtime.usbInput().enableTrace();
 #endif
@@ -366,9 +454,15 @@ extern "C" void app_main() {
         if(!usb_host.begin(CONFIG_SMKP4_USB_CONTROLLER)) ESP_LOGE(kTag,"USB Host initialization failed; Touch remains available");
     } else ESP_LOGE(kTag,"USB Host not started: %s",smk::p4::boot::reason(usb_start));
 #endif
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    reportHeap("before_display");
+#endif
     const bool display_ready = smk::p4::beginDisplayTest(diagnostic);
     const bool ui_ready=display_ready && !diagnostic && ui.begin();
     if(!display_ready || (!diagnostic && !ui_ready)) ESP_LOGE(kTag,"Display/UI failed; audio owner continues");
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    reportHeap("after_display");
+#endif
     TickType_t last_report = xTaskGetTickCount();
     for (;;) {
         Snapshot current{};
@@ -380,6 +474,10 @@ extern "C" void app_main() {
         if(ui_ready) ui.service(static_cast<uint32_t>(esp_timer_get_time()/1000));
         if (xTaskGetTickCount() - last_report >= pdMS_TO_TICKS(smk::p4::config::kDiagnosticsIntervalMs)) {
             last_report = xTaskGetTickCount();
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+            reportHeap("steady");
+            ESP_LOGI(kTag, "BOOT_STACK control_free=%u", unsigned(uxTaskGetStackHighWaterMark(nullptr)));
+#endif
             Snapshot state{};
             if (snapshots && xQueuePeek(snapshots, &state, 0) == pdTRUE) {
 #if !defined(CONFIG_SMKP4_PCM_DIAGNOSTIC)
@@ -412,6 +510,17 @@ extern "C" void app_main() {
                     long(state.engine.patch_error),(unsigned long)state.engine.patch_changes,(unsigned long)state.engine.patch_failures);
 #ifdef SMKP4_HARMONY
 #ifdef SMKP4_SOUND_EDITOR
+                const auto& scene=state.engine.scene;
+                ESP_LOGI(kTag,"SCENE token=%lu generation=%lu phase=%u requested_slot=%u active_slot=%u effective=%x applied=%x error=%u patch_error=%ld",
+                    (unsigned long)scene.token,(unsigned long)scene.generation,unsigned(scene.phase),
+                    unsigned(scene.pending),unsigned(scene.active),unsigned(scene.effective),unsigned(scene.applied_domains),
+                    unsigned(scene.error),long(scene.patch_error));
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+                ESP_LOGI(kTag,"BENCH_SCENE token=%lu due_phase=%llu applied_phase=%llu units_per_frame=%lu request_ms=%lu start_ms=%lu elapsed_us=%lu",
+                    (unsigned long)scene.token,(unsigned long long)scene.due_phase,(unsigned long long)scene.applied_phase,
+                    (unsigned long)scene.bench_units_per_frame,(unsigned long)scene.bench_request_ms,
+                    (unsigned long)scene.bench_start_ms,(unsigned long)scene.bench_elapsed_us);
+#endif
                 const auto& arp=state.engine.arp;
                 ESP_LOGI(kTag,"ARP015 enabled=%d armed=%d gate=%d bpm=%u inputs=%u steps=%u rejected=%lu service_max_us=%lu",
                     arp.config.enabled,arp.armed,arp.sounding,arp.tempo.bpm,arp.held_count,arp.length,
@@ -445,11 +554,25 @@ extern "C" void app_main() {
                     (unsigned long)state.output.gaps.panic,(unsigned long)state.output.gaps.stale,
                     (unsigned long)state.output.gaps.unexpected_active,(unsigned long)state.output.gaps.other,
                     (unsigned long)state.output.stale_discarded);
-                ESP_LOGI(kTag,"OUTPUT08 frames=%llu blocks=%lu gaps=%lu barriers=%lu write_avg/max_us=%llu/%lu errors=%lu timeouts=%lu refill_risks=%lu stack_free=%lu underruns=UNMEASURED",
+                ESP_LOGI(kTag,"OUTPUT08 frames=%llu blocks=%lu gaps=%lu barriers=%lu write_avg/max_us=%llu/%lu errors=%lu timeouts=%lu refill_risks=%lu stack_free=%lu underruns=UNMEASURED refill_gap_max_us=%lu",
                     (unsigned long long)state.output.frames,(unsigned long)state.output.blocks,(unsigned long)state.output.silence_blocks,
                     (unsigned long)state.output.barriers,(unsigned long long)(state.output.blocks?state.output.write_total_us/state.output.blocks:0),
                     (unsigned long)state.output.write_max_us,(unsigned long)state.output.write_errors,(unsigned long)state.output.timeouts,
-                    (unsigned long)state.output.refill_risks,(unsigned long)state.output.stack_free);
+                    (unsigned long)state.output.refill_risks,(unsigned long)state.output.stack_free,
+                    (unsigned long)state.output.refill_gap_max_us);
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+                ESP_LOGI(kTag,"BENCH_AUDIO apply_count=%lu apply_avg_us=%llu apply_max_us=%lu generation=%lu ramps=%lu patch_gap_blocks=%lu patch_gap_max_blocks=%lu loads=%lu global_panics=%lu usb_invalidations=%lu",
+                    (unsigned long)state.apply_count,
+                    (unsigned long long)(state.apply_count?state.apply_total_us/state.apply_count:0),
+                    (unsigned long)state.apply_max_us,(unsigned long)state.engine.generation,
+                    (unsigned long)state.output.ramps,(unsigned long)state.output.patch_gap_blocks,
+                    (unsigned long)state.output.patch_gap_max_blocks,
+                    (unsigned long)state.engine.bench_load_attempts,(unsigned long)state.engine.bench_global_panics,
+                    (unsigned long)state.engine.bench_usb_invalidations);
+#endif
+                ESP_LOGI(kTag,"PATCH_LOAD last_us=%lu max_us=%lu generation_before=%lu generation_after=%lu",
+                    (unsigned long)state.swap_last_us,(unsigned long)state.swap_max_us,
+                    (unsigned long)state.swap_generation_before,(unsigned long)state.swap_generation_after);
                 ESP_LOGI(kTag,"SWAP08 changes=%lu failures=%lu internal_before/free_largest=%lu/%lu after=%lu/%lu psram_before/free_largest=%lu/%lu after=%lu/%lu",
                     (unsigned long)state.engine.patch_changes,(unsigned long)state.engine.patch_failures,
                     (unsigned long)state.swap_free_before,(unsigned long)state.swap_largest_before,
@@ -458,7 +581,25 @@ extern "C" void app_main() {
                     (unsigned long)state.swap_psram_after,(unsigned long)state.swap_psram_largest_after);
 #endif
             }
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+            char elf_sha[65]{};
+            const auto* descriptor=esp_app_get_description();
+            constexpr char hex[]="0123456789abcdef";
+            for(unsigned i=0;i<32;++i) {
+                const auto byte=descriptor->app_elf_sha256[i];
+                elf_sha[2*i]=hex[byte>>4];
+                elf_sha[2*i+1]=hex[byte&15];
+            }
+            ESP_LOGI(kTag,"BENCH_ID schema=1 version=0.17B profile=guition-editor-8-bench elf_sha256=%s",elf_sha);
+#endif
             smk::p4::reportMemory();
+#if defined(SMKP4_SOUND_EDITOR) && defined(CONFIG_SMKP4_PCM_WIRING_CONFIRMED)
+            nvs_stats_t nvs{};
+            const auto nvs_error=nvs_get_stats(nullptr,&nvs);
+            ESP_LOGI(kTag,"NVS status=%s used_entries=%u free_entries=%u total_entries=%u",
+                esp_err_to_name(nvs_error),unsigned(nvs.used_entries),unsigned(nvs.free_entries),
+                unsigned(nvs.total_entries));
+#endif
 #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
             if(ui_ready) {
                 lv_mem_monitor_t memory{}; lv_mem_monitor(&memory);
@@ -468,8 +609,9 @@ extern "C" void app_main() {
                 d.lvgl_peak_used=memory.max_used; d.lvgl_frag_pct=memory.frag_pct;
                 d.free_internal_ram=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
                 d.free_psram=heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-                ESP_LOGI(kTag,"UI_BLUEPRINT stack_free_bytes=%u screen_switches=%lu",
-                    unsigned(uxTaskGetStackHighWaterMark(nullptr)),(unsigned long)d.screen_switches);
+                ESP_LOGI(kTag,"UI_BLUEPRINT stack_free_bytes=%u screen_switches=%lu lvgl_free=%u lvgl_largest=%u lvgl_peak_used=%u",
+                    unsigned(uxTaskGetStackHighWaterMark(nullptr)),(unsigned long)d.screen_switches,
+                    unsigned(memory.free_size),unsigned(memory.free_biggest_size),unsigned(memory.max_used));
                 adapter.model().bumpRevision();
             }
 #endif

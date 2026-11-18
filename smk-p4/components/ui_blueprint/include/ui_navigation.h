@@ -21,7 +21,8 @@ enum class ScreenId : uint8_t {
     MidiSettings  = 11, // TELA 12 — MIDI SETTINGS
     GlobalSettings= 12, // TELA 13 — GLOBAL SETTINGS
     Diagnostics   = 13, // TELA 14 — DIAGNOSTICS
-    Count         = 14
+    Scenes        = 14,
+    Count         = 15
 };
 
 enum class UiMode : uint8_t {

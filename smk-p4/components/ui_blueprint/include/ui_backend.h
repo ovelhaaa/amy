@@ -6,6 +6,8 @@
 #include "../../amy_runtime/pattern_library.h"
 #include "../../amy_runtime/tap_tempo.h"
 #include "../../amy_runtime/performance_macros.h"
+#include "../../amy_runtime/performance_scene_store.h"
+#include "../../amy_runtime/scene_recall.h"
 
 namespace smk::p4::ui {
 
@@ -61,6 +63,23 @@ struct PatternOperation {
     seq::SwitchMode mode=seq::SwitchMode::Immediate;
     bool discard=false;
     char name[seq::kPatternNameBytes]{};
+};
+
+enum class SceneAction : uint8_t { Load, Save, Rename, Delete, Cancel };
+struct SceneOperation {
+    SceneAction action=SceneAction::Load;
+    uint8_t slot=0, domains=scene::kAll, locks=0;
+    scene::RecallMode mode=scene::RecallMode::Immediate;
+    bool apply_tempo=false, discard_pattern=false;
+    char name[seq::kPatternNameBytes]{};
+};
+
+struct SceneView {
+    scene::RecallStatus recall;
+    scene::Dirty dirty=scene::Dirty::Unsaved;
+    uint8_t reference=seq::kNoSlot;
+    bool selective=false;
+    const char* notice="";
 };
 
 // Presentation density level (Section 7):
@@ -138,6 +157,11 @@ public:
     virtual const char* patternNotice() const { return ""; }
     virtual bool patternBusy() const { return false; }
     virtual void requestPattern(const PatternOperation&) {}
+    virtual const scene::Slot* sceneSlot(unsigned) const { return nullptr; }
+    virtual SceneView sceneView() const { return {}; }
+    virtual uint8_t sceneCaptureDomains() const { return 0; }
+    virtual scene::Reject sceneCompatibility(const SceneOperation&) const { return scene::Reject::InvalidScene; }
+    virtual void requestScene(const SceneOperation&) {}
     struct DelayStatus {
         float target_ms=0,applied_ms=0;
         bool sync=false,out_of_range=false,bypassed=false;

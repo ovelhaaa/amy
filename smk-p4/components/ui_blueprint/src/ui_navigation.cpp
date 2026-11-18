@@ -19,6 +19,7 @@ const char* screenTitle(ScreenId id) {
         case ScreenId::MidiSettings:   return "12 MIDI & MAPPING";
         case ScreenId::GlobalSettings: return "13 GLOBAL SETTINGS";
         case ScreenId::Diagnostics:    return "14 SYSTEM DIAGNOSTICS";
+        case ScreenId::Scenes:         return "SCENES";
         default:                       return "UNKNOWN SCREEN";
     }
 }
@@ -39,6 +40,7 @@ const char* screenShortName(ScreenId id) {
         case ScreenId::MidiSettings:   return "MIDI";
         case ScreenId::GlobalSettings: return "SETTINGS";
         case ScreenId::Diagnostics:    return "DIAG";
+        case ScreenId::Scenes:         return "SCENES";
         default:                       return "---";
     }
 }
@@ -67,6 +69,7 @@ ScreenView* createScreenById(ScreenId id) {
         case ScreenId::MidiSettings:   return createMidiScreen();
         case ScreenId::GlobalSettings: return createSettingsScreen();
         case ScreenId::Diagnostics:    return createDiagnosticsScreen();
+        case ScreenId::Scenes:         return createScenesScreen();
         default:                       return createPerformanceScreen();
     }
 }

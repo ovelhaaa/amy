@@ -1,3 +1,4 @@
+param([string]$LvglRoot)
 $ErrorActionPreference='Stop'
 $repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 Push-Location $repo
@@ -10,6 +11,7 @@ try {
     }
     $lvgl=Join-Path $repo 'smk-p4/managed_components/lvgl__lvgl'
     if(!(Test-Path $lvgl)) { $lvgl=Join-Path $repo '../../../smk-p4/managed_components/lvgl__lvgl' }
+    if($LvglRoot) { $lvgl=(Resolve-Path -LiteralPath $LvglRoot).Path }
     $flags=@('-DSMKP4_SOUND_EDITOR=1','-DSMKP4_FULL_FACTORY_LIBRARY=1','-DSMKP4_HARMONY=1','-DSMKP4_UNIFIED_ENGINE=1','-DSMKP4_SOUND_LIBRARY=1','-DSMKP4_VOICES=8','-std=c++20','-O2','-Wall','-Wextra','-Werror','-DLV_CONF_INCLUDE_SIMPLE=1','-DAMY_NO_MINIAUDIO','-DAMY_SAMPLE_RATE=48000','-DAMY_BLOCK_SIZE=256','-DBLOCK_SIZE_BITS=8','-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1','-DAMY_EXCLUSIVE_FM_PHASE_RESTART=1',"-I$lvgl",'-Ismk-p4/ui-preview','-Ismk-p4/components/ui_blueprint/include','-Ismk-p4/main','-Ishared/smk_protocol','-Ismk-p4/components/amy_runtime','-Isrc','-Ismk-p4/tests/nvs_mocks')
     New-Item -ItemType Directory -Force build/step016b-ui | Out-Null
     $objects=@()

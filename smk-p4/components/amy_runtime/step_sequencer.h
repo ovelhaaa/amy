@@ -115,16 +115,18 @@ public:
         return true;
     }
 
+    bool canReplacePattern(bool discard) const {
+        return discard || (clean_reference_ && settings()==clean_);
+    }
+
     bool load(uint8_t slot,const PatternSettings& target,SwitchMode mode,bool discard,
               uint32_t token,const tempo::Position& position,bool& release) {
-        const auto current=settings();
-        if(slot>=kPatternSlots || !valid(target) ||
-           ((!clean_reference_ || current!=clean_) && !discard)) return false;
+        if(slot>=kPatternSlots || !valid(target) || !canReplacePattern(discard)) return false;
         if(mode==SwitchMode::NextBar && status_.playing) {
             constexpr uint64_t bar=uint64_t(4)*tempo::kPpqn*tempo::kUnitsPerTick;
             swap_due_=position.phase+bar-position.phase%bar;
             pending_=target;
-            before_switch_=current;
+            before_switch_=settings();
             status_.pending_slot=slot;
             status_.switch_token=token;
             status_.switch_cancelled=false;

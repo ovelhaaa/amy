@@ -14,6 +14,8 @@ def main():
     parser.add_argument("--port", required=True)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--seconds", type=float, default=30)
+    parser.add_argument("--baud", type=int, default=115200)
+    parser.add_argument("--exclusive", action="store_true", help="Do not replace an existing log")
     parser.add_argument("--reset", action="store_true")
     args = parser.parse_args()
     if not 0 < args.seconds <= 3600:
@@ -21,12 +23,12 @@ def main():
     args.output.parent.mkdir(parents=True, exist_ok=True)
     connection = serial.Serial()
     connection.port = args.port
-    connection.baudrate = 115200
+    connection.baudrate = args.baud
     connection.timeout = 0.2
     connection.dtr = False
     connection.rts = False
     connection.open()
-    with connection as port, args.output.open("wb") as output:
+    with connection as port, args.output.open("xb" if args.exclusive else "wb") as output:
         if args.reset:
             port.rts = True
             time.sleep(0.2)

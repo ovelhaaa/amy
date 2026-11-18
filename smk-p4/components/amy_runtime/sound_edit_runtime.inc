@@ -332,6 +332,10 @@ void Runtime::serviceDelay(bool immediate) {
 void Runtime::applyEdit(uint32_t now_ms) {
     edit::Request request;if(!commands_.edits.pop(request))return;
     if(request.preset_recall && eventAgeMs(now_ms,request.recall_started_ms)>=kRecallTimeoutMs)return;
+    applyEdit(request);
+}
+
+void Runtime::applyEdit(const edit::Request& request) {
     auto& out=state_.edit;
 #ifdef SMKP4_HARMONY
     AdmissionTimer edit_timer(out.apply_max_us);

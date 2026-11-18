@@ -15,10 +15,13 @@ class UnifiedOutput {
 public:
     struct Metrics {
         amy::GapCounts gaps;
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+        uint32_t ramps=0,patch_gap_blocks=0,patch_gap_max_blocks=0;
+#endif
         uint32_t stale_discarded=0;
         uint64_t frames=0,write_total_us=0;
         uint32_t blocks=0,silence_blocks=0,barriers=0,write_max_us=0;
-        uint32_t write_errors=0,timeouts=0,refill_risks=0,stack_free=0;
+        uint32_t write_errors=0,timeouts=0,refill_risks=0,refill_gap_max_us=0,stack_free=0;
     };
     explicit UnifiedOutput(amy::Commands& commands):commands_(commands) {}
     ~UnifiedOutput() { stop(); }
@@ -68,9 +71,16 @@ private:
         int16_t last[2]{};
         uint32_t output_generation=commands_.generation();
         Metrics m{};int64_t previous_start=0;bool primed=false;
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+        uint32_t patch_gap_run=0;
+#endif
         while(error==ESP_OK && running_.load(std::memory_order_acquire)) {
             const auto start=esp_timer_get_time();
-            if(previous_start && start-previous_start>int64_t(kDmaDescriptors*amy::kBlockFrames*1000000ULL/amy::kSampleRateHz))++m.refill_risks;
+            if(previous_start) {
+                const auto gap_us=static_cast<uint32_t>(start-previous_start);
+                if(gap_us>m.refill_gap_max_us)m.refill_gap_max_us=gap_us;
+                if(gap_us>kDmaDescriptors*amy::kBlockFrames*1000000ULL/amy::kSampleRateHz)++m.refill_risks;
+            }
             previous_start=start;
             const auto generation=commands_.generation();
             const bool barrier=generation!=output_generation;
@@ -79,6 +89,9 @@ private:
             unsigned stale=0;
             const bool copied=!barrier && handoff_.take(pcm,generation,&stale);
             m.stale_discarded+=stale;
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+            const auto previous_patch_gaps=m.gaps.patch;
+#endif
             if(!copied) {
                 auto context=(barrier?commands_.transition_context:commands_.output_context).load(std::memory_order_acquire);
                 if(!primed && !barrier && (context&7)==uint32_t(amy::OutputReason::Ready))
@@ -92,6 +105,11 @@ private:
                         pcm[f*2+ch]=static_cast<int16_t>(int32_t(last[ch])*
                             (amy::kBlockFrames-1-f)/amy::kBlockFrames);
             }
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+            // Count only successful writes below. A ramp is nonzero at its input.
+            const bool ramp=!copied && (last[0] || last[1]);
+            const bool patch_gap=m.gaps.patch!=previous_patch_gaps;
+#endif
             if(copied)primed=true;
             last[0]=pcm[(amy::kBlockFrames-1)*2];last[1]=pcm[(amy::kBlockFrames-1)*2+1];
             const auto write_start=esp_timer_get_time();
@@ -100,6 +118,14 @@ private:
             m.write_total_us+=write_us;if(write_us>m.write_max_us)m.write_max_us=write_us;
             if(error==ESP_OK) { m.frames+=amy::kBlockFrames;++m.blocks; }
             else { ++m.write_errors;if(error==ESP_ERR_TIMEOUT)++m.timeouts; }
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+            if(error==ESP_OK) {
+                if(ramp)++m.ramps;
+                patch_gap_run=patch_gap?patch_gap_run+1:0;
+                if(patch_gap)++m.patch_gap_blocks;
+                if(patch_gap_run>m.patch_gap_max_blocks)m.patch_gap_max_blocks=patch_gap_run;
+            }
+#endif
             m.stack_free=uxTaskGetStackHighWaterMark(nullptr);
             xQueueOverwrite(metrics_,&m);
         }
