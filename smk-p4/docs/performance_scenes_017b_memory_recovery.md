@@ -26,7 +26,9 @@ Os tamanhos estáticos vêm do map do firmware anterior. As capacidades configur
 | Backend local com estado de controle e presets | `sizeof(Backend)` no serial | PSRAM com fallback interno | Antes do owner | Já prefere PSRAM |
 | Tarefas IDF preexistentes | main 24.576 B, esp_timer 3.584 B, idle 1.536 B por core. Timer FreeRTOS configurado em 2.048 B | RAM interna | Antes de app_main | Mantidas. Quantidade e pilhas reais a confirmar na captura |
 | Audio Owner | Stack 12.800 B, incluindo handoff PCM de 3 × 1.024 B de payload | RAM interna | Antes da admissão | Mantido |
-| AMY, tabelas de instrumentos, FIFOs, osciladores, bancos e temporários DSP | 8 instrumentos ativos, 64 osciladores de voz, 9 IDs de synth. Pico ESP32 a medir | Heap interno pelas caps de synth, block e fbl | `Runtime::begin()` e loader existente | Mantidos |
+| AMY, instrumentos e FIFOs | 8 × (252 + 2 × 40) = 2.656 B, mais tabelas para 9 IDs de synth | Heap interno pelas caps de synth | `Runtime::begin()` | Mantidos |
+| AMY, estado dos osciladores | 64 osciladores de voz × (356 + 52) = 26.112 B antes dos breakpoints. Cada breakpoint soma 8 B. Chorus e loader têm alocações adicionais | Heap interno pelas caps de events | `Runtime::begin()` e loader existente | Mantido |
+| AMY, bancos e temporários DSP | Quatro buffers PCM de 1.024 B. FBL e feedback somam 24.576 B em quatro buses e dois cores. Outros estados e o pico ficam para a placa | Heap interno pelas caps de block, fbl e synth | `Runtime::begin()` | Mantidos |
 | AMY, fila e blocos de deltas | Bloco de 40.960 B, mínimo de três blocos para a reserva explícita | Heap interno 8-bit | `Runtime::begin()` | Mantido. Fallback AMY para deltas desabilitado neste alvo |
 | AMY, delays, samples e SysEx | Echo usa 2 × 65.536 amostras, mais chorus/reverb e overhead. Total a medir | Payload PSRAM. Metadados internos conforme a cap de cada alocação | `Runtime::begin()` | Já separados pelas caps |
 | Saída PCM | Stack 4.096 B, 4 × 1.024 B de payload DMA | RAM interna e DMA | Após a reserva pós-AMY | Mantida |
@@ -42,6 +44,42 @@ O LVGL 9.3 conserva o mesmo pool TLSF. O port aloca 128 KiB alinhados em PSRAM 8
 Sequência real. ESP-IDF inicializa PSRAM e tarefas de serviço. `app_main` registra o hardware, instancia o backend e configura a mailbox. O owner cria o snapshot de trabalho, avalia a admissão, inicia AMY e verifica a reserva após AMY. A saída PCM e seus recursos são iniciados antes de publicar o primeiro snapshot. O controle abre NVS e instancia a UI, inicia USB se a condição de áudio permitir, e então inicializa display/LVGL. Depois, o controle atende a UI e publica a telemetria. USB pode enumerar em paralelo após sua criação.
 
 O bench registra `BOOT_HEAP` em `app_main`, `before_owner`, `before_amy`, `after_amy` ou `admission_rejected`, `after_owner`, `before_usb`, `before_display`, `after_display`, `steady` e quando o owner termina. O registro mostra livre, maior bloco, mínimo e contagem de blocos conforme as capacidades. O DMA interno é um subconjunto e não deve ser somado ao total interno. Heap interno 8-bit e PSRAM 8-bit são reportados separadamente. `BOOT_STACK`, `AUDIO`, `OUTPUT08` e `USB` registram high-water em bytes. `HEAP_INTEGRITY` verifica o heap antes de AMY e após a chamada de boot, antes do I²S. Se detectar corrupção, o bench entra no tratamento de falha do ESP-IDF. A rejeição de admissão ou de reserva segue o encerramento normal do owner. O callback de alocação conta falhas desde `app_main` sem logar no ponto da falha. As medições periódicas saem do controle, e o teste global de integridade fica fora do render. Nenhuma exceção de admissão foi necessária.
+
+## Builds e memória recuperada
+
+**PASS** nos dois builds sequenciais com `C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e <perfil> -j 8`, ESP-IDF 5.5.2. A primeira configuração do editor falhou na resolução do alias CMake `lvgl`. A referência ao nome gerenciado `lvgl__lvgl` resolveu o problema. As imagens abaixo correspondem ao commit de código `b5bcb06add90352e5a072bd7fd8a6b9fc9968f46`.
+
+| Perfil | DRAM0 data/BSS anterior → atual (B) | DRAM1 data/BSS anterior → atual (B) | Flash PIO / firmware.bin (B) |
+| --- | --- | --- | --- |
+| `guition-editor-8` | 37.908 / 23.724 → 37.904 / 31.616 | 0 / 138.944 → 0 / 0 | 1.451.018 / 1.451.744 |
+| `guition-editor-8-bench` | 38.332 / 23.812 → 38.332 / 31.728 | 0 / 138.976 → 0 / 0 | 1.556.494 / 1.557.216 |
+
+Os mapas deixaram de conter `.bss.work_mem_int.0` e passaram a ligar `smkp4_lvgl_pool`. Parte do BSS restante se acomodou em DRAM0, por isso a linha RAM do PIO subiu. A redução líquida de data/BSS é de **131.072 B no editor** e **131.060 B no bench**. No bench, `_heap_start_high` recua 138.976 B e `_heap_start_low` avança 7.904 B, liberando nominalmente 131.072 B de intervalo endereçável antes do overhead do heap. Frente ao log antigo, a projeção com as demais alocações iguais é cerca de 469 kB internos livres antes de AMY, cerca de 116 kB acima do piso. Livre, maior bloco e fragmentação reais requerem captura. O pool novo usa 131.072 B de PSRAM dinâmica mais overhead, sem reserva PSRAM estática adicional.
+
+Os `sdkconfig` efetivos são iguais aos de seus respectivos baselines. PSRAM hex a 200 MHz, uso por malloc, limiar preferencial interno de 16 KiB, reserva interna de 32 KiB, LVGL 128 KiB e heap poisoning desativado. Os perfis seguem separados pelo opt-in de USB/I²S e telemetria do bench. A tabela de partições dos quatro bundles tem SHA-256 `73c0b5c3e5fcba3a151cc70c453c93dd5f4798899e7f2f8cca76da1f32ffc501`.
+
+| Perfil | SHA-256 de firmware.bin | SHA-256 ELF no descritor |
+| --- | --- | --- |
+| `guition-editor-8` | `238a50dfe3ac264f650104cceaa488029f472fb85dad06bbb2ec109f325baab8` | `837dc2cb4eacada5a8cc424a7b2371ef2fff7691209bf57d1a3a6e9191dd7db9` |
+| `guition-editor-8-bench` | `ea832dfcaa513f880e77c9bc4537ebe06a840fc1b3b9323c6d5015d6441ab7ff` | `40087f524ef3164a615fb0b3f3cb2df5991b84bbc20f30dcb494c0048ff447f1` |
+
+Os bundles e respectivos manifestos estão em `build/release-017b-memory-recovery/<perfil>/`. Logs e mapas anterior/atual estão em `build/hardware-017b/memory-recovery-builds/`. Os bundles originais passaram novamente em `firmware.py check`.
+
+## Regressões
+
+| Comando | Resultado |
+| --- | --- |
+| `run_performance_scenes_017b.ps1 -ReuseObjects -RuntimeOnly` | **PASS**, 1.000 recalls, alocações protegidas em `apply()` e `render()`, OOM e Panic injetados, heap rastreado estável por topologia e retorno no teardown |
+| `run_pattern_library_017a.ps1`, `run_step_sequencer_016a.ps1`, `run_step_sequencer_midi_016c.ps1` | **PASS**, Patterns, estado e persistência simulada, sequenciador, MIDI e ownership |
+| `run_patch_load_0152.ps1`, `run_sound_editor.ps1` | **PASS**, loader, editor, AMY real com oito vozes, Harmony, NVS simulada e recuperação de OOM no loader |
+| `run_arp_015.ps1 -Runtime -BaselineRoot build/arp_015_baseline`, `run_fx_tests.ps1 all` | **PASS**, Arp, PCM com Arp desligado, 19 testes FX, Global Tempo e persistência |
+| `run_usb.ps1`, `run_smk25_0142.ps1` | **PASS**, USB IDF simulado e roteamento SMK25 |
+| `run_step_sequencer_ui_016b.ps1 -LvglRoot build/scene-lvgl-locked` | **PASS**, LVGL 9.3 com AMY, Scenes e sequenciador. Browser vazio e modal deixaram 66.376 e 52.280 B livres no pool em host |
+| `run_host.ps1`, `python -m unittest discover -s smk-p4/tests/hardware_017b -p test_bench.py` | **PASS**, gates de boot, PCM/I²S simulado, 34 testes do host e 32 do kit |
+| `check_blueprint_build.py` com editor e bench, `firmware.py package` e `firmware.py check` | **PASS**, perfis e flags esperados, pool de 128 KiB, hook ligado no map, tabela e hashes |
+| A1, A2–A5 e A–H na Guition | **MANUAL / NOT RUN** para a nova imagem |
+
+Os scripts PowerShell acima foram executados a partir de `smk-p4/tests/` por caminho relativo à raiz. No stress, o loader fez até 24 alocações e 2.880 B alocados por tentativa, com média/máximo de 1.714,6/5.623,6 µs e uma das 500 tentativas acima de 5.333 µs em tempo de host. O loader continua alocando durante a barreira silenciosa. Pico, margem contígua e duração do silêncio na Guition seguem pendentes. A coleta de heap em regime ocorre na tarefa de controle e sua sobrecarga também deve ser observada no A1.
 
 ## A1 na Guition
 
@@ -63,3 +101,5 @@ Select-String -Path $raw -Pattern 'BENCH_ID|ADMISSION|ENGINE |AUDIO |OUTPUT08|BO
 ```
 
 O registro da placa continua sendo o ensaio anterior. Antes do reteste, a economia estática vem do linker, e as margens dinâmicas e a integridade na Guition continuam **MANUAL**. A montagem mantém as referências elétricas existentes. A revisão da PCB, alimentação/VBUS e straps do DAC ainda exigem conferência na unidade.
+
+**Decisão de bancada.** GO para propor a gravação exclusiva da aplicação bench identificada acima e executar A1 após autorização para essa imagem. Release permanece **NO-GO**. Nenhuma gravação foi realizada nesta rodada.
