@@ -2,7 +2,7 @@
 
 **MEMORY RECOVERY CANDIDATE — HARDWARE RETEST REQUIRED.** Release **NO-GO** até medir as margens na Guition. O alvo deste trabalho é o perfil P4 da [PR #47](https://github.com/ovelhaaa/amy/pull/47). A especificação geral do projeto descreve o S3. A mudança fica no port P4.
 
-**Atualização física de 18/11/2026. A1 PASS** em repouso. A qualificação musical e sob carga segue pendente. Veja a captura registrada abaixo.
+**Atualização física de 18/11/2026. A1 PASS** em repouso. **A3 parcial PASS** para enumeração e notas MIDI. A qualificação musical e sob carga segue pendente. Veja as capturas registradas abaixo.
 
 ## Baseline e orçamento
 
@@ -123,4 +123,12 @@ A primeira captura com RTS simples ficou vazia. O hard reset USB com a sequênci
 
 O heap de admissão subiu **130.240 B** frente ao A1 anterior. O AMY consumiu 202.940 B internos no boot. A saída custou 9.184 B entre os marcos registrados, o USB sem dispositivo 8.428 B e display/UI 2.240 B internos. Em repouso ficaram 203.671 B internos aptos a DMA, 30.347.784 B livres em PSRAM e 83.192 B livres no pool LVGL. Integridade antes e após AMY, sem OOM, falha de alocação ou queda de heap nas cinco amostras. High-water observado em bytes livres: owner 3.840, saída 1.316, controle 10.964 e USB 5.524.
 
-`ADMISSION admitted=1`, `ENGINE ready=1` e `AUDIO I2S_PRODUCING` nos cinco relatórios. `OUTPUT08 frames` passou de 266.240 a 1.235.712, com zero erros, timeouts e riscos de refill. Houve um gap classificado como boot, sem novos gaps. O indicador de underruns permanece `UNMEASURED`. O USB Host iniciou e ficou sem enumeração na janela. A2–A5 ficam **MANUAL / NOT RUN**, incluindo toque, SMK25, escuta analógica e recalls. Margens sob carga e política de release continuam pendentes. Nenhum stress A–H foi executado.
+`ADMISSION admitted=1`, `ENGINE ready=1` e `AUDIO I2S_PRODUCING` nos cinco relatórios. `OUTPUT08 frames` passou de 266.240 a 1.235.712, com zero erros, timeouts e riscos de refill. Houve um gap classificado como boot, sem novos gaps. O indicador de underruns permanece `UNMEASURED`. O USB Host iniciou com o SMK25 desligado durante essa janela. Margens sob carga e política de release continuam pendentes. Nenhum stress A–H foi executado.
+
+## A3 parcial com SMK25 ligado
+
+**PASS** para enumeração após ligar o SMK25 V2, sem reiniciar a Guition. A captura passiva de 30 s na COM13 confirmou `USB state=2 connects=1` e Note On/Off no canal 1, com velocidades diferentes. O contador cumulativo chegou a 538 eventos, com zero erros de parsing, perdas ou overflow na fila MIDI. Duplicatas no cabo auxiliar 1 foram ignoradas. `trace_dropped` chegou a 1.020 registros de diagnóstico durante as rajadas.
+
+O AMY respondeu às notas com sinal digital e manteve o I²S produzindo frames, sem novos gaps, erros ou timeouts. O heap interno ficou estável em 239.603 B, com maior bloco de 163.840 B e zero falhas de alocação. Pitch bend, modulação, desconexão/reconexão, touchscreen, escuta analógica e recalls seguem **MANUAL / NOT RUN**. Release **NO-GO**.
+
+Bruto e sidecar em `build/hardware-017b/memory-recovery-flash-01/a3-smk-powered-01.log` e `a3-smk-powered-01.log.metadata.json`. SHA-256 do bruto `e3fc7ef9a9c259a4463bb8c386eeabe62de54641300ae79e73d4c2bc1ec26ee0`.
