@@ -1,5 +1,7 @@
 # Resultados da 0.17B
 
+Os resultados históricos abaixo precedem o [candidato de recuperação de RAM](performance_scenes_017b_memory_recovery.md), que registra as regressões da nova imagem e o A1 pendente.
+
 ## Fundação registrada no HEAD inicial da PR #47
 
 | Comando ou verificação | Resultado |

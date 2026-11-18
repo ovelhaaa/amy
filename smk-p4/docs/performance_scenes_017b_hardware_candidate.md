@@ -1,5 +1,7 @@
 # Guition JC4880P433 — qualificação da 0.17B
 
+O [candidato de recuperação de RAM](performance_scenes_017b_memory_recovery.md) tem nova identidade. A1 é o primeiro reteste na Guition e condiciona o restante da qualificação física. As tabelas abaixo preservam os candidatos anteriores.
+
 **Qualificação física PENDING.** O pinout, USB, VBUS, I²S e partições seguem o candidato Guition da [0.17A](pattern_library_017a_hardware_candidate.md). Consulte o [release gate de software](performance_scenes_017b_test_results.md) para o resultado dos testes.
 
 Qualificar na Guition com SMK25 e saída I²S, após autorização de gravação e identificação do binário pelo SHA-256.

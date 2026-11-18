@@ -30,6 +30,9 @@
 #include "esp_heap_caps.h"
 #ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
 #include "esp_app_desc.h"
+#include "esp_memory_utils.h"
+#include "esp_system.h"
+#include <atomic>
 #endif
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -75,6 +78,36 @@ StaticQueue_t snapshot_control;
 uint8_t snapshot_storage[sizeof(Snapshot)];
 QueueHandle_t snapshots = nullptr;
 
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+std::atomic<uint32_t> allocation_failures{0};
+static_assert(decltype(allocation_failures)::is_always_lock_free);
+
+void countAllocationFailure(size_t, uint32_t, const char*) {
+    allocation_failures.fetch_add(1, std::memory_order_relaxed);
+}
+
+void reportHeap(const char* stage) {
+    multi_heap_info_t internal{}, dma{}, psram{};
+    heap_caps_get_info(&internal, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    heap_caps_get_info(&dma, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+    heap_caps_get_info(&psram, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    ESP_LOGI(kTag, "BOOT_HEAP stage=%s internal=%zu largest=%zu min=%zu blocks=%zu"
+                  " dma=%zu dma_largest=%zu dma_min=%zu"
+                  " psram=%zu psram_largest=%zu psram_min=%zu psram_blocks=%zu alloc_failures=%" PRIu32,
+             stage, internal.total_free_bytes, internal.largest_free_block,
+             internal.minimum_free_bytes, internal.allocated_blocks,
+             dma.total_free_bytes, dma.largest_free_block, dma.minimum_free_bytes,
+             psram.total_free_bytes, psram.largest_free_block, psram.minimum_free_bytes,
+             psram.allocated_blocks, allocation_failures.load(std::memory_order_relaxed));
+}
+
+void checkBootHeap(const char* stage) {
+    const bool intact = heap_caps_check_integrity_all(true);
+    ESP_LOGI(kTag, "HEAP_INTEGRITY stage=%s ok=%d", stage, intact);
+    if (!intact) esp_system_abort("Audio boot heap corruption");
+}
+#endif
+
 void runAudio() {
 #ifdef SMKP4_UNIFIED_ENGINE
     UnifiedOutput output(runtime.commands());
@@ -102,12 +135,22 @@ void runAudio() {
     // Boot admission before LVGL starts allocating. Upstream amy_start is void
     // and still contains unchecked boot allocations; fail before entering it
     // when the conservative internal reserve is absent.
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    checkBootHeap("before_amy");
+    reportHeap("before_amy");
+    ESP_LOGI(kTag, "BOOT_SNAPSHOT bytes=%zu memory=%s", sizeof(Snapshot),
+             esp_ptr_external_ram(state_storage) ? "PSRAM" : "internal");
+#endif
     state.boot_free=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
     state.boot_largest=heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
     state.boot_admitted=smk::p4::amy::Runtime::hasBootMemory(state.boot_free,state.boot_largest);
     if(!state.boot_admitted || !runtime.begin()) state.error=ESP_ERR_NO_MEM;
     state.engine_free=heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
     state.engine_largest=heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    if (state.boot_admitted) checkBootHeap("after_amy");
+    reportHeap(state.boot_admitted ? "after_amy" : "admission_rejected");
+#endif
     if(smk::p4::amy::kVoices>4 && state.error==ESP_OK &&
        (heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)<smk::p4::amy::kPostBootFreeInternalBytes ||
         heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)<smk::p4::amy::kPostBootLargestInternalBytes)) {
@@ -264,6 +307,9 @@ void runAudio() {
     state.frames=state.output.frames;
 #endif
     runtime.end(); state.engine=runtime.snapshot();
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    reportHeap("owner_stopped");
+#endif
     state.running = false;
     xQueueOverwrite(snapshots, &state);
     heap_caps_free(state_storage);
@@ -275,6 +321,11 @@ void audioTask(void*) {
 }
 
 extern "C" void app_main() {
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    const esp_err_t hook_error = heap_caps_register_failed_alloc_callback(countAllocationFailure);
+    if (hook_error != ESP_OK) ESP_LOGE(kTag, "Allocation failure counter: %s", esp_err_to_name(hook_error));
+    reportHeap("app_main");
+#endif
     if (!smk::p4::reportHardware()) return;
 #ifdef SMKP4_SOUND_EDITOR
     // This backend belongs to the control task. Reserve its preset and edit
@@ -309,6 +360,9 @@ extern "C" void app_main() {
 #endif
              CONFIG_SMKP4_PCM_TEST_HZ, double(kTestAmplitude));
     if (!snapshots) ESP_LOGE(kTag,"Snapshot mailbox creation failed; diagnostics continue without audio/USB");
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    reportHeap("before_owner");
+#endif
     const bool owner_started=snapshots && xTaskCreate(audioTask, "amy_owner", smk::p4::amy::kOwnerStackBytes, nullptr,
                                   smk::p4::amy::kOwnerPriority, nullptr) == pdPASS;
     if (!owner_started) {
@@ -327,6 +381,9 @@ extern "C" void app_main() {
         [] { vTaskDelay(pdMS_TO_TICKS(10)); });
     if(!snapshot_received) ESP_LOGE(kTag,"Initial audio snapshot unavailable: %s; diagnostics continue; no automatic restart",
         !snapshots?"mailbox unavailable":owner_started?"timeout":"owner task not started");
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    reportHeap("after_owner");
+#endif
 #if defined(CONFIG_SMKP4_USB_WIRING_CONFIRMED)
     // This opt-in config records operator electrical qualification and enables
     // USB mode. Compilation never supplies that qualification.
@@ -383,6 +440,9 @@ extern "C" void app_main() {
     static smk::p4::PerformanceUi ui(backend);
 #endif
 #if defined(CONFIG_SMKP4_USB_WIRING_CONFIRMED)
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    reportHeap("before_usb");
+#endif
 #if defined(CONFIG_SMKP4_USB_MIDI_TRACE)
     runtime.usbInput().enableTrace();
 #endif
@@ -394,9 +454,15 @@ extern "C" void app_main() {
         if(!usb_host.begin(CONFIG_SMKP4_USB_CONTROLLER)) ESP_LOGE(kTag,"USB Host initialization failed; Touch remains available");
     } else ESP_LOGE(kTag,"USB Host not started: %s",smk::p4::boot::reason(usb_start));
 #endif
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    reportHeap("before_display");
+#endif
     const bool display_ready = smk::p4::beginDisplayTest(diagnostic);
     const bool ui_ready=display_ready && !diagnostic && ui.begin();
     if(!display_ready || (!diagnostic && !ui_ready)) ESP_LOGE(kTag,"Display/UI failed; audio owner continues");
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+    reportHeap("after_display");
+#endif
     TickType_t last_report = xTaskGetTickCount();
     for (;;) {
         Snapshot current{};
@@ -408,6 +474,10 @@ extern "C" void app_main() {
         if(ui_ready) ui.service(static_cast<uint32_t>(esp_timer_get_time()/1000));
         if (xTaskGetTickCount() - last_report >= pdMS_TO_TICKS(smk::p4::config::kDiagnosticsIntervalMs)) {
             last_report = xTaskGetTickCount();
+#ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
+            reportHeap("steady");
+            ESP_LOGI(kTag, "BOOT_STACK control_free=%u", unsigned(uxTaskGetStackHighWaterMark(nullptr)));
+#endif
             Snapshot state{};
             if (snapshots && xQueuePeek(snapshots, &state, 0) == pdTRUE) {
 #if !defined(CONFIG_SMKP4_PCM_DIAGNOSTIC)

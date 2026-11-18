@@ -61,6 +61,10 @@ def main():
     if args.sound_editor:
         require(args.full_factory and args.harmony and args.unified_engine and args.voices==8, "editor requires qualified factory baseline")
         require(b"SMK-P4 PERFORMANCE 0.15" in (build / "firmware.bin").read_bytes(), "missing 0.15 firmware identity")
+        memory_map = (build / "firmware.map").read_text(encoding="utf-8", errors="replace")
+        require(re.search(r"^\s+0x[0-9a-f]+\s+smkp4_lvgl_pool\s*$", memory_map, re.M),
+                "missing linked LVGL PSRAM pool hook")
+        require(".bss.work_mem_int." not in memory_map, "LVGL still reserves a static internal pool")
     elif args.full_factory:
         require(args.harmony and args.unified_engine and args.voices==8, "factory requires harmony and reusable eight voices")
         require(b"SMK-P4 FACTORY 0.10 EXPERIMENTAL" in (build / "firmware.bin").read_bytes(), "missing0.10 identity")

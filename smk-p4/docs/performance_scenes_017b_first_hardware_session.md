@@ -2,6 +2,8 @@
 
 **SMOKE FAIL — admissão de memória do Audio Owner. Release NO-GO.** A análise usa a captura física já existente de 17 de novembro de 2026. A sequência física fica interrompida em A1. Qualificação completa **PENDING**.
 
+O [candidato de recuperação de RAM](performance_scenes_017b_memory_recovery.md) tem identidade própria e roteiro para repetir A1. Os resultados abaixo pertencem ao firmware do primeiro ensaio.
+
 ## Ambiente e identidade
 
 | Item | Evidência |

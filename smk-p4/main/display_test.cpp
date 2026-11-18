@@ -3,6 +3,11 @@
 #include "touch_hal.h"
 #include "lvgl.h"
 #include "esp_heap_caps.h"
+#ifdef SMKP4_LVGL_PSRAM_POOL
+#include "lvgl_pool.h"
+#include <cassert>
+#include <cstddef>
+#endif
 #include "esp_log.h"
 #include "esp_timer.h"
 #include <cstring>
@@ -64,15 +69,46 @@ static lv_obj_t* label(lv_obj_t* parent, const char* text, int x, int y) {
     return object;
 }
 
+#ifdef SMKP4_LVGL_PSRAM_POOL
+static_assert(LV_USE_STDLIB_MALLOC == LV_STDLIB_BUILTIN && LV_MEM_ADR == 0);
+static void* lvgl_pool = nullptr;
+
+// LVGL's builtin allocator expects a valid pool when lv_init() starts.
+// The display/control task owns this pool for the lifetime of LVGL.
+extern "C" void* smkp4_lvgl_pool(size_t bytes) {
+    assert(lvgl_pool && bytes == LV_MEM_SIZE);
+    (void)bytes;
+    return lvgl_pool;
+}
+#endif
+
 bool beginDisplayTest(bool diagnostic_controls) {
+#ifdef SMKP4_LVGL_PSRAM_POOL
+    lvgl_pool = heap_caps_aligned_alloc(alignof(std::max_align_t), LV_MEM_SIZE,
+                                       MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!lvgl_pool) {
+        ESP_LOGE(TAG, "LVGL PSRAM pool allocation failed (%zu bytes)", size_t(LV_MEM_SIZE));
+        return false;
+    }
+#endif
     esp_err_t result = display::begin(display::Pipeline::NativeQueued);
-    if (result != ESP_OK) { ESP_LOGE(TAG, "LCD init: %s", esp_err_to_name(result)); return false; }
+    if (result != ESP_OK) {
+#ifdef SMKP4_LVGL_PSRAM_POOL
+        heap_caps_free(lvgl_pool);
+        lvgl_pool = nullptr;
+#endif
+        ESP_LOGE(TAG, "LCD init: %s", esp_err_to_name(result));
+        return false;
+    }
     result = touch::begin();
     touch_ready = result == ESP_OK;
     if (!touch_ready) ESP_LOGE(TAG, "Touch init: %s; display test continues", esp_err_to_name(result));
     else ESP_LOGI(TAG, "GT%s address=0x%02x native=%ux%u", touch::product_id(), touch::address(),
                   touch::native_width(), touch::native_height());
     lv_init();
+#ifdef SMKP4_LVGL_PSRAM_POOL
+    ESP_LOGI(TAG, "LVGL_POOL bytes=%zu memory=PSRAM", size_t(LV_MEM_SIZE));
+#endif
     lv_tick_set_cb(tickMs);
     auto* display = lv_display_create(800, 480);
     constexpr size_t buffer_bytes = 800u * 32u * 2u;
