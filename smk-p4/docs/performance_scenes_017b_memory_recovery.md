@@ -2,6 +2,8 @@
 
 **MEMORY RECOVERY CANDIDATE — HARDWARE RETEST REQUIRED.** Release **NO-GO** até medir as margens na Guition. O alvo deste trabalho é o perfil P4 da [PR #47](https://github.com/ovelhaaa/amy/pull/47). A especificação geral do projeto descreve o S3. A mudança fica no port P4.
 
+**Atualização física de 18/11/2026. A1 PASS** em repouso. A qualificação musical e sob carga segue pendente. Veja a captura registrada abaixo.
+
 ## Baseline e orçamento
 
 O HEAD remoto inicial era `8677c7589c43ce1078eaf41375240ce736346b21`. A captura física preservada do firmware bench anterior mostrou `ADMISSION free=337619 largest=245760 required=352256 admitted=0`, `AUDIO FAIL ... ESP_ERR_NO_MEM` e `ENGINE ready=0`. O déficit de heap interno era 14.637 B. O maior bloco excedia o piso por 49.152 B. O proprietário de áudio bloqueou a chamada a `Runtime::begin()`. Consulte o [registro físico original](performance_scenes_017b_first_hardware_session.md).
@@ -103,3 +105,22 @@ Select-String -Path $raw -Pattern 'BENCH_ID|ADMISSION|ENGINE |AUDIO |OUTPUT08|BO
 O registro da placa continua sendo o ensaio anterior. Antes do reteste, a economia estática vem do linker, e as margens dinâmicas e a integridade na Guition continuam **MANUAL**. A montagem mantém as referências elétricas existentes. A revisão da PCB, alimentação/VBUS e straps do DAC ainda exigem conferência na unidade.
 
 **Decisão de bancada.** GO para propor a gravação exclusiva da aplicação bench identificada acima e executar A1 após autorização para essa imagem. Release permanece **NO-GO**. Nenhuma gravação foi realizada nesta rodada.
+
+## Gravação autorizada e primeiro A1 físico
+
+**PASS** em 18/11/2026 na COM13, ESP32-P4 rev. 1.3, MAC `80:F1:B2:D3:CC:86`, flash JEDEC `68:4018` de 16 MB. O esptool 5.1.0 gravou somente a aplicação bench em `0x10000`. A leitura independente confirmou todos os bytes do firmware e do prefixo `0x0000–0xFFFF`, que inclui bootloader, tabela e NVS. A primeira leitura do backup perdeu o fluxo serial. A tentativa a 460800 com `--no-progress` concluiu e foi verificada antes da gravação. Backup completo da área até o fim de factory em `build/hardware-017b/memory-recovery-flash-01/before-stub-retry.bin`, SHA-256 `2bb471b20d8a3a16a5e2d4136e253af54ab35a3875e9fdf30080c54de9d81987`.
+
+A primeira captura com RTS simples ficou vazia. O hard reset USB com a sequência do esptool para Windows produziu a captura completa de 30 s, com ELF igual ao bundle. Bruto em `build/hardware-017b/memory-recovery-flash-01/a1-boot-win-reset.log`, SHA-256 `4e6d3b91f8ec084fa062d930d8fa0a6893ba178967fde7d9ebc828d380633006`.
+
+| Marco | Heap interno livre | Maior bloco interno |
+| --- | ---: | ---: |
+| Antes de AMY | 467.859 B | 352.256 B |
+| Após AMY | 264.919 B | 192.512 B |
+| Após Audio Owner e saída I²S | 255.735 B | 180.224 B |
+| Antes de USB, após NVS | 253.951 B | 180.224 B |
+| Após USB e antes de display | 245.523 B | 172.032 B |
+| Após display e durante repouso | 243.283 B | 167.936 B |
+
+O heap de admissão subiu **130.240 B** frente ao A1 anterior. O AMY consumiu 202.940 B internos no boot. A saída custou 9.184 B entre os marcos registrados, o USB sem dispositivo 8.428 B e display/UI 2.240 B internos. Em repouso ficaram 203.671 B internos aptos a DMA, 30.347.784 B livres em PSRAM e 83.192 B livres no pool LVGL. Integridade antes e após AMY, sem OOM, falha de alocação ou queda de heap nas cinco amostras. High-water observado em bytes livres: owner 3.840, saída 1.316, controle 10.964 e USB 5.524.
+
+`ADMISSION admitted=1`, `ENGINE ready=1` e `AUDIO I2S_PRODUCING` nos cinco relatórios. `OUTPUT08 frames` passou de 266.240 a 1.235.712, com zero erros, timeouts e riscos de refill. Houve um gap classificado como boot, sem novos gaps. O indicador de underruns permanece `UNMEASURED`. O USB Host iniciou e ficou sem enumeração na janela. A2–A5 ficam **MANUAL / NOT RUN**, incluindo toque, SMK25, escuta analógica e recalls. Margens sob carga e política de release continuam pendentes. Nenhum stress A–H foi executado.
