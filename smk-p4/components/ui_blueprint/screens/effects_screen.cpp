@@ -190,15 +190,15 @@ public:
                 }
             }
             if (notice_) {
-                const char* msg = "Tempo livre ativo — feedback e mix livres";
+                const char* msg = "Tempo livre ativo | feedback e mix livres";
                 if (effective_bypass) {
-                    msg = "Bypass global ativo — efeitos em espera";
+                    msg = "Bypass global ativo | efeitos em espera";
                     notice_color = palette::kWarning;
                 } else if (has_ds && status.out_of_range) {
-                    msg = "Tempo fora da faixa — mantendo limite seguro";
+                    msg = "Tempo fora da faixa | mantendo limite seguro";
                     notice_color = palette::kWarning;
                 } else if ((has_ds && status.sync) || backend.model().getInt("fx.delay.mode", 0) == 1) {
-                    msg = "Sync ativo — tempo manual bloqueado";
+                    msg = "Sync ativo | tempo manual bloqueado";
                     notice_color = palette::kWarning;
                 }
                 setTextColorIfChanged(notice_, notice_color_cached_, notice_color);
@@ -209,7 +209,7 @@ public:
                                  effective_bypass ? "Bypass global ativo" : "Cadeia fixa: CH>DLY>REV>EQ");
             const char* msg = effective_bypass
                                   ? "FX em bypass global (Master)"
-                                  : "Reverb sem bypass individual — ajuste via Size e Mix";
+                                  : "Reverb sem bypass individual | ajuste via Size e Mix";
             notice_color = effective_bypass ? palette::kWarning : palette::kTextSecondary;
             setTextColorIfChanged(notice_, notice_color_cached_, notice_color);
             updateStaticBufLabel(notice_, notice_buf_, sizeof(notice_buf_), msg);
@@ -218,12 +218,12 @@ public:
             updateStaticBufLabel(timing_, timing_buf_, sizeof(timing_buf_),
                                  effective_bypass ? "Bypass global ativo"
                                                   : (mode == 0 ? "Chorus desligado" : "Chorus ativo na cadeia"));
-            const char* msg = "Chorus ativo — Depth disponivel";
+            const char* msg = "Chorus ativo | Depth disponivel";
             if (effective_bypass) {
                 msg = "FX em bypass global (Master)";
                 notice_color = palette::kWarning;
             } else if (mode == 0) {
-                msg = "Chorus desligado — Depth bloqueado (valor preservado)";
+                msg = "Chorus desligado | Depth bloqueado (valor preservado)";
                 notice_color = palette::kWarning;
             } else {
                 notice_color = palette::kActive;
@@ -246,7 +246,7 @@ public:
             setTextColorIfChanged(notice_, notice_color_cached_, notice_color);
             updateStaticBufLabel(notice_, notice_buf_, sizeof(notice_buf_),
                                  effective_bypass
-                                     ? "Bypass global ativo — todos os FX silenciados"
+                                     ? "Bypass global ativo | todos os FX silenciados"
                                      : "Volume, Tilt Tone, EQ de 3 bandas e Bypass global");
         }
 
@@ -701,7 +701,7 @@ private:
             createParameterCard(detail_panel_, *backend_, "fx.reverb.mix", 320, 44, 306, 148,
                                 PresentationLevel::StageStacked);
             createInfoBox(detail_panel_, "NOTA",
-                          "Sem bypass individual — Mix 0% nao desativa macros. Use FX Bypass em Master.",
+                          "Sem bypass individual | Mix 0% nao desativa macros. Use FX Bypass em Master.",
                           8, 200, 618, 58, palette::kWarning);
         } else if (active_module_ == 2) {
             createStaticLabel(detail_panel_, "CHORUS", 8, 2, 110, palette::kAccentPrimary);
