@@ -32,6 +32,9 @@ int main(int argc, char** argv) {
         {ScreenId::Mixer,          0, "05_mixer.ppm"},
         {ScreenId::Modulation,     0, "06_modulation.ppm"},
         {ScreenId::Effects,        0, "07_effects.ppm"},
+        {ScreenId::Effects,        1, "07b_effects_reverb.ppm"},
+        {ScreenId::Effects,        2, "07c_effects_chorus.ppm"},
+        {ScreenId::Effects,        3, "07d_effects_master.ppm"},
         {ScreenId::Arpeggiator,    0, "08_arpeggiator.ppm"},
         {ScreenId::Sequencer,      0, "09_sequencer.ppm"},
         {ScreenId::Drums,          0, "10_drums.ppm"},
@@ -62,6 +65,6 @@ int main(int argc, char** argv) {
     }
 
     app.shutdown();
-    std::puts("PASS: all 20 screen/tab preview frames rendered at 800x480 RGB565");
+    std::puts("PASS: all 23 screen/tab preview frames rendered at 800x480 RGB565");
     return 0;
 }

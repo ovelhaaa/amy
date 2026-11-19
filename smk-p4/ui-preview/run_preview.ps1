@@ -95,6 +95,43 @@ if ($LvglOnly) { return }
 Write-Host "[2/4] Compiling SMK-P4 UI Blueprint 1.0 C++ component ..."
 $UiCompDir = Join-Path $SmkP4Dir "components\ui_blueprint"
 $UiIncDir = Join-Path $UiCompDir "include"
+$AmyRuntimeDir = Join-Path $SmkP4Dir "components\amy_runtime"
+$AmySrcDir = Join-Path $RepoRoot "src"
+$AmyBuildDir = Join-Path $RepoRoot "build\harmony09"
+$AmyObjFiles = @()
+if (Test-Path $AmyBuildDir) {
+    $AmyObjFiles = @(Get-ChildItem -Path $AmyBuildDir -Filter "*.c.o" | ForEach-Object { $_.FullName })
+}
+if ($AmyObjFiles.Count -lt 20) {
+    & (Join-Path $SmkP4Dir "tests\run_harmony.ps1") -ReuseObjects
+    if ($LASTEXITCODE -ne 0) { throw "Failed preparing AMY C objects via run_harmony.ps1" }
+    $AmyObjFiles = @(Get-ChildItem -Path $AmyBuildDir -Filter "*.c.o" | ForEach-Object { $_.FullName })
+}
+$AmyFlags = @(
+    "-DAMY_NO_MINIAUDIO",
+    "-DAMY_SAMPLE_RATE=48000",
+    "-DAMY_BLOCK_SIZE=256",
+    "-DBLOCK_SIZE_BITS=8",
+    "-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1",
+    "-DAMY_EXCLUSIVE_FM_PHASE_RESTART=1",
+    "-DSMKP4_VOICES=8",
+    "-DSMKP4_SOUND_LIBRARY=1",
+    "-DSMKP4_UNIFIED_ENGINE=1",
+    "-DSMKP4_HARMONY=1",
+    "-DSMKP4_FULL_FACTORY_LIBRARY=1",
+    "-DSMKP4_SOUND_EDITOR=1"
+)
+$NvsMocksDir = Join-Path $SmkP4Dir "tests\nvs_mocks"
+$MainDir = Join-Path $SmkP4Dir "main"
+$ProtocolDir = Join-Path $RepoRoot "shared\smk_protocol"
+$AmyRuntimeSrc = Join-Path $AmyRuntimeDir "amy_runtime.cpp"
+$AmyRuntimeObj = Join-Path $UiObjDir "amy_runtime.o"
+if (-not (Test-Path $AmyRuntimeObj) -or ((Get-Item $AmyRuntimeSrc).LastWriteTime -gt (Get-Item $AmyRuntimeObj).LastWriteTime)) {
+    & g++ @AmyFlags -O2 -std=c++20 -Wall -Wextra `
+        "-I$AmySrcDir" "-I$AmyRuntimeDir" "-I$MainDir" "-I$ProtocolDir" "-I$NvsMocksDir" `
+        -c $AmyRuntimeSrc -o $AmyRuntimeObj
+    if ($LASTEXITCODE -ne 0) { throw "Failed compiling amy_runtime.cpp for preview" }
+}
 $UiCppFiles = @()
 $UiCppFiles += Get-ChildItem -Path (Join-Path $UiCompDir "src") -Filter "*.cpp"
 $UiCppFiles += Get-ChildItem -Path (Join-Path $UiCompDir "widgets") -Filter "*.cpp"
@@ -109,6 +146,8 @@ foreach ($file in $UiCppFiles) {
         & g++ "-DSMKP4_LVGL_POOL_KB=$PoolKB" -O2 -std=c++20 -Wall -Wextra -Werror -DLV_CONF_INCLUDE_SIMPLE=1 `
             "-I$PreviewDir" `
             "-I$UiIncDir" `
+            "-I$AmyRuntimeDir" `
+            "-I$AmySrcDir" `
             "-I$LvglRoot" `
             "-I$LvglSrcDir" `
             -c $file.FullName -o $objFile
@@ -122,9 +161,11 @@ $TestSuiteExe = Join-Path $BuildDir "blueprint_test_suite.exe"
 & g++ "-DSMKP4_LVGL_POOL_KB=$PoolKB" -O2 -std=c++20 -Wall -Wextra -Werror -DLV_CONF_INCLUDE_SIMPLE=1 `
     "-I$PreviewDir" `
     "-I$UiIncDir" `
+    "-I$AmyRuntimeDir" `
+    "-I$AmySrcDir" `
     "-I$LvglRoot" `
     "-I$LvglSrcDir" `
-    $TestSuiteSrc $UiObjFiles $LvglArchive -o $TestSuiteExe
+    $TestSuiteSrc $UiObjFiles $AmyRuntimeObj $AmyObjFiles $LvglArchive -lm -o $TestSuiteExe
 if ($LASTEXITCODE -ne 0) { throw "Failed linking blueprint_test_suite.exe" }
 
 & $TestSuiteExe
@@ -136,9 +177,11 @@ $PreviewExe = Join-Path $BuildDir "preview_main.exe"
 & g++ "-DSMKP4_LVGL_POOL_KB=$PoolKB" -O2 -std=c++20 -Wall -Wextra -Werror -DLV_CONF_INCLUDE_SIMPLE=1 `
     "-I$PreviewDir" `
     "-I$UiIncDir" `
+    "-I$AmyRuntimeDir" `
+    "-I$AmySrcDir" `
     "-I$LvglRoot" `
     "-I$LvglSrcDir" `
-    $PreviewSrc $UiObjFiles $LvglArchive -o $PreviewExe
+    $PreviewSrc $UiObjFiles $AmyRuntimeObj $AmyObjFiles $LvglArchive -lm -o $PreviewExe
 if ($LASTEXITCODE -ne 0) { throw "Failed linking preview_main.exe" }
 
 & $PreviewExe $ShotsDir

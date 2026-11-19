@@ -51,9 +51,11 @@ bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManag
     // Active Patch pill
     patch_lbl_ = createLabel(root_, "128 DX7 BRASS 1", 198, 11, 132, &lv_font_montserrat_14, palette::kAccentPrimary);
 
-    auto* tempo_button=createActionButton(root_,"120 BPM INT",334,3,100,36,nullptr,nullptr);
+    auto* tempo_button=createActionButton(root_,nullptr,334,3,100,36,nullptr,nullptr);
     if(tempo_button) {
         tempo_label_=lv_obj_get_child(tempo_button,0);
+        std::snprintf(tempo_buf_,sizeof(tempo_buf_),"120 BPM INT");
+        if(tempo_label_) lv_label_set_text_static(tempo_label_,tempo_buf_);
         struct TempoContext { StatusStrip* strip; lv_obj_t* parent; IUiBackend* backend; };
         attachLvContext<TempoContext>(tempo_button,{this,parent,&backend},[](lv_event_t* e) {
             auto* c=static_cast<TempoContext*>(lv_event_get_user_data(e));
@@ -164,7 +166,11 @@ void StatusStrip::refreshTempo(IUiBackend& backend) {
         if(status || backend.isDemoMode())
             std::snprintf(text,sizeof(text),"%c%d BPM INT",pulse?'*':' ',int(backend.model().getInt("perf.bpm",120)));
         else std::snprintf(text,sizeof(text),"TEMPO --");
-        if(std::strcmp(lv_label_get_text(tempo_label_),text)) lv_label_set_text(tempo_label_,text);
+        if(std::strcmp(tempo_buf_,text)) {
+            std::snprintf(tempo_buf_,sizeof(tempo_buf_),"%s",text);
+            lv_label_set_text_static(tempo_label_,tempo_buf_);
+            lv_obj_invalidate(tempo_label_);
+        }
     }
     if(tempo_notice_ && !lv_obj_has_flag(tempo_panel_,LV_OBJ_FLAG_HIDDEN)) {
         const char* text=backend.tempoSaveNotice();

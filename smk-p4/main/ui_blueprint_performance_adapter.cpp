@@ -23,7 +23,8 @@ bool isFxId(const char* id) {
     return eq(id,"fx.chorus.mode") || eq(id,"fx.chorus.depth") ||
            eq(id,"fx.delay.time_ms") || eq(id,"fx.delay.mode") || eq(id,"fx.delay.division") ||
            eq(id,"fx.delay.feedback") || eq(id,"fx.delay.mix") ||
-           eq(id,"fx.reverb.size") || eq(id,"fx.reverb.mix") || eq(id,"fx.master_tone") || eq(id,"fx.eq.low_db");
+           eq(id,"fx.reverb.size") || eq(id,"fx.reverb.mix") || eq(id,"fx.master_tone") || eq(id,"fx.eq.low_db") ||
+           eq(id,"fx.eq.mid_db") || eq(id,"fx.eq.high_db") || eq(id,"fx.bypass_all");
 }
 }
 UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend& backend):backend_(backend) {
@@ -54,6 +55,10 @@ UiBlueprintPerformanceAdapter::UiBlueprintPerformanceAdapter(PerformanceBackend&
     model_.setFloat("fx.reverb.size",70.0f);
     model_.setFloat("fx.reverb.mix",0.0f);
     model_.setFloat("fx.master_tone",0.0f);
+    model_.setFloat("fx.eq.low_db",0.0f);
+    model_.setFloat("fx.eq.mid_db",0.0f);
+    model_.setFloat("fx.eq.high_db",0.0f);
+    model_.setBool("fx.bypass_all",false);
     model_.setNotice("WAIT OWNER SNAPSHOT; TOUCH LEASE 10s");
 }
 UiCommandResult UiBlueprintPerformanceAdapter::result(UiCommandState state,const char* id,const char* notice,uint32_t token) {
@@ -1630,6 +1635,9 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
             model_.setFloat("fx.reverb.mix",fx->config.reverb_mix*100.0f);
             model_.setFloat("fx.master_tone",fx->config.master_tone*100.0f);
             model_.setFloat("fx.eq.low_db",fx->config.eq_low_db);
+            model_.setFloat("fx.eq.mid_db",fx->config.eq_mid_db);
+            model_.setFloat("fx.eq.high_db",fx->config.eq_high_db);
+            model_.setBool("fx.bypass_all",fx->config.bypass_all);
         }
         const auto& s=backend_.state();
         if(isPatchSelectable(s.patch_id)) {
@@ -1669,6 +1677,9 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
             model_.setFloat("fx.reverb.mix",fx->config.reverb_mix*100.0f);
             model_.setFloat("fx.master_tone",fx->config.master_tone*100.0f);
             model_.setFloat("fx.eq.low_db",fx->config.eq_low_db);
+            model_.setFloat("fx.eq.mid_db",fx->config.eq_mid_db);
+            model_.setFloat("fx.eq.high_db",fx->config.eq_high_db);
+            model_.setBool("fx.bypass_all",fx->config.bypass_all);
         }
         result(UiCommandState::Rejected,fx_id_,"FX NOT CONFIRMED; OWNER STATE RETAINED");
     }

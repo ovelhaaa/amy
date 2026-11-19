@@ -55,6 +55,7 @@ bool BottomNavBar::build(lv_obj_t* parent, UiNavigationManager& nav) {
         if (!btn) continue;
         lv_obj_remove_style_all(btn);
         lv_obj_add_style(btn, &theme().tab_button, 0);
+        lv_obj_add_style(btn, &theme().tab_button_active, LV_STATE_CHECKED);
         lv_obj_set_pos(btn, bx, 4);
         lv_obj_set_size(btn, 106, 38);
         lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
@@ -117,12 +118,10 @@ void BottomNavBar::refresh(UiNavigationManager& nav) {
         const ScreenId dest = kBankScreens[bank][i];
         lv_label_set_text_static(labels_[i], screenShortName(dest));
 
-        lv_obj_remove_style(buttons_[i], &theme().tab_button_active, 0);
         if (dest == active) {
-            lv_obj_add_style(buttons_[i], &theme().tab_button_active, 0);
-            lv_obj_set_style_text_color(labels_[i], lv_color_hex(palette::kAccentPrimary), 0);
+            lv_obj_add_state(buttons_[i], LV_STATE_CHECKED);
         } else {
-            lv_obj_set_style_text_color(labels_[i], lv_color_hex(palette::kTextPrimary), 0);
+            lv_obj_remove_state(buttons_[i], LV_STATE_CHECKED);
         }
     }
 

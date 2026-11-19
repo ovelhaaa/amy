@@ -73,6 +73,7 @@ private:
     void toggleTempo(lv_obj_t* parent,IUiBackend& backend);
     char      patch_buf_[48]{};
     char      voices_buf_[24]{};
+    char      tempo_buf_[24]{};
 };
 
 // ── Bottom Navigation Bar (800 x 46) & Internal Sub-Tab Bar ──────────────

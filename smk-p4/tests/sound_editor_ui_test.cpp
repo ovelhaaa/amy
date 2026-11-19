@@ -4,10 +4,14 @@
 #include "local_performance_backend.h"
 #include "user_presets_v2.h"
 #include "../ui-preview/preview_harness.h"
+#include <algorithm>
 #include <cassert>
+#include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
+#include <vector>
 using namespace smk::p4;
 using namespace smk::p4::ui;
 void testSmk25LegacyUi(amy::Runtime&, LocalAmyPerformanceBackend&, UiBlueprintPerformanceAdapter&, UiBlueprint&);
@@ -76,6 +80,22 @@ static unsigned labels(lv_obj_t* root,const char* text){
     unsigned n=lv_obj_check_type(root,&lv_label_class) && std::strcmp(lv_label_get_text(root),text)==0?1:0;
     for(unsigned i=0;i<lv_obj_get_child_count(root);++i)n+=labels(lv_obj_get_child(root,i),text);
     return n;
+}
+static unsigned countObjects(lv_obj_t* root) {
+    if (!root) return 0;
+    unsigned n = 1;
+    for (unsigned i = 0; i < lv_obj_get_child_count(root); ++i) {
+        n += countObjects(lv_obj_get_child(root, i));
+    }
+    return n;
+}
+static lv_obj_t* firstSlider(lv_obj_t* root) {
+    if (!root) return nullptr;
+    if (lv_obj_check_type(root, &lv_slider_class)) return root;
+    for (unsigned i = 0; i < lv_obj_get_child_count(root); ++i) {
+        if (auto* s = firstSlider(lv_obj_get_child(root, i))) return s;
+    }
+    return nullptr;
 }
 template <typename ApplyFn>
 static void auditInventory(UiBlueprintPerformanceAdapter& a, ApplyFn&& apply) {
@@ -366,32 +386,155 @@ int main(){
     assert(browser_close);
     lv_obj_send_event(browser_close,LV_EVENT_CLICKED,nullptr);
     preview::pumpFrame(ui);
-    // 7. Effects Screen UI verification, interactive parameter edit & screenshot capture
-    assert(ui.navigation().navigateTo(ScreenId::Effects));preview::pumpFrame(ui);
+    // 7. Effects Screen 0.18-B Pilot verification, contextual switch, slider coalescing & screenshot capture
+    assert(ui.navigation().navigateTo(ScreenId::Effects, 0));
+    preview::pumpFrame(ui);
     assert(preview::saveFramebufferPpm("build/editor011/effects.ppm"));
-    assert(button(ui.contentObject(),"CHORUS MODE") && button(ui.contentObject(),"CHORUS DEPTH"));
-    assert(button(ui.contentObject(),"MANUAL TIME") && button(ui.contentObject(),"DELAY FDBK") && button(ui.contentObject(),"DELAY MIX"));
-    assert(button(ui.contentObject(),"DELAY MODE") && button(ui.contentObject(),"DIVISION"));
-    assert(button(ui.contentObject(),"REVERB SIZE") && button(ui.contentObject(),"REVERB MIX"));
-    assert(button(ui.contentObject(),"TILT TONE"));
-    assert(button(ui.contentObject(),"EQ LOW"));
+    assert(button(ui.contentObject(), "DELAY") && button(ui.contentObject(), "REVERB"));
+    assert(button(ui.contentObject(), "CHORUS") && button(ui.contentObject(), "MASTER"));
+    assert(button(ui.contentObject(), "MANUAL TIME") && button(ui.contentObject(), "DELAY FDBK") && button(ui.contentObject(), "DELAY MIX"));
+    assert(button(ui.contentObject(), "DELAY MODE") && button(ui.contentObject(), "DIVISION"));
+    assert(!button(ui.contentObject(), "REVERB SIZE") && !button(ui.contentObject(), "CHORUS MODE"));
 
-    // Interactive FX edits with owner round-trip confirmation
-    assert(next.requestParameterInt("fx.chorus.mode",2).accepted());
-    next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);reboot.publish(r.snapshot(),false,0,0);next.service(preview::g_sim_tick_ms+=25);preview::pumpFrame(ui);
-    assert(next.lastCommandState()==UiCommandState::Confirmed && r.snapshot().fx.config.chorus_mode==2);
+    // Coalesce continuous drag events (<35ms) and commit exact final position on RELEASED
+    {
+        lv_obj_t* fdbk_card = button(ui.contentObject(), "DELAY FDBK");
+        lv_obj_t* fdbk_slider = firstSlider(fdbk_card);
+        assert(fdbk_slider);
+        const uint32_t tok0 = reboot.fxToken();
+        lv_obj_add_state(fdbk_slider, LV_STATE_PRESSED);
+        lv_slider_set_value(fdbk_slider, 60, LV_ANIM_OFF);
+        lv_obj_send_event(fdbk_slider, LV_EVENT_VALUE_CHANGED, nullptr);
+        assert(reboot.fxToken() == tok0 + 1);
+        preview::g_sim_tick_ms += 5;
+        lv_slider_set_value(fdbk_slider, 70, LV_ANIM_OFF);
+        lv_obj_send_event(fdbk_slider, LV_EVENT_VALUE_CHANGED, nullptr);
+        assert(reboot.fxToken() == tok0 + 1); // coalesced inside 35 ms window
+        preview::g_sim_tick_ms += 5;
+        lv_slider_set_value(fdbk_slider, 75, LV_ANIM_OFF);
+        lv_obj_send_event(fdbk_slider, LV_EVENT_VALUE_CHANGED, nullptr);
+        assert(reboot.fxToken() == tok0 + 1); // still coalesced
+        lv_obj_remove_state(fdbk_slider, LV_STATE_PRESSED);
+        lv_obj_send_event(fdbk_slider, LV_EVENT_RELEASED, nullptr);
+        assert(reboot.fxToken() == tok0 + 2); // final release commit sent
+        next_apply();
+        assert(std::fabs(r.snapshot().fx.config.delay_feedback - 0.7125f) < 0.03f);
+    }
 
-    assert(next.requestParameterFloat("fx.delay.time_ms",500.0f).accepted());
-    next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);reboot.publish(r.snapshot(),false,0,0);next.service(preview::g_sim_tick_ms+=25);preview::pumpFrame(ui);
-    assert(next.lastCommandState()==UiCommandState::Confirmed && r.snapshot().fx.config.delay_time_ms==500.0f);
+    // Active Touch + USB notes remain intact across FX module switches
+    const auto fx_touch = next.requestNoteOn(60, 100);
+    assert(fx_touch.accepted());
+    const uint8_t fx_usb_on[]{0x09, 0x90, 64, 100};
+    assert(r.usbInput().transfer(fx_usb_on, sizeof(fx_usb_on), preview::g_sim_tick_ms));
+    next_apply();
+    assert(r.snapshot().active_notes == 2 && next.isNoteHeld(60));
 
-    assert(next.requestParameterFloat("fx.reverb.mix",50.0f).accepted());
-    next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);reboot.publish(r.snapshot(),false,0,0);next.service(preview::g_sim_tick_ms+=25);preview::pumpFrame(ui);
-    assert(next.lastCommandState()==UiCommandState::Confirmed && std::fabs(r.snapshot().fx.config.reverb_mix-0.5f)<0.01f);
+    lv_obj_send_event(button(ui.contentObject(), "REVERB"), LV_EVENT_CLICKED, nullptr);
+    preview::pumpFrame(ui);
+    assert(preview::saveFramebufferPpm("build/editor011/effects_reverb.ppm"));
+    assert(button(ui.contentObject(), "REVERB SIZE") && button(ui.contentObject(), "REVERB MIX"));
+    assert(!button(ui.contentObject(), "DELAY MODE") && r.snapshot().active_notes == 2 && next.isNoteHeld(60));
 
-    assert(next.requestParameterFloat("fx.master_tone",30.0f).accepted());
-    next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);reboot.publish(r.snapshot(),false,0,0);next.service(preview::g_sim_tick_ms+=25);preview::pumpFrame(ui);
-    assert(next.lastCommandState()==UiCommandState::Confirmed && std::fabs(r.snapshot().fx.config.master_tone-0.3f)<0.01f);
+    lv_obj_send_event(button(ui.contentObject(), "CHORUS"), LV_EVENT_CLICKED, nullptr);
+    preview::pumpFrame(ui);
+    assert(preview::saveFramebufferPpm("build/editor011/effects_chorus.ppm"));
+    assert(button(ui.contentObject(), "CHORUS MODE") && button(ui.contentObject(), "CHORUS DEPTH"));
+    assert(!button(ui.contentObject(), "REVERB SIZE") && r.snapshot().active_notes == 2 && next.isNoteHeld(60));
+
+    lv_obj_send_event(button(ui.contentObject(), "MASTER"), LV_EVENT_CLICKED, nullptr);
+    preview::pumpFrame(ui);
+    assert(preview::saveFramebufferPpm("build/editor011/effects_master.ppm"));
+    assert(button(ui.contentObject(), "FX BYPASS") && button(ui.contentObject(), "MASTER VOL"));
+    assert(button(ui.contentObject(), "TILT TONE") && button(ui.contentObject(), "EQ LOW"));
+    assert(button(ui.contentObject(), "EQ MID") && button(ui.contentObject(), "EQ HIGH"));
+    assert(r.snapshot().active_notes == 2 && next.isNoteHeld(60));
+
+    assert(next.requestNoteOff(60, fx_touch.token).accepted());
+    const uint8_t fx_usb_off[]{0x08, 0x80, 64, 0};
+    assert(r.usbInput().transfer(fx_usb_off, sizeof(fx_usb_off), preview::g_sim_tick_ms));
+    next_apply();
+    assert(r.snapshot().active_notes == 0 && !next.isNoteHeld(60));
+
+    // Interactive FX edits with owner round-trip confirmation (including B.1 Mid/High EQ & Bypass All)
+    assert(next.requestParameterInt("fx.chorus.mode", 2).accepted());
+    next_apply();
+    assert(next.lastCommandState() == UiCommandState::Confirmed && r.snapshot().fx.config.chorus_mode == 2);
+
+    assert(next.requestParameterFloat("fx.delay.time_ms", 500.0f).accepted());
+    next_apply();
+    assert(next.lastCommandState() == UiCommandState::Confirmed && r.snapshot().fx.config.delay_time_ms == 500.0f);
+
+    assert(next.requestParameterFloat("fx.reverb.mix", 50.0f).accepted());
+    next_apply();
+    assert(next.lastCommandState() == UiCommandState::Confirmed && std::fabs(r.snapshot().fx.config.reverb_mix - 0.5f) < 0.01f);
+
+    assert(next.requestParameterFloat("fx.master_tone", 30.0f).accepted());
+    next_apply();
+    assert(next.lastCommandState() == UiCommandState::Confirmed && std::fabs(r.snapshot().fx.config.master_tone - 0.3f) < 0.01f);
+
+    assert(next.requestParameterFloat("fx.eq.mid_db", -3.0f).accepted());
+    next_apply();
+    assert(next.lastCommandState() == UiCommandState::Confirmed && std::fabs(r.snapshot().fx.config.eq_mid_db - (-3.0f)) < 0.01f);
+
+    assert(next.requestParameterFloat("fx.eq.high_db", 4.0f).accepted());
+    next_apply();
+    assert(next.lastCommandState() == UiCommandState::Confirmed && std::fabs(r.snapshot().fx.config.eq_high_db - 4.0f) < 0.01f);
+
+    assert(next.requestParameterBool("fx.bypass_all", true).accepted());
+    next_apply();
+    assert(next.lastCommandState() == UiCommandState::Confirmed && r.snapshot().fx.config.bypass_all && r.snapshot().fx.applied.bypass_all);
+
+    assert(next.requestParameterBool("fx.bypass_all", false).accepted());
+    next_apply();
+    assert(next.lastCommandState() == UiCommandState::Confirmed && !r.snapshot().fx.config.bypass_all && !r.snapshot().fx.applied.bypass_all);
+
+    // SYNC lock on MANUAL TIME
+    assert(next.requestParameterInt("fx.delay.mode", 1).accepted());
+    next_apply();
+    lv_obj_send_event(button(ui.contentObject(), "DELAY"), LV_EVENT_CLICKED, nullptr);
+    preview::pumpFrame(ui);
+    assert(lv_obj_has_state(firstSlider(button(ui.contentObject(), "MANUAL TIME")), LV_STATE_DISABLED));
+    assert(next.requestParameterInt("fx.delay.mode", 0).accepted());
+    next_apply();
+    assert(!lv_obj_has_state(firstSlider(button(ui.contentObject(), "MANUAL TIME")), LV_STATE_DISABLED));
+
+    // 500 in-place FX module switch stress benchmark (125 x 4 modules after 16 warmup switches)
+    {
+        const char* mods[4] = {"DELAY", "REVERB", "CHORUS", "MASTER"};
+        for (unsigned w = 0; w < 16; ++w) {
+            lv_obj_send_event(button(ui.contentObject(), mods[w % 4]), LV_EVENT_CLICKED, nullptr);
+            preview::pumpFrame(ui);
+        }
+        lv_obj_send_event(button(ui.contentObject(), mods[0]), LV_EVENT_CLICKED, nullptr);
+        preview::pumpFrame(ui);
+
+        const unsigned objs_before = countObjects(ui.rootObject());
+        lv_mem_monitor_t mem_before{}, mem_after{};
+        lv_mem_monitor(&mem_before);
+        std::vector<double> durations_us;
+        durations_us.reserve(500);
+        for (unsigned i = 1; i <= 500; ++i) {
+            const auto t0 = std::chrono::steady_clock::now();
+            lv_obj_send_event(button(ui.contentObject(), mods[i % 4]), LV_EVENT_CLICKED, nullptr);
+            preview::pumpFrame(ui);
+            const auto t1 = std::chrono::steady_clock::now();
+            durations_us.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
+        }
+        const unsigned objs_after = countObjects(ui.rootObject());
+        lv_mem_monitor(&mem_after);
+        std::sort(durations_us.begin(), durations_us.end());
+        const double median_us = durations_us[durations_us.size() / 2];
+        const double p95_us = durations_us[(durations_us.size() * 95) / 100];
+        const double max_us = durations_us.back();
+        const ptrdiff_t diff_bytes = static_cast<ptrdiff_t>(mem_before.free_size) - static_cast<ptrdiff_t>(mem_after.free_size);
+        std::printf("INFO: [0.18-B FX 500-switch host nav] objs_before=%u objs_after=%u | LVGL free_before=%zuB free_after=%zuB diff=%tdB peak_used=%zuB frag=%u%% | HOST duration (NOT touch/DSI): median=%.1fus P95=%.1fus max=%.1fus\n",
+                    objs_before, objs_after, mem_before.free_size, mem_after.free_size, diff_bytes,
+                    mem_after.max_used, unsigned(mem_after.frag_pct), median_us, p95_us, max_us);
+        assert(objs_after == objs_before);
+        assert(diff_bytes == 0);
+        assert(mem_after.frag_pct <= 5);
+        assert(lv_mem_test() == LV_RESULT_OK);
+    }
 
     // The real USB packet parser, UI learn actions and audio owner in one loop.
     using MidiAction=IUiBackend::MidiAction;

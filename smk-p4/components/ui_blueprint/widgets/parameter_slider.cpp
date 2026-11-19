@@ -20,7 +20,44 @@ struct SliderCtx {
     const char* param_id  = nullptr;
     lv_obj_t*   val_label = nullptr;
     lv_obj_t*   badge_box = nullptr;
+    uint32_t    last_send_tick_ms      = 0;
+    bool        has_sent               = false;
+    bool        pending_release_commit = false;
 };
+
+ParameterValue makeSliderParamValue(const ParameterDescriptor& d, float mapped) {
+    if (d.type == ParameterValueType::Int) return ParameterValue::makeInt(static_cast<int32_t>(std::lround(mapped)));
+    if (d.type == ParameterValueType::Enum) return ParameterValue::makeEnum(static_cast<int32_t>(std::lround(mapped)));
+    if (d.type == ParameterValueType::Bool) return ParameterValue::makeBool(mapped >= 0.5f);
+    return ParameterValue::makeFloat(mapped);
+}
+
+void commitSliderValue(SliderCtx& ctx, lv_obj_t* target) {
+    const ParameterDescriptor* d = ParameterRegistry::findById(ctx.param_id);
+    if (!d) return;
+    const int32_t pct_val = lv_slider_get_value(target);
+    const float norm = static_cast<float>(pct_val) / 100.0f;
+    const float mapped = sliderValue(*d, norm);
+    const UiCommandResult res = ctx.backend->requestParameterFloat(ctx.param_id, mapped);
+    ctx.last_send_tick_ms = lv_tick_get();
+    ctx.has_sent = true;
+    ctx.pending_release_commit = false;
+    if (!res.accepted()) {
+        const float confirmed = ctx.backend->model().getFloat(ctx.param_id, d->default_value);
+        lv_slider_set_value(target, sliderPercent(*d, confirmed), LV_ANIM_OFF);
+    }
+    if (ctx.val_label) {
+        ParameterValue shown{};
+        if (res.accepted() && res.state == UiCommandState::Requested) {
+            shown = makeSliderParamValue(*d, mapped);
+        } else {
+            ctx.backend->model().getValue(ctx.param_id, shown);
+        }
+        char buf[28];
+        ParameterRegistry::formatValue(*d, shown, buf, sizeof(buf));
+        lv_label_set_text(ctx.val_label, buf);
+    }
+}
 } // namespace
 
 lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const char* param_id,
@@ -91,58 +128,81 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
             lv_obj_add_state(slider, LV_STATE_DISABLED);
         }
 
-        attachLvContext<SliderCtx>(
+        SliderCtx* ctx = attachLvContext<SliderCtx>(
             slider, SliderCtx{&backend, desc->id, vlbl, badge_box},
             [](lv_event_t* e) {
                 if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
-                auto* ctx = static_cast<SliderCtx*>(lv_event_get_user_data(e));
-                if (!ctx || !ctx->backend || !ctx->param_id) return;
-                const ParameterDescriptor* d = ParameterRegistry::findById(ctx->param_id);
-                if (!d) return;
+                auto* sctx = static_cast<SliderCtx*>(lv_event_get_user_data(e));
+                if (!sctx || !sctx->backend || !sctx->param_id) return;
                 auto* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
-                const int32_t pct_val = lv_slider_get_value(target);
-                const float norm = static_cast<float>(pct_val) / 100.0f;
-                const float mapped = sliderValue(*d,norm);
-                const UiCommandResult res = ctx->backend->requestParameterFloat(ctx->param_id, mapped);
-                if (!res.accepted()) {
-                    const float confirmed = ctx->backend->model().getFloat(ctx->param_id, d->default_value);
-                    const int32_t conf_pct = sliderPercent(*d,confirmed);
-                    lv_slider_set_value(target, conf_pct, LV_ANIM_OFF);
+                if (!target) return;
+
+                const uint32_t now_tick = lv_tick_get();
+                const bool pressed = lv_obj_has_state(target, LV_STATE_PRESSED);
+                if (!sctx->has_sent || !pressed || (now_tick - sctx->last_send_tick_ms >= 35U)) {
+                    commitSliderValue(*sctx, target);
+                    return;
                 }
-                if (ctx->val_label) {
-                    ParameterValue cur_pv{};
-                    ctx->backend->model().getValue(ctx->param_id, cur_pv);
-                    char buf[28];
-                    ParameterRegistry::formatValue(*d, cur_pv, buf, sizeof(buf));
-                    lv_label_set_text(ctx->val_label, buf);
+
+                sctx->pending_release_commit = true;
+                if (sctx->val_label) {
+                    if (const ParameterDescriptor* d = ParameterRegistry::findById(sctx->param_id)) {
+                        const float norm = static_cast<float>(lv_slider_get_value(target)) / 100.0f;
+                        const ParameterValue local_pv = makeSliderParamValue(*d, sliderValue(*d, norm));
+                        char buf[28];
+                        ParameterRegistry::formatValue(*d, local_pv, buf, sizeof(buf));
+                        lv_label_set_text(sctx->val_label, buf);
+                    }
                 }
             },
             LV_EVENT_VALUE_CHANGED);
-    }
 
-    if (slider) {
-        attachLvContext<SliderCtx>(slider, SliderCtx{&backend, desc->id, vlbl, badge_box}, [](lv_event_t* e) {
-            auto* ctx=static_cast<SliderCtx*>(lv_event_get_user_data(e));
-            auto* obj=static_cast<lv_obj_t*>(lv_event_get_target(e));
-            const auto* d=ParameterRegistry::findById(ctx->param_id);
-            ParameterValue value{}; ctx->backend->model().getValue(ctx->param_id,value);
-            char text[28]; ParameterRegistry::formatValue(*d,value,text,sizeof(text));
-            const FeatureStatus st=ctx->backend->parameterStatus(ctx->param_id);
-            if(!ctx->backend->isDemoMode() && st!=FeatureStatus::Available) std::snprintf(text,sizeof(text),"%s",st==FeatureStatus::Unavailable?"N/A":"PLAN");
-            if(ctx->val_label) lv_label_set_text(ctx->val_label,text);
-            if(ctx->badge_box){
-                lv_obj_set_style_bg_color(ctx->badge_box,lv_color_hex(featureStatusColor(st)),0);
-                if(lv_obj_t* blbl=lv_obj_get_child(ctx->badge_box,0)){
-                    lv_label_set_text_static(blbl,featureStatusLabel(st));
-                    lv_obj_set_style_text_color(blbl,lv_color_hex(st==FeatureStatus::Unavailable?palette::kTextPrimary:palette::kBackground),0);
-                }
-            }
-            if(!lv_obj_has_state(obj,LV_STATE_PRESSED)) {
-                lv_slider_set_value(obj,sliderPercent(*d,value.asFloat()),LV_ANIM_OFF);
-            }
-            if(ctx->backend->isParameterEditable(ctx->param_id)) lv_obj_remove_state(obj,LV_STATE_DISABLED);
-            else lv_obj_add_state(obj,LV_STATE_DISABLED);
-        }, LV_EVENT_REFRESH);
+        if (ctx) {
+            lv_obj_add_event_cb(
+                slider,
+                [](lv_event_t* e) {
+                    if (lv_event_get_code(e) != LV_EVENT_RELEASED) return;
+                    auto* sctx = static_cast<SliderCtx*>(lv_event_get_user_data(e));
+                    if (!sctx || !sctx->backend || !sctx->param_id || !sctx->pending_release_commit) return;
+                    if (auto* target = static_cast<lv_obj_t*>(lv_event_get_target(e))) {
+                        commitSliderValue(*sctx, target);
+                    }
+                },
+                LV_EVENT_RELEASED, ctx);
+
+            lv_obj_add_event_cb(
+                slider,
+                [](lv_event_t* e) {
+                    auto* sctx = static_cast<SliderCtx*>(lv_event_get_user_data(e));
+                    auto* obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
+                    if (!sctx || !sctx->backend || !sctx->param_id || !obj) return;
+                    const auto* d = ParameterRegistry::findById(sctx->param_id);
+                    if (!d) return;
+                    ParameterValue value{};
+                    sctx->backend->model().getValue(sctx->param_id, value);
+                    char text[28];
+                    ParameterRegistry::formatValue(*d, value, text, sizeof(text));
+                    const FeatureStatus st = sctx->backend->parameterStatus(sctx->param_id);
+                    if (!sctx->backend->isDemoMode() && st != FeatureStatus::Available) {
+                        std::snprintf(text, sizeof(text), "%s", st == FeatureStatus::Unavailable ? "N/A" : "PLAN");
+                    }
+                    if (sctx->val_label) lv_label_set_text(sctx->val_label, text);
+                    if (sctx->badge_box) {
+                        lv_obj_set_style_bg_color(sctx->badge_box, lv_color_hex(featureStatusColor(st)), 0);
+                        if (lv_obj_t* blbl = lv_obj_get_child(sctx->badge_box, 0)) {
+                            lv_label_set_text_static(blbl, featureStatusLabel(st));
+                            lv_obj_set_style_text_color(
+                                blbl, lv_color_hex(st == FeatureStatus::Unavailable ? palette::kTextPrimary : palette::kBackground), 0);
+                        }
+                    }
+                    if (!lv_obj_has_state(obj, LV_STATE_PRESSED)) {
+                        lv_slider_set_value(obj, sliderPercent(*d, value.asFloat()), LV_ANIM_OFF);
+                    }
+                    if (sctx->backend->isParameterEditable(sctx->param_id)) lv_obj_remove_state(obj, LV_STATE_DISABLED);
+                    else lv_obj_add_state(obj, LV_STATE_DISABLED);
+                },
+                LV_EVENT_REFRESH, ctx);
+        }
     }
     return card;
 }

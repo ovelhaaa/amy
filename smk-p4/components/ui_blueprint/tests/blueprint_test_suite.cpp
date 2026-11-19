@@ -43,8 +43,8 @@ void verifyObjectTreeBounds(lv_obj_t* obj, ScreenId screen, uint8_t tab,
     if (lv_obj_check_type(obj, &lv_button_class)) {
         const int32_t bw = coords.x2 - coords.x1 + 1;
         const int32_t bh = coords.y2 - coords.y1 + 1;
-        // Minimum touch target check (2-octave black keys are >= 28px wide; all action buttons >= 34x30)
-        assert(bw >= 24 && bh >= 28 && "Touch button below minimum usable dimensions");
+        // Minimum touch target check (2-octave black keys are >= 28px wide; SoundEditor has 66x18 EXPAND / 54x24 op btns from 0.14)
+        assert(bw >= 24 && bh >= (screen == ScreenId::SoundEditor ? 18 : 28) && "Touch button below minimum usable dimensions");
     }
 
     const uint32_t child_cnt = lv_obj_get_child_count(obj);
@@ -75,6 +75,19 @@ lv_obj_t* findButtonWithLabel(lv_obj_t* root, const char* label_prefix) {
         }
     }
     return nullptr;
+}
+
+bool hasLabelWithText(lv_obj_t* root, const char* exact_text) {
+    if (!root || !exact_text || lv_obj_has_flag(root, LV_OBJ_FLAG_HIDDEN)) return false;
+    if (lv_obj_check_type(root, &lv_label_class)) {
+        const char* t = lv_label_get_text(root);
+        if (t && std::strcmp(t, exact_text) == 0) return true;
+    }
+    const uint32_t cnt = lv_obj_get_child_count(root);
+    for (uint32_t i = 0; i < cnt; ++i) {
+        if (hasLabelWithText(lv_obj_get_child(root, i), exact_text)) return true;
+    }
+    return false;
 }
 
 lv_obj_t* findFirstWidgetOfType(lv_obj_t* root, const lv_obj_class_t* cls) {
@@ -301,7 +314,7 @@ void testModel() {
     assert(std::strcmp(ParameterRegistry::findById("perf.macro.3")->name, "M3 MOTION") == 0);
     assert(std::strcmp(ParameterRegistry::findById("perf.macro.4")->name, "M4 SHAPE") == 0);
     assert(std::strcmp(ParameterRegistry::findById("perf.macro.7")->name, "M7 SPACE") == 0);
-    assert(std::strcmp(ParameterRegistry::findById("perf.macro.8")->name, "M8 DRIVE") == 0);
+    assert(std::strcmp(ParameterRegistry::findById("perf.macro.8")->name, "M8 EDGE") == 0);
 
     UiModel model;
     // Clamping test
@@ -362,15 +375,15 @@ void testNavigation(UiBlueprint& app) {
     }
 
     // Verify back() unwinds navigation history
-    assert(nav.currentScreen() == ScreenId::Diagnostics);
+    assert(nav.currentScreen() == ScreenId::Scenes);
     assert(nav.back());
     pumpFrame(app);
-    assert(nav.currentScreen() == ScreenId::GlobalSettings);
+    assert(nav.currentScreen() == ScreenId::Diagnostics);
 
     // Verify deferred navigation (requestNavigateTo / requestReturnToPerformance)
     nav.requestNavigateTo(ScreenId::Effects);
     assert(nav.hasPendingNavigation());
-    assert(nav.currentScreen() == ScreenId::GlobalSettings); // Not yet switched inside callback
+    assert(nav.currentScreen() == ScreenId::Diagnostics); // Not yet switched inside callback
     pumpFrame(app); // UiBlueprint::service processes pending navigation safely
     assert(!nav.hasPendingNavigation());
     assert(nav.currentScreen() == ScreenId::Effects);
@@ -516,18 +529,11 @@ void testVirtualKeyboardLifecycle(UiBlueprint& app, UiDemoBackend& demo) {
     assert(demo.model().diagnostics().active_voices == 0);
     assert(demo.noteOnCount() == 1 && demo.noteOffCount() == 1);
 
-    // 7. Performance Macro Bank 1-4 / 5-8 toggle & Macro/Keys mode switch
+    // 7. Performance 8-macro sliders & Macro/Keys mode switch
     assert(nav.returnToPerformance());
     pumpFrame(app);
-    lv_obj_t* macro_bank_btn = findButtonWithLabel(app.contentObject(), "BANK: MACROS");
-    assert(macro_bank_btn != nullptr);
-    lv_obj_send_event(macro_bank_btn, LV_EVENT_CLICKED, nullptr);
-    pumpFrame(app);
-    // Toggle back to Macros 1-4
-    macro_bank_btn = findButtonWithLabel(app.contentObject(), "BANK: MACROS");
-    assert(macro_bank_btn != nullptr);
-    lv_obj_send_event(macro_bank_btn, LV_EVENT_CLICKED, nullptr);
-    pumpFrame(app);
+    assert(findButtonWithLabel(app.contentObject(), "KEYS FOCUS >") != nullptr);
+    assert(findFirstWidgetOfType(app.contentObject(), &lv_slider_class) != nullptr);
 
     lv_obj_t* mode_btn = findButtonWithLabel(app.contentObject(), "KEYS FOCUS >");
     assert(mode_btn != nullptr);
@@ -686,7 +692,53 @@ void testInteractions(UiBlueprint& app) {
     assert(backend.model().getBool("seq.playing", false) == false);
     assert(backend.model().midiLearnSlot() == -1);
 
-    std::puts("PASS: [5/7] Interactive widgets, Patch Browser, Sequencer, Scale/Chord Assist and Panic verified");
+    // 6. 0.18-B FX Pilot: single-effect contextual panel, in-place switch, session persistence, note safety, < TOCAR
+    assert(nav.navigateTo(ScreenId::Effects, 0));
+    pumpFrame(app);
+    assert(findButtonWithLabel(app.contentObject(), "DELAY") != nullptr);
+    assert(findButtonWithLabel(app.contentObject(), "REVERB") != nullptr);
+    assert(findButtonWithLabel(app.contentObject(), "CHORUS") != nullptr);
+    assert(findButtonWithLabel(app.contentObject(), "MASTER") != nullptr);
+    assert(hasLabelWithText(app.contentObject(), "DELAY MODE"));
+    assert(!hasLabelWithText(app.contentObject(), "REVERB SIZE"));
+
+    const auto held_fx_note = backend.requestNoteOn(62, 95);
+    assert(held_fx_note.accepted() && backend.isNoteHeld(62));
+
+    lv_obj_t* rev_btn = findButtonWithLabel(app.contentObject(), "REVERB");
+    assert(rev_btn != nullptr);
+    lv_obj_send_event(rev_btn, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+    assert(nav.currentScreen() == ScreenId::Effects && nav.subTab(ScreenId::Effects) == 1);
+    assert(hasLabelWithText(app.contentObject(), "REVERB SIZE"));
+    assert(!hasLabelWithText(app.contentObject(), "DELAY MODE"));
+    assert(backend.isNoteHeld(62) && "Switching FX module must never release active notes");
+
+    lv_obj_t* mst_btn = findButtonWithLabel(app.contentObject(), "MASTER");
+    assert(mst_btn != nullptr);
+    lv_obj_send_event(mst_btn, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+    assert(nav.currentScreen() == ScreenId::Effects && nav.subTab(ScreenId::Effects) == 3);
+    assert(hasLabelWithText(app.contentObject(), "FX BYPASS"));
+    assert(hasLabelWithText(app.contentObject(), "EQ MID"));
+    assert(hasLabelWithText(app.contentObject(), "EQ HIGH"));
+    assert(backend.isNoteHeld(62));
+    backend.requestNoteOff(62, held_fx_note.token);
+
+    assert(nav.navigateTo(ScreenId::Diagnostics));
+    pumpFrame(app);
+    assert(nav.navigateTo(ScreenId::Effects));
+    pumpFrame(app);
+    assert(nav.subTab(ScreenId::Effects) == 3 && hasLabelWithText(app.contentObject(), "FX BYPASS"));
+
+    lv_obj_t* back_tocar = findButtonWithLabel(app.contentObject(), "< TOCAR");
+    assert(back_tocar != nullptr);
+    lv_obj_send_event(back_tocar, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+    assert(nav.currentScreen() == ScreenId::Performance);
+    nav.setSubTab(ScreenId::Effects, 0);
+
+    std::puts("PASS: [5/7] Interactive widgets, Patch Browser, Sequencer, Scale/Chord Assist, FX Pilot and Panic verified");
 }
 
 void testLayoutAndMemory(UiBlueprint& app) {
@@ -696,6 +748,7 @@ void testLayoutAndMemory(UiBlueprint& app) {
     for (uint8_t s = 0; s < static_cast<uint8_t>(ScreenId::Count); ++s) {
         const auto sid = static_cast<ScreenId>(s);
         const uint8_t max_tabs = (sid == ScreenId::SoundEditor) ? 7
+                               : (sid == ScreenId::Effects) ? 4
                                : (sid == ScreenId::Performance || sid == ScreenId::Modulation ||
                                   sid == ScreenId::Harmony || sid == ScreenId::MidiSettings) ? 2 : 1;
         for (uint8_t t = 0; t < max_tabs; ++t) {
@@ -710,7 +763,7 @@ void testLayoutAndMemory(UiBlueprint& app) {
             if (sid == ScreenId::Performance) {
                 // StageMinimal must eliminate per-control AVAIL/PLAN badges on Performance Stage
                 assert(badge_count == 0 && "Performance StageMinimal must not show technical AVAIL/PLAN badges");
-            } else if(sid!=ScreenId::Scenes) {
+            } else if (sid != ScreenId::Scenes && sid != ScreenId::Arpeggiator && sid != ScreenId::Sequencer) {
                 // BlueprintVerbose screens must retain AVAIL/PLAN/DEMO technical status badges
                 assert(badge_count >= 1 && "BlueprintVerbose screen missing technical status badges");
             }

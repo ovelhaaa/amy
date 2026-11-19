@@ -638,6 +638,13 @@ public:
             desired_fx_.master_tone = std::clamp(value / 100.0f, -1.0f, 1.0f);
         } else if (std::strcmp(id, "fx.eq.low_db") == 0) {
             desired_fx_.eq_low_db = std::round(std::clamp(value, -12.0f, 12.0f));
+        } else if (std::strcmp(id, "fx.eq.mid_db") == 0) {
+            desired_fx_.eq_mid_db = std::round(std::clamp(value, -12.0f, 12.0f));
+        } else if (std::strcmp(id, "fx.eq.high_db") == 0) {
+            desired_fx_.eq_high_db = std::round(std::clamp(value, -12.0f, 12.0f));
+        } else if (std::strcmp(id, "fx.bypass_all") == 0) {
+            if (value != 0.0f && value != 1.0f) return false;
+            desired_fx_.bypass_all = (value >= 0.5f);
         } else {
             return false;
         }
