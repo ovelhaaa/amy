@@ -714,6 +714,47 @@ void testInteractions(UiBlueprint& app) {
     assert(!hasLabelWithText(app.contentObject(), "DELAY MODE"));
     assert(backend.isNoteHeld(62) && "Switching FX module must never release active notes");
 
+    lv_obj_t* cho_btn = findButtonWithLabel(app.contentObject(), "CHORUS");
+    assert(cho_btn != nullptr);
+    lv_obj_send_event(cho_btn, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+    assert(nav.currentScreen() == ScreenId::Effects && nav.subTab(ScreenId::Effects) == 2);
+    assert(hasLabelWithText(app.contentObject(), "CHORUS MODE"));
+    assert(hasLabelWithText(app.contentObject(), "CHORUS DEPTH"));
+    // Demo backend starts with Chorus OFF: Depth slider must be visually disabled
+    assert(findFirstWidgetOfType(app.contentObject(), &lv_slider_class) == nullptr);
+    // Test Inspector expand/collapse strictly inside 800x480
+    lv_obj_t* insp_toggle = findButtonWithLabel(app.contentObject(), "AJUSTE FINO");
+    assert(insp_toggle != nullptr);
+    lv_obj_send_event(insp_toggle, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+    assert(findButtonWithLabel(app.contentObject(), "FECHAR") != nullptr);
+    assert(findButtonWithLabel(app.contentObject(), "PARAM >") != nullptr);
+    {
+        unsigned wcnt = 0; bool fdemo = false; unsigned bcnt = 0;
+        verifyObjectTreeBounds(app.rootObject(), ScreenId::Effects, 2, wcnt, fdemo, bcnt);
+        assert(fdemo && bcnt == 0);
+    }
+    lv_obj_t* insp_close = findButtonWithLabel(app.contentObject(), "FECHAR");
+    assert(insp_close != nullptr);
+    lv_obj_send_event(insp_close, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+    assert(findButtonWithLabel(app.contentObject(), "AJUSTE FINO") != nullptr);
+    // Activate Chorus (OFF -> CLASSIC) via Inspector '+' stepper and verify Depth unlocks
+    lv_obj_t* insp_inc = findButtonWithLabel(app.contentObject(), "+");
+    assert(insp_inc != nullptr);
+    lv_obj_send_event(insp_inc, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+    assert(backend.model().getInt("fx.chorus.mode") > 0);
+    assert(findFirstWidgetOfType(app.contentObject(), &lv_slider_class) != nullptr);
+    // Turn Chorus back OFF to leave clean initial state
+    lv_obj_t* insp_dec = findButtonWithLabel(app.contentObject(), "-");
+    assert(insp_dec != nullptr);
+    lv_obj_send_event(insp_dec, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(app);
+    assert(backend.model().getInt("fx.chorus.mode") == 0);
+    assert(findFirstWidgetOfType(app.contentObject(), &lv_slider_class) == nullptr);
+
     lv_obj_t* mst_btn = findButtonWithLabel(app.contentObject(), "MASTER");
     assert(mst_btn != nullptr);
     lv_obj_send_event(mst_btn, LV_EVENT_CLICKED, nullptr);
@@ -763,7 +804,8 @@ void testLayoutAndMemory(UiBlueprint& app) {
             if (sid == ScreenId::Performance) {
                 // StageMinimal must eliminate per-control AVAIL/PLAN badges on Performance Stage
                 assert(badge_count == 0 && "Performance StageMinimal must not show technical AVAIL/PLAN badges");
-            } else if (sid != ScreenId::Scenes && sid != ScreenId::Arpeggiator && sid != ScreenId::Sequencer) {
+            } else if (sid != ScreenId::Scenes && sid != ScreenId::Arpeggiator &&
+                       sid != ScreenId::Sequencer && sid != ScreenId::Effects) {
                 // BlueprintVerbose screens must retain AVAIL/PLAN/DEMO technical status badges
                 assert(badge_count >= 1 && "BlueprintVerbose screen missing technical status badges");
             }

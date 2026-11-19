@@ -436,10 +436,11 @@ int main() {
     const ptrdiff_t leaked = static_cast<ptrdiff_t>(heap_before.free_bytes) - static_cast<ptrdiff_t>(heap_after.free_bytes);
 
     std::printf("INFO: [0.18-A 500-transition host nav] objs_before=%u objs_after=%u | "
-                "LVGL free_before=%uB free_after=%uB diff=%tdB peak_used=%uB frag_before=%u%% frag_after=%u%% | "
+                "LVGL free_before=%uB free_after=%uB largest_before=%uB largest_after=%uB diff=%tdB peak_used=%uB frag_before=%u%% frag_after=%u%% | "
                 "HOST duration (NOT touch/DSI): median=%.1fus P95=%.1fus max=%.1fus\n",
                 unsigned(obj_baseline), unsigned(obj_after),
                 unsigned(heap_before.free_bytes), unsigned(heap_after.free_bytes),
+                unsigned(heap_before.free_biggest_size), unsigned(heap_after.free_biggest_size),
                 leaked, unsigned(heap_after.max_used), unsigned(heap_before.frag_pct), unsigned(heap_after.frag_pct),
                 median_us, p95_us, max_us);
 

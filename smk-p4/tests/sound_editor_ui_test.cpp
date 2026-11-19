@@ -3,6 +3,8 @@
 #include "ui_blueprint_performance_adapter.h"
 #include "local_performance_backend.h"
 #include "user_presets_v2.h"
+#include "ui_demo_backend.h"
+#include "ui_widgets.h"
 #include "../ui-preview/preview_harness.h"
 #include <algorithm>
 #include <cassert>
@@ -115,6 +117,10 @@ static void auditInventory(UiBlueprintPerformanceAdapter& a, ApplyFn&& apply) {
                 assert(!a.isParameterEditable(d.id));
                 continue;
             }
+            if (std::strcmp(d.id,"fx.chorus.depth")==0 && a.model().getInt("fx.chorus.mode")==0) {
+                assert(!a.isParameterEditable(d.id));
+                continue;
+            }
             if (d.capabilities & kCapReadOnly) {
                 assert(!a.isParameterEditable(d.id));
                 continue;
@@ -139,6 +145,669 @@ static void auditInventory(UiBlueprintPerformanceAdapter& a, ApplyFn&& apply) {
     }
 }
 static amy::Runtime r;
+
+namespace {
+
+static const char* sliderCardStateText(lv_obj_t* card) {
+    if (!card) return "";
+    lv_obj_update_layout(card);
+    const int32_t half_w = lv_obj_get_width(card) / 2;
+    const uint32_t cnt = lv_obj_get_child_count(card);
+    for (uint32_t i = 0; i < cnt; ++i) {
+        lv_obj_t* ch = lv_obj_get_child(card, static_cast<int32_t>(i));
+        if (lv_obj_check_type(ch, &lv_label_class) && lv_obj_get_x(ch) >= half_w) {
+            const char* txt = lv_label_get_text(ch);
+            return txt ? txt : "";
+        }
+    }
+    return "";
+}
+
+static const char* sliderCardValueText(lv_obj_t* card) {
+    if (!card) return "";
+    lv_obj_update_layout(card);
+    const int32_t half_w = lv_obj_get_width(card) / 2;
+    const uint32_t cnt = lv_obj_get_child_count(card);
+    for (uint32_t i = 0; i < cnt; ++i) {
+        lv_obj_t* ch = lv_obj_get_child(card, static_cast<int32_t>(i));
+        if (lv_obj_check_type(ch, &lv_label_class) && lv_obj_get_x(ch) < half_w && lv_obj_get_y(ch) >= 18) {
+            const char* txt = lv_label_get_text(ch);
+            return txt ? txt : "";
+        }
+    }
+    return "";
+}
+
+class ProbeSliderBackend final : public IUiBackend {
+public:
+    UiModel& model() override { return inner_.model(); }
+    const UiModel& model() const override { return inner_.model(); }
+    bool isDemoMode() const override { return false; }
+    bool isConnected() const override { return connected_; }
+    bool isBusy() const override { return false; }
+    const char* backendName() const override { return "ProbeSliderBackend"; }
+    const char* modeBadgeText() const override { return "PROBE"; }
+    const char* statusText() const override { return inner_.statusText(); }
+    FeatureStatus parameterStatus(const char* id) const override { return inner_.parameterStatus(id); }
+    bool isParameterEditable(const char* id) const override { return inner_.isParameterEditable(id); }
+    bool isPatchSelectable(uint16_t patch_id) const override { return inner_.isPatchSelectable(patch_id); }
+    UiCommandState lastCommandState() const override {
+        return fake_cmd_id_ ? fake_cmd_state_ : inner_.lastCommandState();
+    }
+    const char* lastCommandParameterId() const override {
+        return fake_cmd_id_ ? fake_cmd_id_ : inner_.lastCommandParameterId();
+    }
+    uint32_t lastCommandToken() const override {
+        return fake_cmd_id_ ? fake_cmd_token_ : inner_.lastCommandToken();
+    }
+    UiCommandResult requestParameterValue(const char* id, const ParameterValue& val) override {
+        if (val.type == ParameterValueType::Float) return requestParameterFloat(id, val.asFloat());
+        if (val.type == ParameterValueType::Int) return requestParameterInt(id, val.asInt());
+        if (val.type == ParameterValueType::Bool) return requestParameterBool(id, val.asBool());
+        return inner_.requestParameterValue(id, val);
+    }
+    UiCommandResult requestParameterFloat(const char* id, float val) override {
+        ++float_req_count_;
+        last_sent_id_ = id;
+        last_sent_val_ = val;
+        if (!connected_ || reject_immediate_) {
+            fake_cmd_state_ = UiCommandState::Rejected;
+            fake_cmd_id_ = id;
+            fake_cmd_token_ = 0;
+            return {UiCommandState::Rejected, 0, "REJECTED"};
+        }
+        if (defer_mode_) {
+            fake_cmd_state_ = UiCommandState::Requested;
+            fake_cmd_id_ = id;
+            fake_cmd_token_ = next_tok_++;
+            return {UiCommandState::Requested, fake_cmd_token_, "WAIT"};
+        }
+        fake_cmd_state_ = UiCommandState::Confirmed;
+        fake_cmd_id_ = id;
+        fake_cmd_token_ = next_tok_++;
+        inner_.model().setFloat(id, val);
+        return {UiCommandState::Confirmed, fake_cmd_token_, "OK"};
+    }
+    UiCommandResult requestParameterInt(const char* id, int32_t val) override {
+        fake_cmd_id_ = nullptr;
+        return inner_.requestParameterInt(id, val);
+    }
+    UiCommandResult requestParameterBool(const char* id, bool val) override {
+        fake_cmd_id_ = nullptr;
+        return inner_.requestParameterBool(id, val);
+    }
+    UiCommandResult requestSelectPatch(uint16_t patch_id, uint8_t target_layer = 0) override {
+        return inner_.requestSelectPatch(patch_id, target_layer);
+    }
+    UiCommandResult requestNoteOn(uint8_t note, uint8_t velocity) override {
+        return inner_.requestNoteOn(note, velocity);
+    }
+    UiCommandResult requestNoteOff(uint8_t note, uint32_t token = 0) override {
+        return inner_.requestNoteOff(note, token);
+    }
+    void releaseAllUiNotes() override { inner_.releaseAllUiNotes(); }
+    UiCommandResult requestPanic() override { return inner_.requestPanic(); }
+    void service(uint32_t now_ms) override { inner_.service(now_ms); }
+    const UiSignalMeters& meters() const override { return inner_.meters(); }
+    uint8_t activeSequencerStep() const override { return inner_.activeSequencerStep(); }
+    bool isNoteHeld(uint8_t note) const override { return inner_.isNoteHeld(note); }
+
+    void confirmDefer() {
+        if (!last_sent_id_) return;
+        fake_cmd_state_ = UiCommandState::Confirmed;
+        fake_cmd_id_ = last_sent_id_;
+        inner_.model().setFloat(last_sent_id_, last_sent_val_);
+    }
+    void rejectDefer() {
+        fake_cmd_state_ = UiCommandState::Rejected;
+        fake_cmd_id_ = last_sent_id_;
+    }
+    void pushExternalFloat(const char* id, float val) {
+        inner_.model().setFloat(id, val);
+    }
+
+    UiDemoBackend inner_{};
+    bool connected_ = true;
+    bool reject_immediate_ = false;
+    bool defer_mode_ = false;
+    UiCommandState fake_cmd_state_ = UiCommandState::Confirmed;
+    const char* fake_cmd_id_ = nullptr;
+    const char* last_sent_id_ = nullptr;
+    float last_sent_val_ = 0.0f;
+    uint32_t fake_cmd_token_ = 0;
+    uint32_t next_tok_ = 10;
+    uint32_t float_req_count_ = 0;
+};
+
+static void runSliderRobustnessUnitTests() {
+    ProbeSliderBackend probe;
+    lv_obj_t* host = lv_obj_create(lv_screen_active());
+    assert(host != nullptr);
+    lv_obj_set_size(host, 640, 380);
+
+    // Build cards for linear float, negative/discrete float, and log-scale float
+    assert(probe.requestParameterFloat("fx.delay.mix", 20.0f).accepted());
+    lv_obj_t* mix_card = createParameterSlider(host, probe, "fx.delay.mix", 0, 0, 220, 108,
+                                               PresentationLevel::StageStacked);
+    lv_obj_t* mix_s = firstSlider(mix_card);
+    assert(mix_card && mix_s);
+
+    // 3.1 Slow drag (>35 ms steps) + fast burst (<35 ms) + min/max + duplicate-commit prevention
+    probe.float_req_count_ = 0;
+    preview::g_sim_tick_ms += 50;
+    lv_obj_add_state(mix_s, LV_STATE_PRESSED);
+    lv_obj_send_event(mix_s, LV_EVENT_PRESSED, nullptr);
+    lv_slider_set_value(mix_s, 30, LV_ANIM_OFF);
+    lv_obj_send_event(mix_s, LV_EVENT_VALUE_CHANGED, nullptr);
+    assert(probe.float_req_count_ == 1);
+    preview::g_sim_tick_ms += 40; // >35ms slow drag step
+    lv_slider_set_value(mix_s, 45, LV_ANIM_OFF);
+    lv_obj_send_event(mix_s, LV_EVENT_VALUE_CHANGED, nullptr);
+    assert(probe.float_req_count_ == 2);
+    for (int i = 0; i < 6; ++i) {
+        preview::g_sim_tick_ms += 4; // <35ms burst coalesced cleanly
+        lv_slider_set_value(mix_s, 50 + i * 2, LV_ANIM_OFF);
+        lv_obj_send_event(mix_s, LV_EVENT_VALUE_CHANGED, nullptr);
+    }
+    assert(probe.float_req_count_ == 2); // No extra flood during burst
+    assert(std::strcmp(sliderCardStateText(mix_card), "EDIT") == 0);
+    // Release on DIFFERENT value (60 vs last sent 45) -> commits once
+    lv_obj_remove_state(mix_s, LV_STATE_PRESSED);
+    lv_obj_send_event(mix_s, LV_EVENT_RELEASED, nullptr);
+    assert(probe.float_req_count_ == 3 && std::fabs(probe.last_sent_val_ - 60.0f) < 0.1f);
+    assert(std::strcmp(sliderCardStateText(mix_card), "") == 0);
+
+    // Slow drag then release on the SAME value already sent -> 0 duplicate commit
+    preview::g_sim_tick_ms += 50;
+    lv_obj_add_state(mix_s, LV_STATE_PRESSED);
+    lv_obj_send_event(mix_s, LV_EVENT_PRESSED, nullptr);
+    lv_slider_set_value(mix_s, 72, LV_ANIM_OFF);
+    lv_obj_send_event(mix_s, LV_EVENT_VALUE_CHANGED, nullptr);
+    assert(probe.float_req_count_ == 4);
+    preview::g_sim_tick_ms += 10;
+    lv_obj_remove_state(mix_s, LV_STATE_PRESSED);
+    lv_obj_send_event(mix_s, LV_EVENT_RELEASED, nullptr);
+    assert(probe.float_req_count_ == 4 && std::fabs(probe.last_sent_val_ - 72.0f) < 0.1f);
+
+    // Min (0) & Max (100) bounds + negative range / discrete step (eq.low_db & master_tone) + Log scale (cutoff)
+    lv_obj_t* eq_card = createParameterSlider(host, probe, "fx.eq.low_db", 230, 0, 200, 108,
+                                              PresentationLevel::StageStacked);
+    lv_obj_t* eq_s = firstSlider(eq_card);
+    lv_obj_t* tone_card = createParameterSlider(host, probe, "fx.master_tone", 0, 120, 200, 108,
+                                                PresentationLevel::StageStacked);
+    lv_obj_t* tone_s = firstSlider(tone_card);
+    assert(probe.requestSelectPatch(4).accepted());
+    assert(probe.requestParameterFloat("filter.cutoff_hz", 1000.0f).accepted());
+    lv_obj_t* cut_card = createParameterSlider(host, probe, "filter.cutoff_hz", 230, 120, 200, 108,
+                                               PresentationLevel::StageStacked);
+    lv_obj_update_layout(host);
+    lv_obj_t* cut_s = firstSlider(cut_card);
+    assert(eq_s && tone_s && cut_s);
+
+    auto dragTo = [](lv_obj_t* s, int32_t pct, bool release = true) {
+        preview::g_sim_tick_ms += 50;
+        lv_obj_add_state(s, LV_STATE_PRESSED);
+        lv_obj_send_event(s, LV_EVENT_PRESSED, nullptr);
+        lv_slider_set_value(s, pct, LV_ANIM_OFF);
+        lv_obj_send_event(s, LV_EVENT_VALUE_CHANGED, nullptr);
+        if (release) {
+            lv_obj_remove_state(s, LV_STATE_PRESSED);
+            lv_obj_send_event(s, LV_EVENT_RELEASED, nullptr);
+        }
+    };
+    dragTo(mix_s, 0);
+    assert(std::fabs(probe.model().getFloat("fx.delay.mix") - 0.0f) < 0.05f);
+    dragTo(mix_s, 100);
+    assert(std::fabs(probe.model().getFloat("fx.delay.mix") - 100.0f) < 0.05f);
+    dragTo(eq_s, 0);
+    assert(std::fabs(probe.model().getFloat("fx.eq.low_db") - (-12.0f)) < 0.1f);
+    dragTo(eq_s, 50);
+    assert(std::fabs(probe.model().getFloat("fx.eq.low_db") - 0.0f) < 0.1f);
+    dragTo(eq_s, 100);
+    assert(std::fabs(probe.model().getFloat("fx.eq.low_db") - 12.0f) < 0.1f);
+    dragTo(tone_s, 53); // -100 + 2*53 = +6% (step 2.0)
+    assert(std::fabs(probe.model().getFloat("fx.master_tone") - 6.0f) < 0.1f);
+    dragTo(cut_s, 0);
+    assert(std::fabs(probe.model().getFloat("filter.cutoff_hz") - 20.0f) < 0.5f);
+    dragTo(cut_s, 50);
+    const float mid_cut = probe.model().getFloat("filter.cutoff_hz");
+    assert(std::fabs(mid_cut - 600.0f) < 5.0f); // Geometric mean sqrt(20*18000) = 600 Hz
+    dragTo(cut_s, 100);
+    assert(std::fabs(probe.model().getFloat("filter.cutoff_hz") - 18000.0f) < 5.0f);
+
+    // 3.2 Cancel, immediate reject, Requested->Rejected, timeout, mid-drag teardown
+    dragTo(mix_s, 40);
+    assert(std::fabs(probe.model().getFloat("fx.delay.mix") - 40.0f) < 0.1f);
+
+    // Immediate rejection reverts thumb and shows REJ
+    probe.reject_immediate_ = true;
+    const uint32_t req_before_rej = probe.float_req_count_;
+    dragTo(mix_s, 85);
+    assert(probe.float_req_count_ > req_before_rej);
+    assert(lv_slider_get_value(mix_s) == 40);
+    assert(std::strcmp(sliderCardStateText(mix_card), "REJ") == 0);
+    probe.reject_immediate_ = false;
+
+    // Requested -> WAIT -> asynchronous Rejected -> REJ & rollback
+    probe.defer_mode_ = true;
+    dragTo(mix_s, 75);
+    assert(std::strcmp(sliderCardStateText(mix_card), "WAIT") == 0);
+    assert(std::fabs(probe.model().getFloat("fx.delay.mix") - 40.0f) < 0.1f);
+    probe.rejectDefer();
+    lv_obj_send_event(mix_s, LV_EVENT_REFRESH, nullptr);
+    assert(std::strcmp(sliderCardStateText(mix_card), "REJ") == 0);
+    assert(lv_slider_get_value(mix_s) == 40);
+
+    // Requested -> WAIT -> fallback timeout (>kFallbackPendingTimeoutMs 2500ms without ACK) -> REJ & rollback
+    dragTo(mix_s, 82);
+    assert(std::strcmp(sliderCardStateText(mix_card), "WAIT") == 0);
+    preview::g_sim_tick_ms += 2050;
+    lv_obj_send_event(mix_s, LV_EVENT_REFRESH, nullptr);
+    assert(std::strcmp(sliderCardStateText(mix_card), "WAIT") == 0);
+    preview::g_sim_tick_ms += 550;
+    lv_obj_send_event(mix_s, LV_EVENT_REFRESH, nullptr);
+    assert(std::strcmp(sliderCardStateText(mix_card), "REJ") == 0);
+    assert(lv_slider_get_value(mix_s) == 40);
+
+    // Requested -> WAIT -> asynchronous Confirmed -> clears WAIT
+    dragTo(mix_s, 65);
+    assert(std::strcmp(sliderCardStateText(mix_card), "WAIT") == 0);
+    probe.confirmDefer();
+    lv_obj_send_event(mix_s, LV_EVENT_REFRESH, nullptr);
+    assert(std::strcmp(sliderCardStateText(mix_card), "") == 0);
+    assert(lv_slider_get_value(mix_s) == 65);
+    probe.defer_mode_ = false;
+
+    // LV_EVENT_PRESS_LOST, LV_EVENT_CANCEL, LV_EVENT_INDEV_RESET (with LVGL trailing VALUE_CHANGED sequence)
+    for (lv_event_code_t cancel_ev : {LV_EVENT_PRESS_LOST, LV_EVENT_CANCEL, LV_EVENT_INDEV_RESET}) {
+        const uint32_t sent_before = probe.float_req_count_;
+        preview::g_sim_tick_ms += 50;
+        lv_obj_add_state(mix_s, LV_STATE_PRESSED);
+        lv_obj_send_event(mix_s, LV_EVENT_PRESSED, nullptr);
+        lv_slider_set_value(mix_s, 90, LV_ANIM_OFF);
+        lv_obj_remove_state(mix_s, LV_STATE_PRESSED); // Matches LVGL base event clearing PRESSED before slider teardown
+        lv_obj_send_event(mix_s, LV_EVENT_VALUE_CHANGED, nullptr); // Trailing teardown change must NOT emit!
+        lv_obj_send_event(mix_s, cancel_ev, nullptr);
+        assert(probe.float_req_count_ == sent_before);
+        assert(lv_slider_get_value(mix_s) == 65);
+    }
+
+    // 3.3 External changes during drag, after release, and mid-drag Chorus OFF abort
+    dragTo(mix_s, 80, false); // Hold drag without release at 80
+    probe.pushExternalFloat("fx.delay.mix", 25.0f);
+    lv_obj_send_event(mix_s, LV_EVENT_REFRESH, nullptr);
+    assert(lv_slider_get_value(mix_s) == 80); // Must NOT jump under user finger while dragging!
+    // Cancel after external change -> snaps cleanly to new external 25%
+    lv_obj_remove_state(mix_s, LV_STATE_PRESSED);
+    lv_obj_send_event(mix_s, LV_EVENT_PRESS_LOST, nullptr);
+    assert(lv_slider_get_value(mix_s) == 25);
+    // External change after release updates thumb immediately
+    probe.pushExternalFloat("fx.delay.mix", 55.0f);
+    lv_obj_send_event(mix_s, LV_EVENT_REFRESH, nullptr);
+    assert(lv_slider_get_value(mix_s) == 55);
+
+    // Mid-drag Chorus OFF external transition cleanly aborts drag, restores confirmed 42%, and disables Depth slider
+    assert(probe.requestParameterInt("fx.chorus.mode", 2).accepted());
+    assert(probe.requestParameterFloat("fx.chorus.depth", 42.0f).accepted());
+    probe.defer_mode_ = true;
+    lv_obj_t* cho_card = createParameterSlider(host, probe, "fx.chorus.depth", 0, 240, 220, 108,
+                                               PresentationLevel::StageStacked);
+    lv_obj_t* cho_s = firstSlider(cho_card);
+    assert(cho_card && cho_s && !lv_obj_has_state(cho_s, LV_STATE_DISABLED));
+    dragTo(cho_s, 75, false);
+    assert(std::fabs(probe.model().getFloat("fx.chorus.depth") - 42.0f) < 0.1f);
+    assert(probe.requestParameterInt("fx.chorus.mode", 0).accepted());
+    lv_obj_send_event(cho_s, LV_EVENT_REFRESH, nullptr);
+    assert(lv_obj_has_state(cho_s, LV_STATE_DISABLED));
+    assert(std::strcmp(sliderCardStateText(cho_card), "OFF") == 0);
+    assert(lv_slider_get_value(cho_s) == 42);
+    probe.defer_mode_ = false;
+
+    // Destroy widgets mid-drag: must not crash or corrupt LVGL heap
+    dragTo(mix_s, 88, false);
+    lv_obj_clean(host);
+    lv_obj_delete(host);
+    lv_timer_handler();
+    assert(lv_mem_test() == LV_RESULT_OK);
+    std::puts("PASS slider 0.18-B.1: coalescing, duplicates, min/max/neg/log, reject/timeout/cancel/mid-drag destroy & external updates");
+}
+
+static void runFxHardening018b1Suite(amy::Runtime& runtime, LocalAmyPerformanceBackend& backend,
+                                    UiBlueprintPerformanceAdapter& adapter, UiBlueprint& ui) {
+    auto apply = [&] {
+        adapter.service(preview::g_sim_tick_ms += 25);
+        runtime.apply(preview::g_sim_tick_ms);
+        runtime.loadPendingPatch();
+        assert(runtime.render());
+        backend.publish(runtime.snapshot(), false, 0, 0);
+        adapter.service(preview::g_sim_tick_ms += 25);
+        preview::pumpFrame(ui);
+    };
+
+    // Normalize clean musical state for deterministic UI testing & screenshots
+    assert(adapter.requestParameterInt("perf.bpm", 120).accepted());
+    assert(adapter.requestParameterBool("fx.bypass_all", false).accepted());
+    assert(adapter.requestParameterInt("fx.delay.mode", 0).accepted());
+    assert(adapter.requestParameterFloat("fx.delay.time_ms", 350.0f).accepted());
+    assert(adapter.requestParameterFloat("fx.delay.feedback", 40.0f).accepted());
+    assert(adapter.requestParameterFloat("fx.delay.mix", 35.0f).accepted());
+    assert(adapter.requestParameterFloat("fx.reverb.size", 70.0f).accepted());
+    assert(adapter.requestParameterFloat("fx.reverb.mix", 25.0f).accepted());
+    assert(adapter.requestParameterInt("fx.chorus.mode", 2).accepted());
+    assert(adapter.requestParameterFloat("fx.chorus.depth", 68.0f).accepted());
+    apply();
+    // Switch Chorus back OFF preserving 68% depth
+    assert(adapter.requestParameterInt("fx.chorus.mode", 0).accepted());
+    apply();
+    assert(!adapter.isParameterEditable("fx.chorus.depth"));
+    assert(std::fabs(adapter.model().getFloat("fx.chorus.depth") - 68.0f) < 0.1f);
+
+    // 1. Navigate Effects -> Delay / Reverb / Chorus OFF / Chorus ON / Master + 8 PPM screenshots
+    assert(ui.navigation().navigateTo(ScreenId::Effects, 0));
+    preview::pumpFrame(ui);
+    assert(preview::saveFramebufferPpm("build/editor011/fx_01_delay.ppm"));
+
+    lv_obj_send_event(button(ui.contentObject(), "REVERB"), LV_EVENT_CLICKED, nullptr);
+    preview::pumpFrame(ui);
+    assert(preview::saveFramebufferPpm("build/editor011/fx_02_reverb.ppm"));
+
+    lv_obj_send_event(button(ui.contentObject(), "CHORUS"), LV_EVENT_CLICKED, nullptr);
+    preview::pumpFrame(ui);
+    assert(preview::saveFramebufferPpm("build/editor011/fx_03_chorus_off.ppm"));
+
+    // Chorus OFF -> Depth must be visually disabled, ignore slider drag and Inspector +/- fine adjust
+    {
+        lv_obj_t* depth_card = button(ui.contentObject(), "CHORUS DEPTH");
+        lv_obj_t* depth_s = firstSlider(depth_card);
+        assert(depth_card && depth_s && lv_obj_has_state(depth_s, LV_STATE_DISABLED));
+        assert(std::strcmp(sliderCardStateText(depth_card), "OFF") == 0);
+        const uint32_t tok0 = backend.fxToken();
+        lv_slider_set_value(depth_s, 15, LV_ANIM_OFF);
+        lv_obj_send_event(depth_s, LV_EVENT_VALUE_CHANGED, nullptr);
+        lv_obj_send_event(depth_s, LV_EVENT_RELEASED, nullptr);
+        assert(backend.fxToken() == tok0);
+
+        lv_obj_t* insp_bar = lv_obj_get_parent(button(ui.contentObject(), "AJUSTE FINO"));
+        lv_obj_send_event(button(ui.contentObject(), "AJUSTE FINO"), LV_EVENT_CLICKED, nullptr);
+        preview::pumpFrame(ui);
+        lv_obj_send_event(button(ui.contentObject(), "PARAM >"), LV_EVENT_CLICKED, nullptr); // focus -> fx.chorus.depth
+        preview::pumpFrame(ui);
+        lv_obj_t* insp_inc = button(insp_bar, "+ FINO");
+        lv_obj_t* insp_dec = button(insp_bar, "- FINO");
+        assert(insp_inc && insp_dec);
+        assert(lv_obj_has_state(insp_inc, LV_STATE_DISABLED));
+        assert(lv_obj_has_state(insp_dec, LV_STATE_DISABLED));
+        lv_obj_send_event(insp_inc, LV_EVENT_CLICKED, nullptr);
+        assert(backend.fxToken() == tok0);
+        lv_obj_send_event(button(ui.contentObject(), "FECHAR"), LV_EVENT_CLICKED, nullptr);
+        preview::pumpFrame(ui);
+    }
+
+    // Pending OFF -> ON must keep Depth locked until owner confirms
+    {
+        lv_obj_t* mode_card = button(ui.contentObject(), "CHORUS MODE");
+        lv_obj_t* plus_btn = button(mode_card, "+");
+        assert(mode_card && plus_btn);
+        lv_obj_send_event(plus_btn, LV_EVENT_CLICKED, nullptr);
+        preview::pumpFrame(ui); // NOT applied yet!
+        assert(adapter.lastCommandState() == UiCommandState::Requested);
+        assert(!adapter.isParameterEditable("fx.chorus.depth"));
+        assert(lv_obj_has_state(firstSlider(button(ui.contentObject(), "CHORUS DEPTH")), LV_STATE_DISABLED));
+        apply(); // Owner confirms mode=1 (Classic)
+        assert(!lv_obj_has_state(firstSlider(button(ui.contentObject(), "CHORUS DEPTH")), LV_STATE_DISABLED));
+        assert(std::fabs(adapter.model().getFloat("fx.chorus.depth") - 68.0f) < 0.1f);
+        // Switch to JUNO I (mode=2) for clean screenshot & Inspector + fine adjust -> 69%
+        lv_obj_send_event(button(mode_card, "+"), LV_EVENT_CLICKED, nullptr);
+        apply();
+        assert(adapter.model().getInt("fx.chorus.mode") == 2);
+        lv_obj_send_event(button(ui.contentObject(), "AJUSTE FINO"), LV_EVENT_CLICKED, nullptr);
+        preview::pumpFrame(ui);
+        lv_obj_t* insp_bar = lv_obj_get_parent(button(ui.contentObject(), "FECHAR"));
+        assert(!lv_obj_has_state(button(insp_bar, "+ FINO"), LV_STATE_DISABLED));
+        lv_obj_send_event(button(insp_bar, "+ FINO"), LV_EVENT_CLICKED, nullptr);
+        apply();
+        assert(std::fabs(adapter.model().getFloat("fx.chorus.depth") - 69.0f) < 0.1f);
+        lv_obj_send_event(button(ui.contentObject(), "FECHAR"), LV_EVENT_CLICKED, nullptr);
+        preview::pumpFrame(ui);
+        assert(preview::saveFramebufferPpm("build/editor011/fx_04_chorus_on.ppm"));
+
+        // External OFF transition re-locks Depth while preserving 69%
+        assert(adapter.requestParameterInt("fx.chorus.mode", 0).accepted());
+        apply();
+        lv_obj_t* depth_card = button(ui.contentObject(), "CHORUS DEPTH");
+        assert(lv_obj_has_state(firstSlider(depth_card), LV_STATE_DISABLED));
+        assert(std::strcmp(sliderCardValueText(depth_card), "69 %") == 0);
+    }
+
+    lv_obj_send_event(button(ui.contentObject(), "MASTER"), LV_EVENT_CLICKED, nullptr);
+    preview::pumpFrame(ui);
+    assert(preview::saveFramebufferPpm("build/editor011/fx_05_master.ppm"));
+
+    // Expanded Inspector screenshot on Delay
+    lv_obj_send_event(button(ui.contentObject(), "DELAY"), LV_EVENT_CLICKED, nullptr);
+    preview::pumpFrame(ui);
+    lv_obj_send_event(button(ui.contentObject(), "AJUSTE FINO"), LV_EVENT_CLICKED, nullptr);
+    preview::pumpFrame(ui);
+    assert(button(ui.contentObject(), "FECHAR") && button(ui.contentObject(), "PARAM >"));
+    assert(preview::saveFramebufferPpm("build/editor011/fx_06_inspector_expanded.ppm"));
+    lv_obj_send_event(button(ui.contentObject(), "FECHAR"), LV_EVENT_CLICKED, nullptr);
+    preview::pumpFrame(ui);
+
+    // 2. Pending WAIT screenshot + module switch mid-pending + Rejection timeout screenshot
+    {
+        lv_obj_t* mix_card = button(ui.contentObject(), "DELAY MIX");
+        lv_obj_t* mix_s = firstSlider(mix_card);
+        assert(mix_card && mix_s);
+        preview::g_sim_tick_ms += 50;
+        lv_obj_add_state(mix_s, LV_STATE_PRESSED);
+        lv_obj_send_event(mix_s, LV_EVENT_PRESSED, nullptr);
+        lv_slider_set_value(mix_s, 55, LV_ANIM_OFF);
+        lv_obj_send_event(mix_s, LV_EVENT_VALUE_CHANGED, nullptr);
+        preview::g_sim_tick_ms += 5;
+        lv_slider_set_value(mix_s, 80, LV_ANIM_OFF);
+        lv_obj_send_event(mix_s, LV_EVENT_VALUE_CHANGED, nullptr);
+        lv_obj_remove_state(mix_s, LV_STATE_PRESSED);
+        lv_obj_send_event(mix_s, LV_EVENT_RELEASED, nullptr);
+        preview::pumpFrame(ui); // Awaiting owner confirmation
+        assert(std::strcmp(sliderCardStateText(mix_card), "WAIT") == 0);
+        assert(preview::saveFramebufferPpm("build/editor011/fx_07_slider_pending.ppm"));
+
+        // Switch module while command is pending, then return and confirm
+        lv_obj_send_event(button(ui.contentObject(), "REVERB"), LV_EVENT_CLICKED, nullptr);
+        preview::pumpFrame(ui);
+        lv_obj_send_event(button(ui.contentObject(), "DELAY"), LV_EVENT_CLICKED, nullptr);
+        apply();
+        assert(std::fabs(runtime.snapshot().fx.config.delay_mix - 0.80f) < 0.02f);
+        assert(std::strcmp(sliderCardStateText(button(ui.contentObject(), "DELAY MIX")), "") == 0);
+
+        // Trigger timeout rejection on DELAY FDBK without owner apply to capture REJ rollback
+        lv_obj_t* fdbk_card = button(ui.contentObject(), "DELAY FDBK");
+        lv_obj_t* fdbk_s = firstSlider(fdbk_card);
+        assert(fdbk_card && fdbk_s);
+        const int32_t confirmed_pct = lv_slider_get_value(fdbk_s);
+        preview::g_sim_tick_ms += 50;
+        lv_obj_add_state(fdbk_s, LV_STATE_PRESSED);
+        lv_obj_send_event(fdbk_s, LV_EVENT_PRESSED, nullptr);
+        lv_slider_set_value(fdbk_s, 90, LV_ANIM_OFF);
+        lv_obj_send_event(fdbk_s, LV_EVENT_VALUE_CHANGED, nullptr);
+        lv_obj_remove_state(fdbk_s, LV_STATE_PRESSED);
+        lv_obj_send_event(fdbk_s, LV_EVENT_RELEASED, nullptr);
+        preview::g_sim_tick_ms += UiBlueprintPerformanceAdapter::kPatchConfirmationTimeoutMs + 50;
+        adapter.service(preview::g_sim_tick_ms);
+        preview::pumpFrame(ui);
+        assert(adapter.lastCommandState() == UiCommandState::Rejected);
+        assert(std::strcmp(sliderCardStateText(fdbk_card), "REJ") == 0);
+        assert(lv_slider_get_value(fdbk_s) == confirmed_pct);
+        assert(preview::saveFramebufferPpm("build/editor011/fx_08_slider_rejected.ppm"));
+
+        // Drain queued command and restore clean Delay Mix/Feedback
+        apply();
+        assert(adapter.requestParameterFloat("fx.delay.feedback", 40.0f).accepted());
+        assert(adapter.requestParameterFloat("fx.delay.mix", 35.0f).accepted());
+        apply();
+    }
+
+    // 3. Musical context preservation across FX navigation & < TOCAR return
+    // (Part A: Sequencer + USB sustained note via CC 64 + Performance Lock + Touch release safety;
+    //  Part B: Active Arpeggiator + Sequencer preserved across FX navigation and < TOCAR)
+    {
+        // Part A: Sequencer + USB Sustain + Touch safety + Performance Lock
+        seq::Request s_step{};
+        s_step.action = seq::Action::SetStepEnabled;
+        s_step.index = 0;
+        s_step.value = 1;
+        assert(adapter.requestSequencer(s_step).accepted());
+        apply();
+        seq::Request s_play{};
+        s_play.action = seq::Action::Play;
+        assert(adapter.requestSequencer(s_play).accepted());
+        apply();
+        assert(runtime.snapshot().sequencer.playing);
+
+        setSessionLockMask(0x03);
+        const uint8_t usb_on[]{0x09, 0x90, 60, 100};
+        const uint8_t sus_on[]{0x0B, 0xB0, 64, 127};
+        const uint8_t usb_off[]{0x08, 0x80, 60, 0};
+        assert(runtime.usbInput().transfer(usb_on, sizeof(usb_on), preview::g_sim_tick_ms));
+        assert(runtime.usbInput().transfer(sus_on, sizeof(sus_on), preview::g_sim_tick_ms));
+        assert(runtime.usbInput().transfer(usb_off, sizeof(usb_off), preview::g_sim_tick_ms));
+        apply();
+        assert(runtime.snapshot().active_notes >= 1 && runtime.snapshot().sustain_active);
+
+        assert(ui.navigation().navigateTo(ScreenId::Performance, 0));
+        preview::pumpFrame(ui);
+        const auto touch_perf = adapter.requestNoteOn(67, 100);
+        assert(touch_perf.accepted());
+        apply();
+        assert(adapter.isNoteHeld(67));
+
+        const uint16_t patch_before = runtime.snapshot().patch_id;
+        assert(ui.navigation().navigateTo(ScreenId::Effects, 0));
+        preview::pumpFrame(ui);
+        apply();
+        // Touch note from Performance safely released on screen change; USB sustained note + Seq + Lock stay alive!
+        assert(!adapter.isNoteHeld(67));
+        assert(runtime.snapshot().active_notes >= 1 && runtime.snapshot().sustain_active);
+        assert(runtime.snapshot().sequencer.playing);
+        assert(sessionLockMask() == 0x03);
+        assert(runtime.snapshot().patch_id == patch_before);
+
+        for (const char* mod : {"DELAY", "REVERB", "CHORUS", "MASTER", "CHORUS"}) {
+            lv_obj_send_event(button(ui.contentObject(), mod), LV_EVENT_CLICKED, nullptr);
+            preview::pumpFrame(ui);
+            assert(runtime.snapshot().active_notes >= 1 && runtime.snapshot().sustain_active);
+            assert(runtime.snapshot().sequencer.playing);
+        }
+        assert(ui.navigation().subTab(ScreenId::Effects) == 2); // CHORUS selected
+
+        // Return via < TOCAR sidebar button: musical context preserved
+        lv_obj_send_event(button(ui.contentObject(), "< TOCAR"), LV_EVENT_CLICKED, nullptr);
+        preview::pumpFrame(ui);
+        assert(ui.navigation().currentScreen() == ScreenId::Performance);
+        assert(runtime.snapshot().active_notes >= 1 && runtime.snapshot().sustain_active);
+        assert(runtime.snapshot().sequencer.playing);
+        assert(sessionLockMask() == 0x03);
+        assert(runtime.snapshot().patch_id == patch_before);
+
+        // Returning to Effects restores last module (CHORUS)
+        assert(ui.navigation().navigateTo(ScreenId::Effects));
+        preview::pumpFrame(ui);
+        assert(ui.navigation().subTab(ScreenId::Effects) == 2);
+        assert(button(ui.contentObject(), "CHORUS DEPTH") != nullptr);
+
+        // Release USB sustain, keep Sequencer playing, then enable & test Arpeggiator across FX -> < TOCAR
+        const uint8_t sus_off[]{0x0B, 0xB0, 64, 0};
+        assert(runtime.usbInput().transfer(sus_off, sizeof(sus_off), preview::g_sim_tick_ms));
+        apply();
+
+        assert(adapter.requestParameterBool("arp.enable", true).accepted());
+        apply();
+        assert(adapter.requestArpTransport(true).accepted());
+        apply();
+        assert(runtime.snapshot().arp.config.enabled && runtime.snapshot().arp.armed);
+        assert(runtime.snapshot().sequencer.playing);
+
+        for (const char* mod : {"MASTER", "DELAY"}) {
+            lv_obj_send_event(button(ui.contentObject(), mod), LV_EVENT_CLICKED, nullptr);
+            preview::pumpFrame(ui);
+            assert(runtime.snapshot().arp.config.enabled && runtime.snapshot().arp.armed);
+            assert(runtime.snapshot().sequencer.playing);
+        }
+        lv_obj_send_event(button(ui.contentObject(), "< TOCAR"), LV_EVENT_CLICKED, nullptr);
+        preview::pumpFrame(ui);
+        assert(ui.navigation().currentScreen() == ScreenId::Performance);
+        assert(runtime.snapshot().arp.config.enabled && runtime.snapshot().arp.armed);
+        assert(runtime.snapshot().sequencer.playing);
+        assert(sessionLockMask() == 0x03);
+        assert(runtime.snapshot().patch_id == patch_before);
+
+        // Returning to Effects restores DELAY
+        assert(ui.navigation().navigateTo(ScreenId::Effects));
+        preview::pumpFrame(ui);
+        assert(ui.navigation().subTab(ScreenId::Effects) == 0);
+
+        // Clean up Arp, Sequencer, Panic, Lock
+        seq::Request s_stop{};
+        s_stop.action = seq::Action::Stop;
+        assert(adapter.requestSequencer(s_stop).accepted());
+        assert(adapter.requestArpTransport(false).accepted());
+        apply();
+        assert(adapter.requestParameterBool("arp.enable", false).accepted());
+        assert(adapter.requestPanic().accepted());
+        setSessionLockMask(0);
+        apply();
+    }
+
+    // 4. Inspector 50-toggle & 200-idle-tick zero-revision/zero-leak benchmark
+    {
+        lv_obj_send_event(button(ui.contentObject(), "DELAY"), LV_EVENT_CLICKED, nullptr);
+        preview::pumpFrame(ui);
+
+        // 50 Inspector expand/collapse cycles -> zero heap drift, zero object drift
+        const unsigned insp_objs_before = countObjects(ui.rootObject());
+        lv_mem_monitor_t insp_mem_before{}, insp_mem_after{};
+        lv_mem_monitor(&insp_mem_before);
+        for (int i = 0; i < 25; ++i) {
+            lv_obj_send_event(button(ui.contentObject(), "AJUSTE FINO"), LV_EVENT_CLICKED, nullptr);
+            preview::pumpFrame(ui);
+            lv_obj_send_event(button(ui.contentObject(), "FECHAR"), LV_EVENT_CLICKED, nullptr);
+            preview::pumpFrame(ui);
+        }
+        const unsigned insp_objs_after = countObjects(ui.rootObject());
+        lv_mem_monitor(&insp_mem_after);
+        const ptrdiff_t insp_diff = static_cast<ptrdiff_t>(insp_mem_before.free_size) -
+                                    static_cast<ptrdiff_t>(insp_mem_after.free_size);
+        std::printf("INFO: [0.18-B.1 Inspector 50-toggle] objs_before=%u objs_after=%u free_before=%zuB free_after=%zuB diff=%tdB frag=%u%%\n",
+                    insp_objs_before, insp_objs_after, insp_mem_before.free_size, insp_mem_after.free_size,
+                    insp_diff, unsigned(insp_mem_after.frag_pct));
+        assert(insp_objs_after == insp_objs_before && insp_diff == 0);
+
+        // Settle snapshot & run 200 idle ticks -> 0 revision bumps & 0 heap drift
+        backend.publish(runtime.snapshot(), false, 0, 0);
+        preview::pumpFrame(ui);
+        const uint32_t rev_before = adapter.model().revision();
+        lv_mem_monitor_t idle_before{}, idle_after{};
+        lv_mem_monitor(&idle_before);
+        for (int i = 0; i < 200; ++i) {
+            backend.publish(runtime.snapshot(), false, 0, 0);
+            preview::pumpFrame(ui);
+        }
+        lv_mem_monitor(&idle_after);
+        const uint32_t rev_delta = adapter.model().revision() - rev_before;
+        const ptrdiff_t idle_diff = static_cast<ptrdiff_t>(idle_before.free_size) -
+                                    static_cast<ptrdiff_t>(idle_after.free_size);
+        std::printf("INFO: [0.18-B.1 Effects 200-idle-ticks] rev_delta=%u free_before=%zuB free_after=%zuB diff=%tdB frag=%u%%\n",
+                    unsigned(rev_delta), idle_before.free_size, idle_after.free_size,
+                    idle_diff, unsigned(idle_after.frag_pct));
+        assert(rev_delta == 0 && idle_diff == 0);
+    }
+
+    assert(lv_mem_test() == LV_RESULT_OK);
+    std::puts("PASS 0.18-B.1 FX Hardening: Chorus OFF/ON/OFF, 8x 800x480 captures, Navigation+Sustain+Arp+Seq+Lock, Inspector & Idle benchmarks");
+}
+
+} // namespace
+
 int main(){
     preview::initHostLvgl();assert(r.begin());MemoryStore store;
     fx::NvsFxPresets fx_store;assert(fx_store.begin());
@@ -527,9 +1196,11 @@ int main(){
         const double p95_us = durations_us[(durations_us.size() * 95) / 100];
         const double max_us = durations_us.back();
         const ptrdiff_t diff_bytes = static_cast<ptrdiff_t>(mem_before.free_size) - static_cast<ptrdiff_t>(mem_after.free_size);
-        std::printf("INFO: [0.18-B FX 500-switch host nav] objs_before=%u objs_after=%u | LVGL free_before=%zuB free_after=%zuB diff=%tdB peak_used=%zuB frag=%u%% | HOST duration (NOT touch/DSI): median=%.1fus P95=%.1fus max=%.1fus\n",
-                    objs_before, objs_after, mem_before.free_size, mem_after.free_size, diff_bytes,
-                    mem_after.max_used, unsigned(mem_after.frag_pct), median_us, p95_us, max_us);
+        std::printf("INFO: [0.18-B FX 500-switch host nav] objs_before=%u objs_after=%u | LVGL free_before=%zuB free_after=%zuB largest_before=%zuB largest_after=%zuB diff=%tdB peak_used=%zuB frag_before=%u%% frag_after=%u%% | HOST duration (NOT touch/DSI): median=%.1fus P95=%.1fus max=%.1fus\n",
+                    objs_before, objs_after, mem_before.free_size, mem_after.free_size,
+                    mem_before.free_biggest_size, mem_after.free_biggest_size, diff_bytes,
+                    mem_after.max_used, unsigned(mem_before.frag_pct), unsigned(mem_after.frag_pct),
+                    median_us, p95_us, max_us);
         assert(objs_after == objs_before);
         assert(diff_bytes == 0);
         assert(mem_after.frag_pct <= 5);
@@ -866,6 +1537,8 @@ int main(){
 
     testSmk25LegacyUi(r,reboot,next,ui);
     std::puts("PASS 0.14.2 SMK25 native pickup, pad shortcuts, Save As safety and USB-only Stop");
+    runSliderRobustnessUnitTests();
+    runFxHardening018b1Suite(r, reboot, next, ui);
     assert(lv_mem_test()==LV_RESULT_OK);ui.shutdown();r.end();
     puts("PASS LVGL9.3: all 7 editor tabs, Effects screen, Gate G0 inventory audit, FM/LFO/Mod/FX owner confirmation, dirty guard, Save/Recall/reboot simulation, heap integrity");
 }

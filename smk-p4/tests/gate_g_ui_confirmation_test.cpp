@@ -3,6 +3,7 @@
 #include "amy_runtime.h"
 #include "fake_nvs.h"
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -203,12 +204,187 @@ static void test_real_backend_end_to_end() {
     std::puts("  PASS: real backend end-to-end confirmation");
 }
 
+static void test_chorus_off_depth_editability_and_preservation() {
+    MockFxBackend backend;
+    backend.fx_state.config.chorus_mode = 0;
+    backend.fx_state.config.chorus_depth = 0.65f;
+    UiBlueprintPerformanceAdapter adapter(backend);
+    uint32_t t = 100;
+    adapter.service(t);
+
+    assert(adapter.model().getInt("fx.chorus.mode") == 0);
+    assert(std::fabs(adapter.model().getFloat("fx.chorus.depth") - 65.0f) < 0.1f);
+    assert(!adapter.isParameterEditable("fx.chorus.depth"));
+
+    // Pending transition OFF -> ON must NOT prematurely unlock Depth before owner ACK
+    auto res = adapter.requestParameterInt("fx.chorus.mode", 1);
+    assert(res.state == UiCommandState::Requested);
+    adapter.service(t += 10);
+    assert(!adapter.isParameterEditable("fx.chorus.depth"));
+
+    // Rejected transition OFF -> ON keeps Depth locked and preserved
+    ++backend.fx_state.errors;
+    ++backend.rev;
+    adapter.service(t += 10);
+    assert(adapter.lastCommandState() == UiCommandState::Rejected);
+    assert(adapter.model().getInt("fx.chorus.mode") == 0);
+    assert(!adapter.isParameterEditable("fx.chorus.depth"));
+    assert(std::fabs(adapter.model().getFloat("fx.chorus.depth") - 65.0f) < 0.1f);
+
+    // Confirmed transition OFF -> ON unlocks Depth and keeps preserved value
+    res = adapter.requestParameterInt("fx.chorus.mode", 2);
+    assert(res.state == UiCommandState::Requested);
+    backend.simulateOwnerAck();
+    ++backend.rev;
+    adapter.service(t += 10);
+    assert(adapter.lastCommandState() == UiCommandState::Confirmed);
+    assert(adapter.model().getInt("fx.chorus.mode") == 2);
+    assert(adapter.isParameterEditable("fx.chorus.depth"));
+    assert(std::fabs(adapter.model().getFloat("fx.chorus.depth") - 65.0f) < 0.1f);
+
+    // Edit Depth while ON -> Confirmed 72%
+    res = adapter.requestParameterFloat("fx.chorus.depth", 72.0f);
+    assert(res.state == UiCommandState::Requested);
+    backend.simulateOwnerAck();
+    ++backend.rev;
+    adapter.service(t += 10);
+    assert(adapter.lastCommandState() == UiCommandState::Confirmed);
+    assert(std::fabs(adapter.model().getFloat("fx.chorus.depth") - 72.0f) < 0.1f);
+
+    // Pending ON -> OFF keeps Depth editable until OFF is confirmed
+    res = adapter.requestParameterInt("fx.chorus.mode", 0);
+    assert(res.state == UiCommandState::Requested);
+    adapter.service(t += 10);
+    assert(adapter.isParameterEditable("fx.chorus.depth"));
+
+    // Rejected ON -> OFF stays ON and editable
+    ++backend.fx_state.errors;
+    ++backend.rev;
+    adapter.service(t += 10);
+    assert(adapter.lastCommandState() == UiCommandState::Rejected);
+    assert(adapter.isParameterEditable("fx.chorus.depth"));
+
+    // Timeout ON -> OFF stays ON and editable
+    res = adapter.requestParameterInt("fx.chorus.mode", 0);
+    assert(res.state == UiCommandState::Requested);
+    t += UiBlueprintPerformanceAdapter::kPatchConfirmationTimeoutMs + 25;
+    adapter.service(t);
+    assert(adapter.lastCommandState() == UiCommandState::Rejected);
+    assert(adapter.isParameterEditable("fx.chorus.depth"));
+
+    // Confirmed ON -> OFF locks Depth while preserving 72%
+    res = adapter.requestParameterInt("fx.chorus.mode", 0);
+    assert(res.state == UiCommandState::Requested);
+    backend.simulateOwnerAck();
+    ++backend.rev;
+    adapter.service(t += 10);
+    assert(adapter.lastCommandState() == UiCommandState::Confirmed);
+    assert(adapter.model().getInt("fx.chorus.mode") == 0);
+    assert(!adapter.isParameterEditable("fx.chorus.depth"));
+    assert(std::fabs(adapter.model().getFloat("fx.chorus.depth") - 72.0f) < 0.1f);
+
+    // External owner update back to Juno II unlocks Depth with 72% preserved
+    backend.fx_state.config.chorus_mode = 3;
+    ++backend.rev;
+    adapter.service(t += 10);
+    assert(adapter.isParameterEditable("fx.chorus.depth"));
+    assert(std::fabs(adapter.model().getFloat("fx.chorus.depth") - 72.0f) < 0.1f);
+
+    // End-to-end check with real AMY runtime audio owner
+    amy::Runtime runtime;
+    assert(runtime.begin());
+    LocalAmyPerformanceBackend real_backend(runtime.commands());
+    fx::NvsFxPresets fx_store;
+    assert(fx_store.begin());
+    real_backend.fxPresetStore(&fx_store);
+    UiBlueprintPerformanceAdapter real_adapter(real_backend);
+    auto pump = [&](uint32_t dt) {
+        t += dt;
+        real_adapter.service(t);
+        real_backend.service(t);
+        runtime.apply(t);
+        assert(runtime.render());
+        real_backend.publish(runtime.snapshot(), false, 0, 0);
+        real_adapter.service(t);
+    };
+    pump(10);
+    assert(!real_adapter.isParameterEditable("fx.chorus.depth"));
+    assert(real_adapter.requestParameterInt("fx.chorus.mode", 2).state == UiCommandState::Requested);
+    pump(10);
+    assert(real_adapter.isParameterEditable("fx.chorus.depth"));
+    assert(real_adapter.requestParameterFloat("fx.chorus.depth", 72.0f).state == UiCommandState::Requested);
+    pump(10);
+    assert(std::fabs(real_adapter.model().getFloat("fx.chorus.depth") - 72.0f) < 0.1f);
+    assert(runtime.snapshot().fx.applied.chorus_mode == 2);
+    assert(real_adapter.requestParameterInt("fx.chorus.mode", 0).state == UiCommandState::Requested);
+    pump(10);
+    assert(!real_adapter.isParameterEditable("fx.chorus.depth"));
+    assert(std::fabs(real_adapter.model().getFloat("fx.chorus.depth") - 72.0f) < 0.1f);
+    assert(runtime.snapshot().fx.applied.chorus_mode == 0);
+    assert(real_adapter.requestParameterInt("fx.chorus.mode", 3).state == UiCommandState::Requested);
+    pump(10);
+    assert(real_adapter.isParameterEditable("fx.chorus.depth"));
+    assert(std::fabs(real_adapter.model().getFloat("fx.chorus.depth") - 72.0f) < 0.1f);
+    runtime.end();
+
+    std::puts("  PASS: Chorus OFF -> ON -> OFF Depth editability, pending/rejected & value preservation");
+}
+
+static void test_idle_service_zero_revision_bumps() {
+    amy::Runtime runtime;
+    assert(runtime.begin());
+    LocalAmyPerformanceBackend backend(runtime.commands());
+    fx::NvsFxPresets fx_store;
+    assert(fx_store.begin());
+    backend.fxPresetStore(&fx_store);
+    UiBlueprintPerformanceAdapter adapter(backend);
+
+    uint32_t t = 100;
+    backend.service(t);
+    runtime.apply(t);
+    assert(runtime.render());
+    backend.publish(runtime.snapshot(), false, 0, 0);
+    adapter.service(t);
+    // One extra cycle ensures first-snapshot initialization caches have settled.
+    backend.publish(runtime.snapshot(), false, 0, 0);
+    adapter.service(t += 20);
+
+    const uint32_t rev0 = adapter.model().revision();
+    for (int i = 0; i < 100; ++i) {
+        backend.publish(runtime.snapshot(), false, 0, 0);
+        adapter.service(t += 20);
+    }
+    assert(adapter.model().revision() == rev0 && "Idle publish/service must not bump UI revision");
+
+    assert(adapter.requestParameterFloat("fx.reverb.mix", 42.0f).state == UiCommandState::Requested);
+    t += 20;
+    adapter.service(t);
+    backend.service(t);
+    runtime.apply(t);
+    assert(runtime.render());
+    backend.publish(runtime.snapshot(), false, 0, 0);
+    adapter.service(t);
+    assert(adapter.model().revision() > rev0);
+
+    const uint32_t rev1 = adapter.model().revision();
+    for (int i = 0; i < 100; ++i) {
+        backend.publish(runtime.snapshot(), false, 0, 0);
+        adapter.service(t += 20);
+    }
+    assert(adapter.model().revision() == rev1 && "Post-edit idle publish/service must not bump UI revision");
+    runtime.end();
+
+    std::puts("  PASS: 100 idle publish/service cycles produce 0 revision bumps");
+}
+
 int main() {
     std::puts("=== GATE G: UI FX Confirmation Tests ===");
     test_mock_confirmation_lifecycle();
     test_mock_rejection_and_rollback();
     test_mock_timeout();
     test_real_backend_end_to_end();
+    test_chorus_off_depth_editability_and_preservation();
+    test_idle_service_zero_revision_bumps();
     std::puts("ALL GATE G TESTS PASSED.");
     return 0;
 }
