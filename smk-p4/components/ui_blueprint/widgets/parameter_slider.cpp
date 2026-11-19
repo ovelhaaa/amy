@@ -20,7 +20,6 @@ constexpr uint32_t kFallbackPendingTimeoutMs = 2500U;
 
 struct DisabledSliderStyles {
     bool initialized = false;
-    lv_style_t main;
     lv_style_t indicator;
     lv_style_t knob;
 };
@@ -29,9 +28,6 @@ DisabledSliderStyles& disabledStyles() {
     static DisabledSliderStyles s{};
     if (!s.initialized) {
         s.initialized = true;
-        lv_style_init(&s.main);
-        lv_style_set_opa(&s.main, LV_OPA_60);
-
         lv_style_init(&s.indicator);
         lv_style_set_bg_color(&s.indicator, lv_color_hex(palette::kBorder));
 
@@ -82,6 +78,26 @@ ParameterValue makeSliderParamValue(const ParameterDescriptor& d, float mapped) 
     return ParameterValue::makeFloat(mapped);
 }
 
+enum class ToneColor : uint8_t {
+    Unset = 0,
+    Primary,
+    Secondary,
+    Accent,
+    Warning,
+    Error
+};
+
+uint32_t toneToHex(ToneColor t) {
+    switch (t) {
+        case ToneColor::Primary:   return palette::kTextPrimary;
+        case ToneColor::Secondary: return palette::kTextSecondary;
+        case ToneColor::Accent:    return palette::kAccentPrimary;
+        case ToneColor::Warning:   return palette::kWarning;
+        case ToneColor::Error:     return palette::kErrorPanic;
+        default:                   return palette::kTextPrimary;
+    }
+}
+
 struct SliderCtx {
     IUiBackend*       backend               = nullptr;
     const char*       param_id              = nullptr;
@@ -89,8 +105,6 @@ struct SliderCtx {
     lv_obj_t*         val_label             = nullptr;
     lv_obj_t*         state_label           = nullptr;
     lv_obj_t*         badge_box             = nullptr;
-    PresentationLevel level                 = PresentationLevel::BlueprintVerbose;
-    SliderUiState     ui_state              = SliderUiState::Confirmed;
     uint32_t          last_send_tick_ms     = 0;
     uint32_t          pending_since_ms      = 0;
     uint32_t          pending_token         = 0;
@@ -98,35 +112,37 @@ struct SliderCtx {
     float             pending_value         = 0.0f;
     float             confirmed_before_send = 0.0f;
     float             last_confirmed_value  = 0.0f;
+    PresentationLevel level                 = PresentationLevel::BlueprintVerbose;
+    SliderUiState     ui_state              = SliderUiState::Confirmed;
+    ToneColor         val_tone              = ToneColor::Unset;
+    ToneColor         state_tone            = ToneColor::Unset;
+    ToneColor         title_tone            = ToneColor::Unset;
+    FeatureStatus     last_badge_status     = FeatureStatus::Available;
     bool              has_sent              = false;
     bool              pending_release_commit = false;
     bool              dragging              = false;
-    uint32_t          last_val_color        = 0xFFFFFFFFu;
-    uint32_t          last_state_color      = 0xFFFFFFFFu;
-    uint32_t          last_title_color      = 0xFFFFFFFFu;
-    FeatureStatus     last_badge_status     = FeatureStatus::Available;
     bool              has_badge_status      = false;
 };
 
-void setDynamicLabel(lv_obj_t* lbl, const char* text, uint32_t color_hex, uint32_t& cached_color) {
+void setDynamicLabel(lv_obj_t* lbl, const char* text, ToneColor tone, ToneColor& cached_tone) {
     if (!lbl || !text) return;
     if (std::strcmp(lv_label_get_text(lbl), text) != 0) {
         lv_label_set_text(lbl, text);
     }
-    if (cached_color != color_hex) {
-        cached_color = color_hex;
-        lv_obj_set_style_text_color(lbl, lv_color_hex(color_hex), 0);
+    if (cached_tone != tone) {
+        cached_tone = tone;
+        lv_obj_set_style_text_color(lbl, lv_color_hex(toneToHex(tone)), 0);
     }
 }
 
-void setStaticStateLabel(lv_obj_t* lbl, const char* static_text, uint32_t color_hex, uint32_t& cached_color) {
+void setStaticStateLabel(lv_obj_t* lbl, const char* static_text, ToneColor tone, ToneColor& cached_tone) {
     if (!lbl || !static_text) return;
     if (std::strcmp(lv_label_get_text(lbl), static_text) != 0) {
         lv_label_set_text_static(lbl, static_text);
     }
-    if (cached_color != color_hex) {
-        cached_color = color_hex;
-        lv_obj_set_style_text_color(lbl, lv_color_hex(color_hex), 0);
+    if (static_text[0] != '\0' && cached_tone != tone) {
+        cached_tone = tone;
+        lv_obj_set_style_text_color(lbl, lv_color_hex(toneToHex(tone)), 0);
     }
 }
 
@@ -160,10 +176,10 @@ void renderVisuals(SliderCtx& ctx, const ParameterDescriptor& d, float display_v
     const bool editable = ctx.backend->isParameterEditable(ctx.param_id);
 
     if (ctx.title_label) {
-        const uint32_t tcol = editable ? palette::kTextPrimary : palette::kTextSecondary;
-        if (ctx.last_title_color != tcol) {
-            ctx.last_title_color = tcol;
-            lv_obj_set_style_text_color(ctx.title_label, lv_color_hex(tcol), 0);
+        const ToneColor ttone = editable ? ToneColor::Primary : ToneColor::Secondary;
+        if (ctx.title_tone != ttone) {
+            ctx.title_tone = ttone;
+            lv_obj_set_style_text_color(ctx.title_label, lv_color_hex(toneToHex(ttone)), 0);
         }
     }
 
@@ -176,25 +192,25 @@ void renderVisuals(SliderCtx& ctx, const ParameterDescriptor& d, float display_v
     }
 
     const char* st_tag = "";
-    uint32_t vcol = editable ? palette::kAccentPrimary : palette::kTextSecondary;
-    uint32_t scol = palette::kTextSecondary;
+    ToneColor vtone = editable ? ToneColor::Accent : ToneColor::Secondary;
+    ToneColor stone = ToneColor::Secondary;
 
     if (!editable) {
         st_tag = lockedTagForParam(*ctx.backend, ctx.param_id);
-        vcol = palette::kTextSecondary;
-        scol = palette::kTextSecondary;
+        vtone = ToneColor::Secondary;
+        stone = ToneColor::Secondary;
     } else if (ctx.ui_state == SliderUiState::Dragging) {
         st_tag = "EDIT";
-        vcol = palette::kTextPrimary;
-        scol = palette::kTextPrimary;
+        vtone = ToneColor::Primary;
+        stone = ToneColor::Primary;
     } else if (ctx.ui_state == SliderUiState::Pending) {
         st_tag = "WAIT";
-        vcol = palette::kWarning;
-        scol = palette::kWarning;
+        vtone = ToneColor::Warning;
+        stone = ToneColor::Warning;
     } else if (ctx.ui_state == SliderUiState::Rejected) {
         st_tag = "REJ";
-        vcol = palette::kErrorPanic;
-        scol = palette::kErrorPanic;
+        vtone = ToneColor::Error;
+        stone = ToneColor::Error;
     }
 
     if (ctx.val_label) {
@@ -207,14 +223,14 @@ void renderVisuals(SliderCtx& ctx, const ParameterDescriptor& d, float display_v
             } else {
                 std::snprintf(m_buf, sizeof(m_buf), "%s", vbuf);
             }
-            setDynamicLabel(ctx.val_label, m_buf, vcol, ctx.last_val_color);
+            setDynamicLabel(ctx.val_label, m_buf, vtone, ctx.val_tone);
         } else {
-            setDynamicLabel(ctx.val_label, vbuf, vcol, ctx.last_val_color);
+            setDynamicLabel(ctx.val_label, vbuf, vtone, ctx.val_tone);
         }
     }
 
     if (ctx.state_label) {
-        setStaticStateLabel(ctx.state_label, st_tag, scol, ctx.last_state_color);
+        setStaticStateLabel(ctx.state_label, st_tag, stone, ctx.state_tone);
     }
 
     if (ctx.badge_box && (!ctx.has_badge_status || ctx.last_badge_status != status)) {
@@ -325,14 +341,19 @@ void resolvePendingOnRefresh(SliderCtx& ctx, const ParameterDescriptor& d, float
 }
 
 void onSliderEvent(lv_event_t* e) {
+    const lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_PRESSED && code != LV_EVENT_VALUE_CHANGED && code != LV_EVENT_RELEASED &&
+        code != LV_EVENT_PRESS_LOST && code != LV_EVENT_CANCEL && code != LV_EVENT_INDEV_RESET &&
+        code != LV_EVENT_REFRESH) {
+        return;
+    }
+
     auto* ctx = static_cast<SliderCtx*>(lv_event_get_user_data(e));
     auto* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
     if (!ctx || !ctx->backend || !ctx->param_id || !target) return;
 
     const ParameterDescriptor* d = ParameterRegistry::findById(ctx->param_id);
     if (!d) return;
-
-    const lv_event_code_t code = lv_event_get_code(e);
 
     if (code == LV_EVENT_PRESSED) {
         if (!ctx->backend->isParameterEditable(ctx->param_id) ||
@@ -468,8 +489,8 @@ void onSliderEvent(lv_event_t* e) {
 
         if (is_dragging) {
             ctx->last_confirmed_value = confirmed;
-            if (ctx->title_label && ctx->last_title_color != palette::kTextPrimary) {
-                ctx->last_title_color = palette::kTextPrimary;
+            if (ctx->title_label && ctx->title_tone != ToneColor::Primary) {
+                ctx->title_tone = ToneColor::Primary;
                 lv_obj_set_style_text_color(ctx->title_label, lv_color_hex(palette::kTextPrimary), 0);
             }
             return;
@@ -557,8 +578,8 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
     lv_obj_t* slider = lv_slider_create(card);
     if (slider) {
         auto& dst = disabledStyles();
+        lv_obj_remove_style_all(slider);
         lv_obj_add_style(slider, &theme().slider_main, LV_PART_MAIN);
-        lv_obj_add_style(slider, &dst.main, LV_STATE_DISABLED);
         lv_obj_add_style(slider, &theme().slider_indicator, LV_PART_INDICATOR);
         lv_obj_add_style(slider, &dst.indicator, static_cast<lv_style_selector_t>(LV_PART_INDICATOR) | LV_STATE_DISABLED);
         lv_obj_add_style(slider, &theme().slider_knob, LV_PART_KNOB);
@@ -588,10 +609,12 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
         init_ctx.badge_box = badge_box;
         init_ctx.level = level;
         init_ctx.last_confirmed_value = cur;
+        init_ctx.title_tone = enabled ? ToneColor::Primary : ToneColor::Secondary;
+        init_ctx.val_tone = enabled ? ToneColor::Accent : ToneColor::Secondary;
         init_ctx.last_badge_status = status;
         init_ctx.has_badge_status = (badge_box != nullptr);
 
-        if (SliderCtx* ctx = attachLvContext<SliderCtx>(slider, init_ctx, nullptr, LV_EVENT_ALL)) {
+        if (SliderCtx* ctx = attachLvContext<SliderCtx>(slider, init_ctx, onSliderEvent, LV_EVENT_ALL)) {
             if (backend.lastCommandParameterId() &&
                 std::strcmp(backend.lastCommandParameterId(), desc->id) == 0 &&
                 backend.lastCommandState() == UiCommandState::Requested) {
@@ -602,14 +625,6 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
                 ctx->confirmed_before_send = cur;
             }
             renderVisuals(*ctx, *desc, cur, ctx->ui_state == SliderUiState::Pending);
-
-            // Register event listeners before LV_EVENT_DELETE? attachLvContext already registered LV_EVENT_DELETE,
-            // and LV_EVENT_DELETE only fires on object deletion; all other events run safely on live SliderCtx.
-            for (lv_event_code_t code : {LV_EVENT_PRESSED, LV_EVENT_VALUE_CHANGED, LV_EVENT_RELEASED,
-                                         LV_EVENT_PRESS_LOST, LV_EVENT_CANCEL, LV_EVENT_INDEV_RESET,
-                                         LV_EVENT_REFRESH}) {
-                lv_obj_add_event_cb(slider, onSliderEvent, code, ctx);
-            }
         }
     }
     return card;
