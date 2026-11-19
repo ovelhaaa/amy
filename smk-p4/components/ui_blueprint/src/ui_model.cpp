@@ -255,13 +255,37 @@ bool UiModel::setValue(const char* id, const ParameterValue& val) {
             break;
     }
 
+    bool changed = (values_[idx].type != clamped.type);
+    if (!changed) {
+        switch (desc.type) {
+            case ParameterValueType::Float:
+                changed = (values_[idx].f_val != clamped.f_val);
+                break;
+            case ParameterValueType::Int:
+                changed = (values_[idx].i_val != clamped.i_val);
+                break;
+            case ParameterValueType::Enum:
+                changed = (values_[idx].enum_idx != clamped.enum_idx);
+                break;
+            case ParameterValueType::Bool:
+                changed = (values_[idx].b_val != clamped.b_val);
+                break;
+            case ParameterValueType::String: {
+                const char* cur_s = values_[idx].s_val ? values_[idx].s_val : "";
+                const char* new_s = clamped.s_val ? clamped.s_val : "";
+                changed = (std::strcmp(cur_s, new_s) != 0);
+                break;
+            }
+        }
+    }
+
     values_[idx] = clamped;
     if (std::strcmp(id, "mod.slot1.enable") == 0) mod_slots_[0].enabled = clamped.asBool();
     else if (std::strcmp(id, "mod.slot1.source") == 0) mod_slots_[0].source = static_cast<uint8_t>(clamped.asInt());
     else if (std::strcmp(id, "mod.slot1.dest") == 0) mod_slots_[0].dest = static_cast<uint8_t>(clamped.asInt());
     else if (std::strcmp(id, "mod.slot1.amount") == 0) mod_slots_[0].amount = static_cast<int8_t>(std::lround(clamped.asFloat()));
     else if (std::strcmp(id, "mod.slot1.polarity") == 0) mod_slots_[0].polarity = static_cast<uint8_t>(clamped.asInt());
-    ++revision_;
+    if (changed) ++revision_;
     return true;
 }
 
@@ -526,7 +550,10 @@ HarmonyPreviewResult UiModel::computeHarmony(uint8_t raw_midi_note) const {
 
 void UiModel::setNotice(const char* msg) {
     if (!msg) return;
-    std::snprintf(last_notice_, sizeof(last_notice_), "%s", msg);
+    char next[sizeof(last_notice_)]{};
+    std::snprintf(next, sizeof(next), "%s", msg);
+    if (std::strcmp(last_notice_, next) == 0) return;
+    std::snprintf(last_notice_, sizeof(last_notice_), "%s", next);
     ++revision_;
 }
 

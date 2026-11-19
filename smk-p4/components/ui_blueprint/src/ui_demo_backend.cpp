@@ -47,6 +47,19 @@ void UiDemoBackend::service(uint32_t now_ms) {
     recomputeMeters();
 }
 
+bool UiDemoBackend::isParameterEditable(const char* id) const {
+    if (!model_.isParameterEnabled(id)) return false;
+    if (std::strcmp(id, "fx.chorus.depth") == 0 && model_.getInt("fx.chorus.mode", 0) == 0) {
+        return false;
+    }
+    const bool sync = (model_.getInt("fx.delay.mode", 0) == 1);
+    if ((sync && std::strcmp(id, "fx.delay.time_ms") == 0) ||
+        (!sync && std::strcmp(id, "fx.delay.division") == 0)) {
+        return false;
+    }
+    return true;
+}
+
 bool UiDemoBackend::isPatchSelectable(uint16_t patch_id) const {
     size_t count = 0;
     const BlueprintPatchEntry* cat = UiModel::catalog(count);

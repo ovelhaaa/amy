@@ -228,6 +228,21 @@ private:
     uint32_t fx_pending_token_=0;
     uint32_t fx_initial_errors_=0;
     uint32_t fx_initial_rejected_=0;
+    bool edit_meta_valid_=false;
+    uint32_t last_edit_rev_=0, last_edit_epoch_=0;
+    uint64_t last_edit_avail_=0;
+    uint16_t last_edit_patch_=0;
+    bool last_edit_compare_=false, last_edit_dirty_=false;
+    int8_t last_edit_user_slot_=-1;
+    bool fx_meta_valid_=false;
+    uint32_t last_fx_rev_=0;
+    float last_fx_dsp_ms_=0.0f, last_fx_target_ms_=0.0f;
+    bool last_fx_oor_=false, last_fx_bypass_=false;
+    uint32_t last_preset_op_rev_=0;
+    bool harmony_meta_valid_=false;
+    uint32_t last_harmony_pack_=0;
+    harmony::State last_harmony_state_{};
+    bool last_usable_=false;
     struct PendingEdit {
         bool active=false;
         unsigned param=0;

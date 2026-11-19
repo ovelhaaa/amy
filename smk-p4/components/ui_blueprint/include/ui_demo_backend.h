@@ -38,9 +38,7 @@ public:
     FeatureStatus parameterStatus(const char* id) const override {
         return model_.effectiveStatus(id);
     }
-    bool isParameterEditable(const char* id) const override {
-        return model_.isParameterEnabled(id);
-    }
+    bool isParameterEditable(const char* id) const override;
     bool isPatchSelectable(uint16_t patch_id) const override;
     UiCommandState lastCommandState() const override { return last_cmd_state_; }
     const char* lastCommandParameterId() const override { return last_cmd_param_; }

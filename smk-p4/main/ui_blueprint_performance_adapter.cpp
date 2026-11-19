@@ -287,6 +287,7 @@ bool UiBlueprintPerformanceAdapter::isParameterEditable(const char* id) const {
     if(const auto* fx=backend_.fxState()) {
         const bool sync=fx->config.delay_mode==fx::DelayMode::Sync;
         if((sync && eq(id,"fx.delay.time_ms")) || (!sync && eq(id,"fx.delay.division"))) return false;
+        if(fx->config.chorus_mode==uint8_t(fx::ChorusMode::Off) && eq(id,"fx.chorus.depth")) return false;
     }
     return parameterStatus(id)==FeatureStatus::Available && usable();
 }
@@ -346,7 +347,7 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestParameterFloat(const char*
         fx_pending_token_=backend_.fxToken();
         const auto* desc=ParameterRegistry::findById(id);
         fx_id_=desc?desc->id:"fx";
-        return result(UiCommandState::Requested,id,"FX REQUESTED; WAIT OWNER");
+        return result(UiCommandState::Requested,id,"FX REQUESTED; WAIT OWNER",fx_pending_token_);
     }
     if(!std::isfinite(v) || v < -32768 || v > 65535) return result(UiCommandState::Rejected,id,"INVALID VALUE");
     return requestParameterInt(id,static_cast<int32_t>(std::lround(v)));
@@ -503,11 +504,13 @@ UiCommandResult UiBlueprintPerformanceAdapter::requestNoteOff(uint8_t note,uint3
     return result(UiCommandState::Rejected,"note","STALE/UNKNOWN RELEASE IGNORED");
 }
 void UiBlueprintPerformanceAdapter::releaseAllUiNotes() {
+    bool released=false;
     for(auto& g:gestures_) if(g.token) {
         const uint8_t note=g.note; g.token=0;
         if(!isNoteHeld(note)) backend_.noteOff(note);
+        released=true;
     }
-    model_.bumpRevision();
+    if(released) model_.bumpRevision();
 }
 UiCommandResult UiBlueprintPerformanceAdapter::requestPanic() {
     releaseAllUiNotes(); backend_.panic();
@@ -1556,6 +1559,7 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
         releaseAllUiNotes();
         if(patch_.active) patch_result_={UiCommandState::Rejected,0,"ENGINE DISCONNECTED DURING PATCH LOAD."};
         patch_.active=master_.active=false; have_snapshot_=false;
+        edit_meta_valid_=fx_meta_valid_=harmony_meta_valid_=false;
         result(UiCommandState::Rejected,"connection","ENGINE DISCONNECTED");
     }
     was_connected_=backend_.connected();
@@ -1579,7 +1583,9 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     }
     const uint32_t rev=backend_.stateRevision();
     if(backend_.connected() && rev && (!have_snapshot_ || rev!=revision_)) {
+        const bool first_snapshot=!have_snapshot_;
         have_snapshot_=true; revision_=rev;
+        if(first_snapshot) model_.bumpRevision();
         if(const auto* edit=backend_.soundEdit()){
             if(edit_requested_ && !(pending_edit_.active && pending_edit_.param==edit::FmAlgorithm) && !backend_.editPending() && !backend_.busy()){
                 edit_requested_=false;
@@ -1613,15 +1619,26 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
                 macro_id[11]=char('1'+m);
                 model_.setInt(macro_id,edit->performance_macros[m]);
             }
+            if(!edit_meta_valid_ || edit->revision!=last_edit_rev_ || edit->epoch!=last_edit_epoch_ ||
+               edit->available!=last_edit_avail_ || edit->patch!=last_edit_patch_ ||
+               edit->compare!=last_edit_compare_ || edit->dirty!=last_edit_dirty_ ||
+               edit->user_slot!=last_edit_user_slot_) {
+                edit_meta_valid_=true;
+                last_edit_rev_=edit->revision; last_edit_epoch_=edit->epoch;
+                last_edit_avail_=edit->available; last_edit_patch_=edit->patch;
+                last_edit_compare_=edit->compare; last_edit_dirty_=edit->dirty;
+                last_edit_user_slot_=edit->user_slot;
+                model_.bumpRevision();
+            }
         }
         if(const auto* fx=backend_.fxState()){
             if(fx_requested_){
                 if(fx->errors > fx_initial_errors_ || fx->rejected > fx_initial_rejected_){
                     fx_requested_=false;
-                    result(UiCommandState::Rejected,fx_id_,"FX REJECTED; CONFIRMED VALUES RESTORED");
+                    result(UiCommandState::Rejected,fx_id_,"FX REJECTED; CONFIRMED VALUES RESTORED",fx_pending_token_);
                 } else if(fx->request >= fx_pending_token_ && !backend_.busy()){
                     fx_requested_=false;
-                    result(UiCommandState::Confirmed,fx_id_,"FX CONFIRMED BY OWNER");
+                    result(UiCommandState::Confirmed,fx_id_,"FX CONFIRMED BY OWNER",fx_pending_token_);
                 }
             }
             model_.setInt("fx.chorus.mode",fx->config.chorus_mode);
@@ -1638,6 +1655,15 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
             model_.setFloat("fx.eq.mid_db",fx->config.eq_mid_db);
             model_.setFloat("fx.eq.high_db",fx->config.eq_high_db);
             model_.setBool("fx.bypass_all",fx->config.bypass_all);
+            if(!fx_meta_valid_ || fx->revision!=last_fx_rev_ || fx->delay_out_of_range!=last_fx_oor_ ||
+               fx->applied.bypass_all!=last_fx_bypass_ || fx->delay_dsp_ms!=last_fx_dsp_ms_ ||
+               fx->delay_target_ms!=last_fx_target_ms_) {
+                fx_meta_valid_=true;
+                last_fx_rev_=fx->revision; last_fx_oor_=fx->delay_out_of_range;
+                last_fx_bypass_=fx->applied.bypass_all; last_fx_dsp_ms_=fx->delay_dsp_ms;
+                last_fx_target_ms_=fx->delay_target_ms;
+                model_.bumpRevision();
+            }
         }
         const auto& s=backend_.state();
         if(isPatchSelectable(s.patch_id)) {
@@ -1681,7 +1707,7 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
             model_.setFloat("fx.eq.high_db",fx->config.eq_high_db);
             model_.setBool("fx.bypass_all",fx->config.bypass_all);
         }
-        result(UiCommandState::Rejected,fx_id_,"FX NOT CONFIRMED; OWNER STATE RETAINED");
+        result(UiCommandState::Rejected,fx_id_,"FX NOT CONFIRMED; OWNER STATE RETAINED",fx_pending_token_);
     }
     if(pending_edit_.active && pending_edit_.param==edit::FmAlgorithm){
         const auto& request=pending_edit_;
@@ -1712,16 +1738,41 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
         edit_requested_=false;
         result(UiCommandState::Rejected,edit_id_,"EDIT NOT CONFIRMED; OWNER STATE RETAINED");
     }
+    const uint32_t preset_op_rev=backend_.presetOperationStatus().revision;
+    if(preset_op_rev!=last_preset_op_rev_) {
+        last_preset_op_rev_=preset_op_rev;
+        model_.bumpRevision();
+    }
     if(const auto* h=backend_.harmonyState()) {
-        model_.live_harmony=*h;model_.live_harmony.pending=harmony_pending_;
-        if(harmony_pending_ && h->revision!=harmony_revision_ && harmony::pack(h->configuration)==harmony::pack(requested_harmony_)) {
-            harmony_pending_=false;model_.live_harmony.pending=false;
+        const uint32_t h_pack=harmony::pack(h->configuration);
+        if(harmony_pending_ && h->revision!=harmony_revision_ && h_pack==harmony::pack(requested_harmony_)) {
+            harmony_pending_=false;
             syncHarmony(h->configuration);model_.setInt("harmony.preset",harmony_preset_);result(UiCommandState::Confirmed,harmony_id_,"HARMONY APPLIED; EXISTING GROUPS FROZEN");
         } else if(harmony_pending_ && uint32_t(now_ms-harmony_requested_ms_)>=kPatchConfirmationTimeoutMs) {
-            harmony_pending_=false;model_.live_harmony.pending=false;
+            harmony_pending_=false;
             result(UiCommandState::Rejected,harmony_id_,"HARMONY NOT CONFIRMED; OWNER RETAINED");
-        } else if(!harmony_pending_)syncHarmony(h->configuration);
-        model_.bumpRevision();
+        } else if(!harmony_pending_ && (!harmony_meta_valid_ || h_pack!=last_harmony_pack_)) {
+            syncHarmony(h->configuration);
+        }
+        harmony::State next=*h;
+        next.pending=harmony_pending_;
+        const bool h_changed=!harmony_meta_valid_ || h_pack!=last_harmony_pack_ ||
+            next.revision!=last_harmony_state_.revision || next.errors!=last_harmony_state_.errors ||
+            next.rejected!=last_harmony_state_.rejected || next.admitted!=last_harmony_state_.admitted ||
+            next.identity!=last_harmony_state_.identity || next.count!=last_harmony_state_.count ||
+            next.input!=last_harmony_state_.input || next.voices!=last_harmony_state_.voices ||
+            next.capacity!=last_harmony_state_.capacity || next.result!=last_harmony_state_.result ||
+            next.last_admitted!=last_harmony_state_.last_admitted || next.available!=last_harmony_state_.available ||
+            next.pending!=last_harmony_state_.pending || next.notes[0]!=last_harmony_state_.notes[0] ||
+            next.notes[1]!=last_harmony_state_.notes[1] || next.notes[2]!=last_harmony_state_.notes[2] ||
+            next.notes[3]!=last_harmony_state_.notes[3];
+        model_.live_harmony=next;
+        if(h_changed) {
+            harmony_meta_valid_=true;
+            last_harmony_pack_=h_pack;
+            last_harmony_state_=next;
+            model_.bumpRevision();
+        }
     }
     // MIDI publication does not advance stateRevision. Inspect flags every tick.
     auto& d=model_.diagnostics();
@@ -1737,5 +1788,10 @@ void UiBlueprintPerformanceAdapter::service(uint32_t now_ms) {
     d.usb_status=usb_status;
     d.uptime_ms=now_ms;
     serviceMidi();
+    const bool now_usable=usable();
+    if(now_usable!=last_usable_) {
+        last_usable_=now_usable;
+        model_.bumpRevision();
+    }
 }
 }
