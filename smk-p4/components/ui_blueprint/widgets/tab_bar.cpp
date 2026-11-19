@@ -1,4 +1,5 @@
 #include "ui_widgets.h"
+#include <cstring>
 
 namespace smk::p4::ui {
 
@@ -116,17 +117,25 @@ void BottomNavBar::refresh(UiNavigationManager& nav) {
     for (uint8_t i = 0; i < 6; ++i) {
         if (!buttons_[i] || !labels_[i]) continue;
         const ScreenId dest = kBankScreens[bank][i];
-        lv_label_set_text_static(labels_[i], screenShortName(dest));
+        const char* short_name = screenShortName(dest);
+        if (std::strcmp(lv_label_get_text(labels_[i]), short_name) != 0) {
+            lv_label_set_text_static(labels_[i], short_name);
+        }
 
-        if (dest == active) {
+        const bool want_checked = (dest == active);
+        const bool is_checked = lv_obj_has_state(buttons_[i], LV_STATE_CHECKED);
+        if (want_checked && !is_checked) {
             lv_obj_add_state(buttons_[i], LV_STATE_CHECKED);
-        } else {
+        } else if (!want_checked && is_checked) {
             lv_obj_remove_state(buttons_[i], LV_STATE_CHECKED);
         }
     }
 
     if (bank_lbl_) {
-        lv_label_set_text_static(bank_lbl_, kBankButtonLabels[bank]);
+        const char* bank_name = kBankButtonLabels[bank];
+        if (std::strcmp(lv_label_get_text(bank_lbl_), bank_name) != 0) {
+            lv_label_set_text_static(bank_lbl_, bank_name);
+        }
     }
 }
 

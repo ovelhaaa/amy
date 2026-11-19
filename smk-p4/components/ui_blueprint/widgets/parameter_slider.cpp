@@ -1,29 +1,79 @@
 #include "ui_widgets.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 namespace smk::p4::ui {
 
 namespace {
-float sliderValue(const ParameterDescriptor& d,float norm){
-    if(d.scale==ParameterScale::Logarithmic && d.minimum>0 && d.maximum>d.minimum)
-        return d.minimum*std::pow(d.maximum/d.minimum,norm);
-    return d.minimum+norm*(d.maximum-d.minimum);
-}
-int32_t sliderPercent(const ParameterDescriptor& d,float value){
-    if(d.scale==ParameterScale::Logarithmic && d.minimum>0 && d.maximum>d.minimum && value>0)
-        return int32_t(std::lround(100*std::log(value/d.minimum)/std::log(d.maximum/d.minimum)));
-    return d.maximum>d.minimum?int32_t(std::lround(100*(value-d.minimum)/(d.maximum-d.minimum))):0;
-}
-struct SliderCtx {
-    IUiBackend* backend   = nullptr;
-    const char* param_id  = nullptr;
-    lv_obj_t*   val_label = nullptr;
-    lv_obj_t*   badge_box = nullptr;
-    uint32_t    last_send_tick_ms      = 0;
-    bool        has_sent               = false;
-    bool        pending_release_commit = false;
+
+enum class SliderUiState : uint8_t {
+    Confirmed = 0,
+    Dragging  = 1,
+    Pending   = 2,
+    Rejected  = 3
 };
+
+constexpr uint32_t kCoalesceWindowMs = 35U;
+constexpr uint32_t kFallbackPendingTimeoutMs = 2500U;
+
+struct DisabledSliderStyles {
+    bool initialized = false;
+    lv_style_t main;
+    lv_style_t indicator;
+    lv_style_t knob;
+};
+
+DisabledSliderStyles& disabledStyles() {
+    static DisabledSliderStyles s{};
+    if (!s.initialized) {
+        s.initialized = true;
+        lv_style_init(&s.main);
+        lv_style_set_opa(&s.main, LV_OPA_60);
+
+        lv_style_init(&s.indicator);
+        lv_style_set_bg_color(&s.indicator, lv_color_hex(palette::kBorder));
+
+        lv_style_init(&s.knob);
+        lv_style_set_bg_color(&s.knob, lv_color_hex(palette::kTextSecondary));
+    }
+    return s;
+}
+
+float sliderValue(const ParameterDescriptor& d, int32_t pct) {
+    const int32_t clamped_pct = std::clamp<int32_t>(pct, 0, 100);
+    if (clamped_pct <= 0) return d.minimum;
+    if (clamped_pct >= 100) return d.maximum;
+    const float norm = static_cast<float>(clamped_pct) / 100.0f;
+    if (d.scale == ParameterScale::Logarithmic && d.minimum > 0.0f && d.maximum > d.minimum) {
+        const float v = d.minimum * std::pow(d.maximum / d.minimum, norm);
+        return std::clamp(v, d.minimum, d.maximum);
+    }
+    float v = d.minimum + norm * (d.maximum - d.minimum);
+    if (d.step > 0.0f && (d.maximum - d.minimum) >= d.step) {
+        v = d.minimum + std::round((v - d.minimum) / d.step) * d.step;
+    }
+    return std::clamp(v, d.minimum, d.maximum);
+}
+
+int32_t sliderPercent(const ParameterDescriptor& d, float value) {
+    const float finite_v = std::isfinite(value) ? value : d.default_value;
+    const float v = std::clamp(finite_v, d.minimum, d.maximum);
+    if (d.scale == ParameterScale::Logarithmic && d.minimum > 0.0f && d.maximum > d.minimum) {
+        const float ratio = std::log(v / d.minimum) / std::log(d.maximum / d.minimum);
+        return std::clamp<int32_t>(static_cast<int32_t>(std::lround(100.0f * ratio)), 0, 100);
+    }
+    if (d.maximum <= d.minimum) return 0;
+    const float ratio = (v - d.minimum) / (d.maximum - d.minimum);
+    return std::clamp<int32_t>(static_cast<int32_t>(std::lround(100.0f * ratio)), 0, 100);
+}
+
+bool valuesClose(const ParameterDescriptor& d, float a, float b) {
+    const float span = std::max(1.0f, d.maximum - d.minimum);
+    const float tol = std::max(1e-4f, (d.step > 0.0f) ? (d.step * 0.25f) : (span * 0.002f));
+    return std::fabs(a - b) <= tol;
+}
 
 ParameterValue makeSliderParamValue(const ParameterDescriptor& d, float mapped) {
     if (d.type == ParameterValueType::Int) return ParameterValue::makeInt(static_cast<int32_t>(std::lround(mapped)));
@@ -32,32 +82,410 @@ ParameterValue makeSliderParamValue(const ParameterDescriptor& d, float mapped) 
     return ParameterValue::makeFloat(mapped);
 }
 
-void commitSliderValue(SliderCtx& ctx, lv_obj_t* target) {
-    const ParameterDescriptor* d = ParameterRegistry::findById(ctx.param_id);
-    if (!d) return;
-    const int32_t pct_val = lv_slider_get_value(target);
-    const float norm = static_cast<float>(pct_val) / 100.0f;
-    const float mapped = sliderValue(*d, norm);
-    const UiCommandResult res = ctx.backend->requestParameterFloat(ctx.param_id, mapped);
-    ctx.last_send_tick_ms = lv_tick_get();
-    ctx.has_sent = true;
-    ctx.pending_release_commit = false;
-    if (!res.accepted()) {
-        const float confirmed = ctx.backend->model().getFloat(ctx.param_id, d->default_value);
-        lv_slider_set_value(target, sliderPercent(*d, confirmed), LV_ANIM_OFF);
+struct SliderCtx {
+    IUiBackend*       backend               = nullptr;
+    const char*       param_id              = nullptr;
+    lv_obj_t*         title_label           = nullptr;
+    lv_obj_t*         val_label             = nullptr;
+    lv_obj_t*         state_label           = nullptr;
+    lv_obj_t*         badge_box             = nullptr;
+    PresentationLevel level                 = PresentationLevel::BlueprintVerbose;
+    SliderUiState     ui_state              = SliderUiState::Confirmed;
+    uint32_t          last_send_tick_ms     = 0;
+    uint32_t          pending_since_ms      = 0;
+    uint32_t          pending_token         = 0;
+    float             last_sent_value       = 0.0f;
+    float             pending_value         = 0.0f;
+    float             confirmed_before_send = 0.0f;
+    float             last_confirmed_value  = 0.0f;
+    bool              has_sent              = false;
+    bool              pending_release_commit = false;
+    bool              dragging              = false;
+    uint32_t          last_val_color        = 0xFFFFFFFFu;
+    uint32_t          last_state_color      = 0xFFFFFFFFu;
+    uint32_t          last_title_color      = 0xFFFFFFFFu;
+    FeatureStatus     last_badge_status     = FeatureStatus::Available;
+    bool              has_badge_status      = false;
+};
+
+void setDynamicLabel(lv_obj_t* lbl, const char* text, uint32_t color_hex, uint32_t& cached_color) {
+    if (!lbl || !text) return;
+    if (std::strcmp(lv_label_get_text(lbl), text) != 0) {
+        lv_label_set_text(lbl, text);
     }
-    if (ctx.val_label) {
-        ParameterValue shown{};
-        if (res.accepted() && res.state == UiCommandState::Requested) {
-            shown = makeSliderParamValue(*d, mapped);
-        } else {
-            ctx.backend->model().getValue(ctx.param_id, shown);
-        }
-        char buf[28];
-        ParameterRegistry::formatValue(*d, shown, buf, sizeof(buf));
-        lv_label_set_text(ctx.val_label, buf);
+    if (cached_color != color_hex) {
+        cached_color = color_hex;
+        lv_obj_set_style_text_color(lbl, lv_color_hex(color_hex), 0);
     }
 }
+
+void setStaticStateLabel(lv_obj_t* lbl, const char* static_text, uint32_t color_hex, uint32_t& cached_color) {
+    if (!lbl || !static_text) return;
+    if (std::strcmp(lv_label_get_text(lbl), static_text) != 0) {
+        lv_label_set_text_static(lbl, static_text);
+    }
+    if (cached_color != color_hex) {
+        cached_color = color_hex;
+        lv_obj_set_style_text_color(lbl, lv_color_hex(color_hex), 0);
+    }
+}
+
+const char* lockedTagForParam(const IUiBackend& backend, const char* param_id) {
+    if (std::strcmp(param_id, "fx.chorus.depth") == 0 &&
+        backend.model().getInt("fx.chorus.mode", 0) == 0) {
+        return "OFF";
+    }
+    if (std::strcmp(param_id, "fx.delay.time_ms") == 0 &&
+        backend.model().getInt("fx.delay.mode", 0) == 1) {
+        return "SYNC";
+    }
+    if (backend.parameterStatus(param_id) == FeatureStatus::Planned) {
+        return "PLAN";
+    }
+    return "LOCK";
+}
+
+void formatConfirmedValue(const IUiBackend& backend, const ParameterDescriptor& d,
+                          FeatureStatus status, char* out, size_t cap) {
+    ParameterValue pv{};
+    backend.model().getValue(d.id, pv);
+    ParameterRegistry::formatValue(d, pv, out, cap);
+    if (!backend.isDemoMode() && status != FeatureStatus::Available) {
+        std::snprintf(out, cap, "%s", status == FeatureStatus::Unavailable ? "N/A" : "PLAN");
+    }
+}
+
+void renderVisuals(SliderCtx& ctx, const ParameterDescriptor& d, float display_val, bool use_display_val) {
+    const FeatureStatus status = ctx.backend->parameterStatus(ctx.param_id);
+    const bool editable = ctx.backend->isParameterEditable(ctx.param_id);
+
+    if (ctx.title_label) {
+        const uint32_t tcol = editable ? palette::kTextPrimary : palette::kTextSecondary;
+        if (ctx.last_title_color != tcol) {
+            ctx.last_title_color = tcol;
+            lv_obj_set_style_text_color(ctx.title_label, lv_color_hex(tcol), 0);
+        }
+    }
+
+    char vbuf[28];
+    if (use_display_val) {
+        const ParameterValue pv = makeSliderParamValue(d, display_val);
+        ParameterRegistry::formatValue(d, pv, vbuf, sizeof(vbuf));
+    } else {
+        formatConfirmedValue(*ctx.backend, d, status, vbuf, sizeof(vbuf));
+    }
+
+    const char* st_tag = "";
+    uint32_t vcol = editable ? palette::kAccentPrimary : palette::kTextSecondary;
+    uint32_t scol = palette::kTextSecondary;
+
+    if (!editable) {
+        st_tag = lockedTagForParam(*ctx.backend, ctx.param_id);
+        vcol = palette::kTextSecondary;
+        scol = palette::kTextSecondary;
+    } else if (ctx.ui_state == SliderUiState::Dragging) {
+        st_tag = "EDIT";
+        vcol = palette::kTextPrimary;
+        scol = palette::kTextPrimary;
+    } else if (ctx.ui_state == SliderUiState::Pending) {
+        st_tag = "WAIT";
+        vcol = palette::kWarning;
+        scol = palette::kWarning;
+    } else if (ctx.ui_state == SliderUiState::Rejected) {
+        st_tag = "REJ";
+        vcol = palette::kErrorPanic;
+        scol = palette::kErrorPanic;
+    }
+
+    if (ctx.val_label) {
+        if (ctx.level == PresentationLevel::StageMinimal && !ctx.state_label) {
+            char m_buf[32];
+            if (ctx.ui_state == SliderUiState::Dragging) {
+                std::snprintf(m_buf, sizeof(m_buf), "~%s", vbuf);
+            } else if (ctx.ui_state == SliderUiState::Pending) {
+                std::snprintf(m_buf, sizeof(m_buf), "*%s", vbuf);
+            } else {
+                std::snprintf(m_buf, sizeof(m_buf), "%s", vbuf);
+            }
+            setDynamicLabel(ctx.val_label, m_buf, vcol, ctx.last_val_color);
+        } else {
+            setDynamicLabel(ctx.val_label, vbuf, vcol, ctx.last_val_color);
+        }
+    }
+
+    if (ctx.state_label) {
+        setStaticStateLabel(ctx.state_label, st_tag, scol, ctx.last_state_color);
+    }
+
+    if (ctx.badge_box && (!ctx.has_badge_status || ctx.last_badge_status != status)) {
+        ctx.has_badge_status = true;
+        ctx.last_badge_status = status;
+        lv_obj_set_style_bg_color(ctx.badge_box, lv_color_hex(featureStatusColor(status)), 0);
+        if (lv_obj_t* blbl = lv_obj_get_child(ctx.badge_box, 0)) {
+            lv_label_set_text_static(blbl, featureStatusLabel(status));
+            lv_obj_set_style_text_color(
+                blbl, lv_color_hex(status == FeatureStatus::Unavailable ? palette::kTextPrimary : palette::kBackground), 0);
+        }
+    }
+}
+
+void syncThumbAndConfirmedVisuals(SliderCtx& ctx, lv_obj_t* target, const ParameterDescriptor& d) {
+    const float confirmed = ctx.backend->model().getFloat(ctx.param_id, d.default_value);
+    ctx.last_confirmed_value = confirmed;
+    const int32_t target_pct = sliderPercent(d, confirmed);
+    if (lv_slider_get_value(target) != target_pct) {
+        lv_slider_set_value(target, target_pct, LV_ANIM_OFF);
+    }
+    renderVisuals(ctx, d, confirmed, false);
+}
+
+void commitSliderValue(SliderCtx& ctx, lv_obj_t* target, const ParameterDescriptor& d, float mapped) {
+    const float confirmed_before = ctx.backend->model().getFloat(ctx.param_id, d.default_value);
+    ctx.last_confirmed_value = confirmed_before;
+    const UiCommandResult res = ctx.backend->requestParameterFloat(ctx.param_id, mapped);
+    const uint32_t now_tick = lv_tick_get();
+    ctx.last_send_tick_ms = now_tick;
+    ctx.pending_release_commit = false;
+
+    if (!res.accepted()) {
+        ctx.has_sent = false;
+        ctx.pending_token = 0;
+        ctx.ui_state = (res.state == UiCommandState::Rejected) ? SliderUiState::Rejected : SliderUiState::Confirmed;
+        syncThumbAndConfirmedVisuals(ctx, target, d);
+        return;
+    }
+
+    ctx.has_sent = true;
+    ctx.last_sent_value = mapped;
+
+    if (res.state == UiCommandState::Requested) {
+        ctx.pending_value = mapped;
+        ctx.pending_token = res.token;
+        ctx.pending_since_ms = now_tick;
+        ctx.confirmed_before_send = confirmed_before;
+        ctx.ui_state = SliderUiState::Pending;
+        renderVisuals(ctx, d, mapped, true);
+        return;
+    }
+
+    ctx.pending_token = 0;
+    ctx.ui_state = SliderUiState::Confirmed;
+    syncThumbAndConfirmedVisuals(ctx, target, d);
+}
+
+void resolvePendingOnRefresh(SliderCtx& ctx, const ParameterDescriptor& d, float confirmed) {
+    const char* last_id = ctx.backend->lastCommandParameterId();
+    const UiCommandState last_st = ctx.backend->lastCommandState();
+    const uint32_t last_tok = ctx.backend->lastCommandToken();
+    const bool id_matches = last_id && (std::strcmp(last_id, ctx.param_id) == 0);
+
+    if (ctx.ui_state == SliderUiState::Pending) {
+        if (!ctx.backend->isConnected()) {
+            ctx.ui_state = SliderUiState::Rejected;
+            ctx.has_sent = false;
+            ctx.pending_token = 0;
+        } else if (id_matches) {
+            if (last_st == UiCommandState::Confirmed &&
+                (ctx.pending_token == 0 || last_tok == 0 || last_tok >= ctx.pending_token)) {
+                ctx.ui_state = SliderUiState::Confirmed;
+                ctx.pending_token = 0;
+            } else if (last_st == UiCommandState::Rejected || last_st == UiCommandState::Unsupported) {
+                ctx.ui_state = (last_st == UiCommandState::Rejected) ? SliderUiState::Rejected : SliderUiState::Confirmed;
+                ctx.has_sent = false;
+                ctx.pending_token = 0;
+            } else if (static_cast<uint32_t>(lv_tick_get() - ctx.pending_since_ms) >= kFallbackPendingTimeoutMs) {
+                ctx.ui_state = SliderUiState::Rejected;
+                ctx.has_sent = false;
+                ctx.pending_token = 0;
+            }
+        } else {
+            if (valuesClose(d, confirmed, ctx.pending_value) ||
+                !valuesClose(d, confirmed, ctx.confirmed_before_send)) {
+                ctx.ui_state = SliderUiState::Confirmed;
+                ctx.pending_token = 0;
+            } else if (static_cast<uint32_t>(lv_tick_get() - ctx.pending_since_ms) >= kFallbackPendingTimeoutMs) {
+                ctx.ui_state = SliderUiState::Rejected;
+                ctx.has_sent = false;
+                ctx.pending_token = 0;
+            }
+        }
+    } else if (ctx.ui_state == SliderUiState::Confirmed) {
+        if (id_matches && last_st == UiCommandState::Requested) {
+            ctx.ui_state = SliderUiState::Pending;
+            ctx.pending_value = confirmed;
+            ctx.pending_token = last_tok;
+            ctx.pending_since_ms = lv_tick_get();
+            ctx.confirmed_before_send = confirmed;
+        }
+    } else if (ctx.ui_state == SliderUiState::Rejected) {
+        if (!valuesClose(d, confirmed, ctx.last_confirmed_value)) {
+            ctx.ui_state = SliderUiState::Confirmed;
+        }
+    }
+}
+
+void onSliderEvent(lv_event_t* e) {
+    auto* ctx = static_cast<SliderCtx*>(lv_event_get_user_data(e));
+    auto* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    if (!ctx || !ctx->backend || !ctx->param_id || !target) return;
+
+    const ParameterDescriptor* d = ParameterRegistry::findById(ctx->param_id);
+    if (!d) return;
+
+    const lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_PRESSED) {
+        if (!ctx->backend->isParameterEditable(ctx->param_id) ||
+            lv_obj_has_state(target, LV_STATE_DISABLED)) {
+            ctx->dragging = false;
+            ctx->pending_release_commit = false;
+            return;
+        }
+        ctx->dragging = true;
+        ctx->has_sent = false;
+        ctx->pending_release_commit = false;
+        return;
+    }
+
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        if (!ctx->backend->isParameterEditable(ctx->param_id) ||
+            lv_obj_has_state(target, LV_STATE_DISABLED)) {
+            ctx->dragging = false;
+            ctx->pending_release_commit = false;
+            ctx->has_sent = false;
+            ctx->ui_state = SliderUiState::Confirmed;
+            syncThumbAndConfirmedVisuals(*ctx, target, *d);
+            return;
+        }
+
+        const float mapped = sliderValue(*d, lv_slider_get_value(target));
+        const bool lv_pressed = lv_obj_has_state(target, LV_STATE_PRESSED);
+        const bool active_drag = ctx->dragging || lv_pressed || lv_slider_is_dragged(target);
+        if (lv_pressed) {
+            ctx->dragging = true;
+        }
+
+        if (ctx->has_sent && valuesClose(*d, mapped, ctx->last_sent_value)) {
+            ctx->pending_release_commit = false;
+            if (ctx->ui_state == SliderUiState::Dragging) {
+                const bool still_pending =
+                    ctx->backend->lastCommandParameterId() &&
+                    std::strcmp(ctx->backend->lastCommandParameterId(), ctx->param_id) == 0 &&
+                    ctx->backend->lastCommandState() == UiCommandState::Requested;
+                ctx->ui_state = still_pending ? SliderUiState::Pending : SliderUiState::Confirmed;
+            }
+            if (ctx->ui_state == SliderUiState::Pending) {
+                renderVisuals(*ctx, *d, ctx->pending_value, true);
+            } else {
+                renderVisuals(*ctx, *d, ctx->backend->model().getFloat(ctx->param_id, d->default_value), false);
+            }
+            return;
+        }
+
+        // Defer inside PRESS_LOST/RELEASED teardown (ctx->dragging && !lv_pressed) so PRESS_LOST never commits.
+        const bool in_teardown_move = ctx->dragging && !lv_pressed;
+        const uint32_t now_tick = lv_tick_get();
+        if (!in_teardown_move &&
+            (!ctx->has_sent || !active_drag || static_cast<uint32_t>(now_tick - ctx->last_send_tick_ms) >= kCoalesceWindowMs)) {
+            commitSliderValue(*ctx, target, *d, mapped);
+            return;
+        }
+
+        ctx->pending_release_commit = true;
+        ctx->ui_state = SliderUiState::Dragging;
+        renderVisuals(*ctx, *d, mapped, true);
+        return;
+    }
+
+    if (code == LV_EVENT_RELEASED) {
+        ctx->dragging = false;
+        if (!ctx->backend->isParameterEditable(ctx->param_id) ||
+            lv_obj_has_state(target, LV_STATE_DISABLED)) {
+            ctx->pending_release_commit = false;
+            ctx->has_sent = false;
+            ctx->ui_state = SliderUiState::Confirmed;
+            syncThumbAndConfirmedVisuals(*ctx, target, *d);
+            return;
+        }
+        if (ctx->pending_release_commit) {
+            const float mapped = sliderValue(*d, lv_slider_get_value(target));
+            if (!ctx->has_sent || !valuesClose(*d, mapped, ctx->last_sent_value)) {
+                commitSliderValue(*ctx, target, *d, mapped);
+                return;
+            }
+            ctx->pending_release_commit = false;
+        }
+        if (ctx->ui_state == SliderUiState::Dragging) {
+            const bool still_pending =
+                ctx->backend->lastCommandParameterId() &&
+                std::strcmp(ctx->backend->lastCommandParameterId(), ctx->param_id) == 0 &&
+                ctx->backend->lastCommandState() == UiCommandState::Requested;
+            ctx->ui_state = still_pending ? SliderUiState::Pending : SliderUiState::Confirmed;
+        }
+        if (ctx->ui_state == SliderUiState::Pending) {
+            renderVisuals(*ctx, *d, ctx->pending_value, true);
+        } else {
+            syncThumbAndConfirmedVisuals(*ctx, target, *d);
+        }
+        return;
+    }
+
+    if (code == LV_EVENT_PRESS_LOST || code == LV_EVENT_CANCEL || code == LV_EVENT_INDEV_RESET) {
+        ctx->dragging = false;
+        ctx->pending_release_commit = false;
+        ctx->has_sent = false;
+        if (code == LV_EVENT_CANCEL || ctx->ui_state != SliderUiState::Pending) {
+            ctx->ui_state = SliderUiState::Confirmed;
+        }
+        if (ctx->ui_state == SliderUiState::Pending) {
+            const int32_t pct = sliderPercent(*d, ctx->pending_value);
+            if (lv_slider_get_value(target) != pct) lv_slider_set_value(target, pct, LV_ANIM_OFF);
+            renderVisuals(*ctx, *d, ctx->pending_value, true);
+        } else {
+            syncThumbAndConfirmedVisuals(*ctx, target, *d);
+        }
+        return;
+    }
+
+    if (code == LV_EVENT_REFRESH) {
+        const bool editable = ctx->backend->isParameterEditable(ctx->param_id);
+        const bool was_disabled = lv_obj_has_state(target, LV_STATE_DISABLED);
+        if (editable && was_disabled) lv_obj_remove_state(target, LV_STATE_DISABLED);
+        else if (!editable && !was_disabled) lv_obj_add_state(target, LV_STATE_DISABLED);
+
+        const float confirmed = ctx->backend->model().getFloat(ctx->param_id, d->default_value);
+        const bool is_dragging = ctx->dragging || lv_obj_has_state(target, LV_STATE_PRESSED) || lv_slider_is_dragged(target);
+
+        if (!editable) {
+            ctx->dragging = false;
+            ctx->pending_release_commit = false;
+            ctx->has_sent = false;
+            ctx->pending_token = 0;
+            ctx->ui_state = SliderUiState::Confirmed;
+            syncThumbAndConfirmedVisuals(*ctx, target, *d);
+            return;
+        }
+
+        if (is_dragging) {
+            ctx->last_confirmed_value = confirmed;
+            if (ctx->title_label && ctx->last_title_color != palette::kTextPrimary) {
+                ctx->last_title_color = palette::kTextPrimary;
+                lv_obj_set_style_text_color(ctx->title_label, lv_color_hex(palette::kTextPrimary), 0);
+            }
+            return;
+        }
+
+        resolvePendingOnRefresh(*ctx, *d, confirmed);
+        ctx->last_confirmed_value = confirmed;
+
+        if (ctx->ui_state == SliderUiState::Pending) {
+            renderVisuals(*ctx, *d, ctx->pending_value, true);
+        } else {
+            syncThumbAndConfirmedVisuals(*ctx, target, *d);
+        }
+    }
+}
+
 } // namespace
 
 lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const char* param_id,
@@ -78,41 +506,65 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
     const bool enabled = backend.isParameterEditable(param_id);
     const char* title = (label_override && label_override[0] != '\0') ? label_override : desc->name;
 
-    ParameterValue pv{};
-    backend.model().getValue(param_id, pv);
     char vbuf[28];
-    ParameterRegistry::formatValue(*desc, pv, vbuf, sizeof(vbuf));
-    if (!backend.isDemoMode() && status != FeatureStatus::Available) std::snprintf(vbuf,sizeof(vbuf),"%s",status==FeatureStatus::Unavailable?"N/A":"PLAN");
+    formatConfirmedValue(backend, *desc, status, vbuf, sizeof(vbuf));
 
+    lv_obj_t* title_lbl = nullptr;
     lv_obj_t* vlbl = nullptr;
+    lv_obj_t* slbl = nullptr;
     lv_obj_t* badge_box = nullptr;
+
     if (level == PresentationLevel::StageMinimal) {
-        // StageMinimal: cleaner header with title on left and prominent value on right, no technical badge clutter
-        createLabel(card, title, 8, 4, w - 96, &lv_font_montserrat_14,
-                    enabled ? palette::kTextPrimary : palette::kTextSecondary);
+        title_lbl = createLabel(card, title, 8, 4, w - 96, &lv_font_montserrat_14,
+                                enabled ? palette::kTextPrimary : palette::kTextSecondary);
         const lv_font_t* val_font = (h >= 72) ? &lv_font_montserrat_20 : &lv_font_montserrat_14;
-        vlbl = createLabel(card, vbuf, w - 88, (h >= 72) ? 2 : 4, 76, val_font, palette::kAccentPrimary);
-        if (vlbl) {
-            lv_obj_set_style_text_align(vlbl, LV_TEXT_ALIGN_RIGHT, 0);
+        vlbl = createLabel(card, vbuf, w - 88, (h >= 72) ? 2 : 4, 76, val_font,
+                           enabled ? palette::kAccentPrimary : palette::kTextSecondary);
+        if (vlbl) lv_obj_set_style_text_align(vlbl, LV_TEXT_ALIGN_RIGHT, 0);
+    } else if (level == PresentationLevel::StageStacked) {
+        const bool large = (h >= 90);
+        title_lbl = createLabel(card, title, 6, 4, w - 16, &lv_font_montserrat_14,
+                                enabled ? palette::kTextPrimary : palette::kTextSecondary);
+        const lv_font_t* val_font = large ? &lv_font_montserrat_20 : &lv_font_montserrat_14;
+        vlbl = createLabel(card, vbuf, 6, large ? 25 : 24, w - 82, val_font,
+                           enabled ? palette::kAccentPrimary : palette::kTextSecondary);
+        slbl = lv_label_create(card);
+        if (slbl) {
+            lv_obj_set_pos(slbl, w - 72, large ? 29 : 24);
+            lv_obj_set_size(slbl, 56, 20);
+            lv_obj_set_style_text_font(slbl, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_align(slbl, LV_TEXT_ALIGN_RIGHT, 0);
+            lv_label_set_long_mode(slbl, LV_LABEL_LONG_MODE_CLIP);
+            lv_label_set_text_static(slbl, "");
         }
-    } else if(level==PresentationLevel::StageStacked) {
-        createLabel(card,title,6,4,w-16,&lv_font_montserrat_14,
-                    enabled?palette::kTextPrimary:palette::kTextSecondary);
-        vlbl=createLabel(card,vbuf,6,24,w-16,&lv_font_montserrat_14,palette::kAccentPrimary);
     } else {
-        createLabel(card, title, 6, 4, w - 64, &lv_font_montserrat_14,
-                    enabled ? palette::kTextPrimary : palette::kTextSecondary);
+        title_lbl = createLabel(card, title, 6, 4, w - 64, &lv_font_montserrat_14,
+                                enabled ? palette::kTextPrimary : palette::kTextSecondary);
         badge_box = createStatusBadge(card, status, w - 62, 4);
-        vlbl = createLabel(card, vbuf, 6, 24, w - 16, &lv_font_montserrat_14, palette::kAccentPrimary);
+        vlbl = createLabel(card, vbuf, 6, 24, w - 76, &lv_font_montserrat_14,
+                           enabled ? palette::kAccentPrimary : palette::kTextSecondary);
+        slbl = lv_label_create(card);
+        if (slbl) {
+            lv_obj_set_pos(slbl, w - 68, 24);
+            lv_obj_set_size(slbl, 54, 20);
+            lv_obj_set_style_text_font(slbl, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_align(slbl, LV_TEXT_ALIGN_RIGHT, 0);
+            lv_label_set_long_mode(slbl, LV_LABEL_LONG_MODE_CLIP);
+            lv_label_set_text_static(slbl, "");
+        }
     }
 
     lv_obj_t* slider = lv_slider_create(card);
     if (slider) {
+        auto& dst = disabledStyles();
         lv_obj_add_style(slider, &theme().slider_main, LV_PART_MAIN);
+        lv_obj_add_style(slider, &dst.main, LV_STATE_DISABLED);
         lv_obj_add_style(slider, &theme().slider_indicator, LV_PART_INDICATOR);
+        lv_obj_add_style(slider, &dst.indicator, static_cast<lv_style_selector_t>(LV_PART_INDICATOR) | LV_STATE_DISABLED);
         lv_obj_add_style(slider, &theme().slider_knob, LV_PART_KNOB);
+        lv_obj_add_style(slider, &dst.knob, static_cast<lv_style_selector_t>(LV_PART_KNOB) | LV_STATE_DISABLED);
 
-        const bool stage=level!=PresentationLevel::BlueprintVerbose && h>=68;
+        const bool stage = (level != PresentationLevel::BlueprintVerbose) && (h >= 68);
         const int32_t bar_h = stage ? 18 : 14;
         const int32_t bar_y = stage ? (h - 32) : (h - 26);
         lv_obj_set_pos(slider, 10, bar_y);
@@ -121,87 +573,43 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
         lv_slider_set_range(slider, 0, 100);
 
         const float cur = backend.model().getFloat(param_id, desc->default_value);
-        const int32_t pct = sliderPercent(*desc,cur);
-        lv_slider_set_value(slider, pct, LV_ANIM_OFF);
+        lv_slider_set_value(slider, sliderPercent(*desc, cur), LV_ANIM_OFF);
 
         if (!enabled) {
             lv_obj_add_state(slider, LV_STATE_DISABLED);
         }
 
-        SliderCtx* ctx = attachLvContext<SliderCtx>(
-            slider, SliderCtx{&backend, desc->id, vlbl, badge_box},
-            [](lv_event_t* e) {
-                if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
-                auto* sctx = static_cast<SliderCtx*>(lv_event_get_user_data(e));
-                if (!sctx || !sctx->backend || !sctx->param_id) return;
-                auto* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
-                if (!target) return;
+        SliderCtx init_ctx{};
+        init_ctx.backend = &backend;
+        init_ctx.param_id = desc->id;
+        init_ctx.title_label = title_lbl;
+        init_ctx.val_label = vlbl;
+        init_ctx.state_label = slbl;
+        init_ctx.badge_box = badge_box;
+        init_ctx.level = level;
+        init_ctx.last_confirmed_value = cur;
+        init_ctx.last_badge_status = status;
+        init_ctx.has_badge_status = (badge_box != nullptr);
 
-                const uint32_t now_tick = lv_tick_get();
-                const bool pressed = lv_obj_has_state(target, LV_STATE_PRESSED);
-                if (!sctx->has_sent || !pressed || (now_tick - sctx->last_send_tick_ms >= 35U)) {
-                    commitSliderValue(*sctx, target);
-                    return;
-                }
+        if (SliderCtx* ctx = attachLvContext<SliderCtx>(slider, init_ctx, nullptr, LV_EVENT_ALL)) {
+            if (backend.lastCommandParameterId() &&
+                std::strcmp(backend.lastCommandParameterId(), desc->id) == 0 &&
+                backend.lastCommandState() == UiCommandState::Requested) {
+                ctx->ui_state = SliderUiState::Pending;
+                ctx->pending_value = cur;
+                ctx->pending_token = backend.lastCommandToken();
+                ctx->pending_since_ms = lv_tick_get();
+                ctx->confirmed_before_send = cur;
+            }
+            renderVisuals(*ctx, *desc, cur, ctx->ui_state == SliderUiState::Pending);
 
-                sctx->pending_release_commit = true;
-                if (sctx->val_label) {
-                    if (const ParameterDescriptor* d = ParameterRegistry::findById(sctx->param_id)) {
-                        const float norm = static_cast<float>(lv_slider_get_value(target)) / 100.0f;
-                        const ParameterValue local_pv = makeSliderParamValue(*d, sliderValue(*d, norm));
-                        char buf[28];
-                        ParameterRegistry::formatValue(*d, local_pv, buf, sizeof(buf));
-                        lv_label_set_text(sctx->val_label, buf);
-                    }
-                }
-            },
-            LV_EVENT_VALUE_CHANGED);
-
-        if (ctx) {
-            lv_obj_add_event_cb(
-                slider,
-                [](lv_event_t* e) {
-                    if (lv_event_get_code(e) != LV_EVENT_RELEASED) return;
-                    auto* sctx = static_cast<SliderCtx*>(lv_event_get_user_data(e));
-                    if (!sctx || !sctx->backend || !sctx->param_id || !sctx->pending_release_commit) return;
-                    if (auto* target = static_cast<lv_obj_t*>(lv_event_get_target(e))) {
-                        commitSliderValue(*sctx, target);
-                    }
-                },
-                LV_EVENT_RELEASED, ctx);
-
-            lv_obj_add_event_cb(
-                slider,
-                [](lv_event_t* e) {
-                    auto* sctx = static_cast<SliderCtx*>(lv_event_get_user_data(e));
-                    auto* obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
-                    if (!sctx || !sctx->backend || !sctx->param_id || !obj) return;
-                    const auto* d = ParameterRegistry::findById(sctx->param_id);
-                    if (!d) return;
-                    ParameterValue value{};
-                    sctx->backend->model().getValue(sctx->param_id, value);
-                    char text[28];
-                    ParameterRegistry::formatValue(*d, value, text, sizeof(text));
-                    const FeatureStatus st = sctx->backend->parameterStatus(sctx->param_id);
-                    if (!sctx->backend->isDemoMode() && st != FeatureStatus::Available) {
-                        std::snprintf(text, sizeof(text), "%s", st == FeatureStatus::Unavailable ? "N/A" : "PLAN");
-                    }
-                    if (sctx->val_label) lv_label_set_text(sctx->val_label, text);
-                    if (sctx->badge_box) {
-                        lv_obj_set_style_bg_color(sctx->badge_box, lv_color_hex(featureStatusColor(st)), 0);
-                        if (lv_obj_t* blbl = lv_obj_get_child(sctx->badge_box, 0)) {
-                            lv_label_set_text_static(blbl, featureStatusLabel(st));
-                            lv_obj_set_style_text_color(
-                                blbl, lv_color_hex(st == FeatureStatus::Unavailable ? palette::kTextPrimary : palette::kBackground), 0);
-                        }
-                    }
-                    if (!lv_obj_has_state(obj, LV_STATE_PRESSED)) {
-                        lv_slider_set_value(obj, sliderPercent(*d, value.asFloat()), LV_ANIM_OFF);
-                    }
-                    if (sctx->backend->isParameterEditable(sctx->param_id)) lv_obj_remove_state(obj, LV_STATE_DISABLED);
-                    else lv_obj_add_state(obj, LV_STATE_DISABLED);
-                },
-                LV_EVENT_REFRESH, ctx);
+            // Register event listeners before LV_EVENT_DELETE? attachLvContext already registered LV_EVENT_DELETE,
+            // and LV_EVENT_DELETE only fires on object deletion; all other events run safely on live SliderCtx.
+            for (lv_event_code_t code : {LV_EVENT_PRESSED, LV_EVENT_VALUE_CHANGED, LV_EVENT_RELEASED,
+                                         LV_EVENT_PRESS_LOST, LV_EVENT_CANCEL, LV_EVENT_INDEV_RESET,
+                                         LV_EVENT_REFRESH}) {
+                lv_obj_add_event_cb(slider, onSliderEvent, code, ctx);
+            }
         }
     }
     return card;

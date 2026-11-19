@@ -111,42 +111,65 @@ bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManag
 void StatusStrip::refresh(IUiBackend& backend, UiNavigationManager& nav) {
     if (!root_) return;
     if (screen_lbl_) {
-        lv_label_set_text_static(screen_lbl_, screenTitle(nav.currentScreen()));
-        lv_obj_invalidate(screen_lbl_);
+        const char* title = screenTitle(nav.currentScreen());
+        if (std::strcmp(lv_label_get_text(screen_lbl_), title) != 0) {
+            lv_label_set_text_static(screen_lbl_, title);
+            lv_obj_invalidate(screen_lbl_);
+        }
     }
     const auto& patch = backend.model().activePatch();
     if (patch_lbl_) {
-        std::snprintf(patch_buf_, sizeof(patch_buf_), "%03u %s", patch.id, patch.name);
-        if (!backend.isDemoMode() && !backend.isConnected()) std::snprintf(patch_buf_, sizeof(patch_buf_), "PATCH: WAIT OWNER");
-        lv_label_set_text_static(patch_lbl_, patch_buf_);
-        lv_obj_invalidate(patch_lbl_);
+        char next_patch[sizeof(patch_buf_)]{};
+        if (!backend.isDemoMode() && !backend.isConnected()) {
+            std::snprintf(next_patch, sizeof(next_patch), "PATCH: WAIT OWNER");
+        } else {
+            std::snprintf(next_patch, sizeof(next_patch), "%03u %s", patch.id, patch.name);
+        }
+        if (std::strcmp(patch_buf_, next_patch) != 0) {
+            std::snprintf(patch_buf_, sizeof(patch_buf_), "%s", next_patch);
+            lv_label_set_text_static(patch_lbl_, patch_buf_);
+            lv_obj_invalidate(patch_lbl_);
+        }
     }
     const auto& diag = backend.model().diagnostics();
     if (midi_lbl_) {
+        const char* midi_txt = nullptr;
         if (backend.isDemoMode()) {
-            lv_label_set_text_static(midi_lbl_, diag.active_voices > 0 ? "MIDI: DEMO*" : "MIDI: DEMO");
+            midi_txt = diag.active_voices > 0 ? "MIDI: DEMO*" : "MIDI: DEMO";
         } else if (backend.hasMidiError()) {
-            lv_label_set_text_static(midi_lbl_, "MIDI: ERR");
+            midi_txt = "MIDI: ERR";
         } else if (diag.midi_connected) {
-            lv_label_set_text_static(midi_lbl_, diag.active_voices > 0 ? "MIDI: ON*" : "MIDI: OK");
+            midi_txt = diag.active_voices > 0 ? "MIDI: ON*" : "MIDI: OK";
         } else {
-            lv_label_set_text_static(midi_lbl_, "MIDI: WAIT");
+            midi_txt = "MIDI: WAIT";
         }
-        lv_obj_invalidate(midi_lbl_);
+        if (std::strcmp(lv_label_get_text(midi_lbl_), midi_txt) != 0) {
+            lv_label_set_text_static(midi_lbl_, midi_txt);
+            lv_obj_invalidate(midi_lbl_);
+        }
     }
     if (audio_lbl_) {
-        lv_label_set_text_static(audio_lbl_, backend.isDemoMode() ? "AUD: SIM" : diag.audio_live ? "AUD: RUN" : "AUD: OFF");
-        lv_obj_invalidate(audio_lbl_);
+        const char* aud_txt = backend.isDemoMode() ? "AUD: SIM" : diag.audio_live ? "AUD: RUN" : "AUD: OFF";
+        if (std::strcmp(lv_label_get_text(audio_lbl_), aud_txt) != 0) {
+            lv_label_set_text_static(audio_lbl_, aud_txt);
+            lv_obj_invalidate(audio_lbl_);
+        }
     }
     if (voices_lbl_) {
-        std::snprintf(voices_buf_, sizeof(voices_buf_), "VX:%u/%u", diag.active_voices, diag.max_voices);
-        lv_label_set_text_static(voices_lbl_, voices_buf_);
-        lv_obj_invalidate(voices_lbl_);
+        char next_voices[sizeof(voices_buf_)]{};
+        std::snprintf(next_voices, sizeof(next_voices), "VX:%u/%u", diag.active_voices, diag.max_voices);
+        if (std::strcmp(voices_buf_, next_voices) != 0) {
+            std::snprintf(voices_buf_, sizeof(voices_buf_), "%s", next_voices);
+            lv_label_set_text_static(voices_lbl_, voices_buf_);
+            lv_obj_invalidate(voices_lbl_);
+        }
     }
     if (home_btn_) {
-        if (nav.currentScreen() == ScreenId::Performance) {
+        const bool is_perf = (nav.currentScreen() == ScreenId::Performance);
+        const bool is_dis = lv_obj_has_state(home_btn_, LV_STATE_DISABLED);
+        if (is_perf && !is_dis) {
             lv_obj_add_state(home_btn_, LV_STATE_DISABLED);
-        } else {
+        } else if (!is_perf && is_dis) {
             lv_obj_remove_state(home_btn_, LV_STATE_DISABLED);
         }
     }
