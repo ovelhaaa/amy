@@ -176,6 +176,7 @@ void closeUserPresetPanel(bool async = true);
 void showFmAlgorithmPicker(lv_obj_t* anchor,IUiBackend& backend);
 void showFmTopologyModal(lv_obj_t* anchor,IUiBackend& backend);
 void closeFmModals(bool async = true);
+void refreshFmModals();
 lv_obj_t* createFmAlgorithmSelector(lv_obj_t* parent, IUiBackend& backend,
                                     int32_t x, int32_t y, int32_t w, int32_t h);
 lv_obj_t* createFmTopologyDiagram(lv_obj_t* parent, IUiBackend& backend,

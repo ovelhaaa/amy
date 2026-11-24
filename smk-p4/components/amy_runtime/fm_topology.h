@@ -219,7 +219,7 @@ inline TopologyGraph generateLayout(const Topology& topo, int16_t panel_w, int16
     const int16_t row_gap = clamp_i16(area_h / 10, 4, 36);
     const int16_t node_h = clamp_i16((area_h - fb_headroom - row_gap - 2) / 2, 24, 52);
     const int16_t mod_y = fb_headroom;
-    const int16_t carr_y = clamp_i16(area_h - node_h - 2, mod_y + node_h + 2, area_h - node_h);
+    const int16_t carr_y = clamp_i16(area_h - node_h - 10, mod_y + node_h + 2, area_h - node_h - 2);
 
     for (unsigned i = 0; i < 6; ++i) {
         const unsigned op = 6 - i;
@@ -288,9 +288,13 @@ inline TopologyGraph generateLayout(const Topology& topo, int16_t panel_w, int16
             e.src_op = uint8_t(c);
             e.dst_op = 0;
             e.type = EdgeType::AudioOut;
-            e.point_count = 2;
-            e.points[0] = { int16_t(g.nodes[c_idx].x + node_w), int16_t(g.nodes[c_idx].y + node_h / 2) };
-            e.points[1] = { int16_t(g.out_node.x), int16_t(g.out_node.y + g.out_node.h / 2) };
+            // Route the audio bus below the carriers, outside operator labels.
+            const int16_t bus_y = area_h - 2;
+            e.point_count = 4;
+            e.points[0] = { int16_t(g.nodes[c_idx].x + node_w / 2), int16_t(g.nodes[c_idx].y + node_h) };
+            e.points[1] = { e.points[0].x, bus_y };
+            e.points[2] = { int16_t(g.out_node.x + out_w / 2), bus_y };
+            e.points[3] = { e.points[2].x, int16_t(g.out_node.y + out_h) };
         }
     }
 
@@ -304,11 +308,12 @@ inline TopologyGraph generateLayout(const Topology& topo, int16_t panel_w, int16
         e.type = EdgeType::Feedback;
         e.point_count = 4;
         const auto& n = g.nodes[fb_idx];
+        const auto& source = g.nodes[6 - e.src_op];
         const int16_t inset = clamp_i16(n.w / 6, 4, 12);
         const int16_t loop_h = clamp_i16(fb_headroom - 2, 4, 8);
         const int16_t top_y = clamp_i16(n.y - loop_h, 1, n.y);
-        e.points[0] = { int16_t(n.x + inset), n.y };
-        e.points[1] = { int16_t(n.x + inset), top_y };
+        e.points[0] = { int16_t(source.x + inset), source.y };
+        e.points[1] = { int16_t(source.x + inset), top_y };
         e.points[2] = { int16_t(n.x + n.w - inset), top_y };
         e.points[3] = { int16_t(n.x + n.w - inset), n.y };
     }

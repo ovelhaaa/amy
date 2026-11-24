@@ -9,6 +9,13 @@ namespace {
 
 uint8_t s_selected_knob = 0;
 
+bool learnIsActive(const IUiBackend& backend) {
+    const char* status = backend.midiLearnStatus();
+    return status && (std::strstr(status, "MOVE A MIDI CONTROL") ||
+                      std::strstr(status, "CONFIRM OR CANCEL") ||
+                      std::strstr(status, "REPLACE OR CANCEL"));
+}
+
 struct MidiLearnBtnCtx {
     IUiBackend*          backend = nullptr;
     UiNavigationManager* nav     = nullptr;
@@ -82,6 +89,7 @@ public:
     ScreenId id() const override { return ScreenId::MidiSettings; }
 
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
+        backend_ = &backend;
         const uint8_t tab = nav.subTab(ScreenId::MidiSettings);
         if (tab >= 2 && tab < 10 && backend.hasMidiPerformance()) {
             s_selected_knob = uint8_t(tab - 2);
@@ -237,14 +245,17 @@ public:
                     lv_obj_t* klbl = lv_obj_get_child(kbtn, 0);
                     knobs_[i] = klbl;
                     if (klbl) {
-                        lv_obj_set_size(klbl, 240, 18);
-                        lv_label_set_long_mode(klbl, LV_LABEL_LONG_MODE_DOTS);
+                        lv_obj_set_size(klbl, 240, 32);
+                        lv_label_set_long_mode(klbl, LV_LABEL_LONG_MODE_WRAP);
                         lv_obj_set_style_text_align(klbl, LV_TEXT_ALIGN_LEFT, 0);
                     }
                     attachLvContext<SelectKnobCtx>(kbtn, {this, &backend, uint8_t(i)}, [](lv_event_t* e) {
                         if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
                         auto* c = static_cast<SelectKnobCtx*>(lv_event_get_user_data(e));
                         if (!c || !c->screen || !c->backend) return;
+                        if (s_selected_knob != c->slot && learnIsActive(*c->backend)) {
+                            c->backend->midiPerformanceAction(IUiBackend::MidiAction::Cancel, s_selected_knob);
+                        }
                         s_selected_knob = c->slot;
                         c->screen->refresh(*c->backend);
                     }, LV_EVENT_CLICKED);
@@ -368,6 +379,15 @@ public:
         return true;
     }
 
+    void onDestroy() override {
+        // A Learn candidate belongs to the panel that armed it. Never carry it
+        // into another knob, bank or screen with a differently labelled Confirm.
+        if (backend_ && backend_->hasMidiPerformance() && learnIsActive(*backend_)) {
+            backend_->midiPerformanceAction(IUiBackend::MidiAction::Cancel, s_selected_knob);
+        }
+        backend_ = nullptr;
+    }
+
     void refresh(IUiBackend& backend) override {
         if (usb_label_ && !backend.isDemoMode()) {
             char status[48]{};
@@ -408,7 +428,21 @@ public:
             if (knobs_[i]) {
                 char text[96]{};
                 backend.midiKnobText(i, text, sizeof(text));
-                refreshMidiLabel(knobs_[i], text);
+                char row[96]{};
+                const char* channel = std::strstr(text, " | CH");
+                unsigned ch = 0, cc = 0;
+                if (channel && std::sscanf(channel, " | CH%u CC%u", &ch, &cc) == 2) {
+                    char owner[12];
+                    std::snprintf(owner, sizeof(owner), "K%u:", i + 1);
+                    const char* status = backend.midiLearnStatus();
+                    const bool learning = status && std::strncmp(status, owner, std::strlen(owner)) == 0;
+                    const char* state = learning ? (std::strstr(status, "CONFIRM") ? "PENDENTE" : "AGUARDA") : "CONFIG";
+                    std::snprintf(row, sizeof(row), "%.*s\nCH%u CC%u | %s",
+                                  int(channel - text), text, ch, cc, state);
+                } else {
+                    std::snprintf(row, sizeof(row), "%s", text);
+                }
+                refreshMidiLabel(knobs_[i], row);
                 lv_obj_set_style_text_color(knobs_[i],
                                             lv_color_hex(i == s_selected_knob ? palette::kBackground : palette::kTextPrimary), 0);
             }
@@ -437,6 +471,7 @@ public:
     }
 
 private:
+    IUiBackend* backend_ = nullptr;
     struct DestinationPanel {
         IUiBackend* backend = nullptr;
         UiNavigationManager* nav = nullptr;

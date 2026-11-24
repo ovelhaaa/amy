@@ -115,13 +115,35 @@ void refreshTopology(TopologyDiagramCtx* ctx) {
     }
 
     const auto topo = smk::p4::fm::deriveTopology(current_algo);
-    const auto graph = smk::p4::fm::generateLayout(topo, int16_t(ctx->diag_w), int16_t(ctx->diag_h));
+    // Query the content box after styles/layout, including padding and borders.
+    // The expanded view reserves its footer for legend/status.
+    lv_obj_update_layout(ctx->panel);
+    ctx->diag_w = lv_obj_get_content_width(ctx->panel);
+    ctx->diag_h = lv_obj_get_content_height(ctx->panel) - ctx->diag_y_offset -
+                  (ctx->expanded_labels ? 62 : 0);
+    auto graph = smk::p4::fm::generateLayout(topo, int16_t(ctx->diag_w), int16_t(ctx->diag_h));
+    if (!ctx->expanded_labels) {
+        // Compact mode is a labelled operator summary, not a compressed graph.
+        // Full musical routing remains available through EXPAND.
+        for (auto& node : graph.nodes) {
+            node.y = 10;
+            node.h = 44;
+        }
+        graph.out_node.y = 10;
+        graph.out_node.h = 44;
+        graph.edge_count = 0;
+    }
 
     char fbuf[128];
     smk::p4::fm::formatRoutingFormula(topo, fbuf, sizeof(fbuf));
 
     char tbuf[160];
-    std::snprintf(tbuf, sizeof(tbuf), "ALGO %02d/32: %s", current_algo, fbuf);
+    if (ctx->expanded_labels) {
+        std::snprintf(tbuf, sizeof(tbuf), "ALGO %02d/32: %s", current_algo, fbuf);
+    } else {
+        std::snprintf(tbuf, sizeof(tbuf), "ALGO %02d | RESUMO: %u CARR / %u MOD | ROTAS EM EXPAND",
+                      current_algo, topo.carrierCount(), topo.modulatorCount());
+    }
     if (ctx->title_lbl) lv_label_set_text(ctx->title_lbl, tbuf);
 
     for (unsigned i = 0; i < 6; ++i) {
@@ -139,6 +161,8 @@ void refreshTopology(TopologyDiagramCtx* ctx) {
         const uint32_t color = is_carrier ? palette::kActive : palette::kAccentPrimary;
         lv_obj_set_style_border_color(btn, lv_color_hex(is_selected ? palette::kTextPrimary : color), 0);
         lv_obj_set_style_border_width(btn, is_selected ? 3 : 1, 0);
+        lv_obj_update_layout(btn);
+        const int32_t label_w = lv_obj_get_content_width(btn);
 
         char op_name[20];
         if (node.w >= 68) {
@@ -147,16 +171,16 @@ void refreshTopology(TopologyDiagramCtx* ctx) {
             std::snprintf(op_name, sizeof(op_name), "O%u%s", node.op, has_fb ? "[FB]" : "");
         }
         if (ctx->op_lbls[i]) {
-            lv_obj_set_pos(ctx->op_lbls[i], 1, -1);
-            lv_obj_set_size(ctx->op_lbls[i], node.w - 4, 15);
+            lv_obj_set_pos(ctx->op_lbls[i], 0, 0);
+            lv_obj_set_size(ctx->op_lbls[i], label_w, 16);
             lv_label_set_text(ctx->op_lbls[i], op_name);
             lv_obj_set_style_text_color(ctx->op_lbls[i], lv_color_hex(is_selected ? palette::kTextPrimary : color), 0);
         }
 
         if (ctx->op_roles[i]) {
-            const int32_t role_y = (node.h >= 34) ? 16 : 12;
-            lv_obj_set_pos(ctx->op_roles[i], 1, role_y);
-            lv_obj_set_size(ctx->op_roles[i], node.w - 4, 14);
+            const int32_t role_y = 17;
+            lv_obj_set_pos(ctx->op_roles[i], 0, role_y);
+            lv_obj_set_size(ctx->op_roles[i], label_w, 16);
             lv_label_set_text(ctx->op_roles[i], ctx->expanded_labels ? (is_carrier ? "CARRIER" : "MOD") : (is_carrier ? "CARR" : "MOD"));
             lv_obj_set_style_text_color(ctx->op_roles[i], lv_color_hex(color), 0);
         }
@@ -208,6 +232,11 @@ void closeFmModals(bool async) {
     closeModalObj(s_active_topo_modal, async);
 }
 
+void refreshFmModals() {
+    if (s_active_algo_modal) lv_obj_send_event(s_active_algo_modal, LV_EVENT_REFRESH, nullptr);
+    if (s_active_topo_modal) lv_obj_send_event(s_active_topo_modal, LV_EVENT_REFRESH, nullptr);
+}
+
 void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
     lv_obj_t* screen = anchor ? lv_obj_get_screen(anchor) : lv_screen_active();
     if (!screen) screen = lv_screen_active();
@@ -229,7 +258,7 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
     }, LV_EVENT_DELETE, nullptr);
 
     createLabel(root, "SELECT FM ALGORITHM (1 - 32)", 10, 4, 480, &lv_font_montserrat_14, palette::kAccentPrimary);
-    createLabel(root, "Touch an algorithm number to modify topology across all 8 voices", 10, 22, 480, &lv_font_montserrat_14, palette::kTextSecondary);
+    createLabel(root, "Selecione 1-32; solte as notas antes de aplicar.", 10, 22, 480, &lv_font_montserrat_14, palette::kTextSecondary);
 
     const int current_algo = backend.model().getInt("fm.algo", 1);
     lv_obj_t* status_lbl = createLabel(root, "STATUS: READY", 10, 40, 480, &lv_font_montserrat_14, palette::kTextSecondary);
@@ -246,6 +275,7 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
     };
     const uint16_t cur_patch_id = backend.model().activePatch().id;
     auto* mctx = attachLvContext<ModalCtx>(root, ModalCtx{&backend, root, status_lbl, {}, 0, 0, cur_patch_id, current_algo}, nullptr);
+    if (!mctx) { closeModalObj(s_active_algo_modal, true); return; }
 
     // 4 rows of 8 buttons = 32 algorithms
     const int start_x = 10, start_y = 62;
@@ -373,6 +403,10 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
         for (int i = 1; i <= 32; ++i) {
             lv_obj_t* btn = m->btn_objs[i - 1];
             if (!btn) continue;
+            char text[16];
+            std::snprintf(text, sizeof(text), "%02d%s", i,
+                          i == m->pending_algo ? "\nWAIT" : (i == m->confirmed_algo ? "\nACT" : ""));
+            lv_label_set_text(lv_obj_get_child(btn, 0), text);
             if (i == m->confirmed_algo) {
                 lv_obj_set_style_border_color(btn, lv_color_hex(palette::kActive), 0);
                 lv_obj_set_style_border_width(btn, 2, 0);
@@ -426,7 +460,7 @@ void showFmTopologyModal(lv_obj_t* anchor, IUiBackend& backend) {
 
     lv_obj_t* legend_lbl = createLabel(
         root,
-        "GREEN = CARRIER -> OUT  |  AMBER = MODULATOR  |  ORANGE = FEEDBACK  |  WHITE = SELECTED OP",
+        "CARR: VERDE -> OUT | MOD: AMBAR | FB: LARANJA | SELECAO: BRANCO",
         4, 314, kInnerW - 8, &lv_font_montserrat_14, palette::kTextSecondary);
     if (legend_lbl) lv_label_set_long_mode(legend_lbl, LV_LABEL_LONG_MODE_DOTS);
 
@@ -445,6 +479,7 @@ void showFmTopologyModal(lv_obj_t* anchor, IUiBackend& backend) {
     init_ctx.status_lbl = status_lbl;
 
     auto* mctx = attachLvContext<ExpandedModalCtx>(root, init_ctx, nullptr);
+    if (!mctx) { closeModalObj(s_active_topo_modal, true); return; }
 
     for (unsigned i = 0; i < 20; ++i) {
         lv_obj_t* line = lv_line_create(root);
@@ -484,6 +519,9 @@ void showFmTopologyModal(lv_obj_t* anchor, IUiBackend& backend) {
             if (bctx->m->status_lbl) {
                 if (res.state == UiCommandState::Rejected) {
                     lv_label_set_text(bctx->m->status_lbl, res.notice ? res.notice : "OPERATOR CHANGE REJECTED");
+                    lv_obj_set_style_text_color(bctx->m->status_lbl, lv_color_hex(palette::kWarning), 0);
+                } else if (res.state == UiCommandState::Requested) {
+                    lv_label_set_text(bctx->m->status_lbl, "OPERATOR REQUESTED; WAIT OWNER");
                     lv_obj_set_style_text_color(bctx->m->status_lbl, lv_color_hex(palette::kWarning), 0);
                 } else {
                     const int algo = bctx->m->diag.backend->model().getInt("fm.algo", 1);

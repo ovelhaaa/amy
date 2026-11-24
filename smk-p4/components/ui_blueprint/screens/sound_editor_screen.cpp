@@ -28,6 +28,7 @@ public:
         op_role_lbl_ = nullptr;
         for (auto& b : fm_op_btns_) b = nullptr;
         const auto& patch = backend.model().activePatch();
+        shown_patch_id_ = patch.id;
         shown_family_ = patch.family;
         const bool is_fm = (patch.family == SynthFamily::FM);
         const uint8_t mod = mapSoundEditorModule(nav.subTab(ScreenId::SoundEditor));
@@ -322,6 +323,10 @@ public:
     void refresh(IUiBackend& backend) override {
         backend_ = &backend;
         const auto& patch = backend.model().activePatch();
+        if (patch.id != shown_patch_id_) {
+            closeFmModals(true);
+            shown_patch_id_ = patch.id;
+        }
         if (nav_ && patch.family != shown_family_) {
             closeFmModals(true);
             nav_->requestNavigateTo(ScreenId::SoundEditor, mapSoundEditorModule(nav_->subTab(ScreenId::SoundEditor)));
@@ -376,6 +381,7 @@ public:
         if (s_active_preset_modal_) {
             lv_obj_send_event(s_active_preset_modal_, LV_EVENT_REFRESH, nullptr);
         }
+        refreshFmModals();
     }
 
 private:
@@ -405,6 +411,7 @@ private:
     lv_obj_t* op_role_lbl_ = nullptr;
     lv_obj_t* fm_op_btns_[6]{};
     SynthFamily shown_family_ = SynthFamily::Subtractive;
+    uint16_t shown_patch_id_ = 0;
     ConfirmDialog confirm_dialog_{};
     static inline lv_obj_t* s_active_preset_modal_ = nullptr;
 public:
