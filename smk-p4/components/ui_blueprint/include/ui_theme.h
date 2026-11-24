@@ -69,6 +69,8 @@ ThemeStyles& theme();
 void applyScreenStyle(lv_obj_t* obj);
 void applyPanelStyle(lv_obj_t* obj, bool highlighted = false);
 void applyButtonStyle(lv_obj_t* obj, bool active = false, bool accent = false);
+// Fixed-pixel selector buttons: immediate checked color, no default-theme fade.
+void applyImmediateSelectionStyle(lv_obj_t* obj);
 void applyPanicButtonStyle(lv_obj_t* obj);
 lv_obj_t* createStatusBadge(lv_obj_t* parent, FeatureStatus status, int32_t x, int32_t y);
 

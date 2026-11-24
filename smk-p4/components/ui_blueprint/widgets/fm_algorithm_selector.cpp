@@ -295,9 +295,12 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
             std::snprintf(num_str, sizeof(num_str), "%02d", i);
         }
 
-        lv_obj_t* btn = createActionButton(root, num_str, bx, by, btn_w, btn_h, nullptr, nullptr, (i == current_algo));
+        lv_obj_t* btn = createActionButton(root, num_str, bx, by, btn_w, btn_h, nullptr, nullptr);
+        applyImmediateSelectionStyle(btn);
         mctx->btn_objs[i - 1] = btn;
         if (i == current_algo) {
+            lv_obj_add_state(btn, LV_STATE_CHECKED);
+            lv_obj_set_style_text_color(lv_obj_get_child(btn, 0), lv_color_hex(palette::kBackground), 0);
             lv_obj_set_style_border_color(btn, lv_color_hex(palette::kActive), 0);
             lv_obj_set_style_border_width(btn, 2, 0);
         }
@@ -400,6 +403,7 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
                 }
             }
         }
+        if (m->pending_algo == 0) m->confirmed_algo = m->backend->model().getInt("fm.algo", 1);
         for (int i = 1; i <= 32; ++i) {
             lv_obj_t* btn = m->btn_objs[i - 1];
             if (!btn) continue;
@@ -407,10 +411,14 @@ void showFmAlgorithmPicker(lv_obj_t* anchor, IUiBackend& backend) {
             std::snprintf(text, sizeof(text), "%02d%s", i,
                           i == m->pending_algo ? "\nWAIT" : (i == m->confirmed_algo ? "\nACT" : ""));
             lv_label_set_text(lv_obj_get_child(btn, 0), text);
+            lv_obj_set_style_text_color(lv_obj_get_child(btn, 0),
+                lv_color_hex(i == m->confirmed_algo ? palette::kBackground : palette::kTextPrimary), 0);
             if (i == m->confirmed_algo) {
+                lv_obj_add_state(btn, LV_STATE_CHECKED);
                 lv_obj_set_style_border_color(btn, lv_color_hex(palette::kActive), 0);
                 lv_obj_set_style_border_width(btn, 2, 0);
             } else {
+                lv_obj_remove_state(btn, LV_STATE_CHECKED);
                 lv_obj_set_style_border_color(btn, lv_color_hex(palette::kBorder), 0);
                 lv_obj_set_style_border_width(btn, 1, 0);
             }
@@ -626,7 +634,9 @@ lv_obj_t* createFmAlgorithmSelector(lv_obj_t* parent, IUiBackend& backend,
         if (status_lbl) lv_label_set_long_mode(status_lbl, LV_LABEL_LONG_MODE_DOTS);
     }
 
-    const int32_t read_w = readout_btn ? lv_obj_get_width(readout_btn) : 60;
+    // The object has not necessarily completed layout here. Use the same
+    // reserved width as the construction above, rather than a stale zero width.
+    const int32_t read_w = inner_w - 32 * 2 - 8;
     const bool compact_readout = (read_w < 96);
 
     lv_obj_t* readout_lbl = readout_btn ? lv_obj_get_child(readout_btn, 0) : nullptr;

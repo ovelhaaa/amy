@@ -200,6 +200,7 @@ public:
                         lv_obj_t* ob = createActionButton(op_panel, lbl, bx, 21, 61, 23, nullptr, nullptr, false, false);
                         fm_op_btns_[op - 1] = ob;
                         if (ob) {
+                            applyImmediateSelectionStyle(ob);
                             attachLvContext<OpSelCtx>(ob, {this, &backend, op}, [](lv_event_t* e) {
                                 if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
                                 auto* c = static_cast<OpSelCtx*>(lv_event_get_user_data(e));

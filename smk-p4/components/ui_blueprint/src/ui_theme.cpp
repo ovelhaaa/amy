@@ -164,6 +164,21 @@ void applyButtonStyle(lv_obj_t* obj, bool active, bool accent) {
     lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
 }
 
+void applyImmediateSelectionStyle(lv_obj_t* obj) {
+    if (!obj) return;
+    const int32_t x = lv_obj_get_style_x(obj, 0);
+    const int32_t y = lv_obj_get_style_y(obj, 0);
+    const int32_t w = lv_obj_get_style_width(obj, 0);
+    const int32_t h = lv_obj_get_style_height(obj, 0);
+    // Remove default theme transition descriptors, rather than setting a null
+    // descriptor (LVGL 9.3 dereferences registered descriptors on state changes).
+    lv_obj_remove_style_all(obj);
+    applyButtonStyle(obj);
+    lv_obj_add_style(obj, &g_theme.button_active, LV_STATE_CHECKED);
+    lv_obj_set_pos(obj, x, y);
+    lv_obj_set_size(obj, w, h);
+}
+
 void applyPanicButtonStyle(lv_obj_t* obj) {
     if (!obj) return;
     theme();
