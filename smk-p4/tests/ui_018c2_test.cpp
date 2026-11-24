@@ -490,5 +490,186 @@ int main(int argc, char** argv) {
 
     app.shutdown();
     std::puts("PASS: C.2-C Sound Editor contextual modules, FM/Sub adaptation, Compare/Revert/Save As");
+
+    // ── C.2-D: Modulation, MIDI / SMK25, Preferencias, Diagnosticos ─────────
+    struct RamProfileStore final : performance::ControllerProfileStore {
+        performance::ControllerProfile stored = performance::smk25Defaults();
+        bool load(performance::ControllerProfile& out) override { out = stored; return true; }
+        bool save(const performance::ControllerProfile& in) override { stored = in; return true; }
+    } profile_store;
+    adapter.setMidiInput(runtime.usbInput());
+    adapter.setControllerProfileStore(profile_store);
+
+    assert(app.begin());
+    sync_runtime();
+
+    // 11 & 12. Modulation overview + Routing Editor
+    assert(app.navigation().navigateTo(ScreenId::Modulation, 0));
+    sync_runtime();
+    assert(findLabel(app.contentObject(), "MATRIZ DE MODULACAO", true) != nullptr);
+    capture("11_modulacao_visao_geral");
+
+    clickBtn(app.contentObject(), "ROUTING EDITOR", app);
+    sync_runtime();
+    assert(findLabel(app.contentObject(), "APPLY ROUTES") != nullptr);
+    capture("12_modulacao_routing_editor");
+    clickBtn(app.contentObject(), "CANCEL / BACK", app);
+    sync_runtime();
+
+    // 13, 14, 15. MIDI / SMK25 (Conexao, Controles/CC, MIDI Learn & Cancel)
+    assert(app.navigation().navigateTo(ScreenId::MidiSettings, 0));
+    sync_runtime();
+    assert(findLabel(app.contentObject(), "ESTADO DO HOST USB MIDI (ESP32-P4)") != nullptr);
+    capture("13_midi_conexao");
+
+    clickBtn(app.contentObject(), "CONTROLES / CC", app);
+    sync_runtime();
+    assert(findLabel(app.contentObject(), "DESTINATION") != nullptr);
+    capture("14_midi_controles_cc");
+
+    clickBtn(app.contentObject(), "LEARN", app);
+    sync_runtime();
+    capture("15_midi_learn");
+    clickBtn(app.contentObject(), "CANCEL", app);
+    sync_runtime();
+
+    // 16. Preferencias (System + Performance Locks + Storage PLANNED)
+    assert(app.navigation().navigateTo(ScreenId::GlobalSettings, 0));
+    sync_runtime();
+    capture("16_preferencias");
+    clickBtn(app.contentObject(), "PERFORMANCE", app);
+    sync_runtime();
+    assert(findLabel(app.contentObject(), "PERFORMANCE LOCKS DE SESSAO") != nullptr);
+    clickBtn(app.contentObject(), "ARMAZENAMENTO", app);
+    sync_runtime();
+    assert(lv_obj_has_state(findButton(app.contentObject(), "EXPORT BACKUP (PLANNED)"), LV_STATE_DISABLED));
+
+    // 17. Diagnosticos (Audio, Memoria, USB/MIDI, Sistema + in-place refresh)
+    assert(app.navigation().navigateTo(ScreenId::Diagnostics, 0));
+    sync_runtime();
+    assert(findLabel(app.contentObject(), "TELEMETRIA DE AUDIO & AMY DSP") != nullptr);
+    capture("17_diagnosticos");
+    clickBtn(app.contentObject(), "MEMORIA", app);
+    sync_runtime();
+    assert(findLabel(app.contentObject(), "MEMORIA LVGL, HEAP INTERNO & PSRAM") != nullptr);
+    for (int i = 0; i < 10; ++i) sync_runtime(); // periodic refresh without rebuild
+
+    std::puts("PASS: C.2-D Modulation, MIDI/SMK25, Preferencias & Diagnosticos");
+
+    // ── C.2-E: Cross-feature safety & LVGL Stress ───────────────────────────
+    // 14 & 15 & 16: USB sustained note + Sustain CC64 + Seq active during area navigation, then Arp + PANIC in overlay
+    const uint8_t usb_c4[4] = {0x09, 0x90, 60, 100};
+    const uint8_t sus_on[4] = {0x0B, 0xB0, 64, 127};
+    assert(runtime.usbInput().transfer(usb_c4, sizeof(usb_c4), preview::g_sim_tick_ms));
+    assert(runtime.usbInput().transfer(sus_on, sizeof(sus_on), preview::g_sim_tick_ms));
+    sync_runtime();
+    assert(runtime.snapshot().active_notes >= 1 && runtime.snapshot().sustain_active);
+    seq::Request seq_play{};
+    seq_play.action = seq::Action::Play;
+    assert(adapter.requestSequencer(seq_play).accepted());
+    sync_runtime();
+
+    lv_obj_t* footer = lv_obj_get_child(app.rootObject(), 2);
+    clickBtn(footer, "TIMBRES", app);
+    clickBtn(footer, "MAIS", app);
+    clickBtn(footer, "FX", app);
+    clickBtn(footer, "TOCAR", app);
+    sync_runtime();
+    assert(runtime.snapshot().active_notes >= 1 && runtime.snapshot().sustain_active);
+    assert(runtime.snapshot().sequencer.playing == true);
+
+    assert(adapter.requestParameterBool("arp.enable", true).accepted());
+    sync_runtime();
+    clickBtn(footer, "TIMBRES", app);
+    clickBtn(footer, "TOCAR", app);
+    sync_runtime();
+    assert(runtime.snapshot().arp.config.enabled == true);
+    assert(runtime.snapshot().sequencer.playing == true);
+
+    // PANIC accessible with Harmony overlay open
+    app.statusStrip().openHarmony(adapter);
+    preview::pumpFrame(app, 25);
+    clickBtn(app.rootObject(), "PANIC", app);
+    sync_runtime();
+    assert(runtime.snapshot().active_notes == 0);
+    app.statusStrip().closeOverlays();
+    preview::pumpFrame(app, 25);
+
+    // Warmup before LVGL stress
+    for (const char* area : {"TIMBRES", "RITMO", "FX", "MAIS", "TOCAR"}) {
+        clickBtn(footer, area, app);
+    }
+    assert(app.navigation().navigateTo(ScreenId::SoundEditor, 0));
+    sync_runtime();
+    assert(app.navigation().navigateTo(ScreenId::Performance, 0));
+    sync_runtime();
+
+    lv_mem_monitor_t mem_before{}, mem_after{};
+    const uint32_t objs_before = countObjects(app.rootObject());
+    lv_mem_monitor(&mem_before);
+
+    // 500 area switches
+    const char* kAreas[5] = {"TIMBRES", "RITMO", "FX", "MAIS", "TOCAR"};
+    for (int i = 0; i < 500; ++i) {
+        clickBtn(footer, kAreas[i % 5], app);
+        assert(lv_mem_test() == LV_RESULT_OK);
+    }
+
+    // 500 contextual module switches (Settings + Diagnostics + Midi)
+    assert(app.navigation().navigateTo(ScreenId::GlobalSettings, 0));
+    preview::pumpFrame(app, 10);
+    for (int i = 0; i < 500; ++i) {
+        assert(app.navigation().navigateTo(ScreenId::GlobalSettings, uint8_t(i % 4)));
+        preview::pumpFrame(app, 10);
+    }
+
+    // 200 synthesis panel switches
+    for (int i = 0; i < 200; ++i) {
+        assert(app.navigation().navigateTo(ScreenId::SoundEditor, uint8_t(i % 5)));
+        preview::pumpFrame(app, 10);
+    }
+
+    // 100 MIDI Learn enter/exit
+    assert(app.navigation().navigateTo(ScreenId::MidiSettings, 1));
+    preview::pumpFrame(app, 10);
+    for (int i = 0; i < 100; ++i) {
+        adapter.midiPerformanceAction(IUiBackend::MidiAction::Learn, 0);
+        preview::pumpFrame(app, 10);
+        adapter.midiPerformanceAction(IUiBackend::MidiAction::Cancel, 0);
+        preview::pumpFrame(app, 10);
+    }
+
+    // 100 dialog open/close
+    assert(app.navigation().navigateTo(ScreenId::Performance, 5));
+    preview::pumpFrame(app, 10);
+    for (int i = 0; i < 100; ++i) {
+        clickBtn(app.contentObject(), "LIMPAR", app);
+        clickBtn(app.contentObject(), "CANCELAR", app);
+    }
+
+    // Periodic diagnostics refresh
+    assert(app.navigation().navigateTo(ScreenId::Diagnostics, 1));
+    for (int i = 0; i < 50; ++i) sync_runtime();
+
+    assert(app.navigation().navigateTo(ScreenId::Performance, 0));
+    sync_runtime();
+    lv_mem_monitor(&mem_after);
+    const uint32_t objs_after = countObjects(app.rootObject());
+
+    std::printf(
+        "STRESS_018C2: objs=%u->%u free=%zu->%zu largest=%zu->%zu diff=%zd peak=%zu frag=%u%%->%u%%\n",
+        unsigned(objs_before), unsigned(objs_after),
+        mem_before.free_size, mem_after.free_size,
+        mem_before.free_biggest_size, mem_after.free_biggest_size,
+        static_cast<ssize_t>(mem_before.free_size) - static_cast<ssize_t>(mem_after.free_size),
+        mem_after.max_used, mem_before.frag_pct, mem_after.frag_pct);
+    std::fflush(stdout);
+
+    assert(objs_before == objs_after);
+    assert(mem_after.free_size >= mem_before.free_size);
+    assert(mem_after.frag_pct <= 5);
+
+    app.shutdown();
+    std::puts("ALL 0.18-C.2 TIMBRES & MAIS TESTS AND STRESS PASSED.");
     return 0;
 }

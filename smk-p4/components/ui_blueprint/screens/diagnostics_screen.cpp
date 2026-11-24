@@ -1,157 +1,179 @@
 #include "ui_screens.h"
 #include "ui_widgets.h"
 #include <cstdio>
+#include <cstring>
 
 namespace smk::p4::ui {
 
 namespace {
 
+void setDiagLine(lv_obj_t* lbl, const char* text) {
+    if (!lbl || !text) return;
+    const char* cur = lv_label_get_text(lbl);
+    if (!cur || std::strcmp(cur, text) != 0) lv_label_set_text(lbl, text);
+}
+
 class DiagnosticsScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::Diagnostics; }
 
-    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager&) override {
-        const auto& d = backend.model().diagnostics();
-        if(!backend.isDemoMode()) {
-            createLabel(parent,"LIVE SNAPSHOTS | UNMEASURED VALUES ARE N/A | TOUCH LEASE 10s",8,4,784,&lv_font_montserrat_14,palette::kAccentPrimary);
-            for(unsigned i=0;i<16;++i) live_[i]=createLabel(parent,"",8+(i/8)*396,42+(i%8)*40,388,&lv_font_montserrat_14,palette::kTextPrimary);
-            refresh(backend); return true;
+    bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
+        mod_ = nav.subTab(ScreenId::Diagnostics) % 4;
+        for (auto& l : lines_) l = nullptr;
+
+        // 1. Left Contextual Sidebar (x = 4..160, y = 4..384)
+        lv_obj_t* sidebar = lv_obj_create(parent);
+        applyPanelStyle(sidebar, false);
+        lv_obj_set_pos(sidebar, 4, 4);
+        lv_obj_set_size(sidebar, 156, 380);
+        lv_obj_set_style_pad_all(sidebar, 4, 0);
+        lv_obj_remove_flag(sidebar, LV_OBJ_FLAG_SCROLLABLE);
+
+        createLabel(sidebar, "DIAGNOSTICOS", 4, 2, 140, &lv_font_montserrat_14, palette::kAccentPrimary);
+
+        static constexpr const char* kGroups[4] = {"AUDIO", "MEMORIA", "USB / MIDI", "SISTEMA"};
+        struct ModCtx { UiNavigationManager* nav; uint8_t mod; };
+        for (uint8_t i = 0; i < 4; ++i) {
+            lv_obj_t* b = createActionButton(sidebar, kGroups[i], 2, 28 + i * 48, 144, 42, nullptr, nullptr, mod_ == i, false);
+            if (b) {
+                attachLvContext<ModCtx>(b, {&nav, i}, [](lv_event_t* e) {
+                    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                    auto* c = static_cast<ModCtx*>(lv_event_get_user_data(e));
+                    if (c && c->nav) c->nav->requestNavigateTo(ScreenId::Diagnostics, c->mod);
+                }, LV_EVENT_CLICKED);
+            }
         }
 
-        // 1. Explicit UI DEMO Telemetry Honesty Banner (Section 5 Tela 14 requirement)
-        lv_obj_t* banner = lv_obj_create(parent);
-        applyPanelStyle(banner, true);
-        lv_obj_set_pos(banner, 8, 4);
-        lv_obj_set_size(banner, 784, 34);
-        lv_obj_set_style_pad_all(banner, 4, 0);
-        createLabel(banner,
-                    "DIAGNOSTICS  |  UI DEMO ACTIVE: HARDWARE TELEMETRY IS NOT FABRICATED (REAL LVGL HEAP)",
-                    6, 2, 768, &lv_font_montserrat_14, palette::kWarning);
+        lv_obj_t* pf_btn = createActionButton(sidebar, "TOCAR >", 2, 336, 144, 34, nullptr, nullptr);
+        if (pf_btn) {
+            attachLvContext<UiNavigationManager*>(pf_btn, &nav, [](lv_event_t* e) {
+                if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                auto* n = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
+                if (n) n->requestReturnToPerformance();
+            }, LV_EVENT_CLICKED);
+        }
 
-        // 2. 6 Structured Diagnostic Cards (3x2 grid, y = 42..386)
-        // Card 1: Firmware & UI Runtime
-        lv_obj_t* c1 = lv_obj_create(parent);
-        applyPanelStyle(c1, false);
-        lv_obj_set_pos(c1, 8, 42);
-        lv_obj_set_size(c1, 256, 166);
-        createLabel(c1, "1. FIRMWARE & UI", 6, 4, 170, &lv_font_montserrat_14, palette::kAccentPrimary);
-        createStatusBadge(c1, FeatureStatus::Demo, 178, 4);
-        createLabel(c1, d.firmware_version, 6, 28, 240, &lv_font_montserrat_14, palette::kTextPrimary);
-        char c1_b1[64], c1_b2[64], c1_b3[64], c1_b4[64];
-        std::snprintf(c1_b1, sizeof(c1_b1), "UPTIME: %lu ms", static_cast<unsigned long>(d.uptime_ms));
-        std::snprintf(c1_b2, sizeof(c1_b2), "NAV SWITCHES: %lu", static_cast<unsigned long>(d.screen_switches));
-        std::snprintf(c1_b3, sizeof(c1_b3), "DEMO PANICS: %lu", static_cast<unsigned long>(d.demo_panic_count));
-        std::snprintf(c1_b4, sizeof(c1_b4), "PARAMS REGISTERED: %u", static_cast<unsigned>(ParameterRegistry::count()));
-        createLabel(c1, c1_b1, 6, 56, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-        createLabel(c1, c1_b2, 6, 82, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-        createLabel(c1, c1_b3, 6, 108, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-        createLabel(c1, c1_b4, 6, 134, 240, &lv_font_montserrat_14, palette::kActive);
+        // 2. Right Contextual Telemetry Panel (x = 166..794, y = 4..384)
+        lv_obj_t* card = lv_obj_create(parent);
+        applyPanelStyle(card, true);
+        lv_obj_set_pos(card, 166, 4);
+        lv_obj_set_size(card, 628, 380);
+        lv_obj_set_style_pad_all(card, 8, 0);
+        lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-        // Card 2: LVGL 9.3.0 Memory Pool (Real measurement from lv_mem_monitor)
-        lv_obj_t* c2 = lv_obj_create(parent);
-        applyPanelStyle(c2, false);
-        lv_obj_set_pos(c2, 272, 42);
-        lv_obj_set_size(c2, 256, 166);
-        createLabel(c2, "2. LVGL 9.3.0 HEAP", 6, 4, 170, &lv_font_montserrat_14, palette::kAccentPrimary);
-        createStatusBadge(c2, FeatureStatus::Available, 178, 4);
-        char c2_b1[64], c2_b2[64], c2_b3[64], c2_b4[64];
-        std::snprintf(c2_b1, sizeof(c2_b1), "FREE: %lu bytes", static_cast<unsigned long>(d.lvgl_free_bytes));
-        std::snprintf(c2_b2, sizeof(c2_b2), "LARGEST: %lu bytes", static_cast<unsigned long>(d.lvgl_largest_block));
-        std::snprintf(c2_b3, sizeof(c2_b3), "PEAK USED: %lu bytes", static_cast<unsigned long>(d.lvgl_peak_used));
-        std::snprintf(c2_b4, sizeof(c2_b4), "FRAGMENTATION: %u%%", unsigned(d.lvgl_frag_pct));
-        createLabel(c2, c2_b1, 6, 30, 240, &lv_font_montserrat_14, palette::kTextPrimary);
-        createLabel(c2, c2_b2, 6, 56, 240, &lv_font_montserrat_14, palette::kTextPrimary);
-        createLabel(c2, c2_b3, 6, 82, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-        createLabel(c2, c2_b4, 6, 108, 240, &lv_font_montserrat_14, palette::kActive);
-        createLabel(c2, "SINGLE ACTIVE SCREEN TREE", 6, 134, 240, &lv_font_montserrat_14, palette::kTextSecondary);
+        static constexpr const char* kTitles[4] = {
+            "TELEMETRIA DE AUDIO & AMY DSP",
+            "MEMORIA LVGL, HEAP INTERNO & PSRAM",
+            "USB MIDI HOST & COMUNICACAO",
+            "SISTEMA, VERSAO & QUALIFICACAO"
+        };
+        createLabel(card, kTitles[mod_], 6, 4, 460, &lv_font_montserrat_14, palette::kAccentPrimary);
+        createStatusBadge(card, backend.isDemoMode() ? FeatureStatus::Demo : FeatureStatus::Available, 536, 4);
 
-        // Card 3: AMY Engine & DSP Budget
-        lv_obj_t* c3 = lv_obj_create(parent);
-        applyPanelStyle(c3, false);
-        lv_obj_set_pos(c3, 536, 42);
-        lv_obj_set_size(c3, 256, 166);
-        createLabel(c3, "3. AMY SYNTHESIS", 6, 4, 170, &lv_font_montserrat_14, palette::kAccentPrimary);
-        createStatusBadge(c3, FeatureStatus::Demo, 178, 4);
-        createLabel(c3, d.amy_status, 6, 30, 240, &lv_font_montserrat_14, palette::kWarning);
-        char c3_b1[64], c3_b2[64];
-        std::snprintf(c3_b1, sizeof(c3_b1), "DEMO VOICES: %u / %u", d.active_voices, d.max_voices);
-        std::snprintf(c3_b2, sizeof(c3_b2), "BLOCK BUDGET: %lu us", static_cast<unsigned long>(d.budget_us));
-        createLabel(c3, c3_b1, 6, 56, 240, &lv_font_montserrat_14, palette::kTextPrimary);
-        createLabel(c3, c3_b2, 6, 82, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-        createLabel(c3, "DSP RENDER: UNMEASURED", 6, 108, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-        createLabel(c3, "DEADLINE MISSES: -- (DEMO)", 6, 134, 240, &lv_font_montserrat_14, palette::kTextSecondary);
+        for (unsigned i = 0; i < 8; ++i) {
+            lines_[i] = createLabel(
+                card, "", 6, 40 + int32_t(i) * 38, 608,
+                &lv_font_montserrat_14, i == 7 ? palette::kAccentPrimary : palette::kTextPrimary);
+        }
 
-        // Card 4: I2S & PCM5102A Output
-        lv_obj_t* c4 = lv_obj_create(parent);
-        applyPanelStyle(c4, false);
-        lv_obj_set_pos(c4, 8, 216);
-        lv_obj_set_size(c4, 256, 168);
-        createLabel(c4, "4. I2S & PCM5102A", 6, 4, 170, &lv_font_montserrat_14, palette::kAccentPrimary);
-        createStatusBadge(c4, FeatureStatus::Demo, 178, 4);
-        createLabel(c4, d.i2s_status, 6, 30, 240, &lv_font_montserrat_14, palette::kWarning);
-        createLabel(c4, "PINS: BCK=50 WS=51 DIN=52", 6, 56, 240, &lv_font_montserrat_14, palette::kTextPrimary);
-        createLabel(c4, "FORMAT: 48kHz 16-BIT STEREO", 6, 82, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-        createLabel(c4, "UNDERRUNS: UNMEASURED", 6, 108, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-        createLabel(c4, "WIRING GATE: OFF IN DEMO", 6, 134, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-
-        // Card 5: USB-MIDI Host
-        lv_obj_t* c5 = lv_obj_create(parent);
-        applyPanelStyle(c5, false);
-        lv_obj_set_pos(c5, 272, 216);
-        lv_obj_set_size(c5, 256, 168);
-        createLabel(c5, "5. USB-MIDI HOST", 6, 4, 170, &lv_font_montserrat_14, palette::kAccentPrimary);
-        createStatusBadge(c5, FeatureStatus::Demo, 178, 4);
-        createLabel(c5, d.usb_status, 6, 30, 240, &lv_font_montserrat_14, palette::kWarning);
-        createLabel(c5, "PORT: P4 HS/FS (OPT-IN GATE)", 6, 56, 240, &lv_font_montserrat_14, palette::kTextPrimary);
-        createLabel(c5, "PARSE ERRORS: -- (DEMO)", 6, 82, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-        createLabel(c5, "QUEUE DROPS: -- (DEMO)", 6, 108, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-        createLabel(c5, "HOT-PLUG DRAIN: READY IN FW", 6, 134, 240, &lv_font_montserrat_14, palette::kActive);
-
-        // Card 6: ESP32-P4 Memory & Display
-        lv_obj_t* c6 = lv_obj_create(parent);
-        applyPanelStyle(c6, false);
-        lv_obj_set_pos(c6, 536, 216);
-        lv_obj_set_size(c6, 256, 168);
-        createLabel(c6, "6. SYSTEM & BOARD", 6, 4, 170, &lv_font_montserrat_14, palette::kAccentPrimary);
-        createStatusBadge(c6, FeatureStatus::Demo, 178, 4);
-        createLabel(c6, "BOARD: GUITION JC-ESP32P4-M3", 6, 30, 240, &lv_font_montserrat_14, palette::kTextPrimary);
-        createLabel(c6, "DISPLAY: 800x480 HORIZONTAL", 6, 56, 240, &lv_font_montserrat_14, palette::kTextPrimary);
-        createLabel(c6, "INT RAM / PSRAM: TARGET ONLY", 6, 82, 240, &lv_font_montserrat_14, palette::kTextSecondary);
-        createLabel(c6, "NVS WRITES: 0 (STRICT RAM)", 6, 108, 240, &lv_font_montserrat_14, palette::kActive);
-        createLabel(c6, backend.statusText(), 6, 134, 240, &lv_font_montserrat_14, palette::kAccentPrimary);
-
+        refresh(backend);
         return true;
     }
 
     void refresh(IUiBackend& backend) override {
-        if(backend.isDemoMode() || !live_[0]) return;
-        const auto& d=backend.model().diagnostics();
-        lv_label_set_text(live_[0],d.firmware_version);
-        lv_label_set_text(live_[1],d.amy_status);
-        lv_label_set_text_fmt(live_[2],"I2S: %s | USB: %s",d.i2s_status,d.usb_status);
-        lv_label_set_text_fmt(live_[3],"VOICES: %u/%u (logical gates)",d.active_voices,d.max_voices);
-        lv_label_set_text_fmt(live_[4],"RENDER MAX: %lu / %lu us",(unsigned long)d.render_max_us,(unsigned long)d.budget_us);
-        lv_label_set_text_fmt(live_[5],"RENDER DEADLINES: %lu",(unsigned long)d.deadline_misses);
-        lv_label_set_text(live_[6],"DMA UNDERRUNS / METERS: N/A");
-        lv_label_set_text_fmt(live_[7],"UPTIME: %lu ms | NAV: %lu",(unsigned long)d.uptime_ms,(unsigned long)d.screen_switches);
-        lv_label_set_text_fmt(live_[8],"LVGL FREE: %lu",(unsigned long)d.lvgl_free_bytes);
-        lv_label_set_text_fmt(live_[9],"LVGL LARGEST: %lu",(unsigned long)d.lvgl_largest_block);
-        lv_label_set_text_fmt(live_[10],"LVGL PEAK: %lu FRAG: %u%%",(unsigned long)d.lvgl_peak_used,d.lvgl_frag_pct);
-        lv_label_set_text_fmt(live_[11],"INTERNAL FREE: %lu",(unsigned long)d.free_internal_ram);
-        lv_label_set_text_fmt(live_[12],"PSRAM FREE: %lu",(unsigned long)d.free_psram);
-        if(!d.memory_valid) {
-            lv_label_set_text(live_[8],"LVGL FREE: N/A (WAIT SAMPLE)");
-            lv_label_set_text(live_[9],"LVGL LARGEST: N/A");
-            lv_label_set_text(live_[10],"LVGL PEAK / FRAG: N/A");
-            lv_label_set_text(live_[11],"INTERNAL FREE: N/A");
-            lv_label_set_text(live_[12],"PSRAM FREE: N/A");
+        if (!lines_[0]) return;
+        const auto& d = backend.model().diagnostics();
+        const bool demo = backend.isDemoMode();
+        char b[8][96]{};
+
+        switch (mod_) {
+            case 0: // AUDIO
+                std::snprintf(b[0], sizeof(b[0]), "AMY STATUS: %s", d.amy_status);
+                std::snprintf(b[1], sizeof(b[1]), "I2S DAC: %s", d.i2s_status);
+                std::snprintf(b[2], sizeof(b[2]), "VOZES ATIVAS: %u / %u", d.active_voices, d.max_voices);
+                if (demo) {
+                    std::snprintf(b[3], sizeof(b[3]), "RENDER AVG / MAX: N/A (DEMO) | BUDGET: %lu us",
+                                  static_cast<unsigned long>(d.budget_us));
+                    std::snprintf(b[4], sizeof(b[4]), "DEADLINE MISSES: N/A (DEMO)");
+                } else {
+                    std::snprintf(b[3], sizeof(b[3]), "RENDER AVG / MAX: %lu / %lu us (BUDGET: %lu us)",
+                                  static_cast<unsigned long>(d.render_avg_us),
+                                  static_cast<unsigned long>(d.render_max_us),
+                                  static_cast<unsigned long>(d.budget_us));
+                    std::snprintf(b[4], sizeof(b[4]), "DEADLINE MISSES: %lu",
+                                  static_cast<unsigned long>(d.deadline_misses));
+                }
+                std::snprintf(b[5], sizeof(b[5]), "DMA UNDERRUNS: N/A (MEDICAO DE BANCADA PENDENTE)");
+                std::snprintf(b[6], sizeof(b[6]), "AUDIO LIVE: %s", d.audio_live ? "SIM (RUN)" : "NAO (OFF/SIM)");
+                std::snprintf(b[7], sizeof(b[7]), "PATCH ATIVO: #%03u %s",
+                              unsigned(backend.model().activePatch().id),
+                              backend.model().activePatch().name);
+                break;
+
+            case 1: // MEMORIA
+                if (!demo && !d.memory_valid) {
+                    std::snprintf(b[0], sizeof(b[0]), "LVGL POOL FREE: N/A (AGUARDANDO AMOSTRA)");
+                    std::snprintf(b[1], sizeof(b[1]), "LVGL LARGEST BLOCK: N/A");
+                    std::snprintf(b[2], sizeof(b[2]), "LVGL PEAK USED / FRAG: N/A");
+                    std::snprintf(b[3], sizeof(b[3]), "HEAP INTERNO FREE: N/A");
+                    std::snprintf(b[4], sizeof(b[4]), "PSRAM FREE: N/A");
+                } else {
+                    std::snprintf(b[0], sizeof(b[0]), "LVGL POOL FREE: %lu bytes",
+                                  static_cast<unsigned long>(d.lvgl_free_bytes));
+                    std::snprintf(b[1], sizeof(b[1]), "LVGL LARGEST BLOCK: %lu bytes",
+                                  static_cast<unsigned long>(d.lvgl_largest_block));
+                    std::snprintf(b[2], sizeof(b[2]), "LVGL PEAK USED: %lu bytes | FRAGMENTACAO: %u%%",
+                                  static_cast<unsigned long>(d.lvgl_peak_used), unsigned(d.lvgl_frag_pct));
+                    if (demo) {
+                        std::snprintf(b[3], sizeof(b[3]), "HEAP INTERNO FREE: N/A (HOST DEMO)");
+                        std::snprintf(b[4], sizeof(b[4]), "PSRAM FREE: N/A (HOST DEMO)");
+                    } else {
+                        std::snprintf(b[3], sizeof(b[3]), "HEAP INTERNO FREE: %lu bytes",
+                                      static_cast<unsigned long>(d.free_internal_ram));
+                        std::snprintf(b[4], sizeof(b[4]), "PSRAM FREE: %lu bytes",
+                                      static_cast<unsigned long>(d.free_psram));
+                    }
+                }
+                std::snprintf(b[5], sizeof(b[5]), "STACK HIGH-WATER: N/A (CONSULTAR SERIAL 5s)");
+                std::snprintf(b[6], sizeof(b[6]), "ARQUITETURA: PAINEL UNICO ATIVO POR VEZ");
+                std::snprintf(b[7], sizeof(b[7]), "ORCAMENTO LVGL: ~128 KiB TLSF");
+                break;
+
+            case 2: // USB / MIDI
+                std::snprintf(b[0], sizeof(b[0]), "USB MIDI HOST: %s", d.usb_status);
+                std::snprintf(b[1], sizeof(b[1]), "DISPOSITIVO CONECTADO: %s", d.midi_connected ? "SIM" : "NAO");
+                std::snprintf(b[2], sizeof(b[2]), "ERRO MIDI / OVERFLOW: %s", backend.hasMidiError() ? "SIM (ERRO)" : "NENHUM");
+                std::snprintf(b[3], sizeof(b[3]), "PERFIL ATIVO: %s",
+                              backend.hasMidiPerformance() ? backend.midiProfileName() : "N/A (DEMO)");
+                std::snprintf(b[4], sizeof(b[4]), "PARSE ERRORS / DROPS: N/A (CONTADOR NO SERIAL 5s)");
+                std::snprintf(b[5], sizeof(b[5]), "HOT-PLUG PANIC: ATIVO NO FIRMWARE");
+                std::snprintf(b[6], sizeof(b[6]), "ULTIMO CMD: %s (%s)",
+                              commandStateLabel(backend.lastCommandState()),
+                              backend.lastCommandParameterId() ? backend.lastCommandParameterId() : "--");
+                std::snprintf(b[7], sizeof(b[7]), "NOTICE: %s", backend.model().lastNotice());
+                break;
+
+            case 3: // SISTEMA
+                std::snprintf(b[0], sizeof(b[0]), "VERSAO FW: %s", d.firmware_version);
+                std::snprintf(b[1], sizeof(b[1]), "PLACA ALVO: GUITION JC-ESP32P4-M3 (800x480)");
+                std::snprintf(b[2], sizeof(b[2]), "UPTIME: %lu ms", static_cast<unsigned long>(d.uptime_ms));
+                std::snprintf(b[3], sizeof(b[3]), "TROCAS DE TELA: %lu", static_cast<unsigned long>(d.screen_switches));
+                std::snprintf(b[4], sizeof(b[4]), "PARAMETROS REGISTRADOS: %u", unsigned(ParameterRegistry::count()));
+                std::snprintf(b[5], sizeof(b[5]), "PANICS DEMO: %lu", static_cast<unsigned long>(d.demo_panic_count));
+                std::snprintf(b[6], sizeof(b[6]), "BACKEND: %s | CONECTADO: %s",
+                              backend.backendName(), backend.isConnected() ? "SIM" : "NAO");
+                std::snprintf(b[7], sizeof(b[7]), "QUALIFICACAO FISICA: PENDENTE (HOST VALIDADO)");
+                break;
         }
-        lv_label_set_text(live_[13],"MORE METRICS: 5s SERIAL LOG");
-        lv_label_set_text_fmt(live_[14],"CMD: %s",commandStateLabel(backend.lastCommandState()));
-        lv_label_set_text(live_[15],backend.model().lastNotice());
+
+        for (unsigned i = 0; i < 8; ++i) {
+            setDiagLine(lines_[i], b[i]);
+        }
     }
+
 private:
-    lv_obj_t* live_[16]{};
+    uint8_t mod_ = 0;
+    lv_obj_t* lines_[8]{};
 };
 
 } // namespace
