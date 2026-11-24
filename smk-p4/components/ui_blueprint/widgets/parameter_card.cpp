@@ -64,11 +64,32 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, IUiBackend& backend, const char*
     const bool enabled = backend.isParameterEditable(param_id);
     const char* title = (label_override && label_override[0] != '\0') ? label_override : desc->name;
 
-    const int32_t title_w = (level == PresentationLevel::BlueprintVerbose) ? (w - 64) : (w - 16);
-    lv_obj_t* title_lbl = createLabel(card, title, 6, 4, title_w, &lv_font_montserrat_14,
-                                      enabled ? palette::kTextPrimary : palette::kTextSecondary);
+    // Account for applyPanelStyle(card, false) border (1px) + padding (6px) on each side = 14px total
+    constexpr int32_t kPanelInset = 14;
+    constexpr int32_t kBadgeW = 52;
+    constexpr int32_t kBadgeGap = 4;
+    const int32_t inner_w = (w > kPanelInset) ? (w - kPanelInset) : w;
+    const int32_t inner_h = (h > kPanelInset) ? (h - kPanelInset) : h;
+
+    lv_obj_t* title_lbl = nullptr;
     if (level == PresentationLevel::BlueprintVerbose) {
-        createStatusBadge(card, status, w - 62, 4);
+        if (w < 145) {
+            title_lbl = createLabel(card, title, 0, 0, inner_w, &lv_font_montserrat_14,
+                                    enabled ? palette::kTextPrimary : palette::kTextSecondary);
+            createStatusBadge(card, status, inner_w - kBadgeW, 20);
+        } else {
+            const int32_t title_x = (w >= 200) ? 2 : 0;
+            const int32_t title_w = inner_w - kBadgeW - kBadgeGap - title_x;
+            title_lbl = createLabel(card, title, title_x, 0, title_w, &lv_font_montserrat_14,
+                                    enabled ? palette::kTextPrimary : palette::kTextSecondary);
+            createStatusBadge(card, status, inner_w - kBadgeW, 0);
+        }
+    } else {
+        title_lbl = createLabel(card, title, 2, 0, inner_w - 4, &lv_font_montserrat_14,
+                                enabled ? palette::kTextPrimary : palette::kTextSecondary);
+    }
+    if (title_lbl) {
+        lv_label_set_long_mode(title_lbl, LV_LABEL_LONG_MODE_DOTS);
     }
 
     ParameterValue pv{};
@@ -83,8 +104,8 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, IUiBackend& backend, const char*
             lv_obj_add_style(btn, &theme().button, 0);
             lv_obj_add_style(btn, &theme().button_active, LV_STATE_CHECKED);
             lv_obj_set_style_opa(btn, LV_OPA_50, LV_STATE_DISABLED);
-            lv_obj_set_pos(btn, 6, h - 44);
-            lv_obj_set_size(btn, w - 24, 36);
+            lv_obj_set_pos(btn, 0, inner_h - 36);
+            lv_obj_set_size(btn, inner_w, 36);
             lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
             if (pv.asBool()) lv_obj_add_state(btn, LV_STATE_CHECKED);
             if (!enabled) lv_obj_add_state(btn, LV_STATE_DISABLED);
@@ -133,20 +154,23 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, IUiBackend& backend, const char*
                 LV_EVENT_CLICKED);
         }
     } else if (desc->capabilities & kCapReadOnly) {
-        createLabel(card, vbuf, 8, h - 34, w - 24, &lv_font_montserrat_20, palette::kTextSecondary);
+        createLabel(card, vbuf, 2, inner_h - 28, inner_w - 4, &lv_font_montserrat_20, palette::kTextSecondary);
     } else {
         // Stepper buttons [-] [VALUE] [+] for Enum and discrete Int
-        const int32_t btn_w = (w < 140) ? 28 : ((level == PresentationLevel::StageStacked && w >= 200) ? 44 : 38);
+        const int32_t btn_w = (w < 140) ? 28 : ((level == PresentationLevel::StageStacked && w >= 200) ? 44 : 36);
         const lv_font_t* val_font = (level == PresentationLevel::StageStacked && h >= 110)
                                         ? &lv_font_montserrat_20 : &lv_font_montserrat_14;
-        const int32_t val_y = (val_font == &lv_font_montserrat_20) ? (h - 40) : (h - 36);
-        lv_obj_t* vlbl = createLabel(card, vbuf, btn_w + 8, val_y, w - (btn_w * 2 + 24),
+        const int32_t ctrl_y = inner_h - 36;
+        const int32_t val_y = (val_font == &lv_font_montserrat_20) ? (ctrl_y + 4) : (ctrl_y + 8);
+        const int32_t val_w = (inner_w > btn_w * 2 + 8) ? (inner_w - btn_w * 2 - 8) : 24;
+        lv_obj_t* vlbl = createLabel(card, vbuf, btn_w + 4, val_y, val_w,
                                      val_font, enabled ? palette::kAccentPrimary : palette::kTextSecondary);
-        if (vlbl && level == PresentationLevel::StageStacked) {
+        if (vlbl) {
             lv_obj_set_style_text_align(vlbl, LV_TEXT_ALIGN_CENTER, 0);
+            lv_label_set_long_mode(vlbl, LV_LABEL_LONG_MODE_DOTS);
         }
-        lv_obj_t* dec_btn = createActionButton(card, "-", 4, h - 44, btn_w, 36, nullptr, nullptr);
-        lv_obj_t* inc_btn = createActionButton(card, "+", w - btn_w - 14, h - 44, btn_w, 36, nullptr, nullptr);
+        lv_obj_t* dec_btn = createActionButton(card, "-", 0, ctrl_y, btn_w, 36, nullptr, nullptr);
+        lv_obj_t* inc_btn = createActionButton(card, "+", inner_w - btn_w, ctrl_y, btn_w, 36, nullptr, nullptr);
         setDisabledState(dec_btn, !enabled);
         setDisabledState(inc_btn, !enabled);
         if (dec_btn) lv_obj_set_style_opa(dec_btn, LV_OPA_50, LV_STATE_DISABLED);

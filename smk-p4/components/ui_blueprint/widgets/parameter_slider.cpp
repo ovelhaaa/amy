@@ -530,43 +530,61 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
     char vbuf[28];
     formatConfirmedValue(backend, *desc, status, vbuf, sizeof(vbuf));
 
+    // Account for applyPanelStyle(card, false) border (1px) + padding (6px) on each side = 14px total
+    constexpr int32_t kPanelInset = 14;
+    constexpr int32_t kBadgeW = 52;
+    constexpr int32_t kBadgeGap = 4;
+    const int32_t inner_w = (w > kPanelInset) ? (w - kPanelInset) : w;
+    const int32_t inner_h = (h > kPanelInset) ? (h - kPanelInset) : h;
+
     lv_obj_t* title_lbl = nullptr;
     lv_obj_t* vlbl = nullptr;
     lv_obj_t* slbl = nullptr;
     lv_obj_t* badge_box = nullptr;
 
     if (level == PresentationLevel::StageMinimal) {
-        title_lbl = createLabel(card, title, 8, 4, w - 96, &lv_font_montserrat_14,
+        title_lbl = createLabel(card, title, 2, 0, inner_w - 84, &lv_font_montserrat_14,
                                 enabled ? palette::kTextPrimary : palette::kTextSecondary);
         const lv_font_t* val_font = (h >= 72) ? &lv_font_montserrat_20 : &lv_font_montserrat_14;
-        vlbl = createLabel(card, vbuf, w - 88, (h >= 72) ? 2 : 4, 76, val_font,
+        vlbl = createLabel(card, vbuf, inner_w - 78, (h >= 72) ? 0 : 2, 76, val_font,
                            enabled ? palette::kAccentPrimary : palette::kTextSecondary);
         if (vlbl) lv_obj_set_style_text_align(vlbl, LV_TEXT_ALIGN_RIGHT, 0);
     } else if (level == PresentationLevel::StageStacked) {
         const bool large = (h >= 90);
-        title_lbl = createLabel(card, title, 6, 4, w - 16, &lv_font_montserrat_14,
+        title_lbl = createLabel(card, title, 2, 0, inner_w - 4, &lv_font_montserrat_14,
                                 enabled ? palette::kTextPrimary : palette::kTextSecondary);
         const lv_font_t* val_font = large ? &lv_font_montserrat_20 : &lv_font_montserrat_14;
-        vlbl = createLabel(card, vbuf, 6, large ? 25 : 24, w - 82, val_font,
+        vlbl = createLabel(card, vbuf, 2, large ? 22 : 20, inner_w - 64, val_font,
                            enabled ? palette::kAccentPrimary : palette::kTextSecondary);
         slbl = lv_label_create(card);
         if (slbl) {
-            lv_obj_set_pos(slbl, w - 72, large ? 29 : 24);
+            lv_obj_set_pos(slbl, inner_w - 58, large ? 26 : 20);
             lv_obj_set_size(slbl, 56, 20);
             lv_obj_set_style_text_font(slbl, &lv_font_montserrat_14, 0);
             lv_obj_set_style_text_align(slbl, LV_TEXT_ALIGN_RIGHT, 0);
             lv_label_set_long_mode(slbl, LV_LABEL_LONG_MODE_CLIP);
             lv_label_set_text_static(slbl, "");
         }
-    } else {
-        title_lbl = createLabel(card, title, 6, 4, w - 64, &lv_font_montserrat_14,
+    } else if (w < 145) {
+        // Narrow card: full-width title on row 1, value + secondary badge on row 2
+        title_lbl = createLabel(card, title, 0, 0, inner_w, &lv_font_montserrat_14,
                                 enabled ? palette::kTextPrimary : palette::kTextSecondary);
-        badge_box = createStatusBadge(card, status, w - 62, 4);
-        vlbl = createLabel(card, vbuf, 6, 24, w - 76, &lv_font_montserrat_14,
+        vlbl = createLabel(card, vbuf, 0, 20, inner_w - kBadgeW - kBadgeGap, &lv_font_montserrat_14,
+                           enabled ? palette::kAccentPrimary : palette::kTextSecondary);
+        badge_box = createStatusBadge(card, status, inner_w - kBadgeW, 20);
+    } else {
+        const int32_t title_x = (w >= 200) ? 2 : 0;
+        const int32_t title_w = inner_w - kBadgeW - kBadgeGap - title_x;
+        title_lbl = createLabel(card, title, title_x, 0, title_w, &lv_font_montserrat_14,
+                                enabled ? palette::kTextPrimary : palette::kTextSecondary);
+        badge_box = createStatusBadge(card, status, inner_w - kBadgeW, 0);
+        const int32_t val_y = (h >= 96) ? 24 : 17;
+        const lv_font_t* val_font = (h >= 104 && w >= 240) ? &lv_font_montserrat_20 : &lv_font_montserrat_14;
+        vlbl = createLabel(card, vbuf, title_x, val_y, inner_w - 58 - title_x, val_font,
                            enabled ? palette::kAccentPrimary : palette::kTextSecondary);
         slbl = lv_label_create(card);
         if (slbl) {
-            lv_obj_set_pos(slbl, w - 68, 24);
+            lv_obj_set_pos(slbl, inner_w - 54, val_y + ((val_font == &lv_font_montserrat_20) ? 4 : 0));
             lv_obj_set_size(slbl, 54, 20);
             lv_obj_set_style_text_font(slbl, &lv_font_montserrat_14, 0);
             lv_obj_set_style_text_align(slbl, LV_TEXT_ALIGN_RIGHT, 0);
@@ -574,6 +592,8 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
             lv_label_set_text_static(slbl, "");
         }
     }
+    if (title_lbl) lv_label_set_long_mode(title_lbl, LV_LABEL_LONG_MODE_DOTS);
+    if (vlbl) lv_label_set_long_mode(vlbl, LV_LABEL_LONG_MODE_DOTS);
 
     lv_obj_t* slider = lv_slider_create(card);
     if (slider) {
@@ -587,9 +607,9 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
 
         const bool stage = (level != PresentationLevel::BlueprintVerbose) && (h >= 68);
         const int32_t bar_h = stage ? 18 : 14;
-        const int32_t bar_y = stage ? (h - 32) : (h - 26);
-        lv_obj_set_pos(slider, 10, bar_y);
-        lv_obj_set_size(slider, w - 28, bar_h);
+        const int32_t bar_y = stage ? (inner_h - 20) : (inner_h - 16);
+        lv_obj_set_pos(slider, 4, bar_y);
+        lv_obj_set_size(slider, inner_w - 8, bar_h);
         lv_obj_set_ext_click_area(slider, 14);
         lv_slider_set_range(slider, 0, 100);
 
