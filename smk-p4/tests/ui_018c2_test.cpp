@@ -195,11 +195,11 @@ int main(int argc, char** argv) {
         // Captures are real LVGL + AMY renders with injected host MIDI packets.
         // Label them explicitly so they cannot be mistaken for physical USB tests.
         auto* mode = findLabel(app.rootObject(), "P4 LIVE");
-        if (mode) lv_label_set_text(mode, "HOST SIM");
+        if (mode) lv_label_set_text_static(mode, "HOST SIM");
         preview::pumpFrame(app, 25);
         assert(preview::saveFramebufferPpm(path));
         std::printf("CAPTURED: %s\n", path);
-        if (mode) lv_label_set_text(mode, "P4 LIVE");
+        if (mode) lv_label_set_text_static(mode, "P4 LIVE");
     };
 
     // ── C.2-A.1 & C.2-A.3: Scene selection without recall, explicit recall, active vs failed separation
