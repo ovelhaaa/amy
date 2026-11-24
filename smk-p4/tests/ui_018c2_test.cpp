@@ -305,6 +305,10 @@ int main(int argc, char** argv) {
     std::puts("PASS: C.2-A Scene selection vs recall & active/error separation");
 
     // ── C.2-A.2: Independent Q / CH indicators ──────────────────────────────
+    assert(adapter.requestParameterBool("harmony.scale_enable", true).accepted());
+    sync_runtime();
+    assert(adapter.requestParameterBool("harmony.chord_enable", true).accepted());
+    sync_runtime();
     app.shutdown();
     ControlledHarmonyBackend ctrl(adapter);
     UiBlueprint ctrl_app(ctrl);
@@ -355,5 +359,60 @@ int main(int argc, char** argv) {
 
     ctrl_app.shutdown();
     std::puts("PASS: C.2-A Independent Q/CH indicators & stale token guard");
+
+    // ── C.2-B: Patch Browser (list, pre-select, pending load, discard protection)
+    assert(app.begin());
+    sync_runtime();
+    if (adapter.patchNeedsDiscardConfirmation()) {
+        assert(adapter.confirmPatchDiscard(128, 0, 0).accepted());
+        sync_runtime();
+        runtime.loadPendingPatch();
+        for (int k = 0; k < 4; ++k) sync_runtime();
+    }
+    assert(!adapter.patchNeedsDiscardConfirmation());
+    assert(runtime.snapshot().patch_id == 128);
+
+    assert(app.navigation().navigateTo(ScreenId::PatchBrowser));
+    sync_runtime();
+    assert(findLabel(app.contentObject(), "PATCH ATIVO") != nullptr);
+    capture("01_biblioteca_lista");
+
+    // Pre-select patch 135 (must NOT load yet!)
+    clickBtn(app.contentObject(), "135 ", app, true);
+    for (int k = 0; k < 4; ++k) sync_runtime();
+    assert(runtime.snapshot().patch_id == 128);
+    assert(findLabel(app.contentObject(), "PRE-SELECAO") != nullptr);
+    capture("02_biblioteca_selecionado");
+
+    // Request quick load -> enters pending loading state before runtime.loadPendingPatch()
+    clickBtn(app.contentObject(), "CARREGAR JA", app);
+    if (!adapter.isPatchLoading()) {
+        std::fprintf(stderr, "NOT LOADING: busy=%d dirty=%d notice='%s'\n",
+                     int(adapter.isBusy()), int(adapter.patchNeedsDiscardConfirmation()),
+                     adapter.model().lastNotice());
+        assert(false);
+    }
+    assert(findLabel(app.contentObject(), "CARREGANDO PATCH...") != nullptr);
+    capture("03_biblioteca_carregando");
+
+    sync_runtime();
+    runtime.loadPendingPatch();
+    for (int k = 0; k < 4; ++k) sync_runtime();
+    assert(runtime.snapshot().patch_id == 135);
+    assert(!adapter.isPatchLoading());
+
+    // Edit a parameter so patch becomes dirty, then try to load 128 -> discard dialog must appear
+    assert(adapter.requestParameterFloat("amp.level", 85.0f).accepted());
+    for (int k = 0; k < 4; ++k) sync_runtime();
+    assert(adapter.patchNeedsDiscardConfirmation());
+    clickBtn(app.contentObject(), "128 ", app, true);
+    clickBtn(app.contentObject(), "CARREGAR JA", app);
+    assert(findLabel(app.contentObject(), "Unsaved changes to the current patch will be lost.") != nullptr);
+    clickBtn(app.contentObject(), "CANCEL", app);
+    for (int k = 0; k < 4; ++k) sync_runtime();
+    assert(runtime.snapshot().patch_id == 135);
+
+    app.shutdown();
+    std::puts("PASS: C.2-B Patch Browser selection, loading, and discard protection");
     return 0;
 }
