@@ -68,10 +68,11 @@ try {
     # source removal and interrupted builds. Never stamp a failed execution.
     $inputDirs = @($uiCompDir, $amyRuntimeDir, $amySrcDir, $previewDir,
                   (Join-Path $smkP4 'main'), (Join-Path $repo 'shared/smk_protocol'),
-                  (Join-Path $smkP4 'tests/nvs_mocks'), (Join-Path $lvgl 'src'))
+                  (Join-Path $smkP4 'tests'), (Join-Path $lvgl 'src'))
     $inputs = @($inputDirs | ForEach-Object {
         Get-ChildItem -LiteralPath $_ -Recurse -File | Where-Object { $_.Extension -in @('.h', '.hpp', '.c', '.cpp') }
-    } | Sort-Object FullName -Unique)
+    }) + @(Get-ChildItem -LiteralPath $lvgl -File -Filter '*.h')
+    $inputs = @($inputs | Sort-Object FullName -Unique)
     $inputHashes = @($inputs | ForEach-Object {
         $_.FullName.Substring($repo.Length) + ':' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
     })
@@ -234,6 +235,12 @@ print(r'Converted and verified 800x480 PNGs in $shotsDir')
             & $binary $regressionShots
             if ($LASTEXITCODE -ne 0) { throw "Regression failed: $test" }
         }
+    }
+    $finalHashes = @($inputs | ForEach-Object {
+        $_.FullName.Substring($repo.Length) + ':' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+    })
+    if (($finalHashes -join "`n") -ne ($inputHashes -join "`n")) {
+        throw 'Build inputs changed during validation; rerun before declaring PASS'
     }
     $manifest = [ordered]@{
         branch = $gitBranch; commit = $gitSha; dirty = @(& git status --porcelain)
