@@ -436,7 +436,11 @@ public:
                     std::snprintf(owner, sizeof(owner), "K%u:", i + 1);
                     const char* status = backend.midiLearnStatus();
                     const bool learning = status && std::strncmp(status, owner, std::strlen(owner)) == 0;
-                    const char* state = learning ? (std::strstr(status, "CONFIRM") ? "PENDENTE" : "AGUARDA") : "CONFIG";
+                    const bool error = i == s_selected_knob && status &&
+                        (std::strstr(status, "TIMEOUT") || std::strstr(status, "FAILED") ||
+                         std::strstr(status, "OVERFLOW") || std::strstr(status, "IN USE"));
+                    const char* state = error ? "ERRO" :
+                        (learning ? (std::strstr(status, "CONFIRM") ? "PENDENTE" : "AGUARDA") : "CONFIG");
                     std::snprintf(row, sizeof(row), "%.*s\nCH%u CC%u | %s",
                                   int(channel - text), text, ch, cc, state);
                 } else {
