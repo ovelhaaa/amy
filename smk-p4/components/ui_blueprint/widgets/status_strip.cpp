@@ -292,6 +292,9 @@ bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManag
                         ctx->strip->harm_pending_token_ = 0;
                         ctx->strip->harm_pending_param_ = nullptr;
                     }
+                    // Close once for this UI action, not on every later refresh
+                    // while the backend retains "panic" as its last command.
+                    closeFmModals(true);
                     ctx->backend->requestPanic();
                     if (ctx->nav) ctx->nav->refreshActive();
                     if (ctx->strip && ctx->nav) ctx->strip->refresh(*ctx->backend, *ctx->nav);

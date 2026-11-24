@@ -333,10 +333,6 @@ public:
             nav_->requestNavigateTo(ScreenId::SoundEditor, mapSoundEditorModule(nav_->subTab(ScreenId::SoundEditor)));
             return;
         }
-        if (backend.lastCommandParameterId() && std::strcmp(backend.lastCommandParameterId(), "panic") == 0) {
-            confirm_dialog_.close(true);
-            closeFmModals(true);
-        }
         if (op_role_lbl_) {
             const int algo = backend.model().getInt("fm.algo", 1);
             const int sel = backend.model().getInt("fm.selected_op", 1);

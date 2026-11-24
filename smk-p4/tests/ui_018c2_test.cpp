@@ -926,6 +926,27 @@ int main(int argc, char** argv) {
     sync_runtime();
     closeFmModals(false);
     preview::pumpFrame(app, 25);
+    // Panic must not leave a sticky last-command state that closes every
+    // subsequently opened editor modal, nor require a musical edit to recover.
+    clickBtn(app.rootObject(), "PANIC", app);
+    sync_runtime(); sync_runtime();
+    clickBtn(app.contentObject(), "EXPAND", app);
+    adapter.model().bumpRevision(); // A normal UI refresh must not replay Panic.
+    sync_runtime(); sync_runtime();
+    auto* reopened_topology = findLabel(lv_screen_active(), "FM TOPOLOGY:", true);
+    std::printf("PANIC_REOPEN: last=%s visible=%d\n", adapter.lastCommandParameterId(),
+                reopened_topology && !lv_obj_has_flag(lv_obj_get_parent(reopened_topology), LV_OBJ_FLAG_HIDDEN));
+    std::fflush(stdout);
+    assert(reopened_topology && !lv_obj_has_flag(lv_obj_get_parent(reopened_topology), LV_OBJ_FLAG_HIDDEN));
+    clickBtn(app.rootObject(), "PANIC", app);
+    sync_runtime();
+    assert(!findLabel(lv_screen_active(), "FM TOPOLOGY:", true));
+    clickBtn(app.contentObject(), "EXPAND", app);
+    adapter.model().bumpRevision();
+    sync_runtime();
+    reopened_topology = findLabel(lv_screen_active(), "FM TOPOLOGY:", true);
+    assert(reopened_topology && !lv_obj_has_flag(lv_obj_get_parent(reopened_topology), LV_OBJ_FLAG_HIDDEN));
+    clickBtn(lv_screen_active(), "CLOSE", app);
 
     clickBtn(app.contentObject(), "USER / SAVE AS", app);
     sync_runtime();
