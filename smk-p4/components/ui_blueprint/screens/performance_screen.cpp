@@ -1,19 +1,70 @@
 #include "ui_screens.h"
 #include "ui_widgets.h"
 #include "routing_editor.h"
-#include <memory>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 
 namespace smk::p4::ui {
 
 namespace {
 
-struct PerfActionCtx {
-    IUiBackend*          backend = nullptr;
-    UiNavigationManager* nav     = nullptr;
-    int                  action  = 0; // 0=CycleLayerMode, 1=GoHarmony, 2=ToggleStageMode, 3=OctDown, 4=OctUp, 5=MIDI
-};
+const char* scenePhaseShort(scene::RecallPhase phase, const scene::Slot* slot) {
+    switch (phase) {
+        case scene::RecallPhase::WaitingBoundary: return "PENDING BAR";
+        case scene::RecallPhase::WaitingPatch:    return "WAIT PATCH";
+        case scene::RecallPhase::Confirmed:       return "ACTIVE";
+        case scene::RecallPhase::Failed:          return "FAILED";
+        case scene::RecallPhase::Cancelled:       return "CANCELLED";
+        case scene::RecallPhase::PartialApply:    return "PARTIAL";
+        case scene::RecallPhase::Idle:
+        default:
+            if (!slot || slot->state == seq::SlotState::Empty) return "EMPTY";
+            if (slot->state == seq::SlotState::Corrupted) return "CORRUPT";
+            if (slot->state == seq::SlotState::Incompatible) return "INCOMP";
+            return "SAVED";
+    }
+}
+
+uint32_t sceneStateColor(const char* label) {
+    if (!label) return palette::kPlannedBadge;
+    if (std::strcmp(label, "ACTIVE") == 0) return palette::kActive;
+    if (std::strncmp(label, "PENDING", 7) == 0 || std::strcmp(label, "WAIT PATCH") == 0) return palette::kAccentPrimary;
+    if (std::strcmp(label, "FAILED") == 0 || std::strcmp(label, "CORRUPT") == 0) return palette::kErrorPanic;
+    if (std::strcmp(label, "PARTIAL") == 0 || std::strcmp(label, "INCOMP") == 0) return palette::kWarning;
+    return palette::kPlannedBadge;
+}
+
+lv_obj_t* createPill(lv_obj_t* parent, const char* text, int32_t x, int32_t y,
+                     int32_t w, int32_t h, uint32_t bg_hex, uint32_t txt_hex = palette::kTextPrimary) {
+    lv_obj_t* box = lv_obj_create(parent);
+    if (!box) return nullptr;
+    lv_obj_remove_style_all(box);
+    lv_obj_set_pos(box, x, y);
+    lv_obj_set_size(box, w, h);
+    lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(box, lv_color_hex(bg_hex), 0);
+    lv_obj_set_style_border_width(box, 1, 0);
+    lv_obj_set_style_border_color(box, lv_color_hex(palette::kBorder), 0);
+    lv_obj_set_style_radius(box, 4, 0);
+    lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+    if (lv_obj_t* lbl = lv_label_create(box)) {
+        lv_label_set_long_mode(lbl, LV_LABEL_LONG_CLIP);
+        lv_obj_set_width(lbl, w - 4);
+        lv_label_set_text(lbl, text ? text : "");
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(txt_hex), 0);
+        lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_center(lbl);
+    }
+    return box;
+}
+
+void setLabelIfChanged(lv_obj_t* lbl, const char* text) {
+    if (!lbl || !text) return;
+    const char* cur = lv_label_get_text(lbl);
+    if (!cur || std::strcmp(cur, text) != 0) lv_label_set_text(lbl, text);
+}
 
 class PerformanceScreen final : public ScreenView {
 public:
@@ -23,7 +74,12 @@ public:
         legacy_ = nullptr;
         confirm_ = nullptr;
         oct_lbl_ = status_lbl_ = kb_ = nullptr;
-        quick_status_=nullptr;
+        patch_lbl_ = scene_lbl_ = arp_pill_ = seq_pill_ = fx_pill_ = harm_pill_ = nullptr;
+        scenes_notice_lbl_ = nullptr;
+        for (auto& q : quick_) q = nullptr;
+        for (auto& c : scene_cards_) c = {};
+        for (auto& l : lock_btns_) l = nullptr;
+
         const uint8_t view_mode = nav.subTab(ScreenId::Performance);
         if (view_mode == 3) {
             routing_ = std::make_unique<RoutingEditor>();
@@ -35,177 +91,64 @@ public:
         }
         if (view_mode == 2) return buildLegacy(parent, backend, nav);
 
-        // 1. Dominant Stage Patch Banner (y = 4..62, StageMinimal)
-        createPatchSelectorCard(parent, backend, nav, 8, 4, 784, 58, PresentationLevel::StageMinimal);
+        // 1. Musical Context Banner (y = 4..56, full 800px width, no sidebar)
+        lv_obj_t* top = lv_obj_create(parent);
+        if (top) {
+            applyPanelStyle(top, false);
+            lv_obj_set_pos(top, 8, 4);
+            lv_obj_set_size(top, 784, 52);
+            lv_obj_set_style_pad_all(top, 2, 0);
+            lv_obj_remove_flag(top, LV_OBJ_FLAG_SCROLLABLE);
 
-        // 2. Stage Control & Focus Strip (y = 66..104)
-        lv_obj_t* strip = lv_obj_create(parent);
-        applyPanelStyle(strip, false);
-        lv_obj_set_pos(strip, 8, 66);
-        lv_obj_set_size(strip, 784, 38);
-        lv_obj_set_style_pad_all(strip, 2, 0);
+            patch_lbl_ = createLabel(top, "", 6, 3, 336, &lv_font_montserrat_14, palette::kAccentPrimary);
+            scene_lbl_ = createLabel(top, "", 6, 25, 336, &lv_font_montserrat_14, palette::kTextPrimary);
 
-        ParameterValue lmode_pv{};
-        backend.model().getValue("perf.layer_mode", lmode_pv);
-        const ParameterDescriptor* lmode_desc = ParameterRegistry::findById("perf.layer_mode");
-        char lmode_buf[32] = "LAYER: SINGLE A";
-        if (lmode_desc) {
-            char tmp[20];
-            ParameterRegistry::formatValue(*lmode_desc, lmode_pv, tmp, sizeof(tmp));
-            std::snprintf(lmode_buf, sizeof(lmode_buf), "LAYER: %s", tmp);
+            lv_obj_t* lib_btn = createActionButton(top, "TIMBRES >", 344, 6, 94, 36, nullptr, nullptr, false, false);
+            attachLvContext<UiNavigationManager*>(lib_btn, &nav, [](lv_event_t* e) {
+                if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                auto* n = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
+                if (n) n->requestNavigateTo(ScreenId::PatchBrowser);
+            }, LV_EVENT_CLICKED);
+
+            arp_pill_  = createPill(top, "ARP OFF",  444, 7, 80, 34, palette::kUnavailableBadge);
+            seq_pill_  = createPill(top, "SEQ OFF",  528, 7, 82, 34, palette::kUnavailableBadge);
+            fx_pill_   = createPill(top, "FX LIVE",  614, 7, 80, 34, palette::kPanelHighlight);
+            harm_pill_ = createPill(top, "-/-",      698, 7, 78, 34, palette::kUnavailableBadge);
         }
 
-        const bool scale_on = backend.model().getBool("harmony.scale_enable", true);
-        const bool chord_on = backend.model().getBool("harmony.chord_enable", true);
-        ParameterValue root_pv{}, scale_pv{}, chord_pv{};
-        backend.model().getValue("harmony.root_note", root_pv);
-        backend.model().getValue("harmony.scale_type", scale_pv);
-        backend.model().getValue("harmony.chord_type", chord_pv);
-        char r_str[12] = "C", s_str[16] = "MINOR", c_str[16] = "MIN";
-        if (const auto* d = ParameterRegistry::findById("harmony.root_note"))
-            ParameterRegistry::formatValue(*d, root_pv, r_str, sizeof(r_str));
-        if (const auto* d = ParameterRegistry::findById("harmony.scale_type"))
-            ParameterRegistry::formatValue(*d, scale_pv, s_str, sizeof(s_str));
-        if (const auto* d = ParameterRegistry::findById("harmony.chord_type"))
-            ParameterRegistry::formatValue(*d, chord_pv, c_str, sizeof(c_str));
-
-        char harm_buf[64];
-        std::snprintf(harm_buf, sizeof(harm_buf), "HARM: %s %s | %s",
-                      r_str, scale_on ? s_str : "OFF", chord_on ? c_str : "OFF");
-        if (!backend.isDemoMode()) std::snprintf(harm_buf, sizeof(harm_buf), "HARMONY: PLANNED / PREVIEW");
-
-        lv_obj_t* lmode_btn = createActionButton(strip, lmode_buf, 4, 1, 174, 32, nullptr, nullptr);
-        if(lmode_btn && backend.hasMidiPerformance())lv_obj_add_flag(lmode_btn,LV_OBJ_FLAG_HIDDEN);
-        lv_obj_t* midi_btn=backend.hasMidiPerformance()?
-            createActionButton(strip,backend.midiBankName(),4,1,174,32,nullptr,nullptr):nullptr;
-        lv_obj_t* harm_btn  = createActionButton(strip, harm_buf, 184, 1, 266, 32, nullptr, nullptr,
-                                                 scale_on || chord_on, false);
-
-        status_lbl_ = createLabel(strip, "", 460, 7, 152,
-                                  &lv_font_montserrat_14, palette::kAccentPrimary);
-
-        lv_obj_t* view_btn = createActionButton(
-            strip,
-            view_mode == 0 ? "KEYS FOCUS >" : "< MACRO FOCUS",
-            620, 1, 156, 32, nullptr, nullptr, false, true);
-
-        auto act_cb = [](lv_event_t* e) {
-            if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-            auto* ctx = static_cast<PerfActionCtx*>(lv_event_get_user_data(e));
-            if (!ctx || !ctx->backend || !ctx->nav) return;
-            if (ctx->action == 0) {
-                const int32_t cur = ctx->backend->model().getInt("perf.layer_mode", 0);
-                ctx->backend->requestParameterInt("perf.layer_mode", (cur + 1) % 4);
-                ctx->nav->navigateTo(ScreenId::Performance, ctx->nav->subTab(ScreenId::Performance));
-            } else if (ctx->action == 1) {
-                ctx->nav->navigateTo(ScreenId::Harmony);
-            } else if (ctx->action == 2) {
-                const uint8_t next_tab = (ctx->nav->subTab(ScreenId::Performance) == 0) ? 1 : 0;
-                ctx->nav->navigateTo(ScreenId::Performance, next_tab);
-            } else if (ctx->action == 3) {
-                const int32_t oct = ctx->backend->model().getInt("perf.octave_shift", 0);
-                ctx->backend->requestParameterInt("perf.octave_shift", oct - 1);
-                ctx->nav->refreshActive();
-            } else if (ctx->action == 4) {
-                const int32_t oct = ctx->backend->model().getInt("perf.octave_shift", 0);
-                ctx->backend->requestParameterInt("perf.octave_shift", oct + 1);
-                ctx->nav->refreshActive();
-            } else if(ctx->action==5){
-                ctx->nav->navigateTo(ScreenId::MidiSettings,1);
-            }
+        // 2. Stage V3 Sub-Mode Bar (y = 60..96)
+        struct ModeDef { const char* label; uint8_t tab; bool plan; };
+        static constexpr ModeDef kModes[5] = {
+            {"MACROS 1-4",     0, false},
+            {"MACROS 5-8",     4, false},
+            {"CENAS 1-8",      5, false},
+            {"TECLADO",        1, false},
+            {"ENCADEAR [PLAN]",6, true}
         };
+        struct ModeCtx { UiNavigationManager* nav; uint8_t tab; };
+        for (uint8_t i = 0; i < 5; ++i) {
+            const bool sel = (view_mode == kModes[i].tab);
+            lv_obj_t* btn = createActionButton(
+                parent, kModes[i].label, 8 + i * 158, 60, 150, 36,
+                nullptr, nullptr, sel, sel && !kModes[i].plan);
+            attachLvContext<ModeCtx>(btn, {&nav, kModes[i].tab}, [](lv_event_t* e) {
+                if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                auto* c = static_cast<ModeCtx*>(lv_event_get_user_data(e));
+                if (c && c->nav) c->nav->requestNavigateTo(ScreenId::Performance, c->tab);
+            }, LV_EVENT_CLICKED);
+        }
 
-        if (lmode_btn) attachLvContext<PerfActionCtx>(lmode_btn, PerfActionCtx{&backend, &nav, 0}, act_cb, LV_EVENT_CLICKED);
-        if (harm_btn)  attachLvContext<PerfActionCtx>(harm_btn,  PerfActionCtx{&backend, &nav, 1}, act_cb, LV_EVENT_CLICKED);
-        if (view_btn)  attachLvContext<PerfActionCtx>(view_btn,  PerfActionCtx{&backend, &nav, 2}, act_cb, LV_EVENT_CLICKED);
-        if (midi_btn) attachLvContext<PerfActionCtx>(midi_btn,PerfActionCtx{&backend,&nav,5},act_cb,LV_EVENT_CLICKED);
-
-        static constexpr const char* kMacroIds[8] = {
-            "perf.macro.1", "perf.macro.2", "perf.macro.3", "perf.macro.4",
-            "perf.macro.5", "perf.macro.6", "perf.macro.7", "perf.macro.8"
-        };
-        static constexpr const char* kMacroLabels[8] = {
-            "CHARACTER", "BRIGHTNESS", "MOTION", "SHAPE", "ATTACK", "RELEASE", "SPACE", "EDGE"
-        };
-
-        if (view_mode == 0) {
-            // ── MACRO FOCUS (SMK25 Physical Controller Stage View) ────────────
-            const bool scenes=backend.sceneSlot(0)!=nullptr;
-            const int32_t macro_height=scenes?56:74;
-            const int32_t macro_spacing=scenes?60:78;
-            for (uint8_t i = 0; i < 8; ++i) {
-                const int32_t mx = 8 + (i % 4) * 198;
-                const int32_t my = 108 + (i / 4) * macro_spacing;
-                createParameterSlider(parent, backend, kMacroIds[i], mx, my, 190, macro_height,
-                                      PresentationLevel::StageMinimal, kMacroLabels[i]);
-            }
-            if(scenes) {
-                auto* browser=createActionButton(parent,"SCENES",8,227,80,34,nullptr,nullptr);
-                attachLvContext<UiNavigationManager*>(browser,&nav,[](lv_event_t* e) {
-                    auto* navigation=*static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
-                    navigation->requestNavigateTo(ScreenId::Scenes);
-                },LV_EVENT_CLICKED);
-                for(unsigned i=0;i<scene::kSlots;++i) {
-                    char number[4];
-                    std::snprintf(number,sizeof(number),"%u",i+1);
-                    quick_[i]=createActionButton(parent,number,91+40*i,227,37,34,nullptr,nullptr);
-                    attachLvContext<QuickScene>(quick_[i],{&backend,uint8_t(i)},[](lv_event_t* e) {
-                        const auto& quick=*static_cast<const QuickScene*>(lv_event_get_user_data(e));
-                        SceneOperation operation;
-                        operation.slot=quick.slot;
-                        operation.locks=sessionLockMask();
-                        quick.backend->requestScene(operation);
-                    },LV_EVENT_CLICKED);
-                }
-                quick_status_=status_lbl_;
-                lv_label_set_long_mode(quick_status_,LV_LABEL_LONG_SCROLL_CIRCULAR);
-            }
-
-            if (backend.hasSoundEditor()) {
-                auto* routing = createActionButton(parent, "ROUTING EDITOR", 420, 226, 188, 34, nullptr, nullptr);
-                attachLvContext<UiNavigationManager*>(routing, &nav, [](lv_event_t* e) {
-                    auto* navigation = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
-                    navigation->navigateTo(ScreenId::Performance, 3);
-                }, LV_EVENT_CLICKED);
-                auto* legacy = createActionButton(parent, "LEGACY OFFSETS", 620, 226, 172, 34, nullptr, nullptr);
-                attachLvContext<UiNavigationManager*>(legacy, &nav, [](lv_event_t* e) {
-                    auto* navigation = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
-                    navigation->navigateTo(ScreenId::Performance, 2);
-                }, LV_EVENT_CLICKED);
-            }
-
-            // Bottom Performance Deck: Master Volume + Octave + 1-Octave Stage Keyboard (y = 268..388)
-            createParameterSlider(parent, backend, "perf.master_volume", 8, 268, 232, 72,
-                                  PresentationLevel::StageMinimal, "MASTER LEVEL");
-
-            lv_obj_t* oct_dn = createActionButton(parent, "OCT -", 8, 344, 82, 44, nullptr, nullptr);
-            oct_lbl_ = createLabel(parent, "OCT +0", 92, 356, 60, &lv_font_montserrat_14, palette::kAccentPrimary);
-            if (oct_lbl_) lv_obj_set_style_text_align(oct_lbl_, LV_TEXT_ALIGN_CENTER, 0);
-            lv_obj_t* oct_up = createActionButton(parent, "OCT +", 158, 344, 82, 44, nullptr, nullptr);
-
-            if (oct_dn) attachLvContext<PerfActionCtx>(oct_dn, PerfActionCtx{&backend, &nav, 3}, act_cb, LV_EVENT_CLICKED);
-            if (oct_up) attachLvContext<PerfActionCtx>(oct_up, PerfActionCtx{&backend, &nav, 4}, act_cb, LV_EVENT_CLICKED);
-
-            kb_ = createVirtualKeyboard(parent, backend, nav, KeyboardDisplayMode::StagePlay, 248, 268, 544, 120);
+        // 3. Active Stage Body (y = 102..384)
+        if (view_mode == 0 || view_mode == 4) {
+            buildMacrosStage(parent, backend, nav, (view_mode == 4) ? 4 : 0);
+        } else if (view_mode == 5) {
+            buildScenesStage(parent, backend, nav);
+        } else if (view_mode == 1) {
+            buildKeyboardStage(parent, backend, nav);
+        } else if (view_mode == 6) {
+            buildChainProposalStage(parent);
         } else {
-            // ── KEYS FOCUS (Direct Touchscreen Performance View) ──────────────
-            // 4 Compact Macros (y = 108..214) + Master Volume + Octave + Large 2-Octave Keyboard (y = 218..388)
-            for (uint8_t i = 0; i < 4; ++i) {
-                createParameterKnob(parent, backend, kMacroIds[i], 8 + i * 136, 108, 130, 106,
-                                    PresentationLevel::StageMinimal, kMacroLabels[i]);
-            }
-            createParameterSlider(parent, backend, "perf.master_volume", 552, 108, 240, 64,
-                                  PresentationLevel::StageMinimal, "MASTER LEVEL");
-
-            lv_obj_t* oct_dn = createActionButton(parent, "OCT -", 552, 176, 86, 38, nullptr, nullptr);
-            oct_lbl_ = createLabel(parent, "OCT +0", 642, 185, 60, &lv_font_montserrat_14, palette::kAccentPrimary);
-            if (oct_lbl_) lv_obj_set_style_text_align(oct_lbl_, LV_TEXT_ALIGN_CENTER, 0);
-            lv_obj_t* oct_up = createActionButton(parent, "OCT +", 706, 176, 86, 38, nullptr, nullptr);
-
-            if (oct_dn) attachLvContext<PerfActionCtx>(oct_dn, PerfActionCtx{&backend, &nav, 3}, act_cb, LV_EVENT_CLICKED);
-            if (oct_up) attachLvContext<PerfActionCtx>(oct_up, PerfActionCtx{&backend, &nav, 4}, act_cb, LV_EVENT_CLICKED);
-
-            kb_ = createVirtualKeyboard(parent, backend, nav, KeyboardDisplayMode::StageKeys2Oct, 8, 218, 784, 170);
+            buildMacrosStage(parent, backend, nav, 0);
         }
 
         refresh(backend);
@@ -221,61 +164,163 @@ public:
     void refresh(IUiBackend& backend) override {
         if (routing_) { routing_->refresh(); return; }
         if (legacy_) {
-            IUiBackend::LegacyOffsets offsets;
-            const bool available = backend.legacyOffsets(offsets);
-            lv_label_set_text(legacy_, !available ? "LEGACY OFFSETS UNAVAILABLE" :
-                offsets.fm ? (offsets.compare ? "DX7 | COMPARE ACTIVE" : "DX7") :
-                             (offsets.compare ? "JUNO | COMPARE ACTIVE" : "JUNO"));
-            constexpr const char* names[]{"BRIGHTNESS", "ATTACK", "RELEASE"};
-            constexpr const char* juno[]{"Filter cutoff", "Amp envelope attack", "Amp envelope release"};
-            constexpr const char* fm[]{"FM depth", "Juno only", "Juno only"};
-            for (unsigned i = 0; i < 3; ++i) {
-                char text[96]{};
-                if (available) {
-                    const char* state = offsets.positions[i] == 64 ? "NEUTRAL" :
-                        offsets.compare ? "BYPASSED" : "ACTIVE";
-                    std::snprintf(text, sizeof(text), "%s   %u / 64   %s   %s", names[i],
-                        unsigned(offsets.positions[i]), state, offsets.fm ? fm[i] : juno[i]);
-                }
-                lv_label_set_text(legacy_rows_[i], text);
+            refreshLegacy(backend);
+            return;
+        }
+
+        // Context banner updates
+        if (patch_lbl_) {
+            const auto& patch = backend.model().activePatch();
+            char pbuf[96]{};
+            std::snprintf(pbuf, sizeof(pbuf), "PATCH #%03u %s (%s)",
+                          unsigned(patch.id), patch.name, synthFamilyName(patch.family));
+            setLabelIfChanged(patch_lbl_, pbuf);
+        }
+
+        const SceneView sv = backend.sceneView();
+        if (scene_lbl_) {
+            const char* active_sc = (sv.recall.active < scene::kSlots && backend.sceneSlot(sv.recall.active))
+                                        ? backend.sceneSlot(sv.recall.active)->config.name
+                                        : "--";
+            char sbuf[80]{};
+            std::snprintf(sbuf, sizeof(sbuf), "CENA ATIVA: %s | %s",
+                          active_sc, scenePhaseShort(sv.recall.phase, nullptr));
+            setLabelIfChanged(scene_lbl_, sbuf);
+        }
+
+        const arp::Status* ast = backend.arpStatus();
+        const seq::Status* sst = backend.sequencerStatus();
+        const bool arp_on = ast ? ast->config.enabled : backend.model().getBool("arp.enable", false);
+        const bool seq_on = sst ? sst->playing : backend.model().getBool("seq.playing", false);
+        const bool fx_bypass = backend.model().getBool("fx.bypass_all", false);
+        const bool q_on = backend.model().getBool("harmony.scale_enable", false);
+        const bool ch_on = backend.model().getBool("harmony.chord_enable", false);
+
+        if (arp_pill_) {
+            lv_obj_set_style_bg_color(arp_pill_, lv_color_hex(arp_on ? palette::kActive : palette::kUnavailableBadge), 0);
+            if (lv_obj_t* l = lv_obj_get_child(arp_pill_, 0)) {
+                setLabelIfChanged(l, arp_on ? "ARP ON" : "ARP OFF");
+                lv_obj_set_style_text_color(l, lv_color_hex(arp_on ? palette::kBackground : palette::kTextPrimary), 0);
             }
         }
+        if (seq_pill_) {
+            lv_obj_set_style_bg_color(seq_pill_, lv_color_hex(seq_on ? palette::kActive : palette::kUnavailableBadge), 0);
+            if (lv_obj_t* l = lv_obj_get_child(seq_pill_, 0)) {
+                char sb[16]{};
+                if (seq_on && sst && sst->current_step < seq::kSteps) {
+                    std::snprintf(sb, sizeof(sb), "SEQ S%u", unsigned(sst->current_step + 1U));
+                } else {
+                    std::snprintf(sb, sizeof(sb), seq_on ? "SEQ ON" : "SEQ OFF");
+                }
+                setLabelIfChanged(l, sb);
+                lv_obj_set_style_text_color(l, lv_color_hex(seq_on ? palette::kBackground : palette::kTextPrimary), 0);
+            }
+        }
+        if (fx_pill_) {
+            const uint32_t col = fx_bypass ? palette::kWarning :
+                                 (backend.isDemoMode() ? palette::kPanelHighlight : palette::kPanelHighlight);
+            lv_obj_set_style_bg_color(fx_pill_, lv_color_hex(col), 0);
+            if (lv_obj_t* l = lv_obj_get_child(fx_pill_, 0)) {
+                setLabelIfChanged(l, fx_bypass ? "FX BYP" : (backend.isDemoMode() ? "FX DEMO" : "FX LIVE"));
+            }
+        }
+        if (harm_pill_) {
+            const bool hon = q_on || ch_on;
+            lv_obj_set_style_bg_color(harm_pill_, lv_color_hex(hon ? palette::kAccentPrimary : palette::kUnavailableBadge), 0);
+            if (lv_obj_t* l = lv_obj_get_child(harm_pill_, 0)) {
+                char hb[16]{};
+                std::snprintf(hb, sizeof(hb), "%s/%s", q_on ? "Q" : "-", ch_on ? "CH" : "-");
+                setLabelIfChanged(l, hb);
+                lv_obj_set_style_text_color(l, lv_color_hex(hon ? palette::kBackground : palette::kTextPrimary), 0);
+            }
+        }
+
+        // Quick 8-Scene strip refresh (Macros 1-4 / 5-8)
+        for (unsigned i = 0; i < scene::kSlots; ++i) {
+            if (!quick_[i]) continue;
+            const auto* slot = backend.sceneSlot(i);
+            const bool valid = slot && slot->state == seq::SlotState::Valid;
+            const bool is_pend = (sv.recall.pending == i);
+            const bool is_act = (sv.recall.active == i);
+            const bool is_fail = (is_act && (sv.recall.phase == scene::RecallPhase::Failed ||
+                                             sv.recall.phase == scene::RecallPhase::PartialApply));
+
+            if (valid) lv_obj_remove_state(quick_[i], LV_STATE_DISABLED);
+            else lv_obj_add_state(quick_[i], LV_STATE_DISABLED);
+
+            const uint32_t bg = is_pend ? palette::kWarning :
+                                is_fail ? palette::kErrorPanic :
+                                is_act  ? palette::kActive :
+                                valid   ? palette::kPanelHighlight : palette::kUnavailableBadge;
+            lv_obj_set_style_bg_color(quick_[i], lv_color_hex(bg), 0);
+            if (lv_obj_t* l = lv_obj_get_child(quick_[i], 0)) {
+                char sname[20]{};
+                if (valid && slot->config.name[0]) {
+                    std::snprintf(sname, sizeof(sname), "C%u %.5s", i + 1U, slot->config.name);
+                } else {
+                    std::snprintf(sname, sizeof(sname), "C%u ---", i + 1U);
+                }
+                setLabelIfChanged(l, sname);
+                const uint32_t ink = (is_pend || is_act) ? palette::kBackground : palette::kTextPrimary;
+                lv_obj_set_style_text_color(l, lv_color_hex(ink), 0);
+            }
+        }
+
+        // Full Cenas 1-8 tab refresh
+        for (unsigned s = 0; s < scene::kSlots; ++s) {
+            if (!scene_cards_[s].btn) continue;
+            const scene::Slot* slot = backend.sceneSlot(s);
+            const bool sel = (selected_scene_slot_ == s);
+            const bool is_act = (sv.recall.active == s);
+            const bool is_pend = (sv.recall.pending == s);
+            const char* ph = is_pend ? "PENDING" :
+                             (is_act ? "ACTIVE" : scenePhaseShort(scene::RecallPhase::Idle, slot));
+            if (is_act && sv.recall.phase == scene::RecallPhase::PartialApply) ph = "PARTIAL";
+            if (sel && sv.recall.phase == scene::RecallPhase::Failed) ph = "FAILED";
+
+            if (scene_cards_[s].badge) {
+                lv_obj_set_style_bg_color(scene_cards_[s].badge, lv_color_hex(sceneStateColor(ph)), 0);
+                if (lv_obj_t* l = lv_obj_get_child(scene_cards_[s].badge, 0)) {
+                    setLabelIfChanged(l, ph);
+                }
+            }
+            if (scene_cards_[s].card) {
+                lv_obj_set_style_border_width(scene_cards_[s].card, sel ? 2 : 1, 0);
+                lv_obj_set_style_border_color(
+                    scene_cards_[s].card,
+                    lv_color_hex(sel ? palette::kAccentPrimary : palette::kBorder), 0);
+            }
+            if (lv_obj_t* l = lv_obj_get_child(scene_cards_[s].btn, 0)) {
+                char lbl[32]{};
+                if (slot && slot->state == seq::SlotState::Valid) {
+                    std::snprintf(lbl, sizeof(lbl), "C%u: %.10s", s + 1U, slot->config.name);
+                } else {
+                    std::snprintf(lbl, sizeof(lbl), "C%u: (EMPTY)", s + 1U);
+                }
+                setLabelIfChanged(l, lbl);
+            }
+        }
+        if (scenes_notice_lbl_) {
+            char nbuf[96]{};
+            const char* notice_txt = (sv.notice && sv.notice[0]) ? sv.notice : scenePhaseShort(sv.recall.phase, nullptr);
+            std::snprintf(nbuf, sizeof(nbuf), "CENA %u | %s",
+                          unsigned(selected_scene_slot_ + 1U), notice_txt);
+            setLabelIfChanged(scenes_notice_lbl_, nbuf);
+        }
+        const uint8_t locks = sessionLockMask();
+        static constexpr uint8_t kLockBits[4] = {perf_lock::Fx, perf_lock::Harmony, perf_lock::Arp, perf_lock::Macros};
+        for (unsigned li = 0; li < 4; ++li) {
+            if (!lock_btns_[li]) continue;
+            const bool on = (locks & kLockBits[li]) != 0U;
+            if (on) lv_obj_add_state(lock_btns_[li], LV_STATE_CHECKED);
+            else lv_obj_remove_state(lock_btns_[li], LV_STATE_CHECKED);
+        }
+
         if (oct_lbl_) {
             const int32_t oct = backend.model().getInt("perf.octave_shift", 0);
-            char obuf[16];
+            char obuf[16]{};
             std::snprintf(obuf, sizeof(obuf), "OCT %+ld", static_cast<long>(oct));
-            lv_label_set_text(oct_lbl_, obuf);
-        }
-        if (status_lbl_) {
-            char st_buf[32];
-            std::snprintf(st_buf, sizeof(st_buf), "CMD: %s", commandStateLabel(backend.lastCommandState()));
-            if(!quick_status_) lv_label_set_text(status_lbl_, st_buf);
-        }
-        if(quick_status_) {
-            const auto view=backend.sceneView();
-            for(unsigned i=0;i<scene::kSlots;++i) {
-                const auto* slot=backend.sceneSlot(i);
-                if(slot && slot->state==seq::SlotState::Valid) lv_obj_remove_state(quick_[i],LV_STATE_DISABLED);
-                else lv_obj_add_state(quick_[i],LV_STATE_DISABLED);
-                const auto color=view.recall.pending==i?palette::kWarning:
-                    view.recall.active==i?palette::kActive:palette::kPanelHighlight;
-                const auto next=lv_color_hex(color);
-                if(!lv_color_eq(next,lv_obj_get_style_bg_color(quick_[i],LV_PART_MAIN)))
-                    lv_obj_set_style_bg_color(quick_[i],next,0);
-                auto* label=lv_obj_get_child(quick_[i],0);
-                const auto ink=lv_color_hex(color==palette::kPanelHighlight?palette::kTextPrimary:palette::kBackground);
-                if(!lv_color_eq(ink,lv_obj_get_style_text_color(label,LV_PART_MAIN)))
-                    lv_obj_set_style_text_color(label,ink,0);
-            }
-            const bool pending=view.recall.pending!=seq::kNoSlot;
-            const auto* selected=backend.sceneSlot(pending?view.recall.pending:view.recall.active);
-            char message[48];
-            const char* state=pending?"PENDING":view.dirty==scene::Dirty::Clean?"CLEAN":
-                view.dirty==scene::Dirty::Modified?"MODIFIED":view.dirty==scene::Dirty::Invalid?"INVALID":"UNSAVED";
-            const char* mode=view.recall.phase==scene::RecallPhase::WaitingBoundary?"NEXT BAR / ":"NOW / ";
-            std::snprintf(message,sizeof(message),"%s%s%s%s",mode,state,
-                selected?" / ":"",selected?selected->config.name:"");
-            if(std::strcmp(lv_label_get_text(quick_status_),message)) lv_label_set_text(quick_status_,message);
+            setLabelIfChanged(oct_lbl_, obuf);
         }
         if (kb_) {
             refreshVirtualKeyboard(kb_);
@@ -284,14 +329,215 @@ public:
 
 private:
     struct QuickScene { IUiBackend* backend; uint8_t slot; };
-    lv_obj_t* quick_[scene::kSlots]{};
-    lv_obj_t* quick_status_=nullptr;
+    struct SceneSlotCtx { PerformanceScreen* screen; IUiBackend* backend; uint8_t slot; int action; };
+    struct SceneCard { lv_obj_t* card = nullptr; lv_obj_t* btn = nullptr; lv_obj_t* badge = nullptr; };
+
+    void buildMacrosStage(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav, uint8_t base_macro) {
+        static constexpr const char* kMacroIds[8] = {
+            "perf.macro.1", "perf.macro.2", "perf.macro.3", "perf.macro.4",
+            "perf.macro.5", "perf.macro.6", "perf.macro.7", "perf.macro.8"
+        };
+        static constexpr const char* kMacroLabels[8] = {
+            "CHARACTER", "BRIGHTNESS", "MOTION", "SHAPE", "ATTACK", "RELEASE", "SPACE", "EDGE"
+        };
+        for (uint8_t i = 0; i < 4; ++i) {
+            const uint8_t m_idx = static_cast<uint8_t>(base_macro + i);
+            const int32_t x = 8 + (i % 2) * 394;
+            const int32_t y = 102 + (i / 2) * 86;
+            createParameterSlider(parent, backend, kMacroIds[m_idx], x, y, 390, 80,
+                                  PresentationLevel::StageMinimal, kMacroLabels[m_idx]);
+        }
+
+        // Quick 8-Scene Recall Strip (y = 278..384)
+        lv_obj_t* qs = lv_obj_create(parent);
+        if (!qs) return;
+        applyPanelStyle(qs, false);
+        lv_obj_set_pos(qs, 8, 278);
+        lv_obj_set_size(qs, 784, 102);
+        lv_obj_set_style_pad_all(qs, 4, 0);
+        lv_obj_remove_flag(qs, LV_OBJ_FLAG_SCROLLABLE);
+
+        createLabel(qs, "ACESSO RAPIDO - CENAS 1..8 (TOQUE P/ RECALL)", 6, 4, 520,
+                    &lv_font_montserrat_14, palette::kTextSecondary);
+
+        lv_obj_t* sel_btn = createActionButton(qs, "SELETIVO >", 654, 2, 120, 32, nullptr, nullptr, false, true);
+        attachLvContext<UiNavigationManager*>(sel_btn, &nav, [](lv_event_t* e) {
+            if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+            auto* n = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
+            if (n) n->requestNavigateTo(ScreenId::Scenes);
+        }, LV_EVENT_CLICKED);
+
+        const bool has_scenes = (backend.sceneSlot(0) != nullptr);
+        for (unsigned s = 0; s < scene::kSlots; ++s) {
+            char num[12]{};
+            std::snprintf(num, sizeof(num), "C%u ---", s + 1U);
+            quick_[s] = createActionButton(qs, num, 6 + int32_t(s) * 96, 40, 92, 46, nullptr, nullptr);
+            if (quick_[s] && has_scenes) {
+                attachLvContext<QuickScene>(quick_[s], {&backend, uint8_t(s)}, [](lv_event_t* e) {
+                    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                    const auto& q = *static_cast<const QuickScene*>(lv_event_get_user_data(e));
+                    SceneOperation op;
+                    op.slot = q.slot;
+                    op.locks = sessionLockMask();
+                    q.backend->requestScene(op);
+                }, LV_EVENT_CLICKED);
+            }
+        }
+    }
+
+    void buildScenesStage(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) {
+        if (!backend.sceneSlot(0)) {
+            createLabel(parent, "SCENE LIBRARY UNAVAILABLE (DEMO)", 16, 120, 760,
+                        &lv_font_montserrat_14, palette::kWarning);
+            return;
+        }
+        for (uint8_t s = 0; s < scene::kSlots; ++s) {
+            const int32_t x = 8 + (s % 4) * 198;
+            const int32_t y = 102 + (s / 4) * 86;
+            lv_obj_t* card = lv_obj_create(parent);
+            applyPanelStyle(card, false);
+            lv_obj_set_pos(card, x, y);
+            lv_obj_set_size(card, 190, 80);
+            lv_obj_set_style_pad_all(card, 4, 0);
+            lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+            lv_obj_t* badge = createPill(card, "EMPTY", 92, 2, 88, 22, palette::kPlannedBadge);
+            lv_obj_t* btn = createActionButton(card, "C1", 2, 28, 178, 42, nullptr, nullptr, false, false);
+            scene_cards_[s] = {card, btn, badge};
+
+            attachLvContext<SceneSlotCtx>(btn, {this, &backend, s, 0}, [](lv_event_t* e) {
+                if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                auto* c = static_cast<SceneSlotCtx*>(lv_event_get_user_data(e));
+                if (!c || !c->screen || !c->backend) return;
+                c->screen->selected_scene_slot_ = c->slot;
+                SceneOperation op;
+                op.slot = c->slot;
+                op.locks = sessionLockMask();
+                c->backend->requestScene(op);
+                c->screen->refresh(*c->backend);
+            }, LV_EVENT_CLICKED);
+        }
+
+        lv_obj_t* bar = lv_obj_create(parent);
+        applyPanelStyle(bar, false);
+        lv_obj_set_pos(bar, 8, 278);
+        lv_obj_set_size(bar, 784, 102);
+        lv_obj_set_style_pad_all(bar, 4, 0);
+        lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
+
+        scenes_notice_lbl_ = createLabel(bar, "CENA 1 | --", 6, 4, 768, &lv_font_montserrat_14, palette::kTextSecondary);
+
+        const auto add_act = [&](const char* lbl, int32_t x, int32_t w, int act, bool acc = false) {
+            lv_obj_t* b = createActionButton(bar, lbl, x, 36, w, 48, nullptr, nullptr, acc, acc);
+            attachLvContext<SceneSlotCtx>(b, {this, &backend, 0, act}, [](lv_event_t* e) {
+                if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                auto* c = static_cast<SceneSlotCtx*>(lv_event_get_user_data(e));
+                if (!c || !c->screen || !c->backend) return;
+                SceneOperation op;
+                op.slot = c->screen->selected_scene_slot_;
+                op.locks = sessionLockMask();
+                if (c->action == 1) op.action = SceneAction::Load;
+                else if (c->action == 2) op.action = SceneAction::Save;
+                else if (c->action == 3) op.action = SceneAction::Delete;
+                c->backend->requestScene(op);
+                c->screen->refresh(*c->backend);
+            }, LV_EVENT_CLICKED);
+        };
+        add_act("RECALL", 6, 88, 1, true);
+
+        lv_obj_t* mod_btn = createActionButton(bar, "SELETIVO...", 98, 36, 114, 48, nullptr, nullptr, false, false);
+        attachLvContext<UiNavigationManager*>(mod_btn, &nav, [](lv_event_t* e) {
+            if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+            auto* n = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
+            if (n) n->requestNavigateTo(ScreenId::Scenes);
+        }, LV_EVENT_CLICKED);
+
+        add_act("SALVAR", 216, 86, 2);
+        add_act("LIMPAR", 306, 86, 3);
+
+        static constexpr const char* kLockNames[4] = {"LK FX", "LK HARM", "LK ARP", "LK MAC"};
+        static constexpr uint8_t kLockBits[4] = {perf_lock::Fx, perf_lock::Harmony, perf_lock::Arp, perf_lock::Macros};
+        for (uint8_t li = 0; li < 4; ++li) {
+            lock_btns_[li] = createActionButton(bar, kLockNames[li], 406 + li * 93, 36, 88, 48, nullptr, nullptr, false, false);
+            attachLvContext<SceneSlotCtx>(lock_btns_[li], {this, &backend, kLockBits[li], 4}, [](lv_event_t* e) {
+                if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                auto* c = static_cast<SceneSlotCtx*>(lv_event_get_user_data(e));
+                if (!c || !c->screen || !c->backend) return;
+                setSessionLockMask(sessionLockMask() ^ c->slot);
+                c->screen->refresh(*c->backend);
+            }, LV_EVENT_CLICKED);
+        }
+    }
+
+    void buildKeyboardStage(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) {
+        struct OctCtx { IUiBackend* backend; UiNavigationManager* nav; int delta; };
+        createParameterSlider(parent, backend, "perf.master_volume", 8, 102, 320, 56,
+                              PresentationLevel::StageMinimal, "MASTER LEVEL");
+
+        lv_obj_t* oct_dn = createActionButton(parent, "OCT -", 336, 106, 110, 48, nullptr, nullptr);
+        oct_lbl_ = createLabel(parent, "OCT +0", 454, 120, 84, &lv_font_montserrat_14, palette::kAccentPrimary);
+        if (oct_lbl_) lv_obj_set_style_text_align(oct_lbl_, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_t* oct_up = createActionButton(parent, "OCT +", 546, 106, 110, 48, nullptr, nullptr);
+
+        const auto on_oct = [](lv_event_t* e) {
+            if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+            auto* c = static_cast<OctCtx*>(lv_event_get_user_data(e));
+            if (!c || !c->backend || !c->nav) return;
+            const int32_t oct = c->backend->model().getInt("perf.octave_shift", 0);
+            c->backend->requestParameterInt("perf.octave_shift", oct + c->delta);
+            c->nav->refreshActive();
+        };
+        attachLvContext<OctCtx>(oct_dn, {&backend, &nav, -1}, on_oct, LV_EVENT_CLICKED);
+        attachLvContext<OctCtx>(oct_up, {&backend, &nav, 1}, on_oct, LV_EVENT_CLICKED);
+
+        createLabel(parent, "SAIR LIBERA TOUCH", 664, 120, 128, &lv_font_montserrat_14, palette::kTextSecondary);
+
+        kb_ = createVirtualKeyboard(parent, backend, nav, KeyboardDisplayMode::StageKeys2Oct, 8, 164, 784, 218);
+    }
+
+    void buildChainProposalStage(lv_obj_t* parent) {
+        lv_obj_t* card = lv_obj_create(parent);
+        if (!card) return;
+        applyPanelStyle(card, true);
+        lv_obj_set_pos(card, 8, 102);
+        lv_obj_set_size(card, 784, 276);
+        lv_obj_set_style_border_color(card, lv_color_hex(palette::kWarning), 0);
+        lv_obj_set_style_pad_all(card, 8, 0);
+        lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+        createLabel(card, "ENCADEAMENTO DE CENAS - PROPOSTA VISUAL", 6, 4, 540,
+                    &lv_font_montserrat_14, palette::kAccentPrimary);
+        createPill(card, "NAO IMPLEMENTADO", 584, 2, 180, 26, palette::kWarning, palette::kBackground);
+        createLabel(card,
+                    "MOCKUP VISUAL SOMENTE - NAO IMPLEMENTADO NO AUDIO OWNER / NVS.",
+                    6, 36, 756, &lv_font_montserrat_14, palette::kWarning);
+
+        static constexpr const char* kSteps[4] = {
+            "1: CENA 1 [4 COMP.]", "2: CENA 3 [8 COMP.]", "3: CENA 2 [2 COMP.]", "4: LOOP / STOP"
+        };
+        for (int i = 0; i < 4; ++i) {
+            lv_obj_t* box = lv_obj_create(card);
+            applyPanelStyle(box, i == 0);
+            lv_obj_set_pos(box, 6 + i * 192, 72);
+            lv_obj_set_size(box, 184, 96);
+            lv_obj_set_style_pad_all(box, 6, 0);
+            lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+            createLabel(box, kSteps[i], 4, 6, 168, &lv_font_montserrat_14, palette::kTextPrimary);
+            createLabel(box, i == 0 ? "ATUAL (MOCK)" : "FILA (MOCK)", 4, 34, 168, &lv_font_montserrat_14, palette::kTextSecondary);
+            createLabel(box, "NEXT BAR", 4, 62, 168, &lv_font_montserrat_14, palette::kPlannedBadge);
+        }
+
+        createLabel(card,
+                    "Proposta futura: ChainEngine no Audio Owner, troca em fronteira de compasso e desarme manual sem bloquear Panic.",
+                    6, 190, 756, &lv_font_montserrat_14, palette::kTextSecondary);
+    }
+
     bool buildLegacy(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) {
         confirming_ = false;
         createLabel(parent, "LEGACY MACRO OFFSETS", 12, 14, 560, &lv_font_montserrat_14, palette::kAccentPrimary);
         legacy_ = createLabel(parent, "", 12, 70, 760, &lv_font_montserrat_14, palette::kTextSecondary);
         for (unsigned i = 0; i < 3; ++i)
-            legacy_rows_[i] = createLabel(parent, "", 12, 112 + 36 * i, 760,
+            legacy_rows_[i] = createLabel(parent, "", 12, 112 + 36 * int32_t(i), 760,
                 &lv_font_montserrat_14, palette::kTextPrimary);
         confirm_ = createLabel(parent, "", 12, 252, 760, &lv_font_montserrat_14, palette::kAccentPrimary);
         auto* back = createActionButton(parent, "BACK / CANCEL", 12, 302, 184, 44, nullptr, nullptr);
@@ -319,16 +565,53 @@ private:
         return true;
     }
 
+    void refreshLegacy(IUiBackend& backend) {
+        IUiBackend::LegacyOffsets offsets;
+        const bool available = backend.legacyOffsets(offsets);
+        lv_label_set_text(legacy_, !available ? "LEGACY OFFSETS UNAVAILABLE" :
+            offsets.fm ? (offsets.compare ? "DX7 | COMPARE ACTIVE" : "DX7") :
+                         (offsets.compare ? "JUNO | COMPARE ACTIVE" : "JUNO"));
+        constexpr const char* names[]{"BRIGHTNESS", "ATTACK", "RELEASE"};
+        constexpr const char* juno[]{"Filter cutoff", "Amp envelope attack", "Amp envelope release"};
+        constexpr const char* fm[]{"FM depth", "Juno only", "Juno only"};
+        for (unsigned i = 0; i < 3; ++i) {
+            char text[96]{};
+            if (available) {
+                const char* state = offsets.positions[i] == 64 ? "NEUTRAL" :
+                    offsets.compare ? "BYPASSED" : "ACTIVE";
+                std::snprintf(text, sizeof(text), "%s   %u / 64   %s   %s", names[i],
+                    unsigned(offsets.positions[i]), state, offsets.fm ? fm[i] : juno[i]);
+            }
+            lv_label_set_text(legacy_rows_[i], text);
+        }
+        if (status_lbl_) {
+            char st_buf[32]{};
+            std::snprintf(st_buf, sizeof(st_buf), "CMD: %s", commandStateLabel(backend.lastCommandState()));
+            lv_label_set_text(status_lbl_, st_buf);
+        }
+    }
+
     std::unique_ptr<RoutingEditor> routing_;
     lv_obj_t* routing_root_ = nullptr;
     IUiBackend::LegacyOffsets expected_{};
     bool confirming_ = false;
+    uint8_t selected_scene_slot_ = 0;
     lv_obj_t* legacy_ = nullptr;
     lv_obj_t* legacy_rows_[3]{};
     lv_obj_t* confirm_ = nullptr;
     lv_obj_t* oct_lbl_    = nullptr;
     lv_obj_t* status_lbl_ = nullptr;
     lv_obj_t* kb_         = nullptr;
+    lv_obj_t* patch_lbl_  = nullptr;
+    lv_obj_t* scene_lbl_  = nullptr;
+    lv_obj_t* arp_pill_   = nullptr;
+    lv_obj_t* seq_pill_   = nullptr;
+    lv_obj_t* fx_pill_    = nullptr;
+    lv_obj_t* harm_pill_  = nullptr;
+    lv_obj_t* quick_[scene::kSlots]{};
+    SceneCard scene_cards_[scene::kSlots]{};
+    lv_obj_t* lock_btns_[4]{};
+    lv_obj_t* scenes_notice_lbl_ = nullptr;
 };
 
 } // namespace
