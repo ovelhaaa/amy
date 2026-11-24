@@ -1,3 +1,16 @@
+# SMK-P4 UI 0.18-C.2a - FM / MIDI
+
+FM GLOBAL/OPERADOR views, expanded topology and contextual MIDI Learn.
+See the [UX report, captures and validation limits](docs/ui_018c2a_fm_midi_ux_report.md).
+Host prerequisites: GCC/G++, ar, Git, Python with Pillow and the pinned LVGL 9.3.0
+managed component (resolved by the ESP-IDF/PlatformIO build below).
+
+```powershell
+powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_ui_018c2.ps1 -Clean -Regressions
+```
+
+Physical qualification remains deferred; host results do not qualify stage use.
+
 # SMK-P4 0.15 — Arpeggiator
 
 The editor profiles provide an internal-clock arpeggiator with Harmony Assist, SMK25 B4/Play/Stop and live touchscreen controls.
