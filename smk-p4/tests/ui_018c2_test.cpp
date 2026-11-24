@@ -377,7 +377,9 @@ int main(int argc, char** argv) {
     assert(findLabel(app.contentObject(), "PATCH ATIVO") != nullptr);
     capture("01_biblioteca_lista");
 
-    // Pre-select patch 135 (must NOT load yet!)
+    // Filter to AMY DX7 and go to page 2 where patch 135 lives, then pre-select 135 (must NOT load yet!)
+    clickBtn(app.contentObject(), "AMY DX7", app);
+    clickBtn(app.contentObject(), "PAGE >", app);
     clickBtn(app.contentObject(), "135 ", app, true);
     for (int k = 0; k < 4; ++k) sync_runtime();
     assert(runtime.snapshot().patch_id == 128);
@@ -405,6 +407,7 @@ int main(int argc, char** argv) {
     assert(adapter.requestParameterFloat("amp.level", 85.0f).accepted());
     for (int k = 0; k < 4; ++k) sync_runtime();
     assert(adapter.patchNeedsDiscardConfirmation());
+    clickBtn(app.contentObject(), "< PAGE", app);
     clickBtn(app.contentObject(), "128 ", app, true);
     clickBtn(app.contentObject(), "CARREGAR JA", app);
     assert(findLabel(app.contentObject(), "Unsaved changes to the current patch will be lost.") != nullptr);
