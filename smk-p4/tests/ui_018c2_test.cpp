@@ -753,6 +753,8 @@ int main(int argc, char** argv) {
                 assert(g.nodes[i].x >= 0 && g.nodes[i].y >= 0);
                 assert(g.nodes[i].x + g.nodes[i].w <= aw);
                 assert(g.nodes[i].y + g.nodes[i].h <= ah);
+                assert(g.nodes[i].is_carrier == topo.isCarrier(g.nodes[i].op));
+                assert(g.nodes[i].has_fb == topo.hasFeedback(g.nodes[i].op));
             }
             assert(g.out_node.x >= 0 && g.out_node.y >= 0);
             assert(g.out_node.x + g.out_node.w <= aw);
@@ -781,6 +783,16 @@ int main(int argc, char** argv) {
                     assert(edge.src_op == topo.feedback_out && edge.dst_op == topo.feedback_in);
                     ++feedback_seen;
                 }
+                const auto on_boundary = [](const smk::p4::fm::GraphNode& node,
+                                            const smk::p4::fm::GraphPoint& point) {
+                    return point.x >= node.x && point.x <= node.x + node.w &&
+                           point.y >= node.y && point.y <= node.y + node.h &&
+                           (point.x == node.x || point.x == node.x + node.w ||
+                            point.y == node.y || point.y == node.y + node.h);
+                };
+                assert(on_boundary(g.nodes[6 - edge.src_op], edge.points[0]));
+                assert(on_boundary(edge.dst_op ? g.nodes[6 - edge.dst_op] : g.out_node,
+                                   edge.points[edge.point_count - 1]));
                 assert(g.edges[e].point_count >= 2 && g.edges[e].point_count <= 4);
                 for (uint8_t p = 0; p < g.edges[e].point_count; ++p) {
                     assert(g.edges[e].points[p].x >= 0 && g.edges[e].points[p].x <= aw);
@@ -900,6 +912,17 @@ int main(int argc, char** argv) {
     clickBtn(lv_screen_active(), "CLOSE", app);
     sync_runtime();
 
+    clickBtn(app.contentObject(), "EXPAND", app);
+    assert(adapter.confirmPatchDiscard(136, 0).accepted());
+    sync_runtime(); runtime.loadPendingPatch();
+    for (int k = 0; k < 4; ++k) sync_runtime();
+    assert(runtime.snapshot().patch_id == 136);
+    assert(!findLabel(lv_screen_active(), "FM TOPOLOGY:", true));
+    assert(adapter.requestSelectPatch(135, 0, 0).accepted());
+    sync_runtime(); runtime.loadPendingPatch();
+    for (int k = 0; k < 4; ++k) sync_runtime();
+    assert(runtime.snapshot().patch_id == 135);
+
     // 3. MIDI Learn ergonomics & captures
     assert(app.navigation().navigateTo(ScreenId::MidiSettings, 1));
     sync_runtime();
@@ -979,6 +1002,19 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 100; ++i) {
         clickBtn(app.contentObject(), "LEARN", app);
         clickBtn(app.contentObject(), "CANCEL", app);
+    }
+    assert(app.navigation().navigateTo(ScreenId::Performance, 0));
+    sync_runtime();
+    for (const auto screen : {ScreenId::Performance, ScreenId::SoundEditor, ScreenId::Sequencer,
+                              ScreenId::Effects, ScreenId::MidiSettings}) {
+        assert(app.navigation().navigateTo(screen, 0));
+        sync_runtime();
+        assert(runtime.usbInput().transfer(hold_note, sizeof(hold_note), preview::g_sim_tick_ms));
+        sync_runtime();
+        assert(runtime.snapshot().active_notes > 0);
+        clickBtn(app.rootObject(), "PANIC", app);
+        sync_runtime();
+        assert(runtime.snapshot().active_notes == 0);
     }
     assert(app.navigation().navigateTo(ScreenId::Performance, 0));
     sync_runtime();
