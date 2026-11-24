@@ -18,6 +18,7 @@ set(blueprint_sources
         "widgets/modulation_matrix.cpp"
         "widgets/signal_meter.cpp"
         "widgets/fm_algorithm_selector.cpp"
+        "widgets/confirm_dialog.cpp"
         "screens/performance_screen.cpp"
         "screens/patch_browser_screen.cpp"
         "screens/sound_editor_screen.cpp"

@@ -67,7 +67,7 @@ UiCommandResult UiBlueprintPerformanceAdapter::result(UiCommandState state,const
     last_token_=token;
     // Retain canonical/static IDs, never a caller-owned temporary string.
     const auto* desc=ParameterRegistry::findById(id);
-    last_id_=desc?desc->id:"command";
+    last_id_=desc?desc->id:(eq(id,"panic")?"panic":"command");
     model_.setNotice(notice); model_.bumpRevision();
     return {state,token,notice};
 }

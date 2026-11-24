@@ -85,6 +85,25 @@ bool harmonyControlAvailable(const IUiBackend& backend) {
     return backend.isDemoMode() || backend.model().live_harmony.available;
 }
 
+void setDisabledIfChanged(lv_obj_t* obj, bool disabled) {
+    if (!obj) return;
+    const bool cur = lv_obj_has_state(obj, LV_STATE_DISABLED);
+    if (disabled && !cur) lv_obj_add_state(obj, LV_STATE_DISABLED);
+    else if (!disabled && cur) lv_obj_remove_state(obj, LV_STATE_DISABLED);
+}
+
+int32_t findNextSupportedEnum(const IUiBackend& backend, const char* param_id,
+                                int32_t cur, int delta, int32_t count) {
+    if (count <= 0) return cur;
+    for (int32_t step = 1; step <= count; ++step) {
+        const int32_t cand = ((cur + delta * step) % count + count) % count;
+        if (backend.isParameterValueSupported(param_id, cand)) {
+            return cand;
+        }
+    }
+    return cur;
+}
+
 } // namespace
 
 bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) {
@@ -95,7 +114,16 @@ bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManag
     active_overlay_ = OverlayKind::None;
     overlay_backdrop_ = overlay_card_ = nullptr;
     tempo_label_ = tempo_notice_ = tempo_slider_ = tempo_big_lbl_ = nullptr;
-    harm_status_lbl_ = harm_q_btn_ = harm_ch_btn_ = nullptr;
+    harm_status_lbl_ = harm_q_btn_ = harm_ch_btn_ = harm_touch_btn_ = harm_preset_btn_ = nullptr;
+    for (int i = 0; i < 5; ++i) {
+        harm_row_lbls_[i] = nullptr;
+        harm_row_prev_[i] = nullptr;
+        harm_row_next_[i] = nullptr;
+        harm_row_bufs_[i][0] = '\0';
+    }
+    harm_preset_buf_[0] = '\0';
+    harm_pending_token_ = 0;
+    harm_awaiting_token_ = false;
 
     root_ = lv_obj_create(parent);
     if (!root_) return false;
@@ -244,6 +272,10 @@ bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManag
                 if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
                 auto* ctx = static_cast<StripCtx*>(lv_event_get_user_data(e));
                 if (ctx && ctx->backend) {
+                    if (ctx->strip) {
+                        ctx->strip->harm_awaiting_token_ = false;
+                        ctx->strip->harm_pending_token_ = 0;
+                    }
                     ctx->backend->requestPanic();
                     if (ctx->nav) ctx->nav->refreshActive();
                     if (ctx->strip && ctx->nav) ctx->strip->refresh(*ctx->backend, *ctx->nav);
@@ -267,7 +299,7 @@ void StatusStrip::refresh(IUiBackend& backend, UiNavigationManager& nav) {
         if (!backend.isDemoMode() && !backend.isConnected()) {
             std::snprintf(next_patch, sizeof(next_patch), "PATCH: WAIT OWNER");
         } else {
-            std::snprintf(next_patch, sizeof(next_patch), "%03u %s", patch.id, patch.name);
+            std::snprintf(next_patch, sizeof(next_patch), "#%03u %.14s", patch.id, patch.name);
         }
         setStaticBufIfChanged(patch_lbl_, patch_buf_, sizeof(patch_buf_), next_patch);
     }
@@ -295,13 +327,24 @@ void StatusStrip::refresh(IUiBackend& backend, UiNavigationManager& nav) {
     const auto& lh = backend.model().live_harmony;
     const bool q_on = backend.model().getBool("harmony.scale_enable", lh.configuration.scale_on);
     const bool ch_on = backend.model().getBool("harmony.chord_enable", lh.configuration.chord_on);
+    const bool touch_on = backend.model().getBool("harmony.apply_touch", lh.configuration.touch);
     const int32_t root_i = std::clamp<int32_t>(backend.model().getInt("harmony.root_note", lh.configuration.root), 0, 11);
     const int32_t scale_i = std::clamp<int32_t>(backend.model().getInt("harmony.scale_type", lh.configuration.scale), 0, 10);
 
-    const bool pending = !backend.isDemoMode() && lh.pending;
     const char* last_id = backend.lastCommandParameterId();
     const bool is_harm_cmd = (last_id != nullptr) && (std::strncmp(last_id, "harmony.", 8) == 0);
-    const bool rejected = !lh.pending && is_harm_cmd &&
+    if (harm_awaiting_token_) {
+        if (backend.lastCommandToken() == harm_pending_token_ &&
+            (backend.lastCommandState() == UiCommandState::Confirmed ||
+             backend.lastCommandState() == UiCommandState::Rejected ||
+             backend.lastCommandState() == UiCommandState::Unsupported)) {
+            harm_awaiting_token_ = false;
+        }
+    }
+    const bool pending = !backend.isDemoMode() &&
+                         (lh.pending || harm_awaiting_token_ ||
+                          (is_harm_cmd && backend.lastCommandState() == UiCommandState::Requested));
+    const bool rejected = !pending && is_harm_cmd &&
                           (backend.lastCommandState() == UiCommandState::Rejected ||
                            backend.lastCommandState() == UiCommandState::Unsupported);
 
@@ -356,17 +399,63 @@ void StatusStrip::refresh(IUiBackend& backend, UiNavigationManager& nav) {
     } else if (active_overlay_ == OverlayKind::Harmony && overlay_backdrop_) {
         ToggleButtonStyleHelper::setState(harm_q_btn_, harm_avail && q_on, pending);
         ToggleButtonStyleHelper::setState(harm_ch_btn_, harm_avail && ch_on, pending);
+        ToggleButtonStyleHelper::setState(harm_touch_btn_, harm_avail && touch_on, pending);
+        setDisabledIfChanged(harm_q_btn_, !harm_avail || !backend.isParameterEditable("harmony.scale_enable"));
+        setDisabledIfChanged(harm_ch_btn_, !harm_avail || !backend.isParameterEditable("harmony.chord_enable"));
+        setDisabledIfChanged(harm_touch_btn_, !harm_avail || !backend.isParameterEditable("harmony.apply_touch"));
+        setDisabledIfChanged(harm_preset_btn_, !harm_avail || !backend.isParameterEditable("harmony.preset"));
         if (harm_q_btn_) setStaticTextIfChanged(lv_obj_get_child(harm_q_btn_, 0), q_on ? "Q QUANT: ON" : "Q QUANT: OFF");
         if (harm_ch_btn_) setStaticTextIfChanged(lv_obj_get_child(harm_ch_btn_, 0), ch_on ? "CH ACORDE: ON" : "CH ACORDE: OFF");
+        if (harm_touch_btn_) setStaticTextIfChanged(lv_obj_get_child(harm_touch_btn_, 0), touch_on ? "TOUCH HARM: ON" : "TOUCH HARM: OFF");
+        if (harm_preset_btn_) {
+            static constexpr const char* kPresetShort[5] = {"NORMAL", "C MAJ", "A MIN", "C MAJ7", "SCALE"};
+            const int32_t preset_i = std::clamp<int32_t>(backend.model().getInt("harmony.preset", 0), 0, 4);
+            char pbuf[32]{};
+            std::snprintf(pbuf, sizeof(pbuf), "PRESET: %s", kPresetShort[preset_i]);
+            setStaticBufIfChanged(lv_obj_get_child(harm_preset_btn_, 0), harm_preset_buf_, sizeof(harm_preset_buf_), pbuf);
+        }
+
+        static constexpr const char* kRowIds[5] = {
+            "harmony.root_note", "harmony.scale_type", "harmony.quant_mode",
+            "harmony.chord_type", "harmony.voicing"
+        };
+        static constexpr const char* kRowLabels[5] = {
+            "Fundamental", "Escala", "Modo Quant.", "Tipo Acorde", "Voicing"
+        };
+        const int32_t row_vals[5] = {
+            root_i,
+            scale_i,
+            backend.model().getInt("harmony.quant_mode", lh.configuration.quant),
+            backend.model().getInt("harmony.chord_type", lh.configuration.chord),
+            backend.model().getInt("harmony.voicing", lh.configuration.open)
+        };
+        for (int r = 0; r < 5; ++r) {
+            const ParameterDescriptor* d = ParameterRegistry::findById(kRowIds[r]);
+            const int32_t val = row_vals[r];
+            const char* vtxt = (d && d->enum_values && val >= 0 && val < d->enum_count)
+                                   ? d->enum_values[val]
+                                   : "--";
+            const bool supported = backend.isParameterValueSupported(kRowIds[r], val);
+            char tbuf[48]{};
+            std::snprintf(tbuf, sizeof(tbuf), "%s: %s%s", kRowLabels[r], vtxt, supported ? "" : " [N/A]");
+            setStaticBufIfChanged(harm_row_lbls_[r], harm_row_bufs_[r], sizeof(harm_row_bufs_[r]), tbuf);
+            const bool row_editable = harm_avail && backend.isParameterEditable(kRowIds[r]);
+            setDisabledIfChanged(harm_row_prev_[r], !row_editable);
+            setDisabledIfChanged(harm_row_next_[r], !row_editable);
+        }
+
         if (harm_status_lbl_) {
             const char* st = !harm_avail ? "INDISPONIVEL" : pending ? "PENDING" : rejected ? "REJEITADO" : "CONFIRMADO";
             const int32_t usb_ch = backend.model().getInt("harmony.usb_channel", lh.configuration.channel + 1);
-            const bool touch_on = backend.model().getBool("harmony.apply_touch", lh.configuration.touch);
             char sbuf[128]{};
             std::snprintf(sbuf, sizeof(sbuf),
                           "Estado: %s | Escopo Q/CH: USB Ch %d + Arp + Touch(%s) | SEQ usa SEQ QUANT (CH=OFF)",
                           st, int(usb_ch), touch_on ? "ON" : "OFF");
             setStaticBufIfChanged(harm_status_lbl_, harm_status_buf_, sizeof(harm_status_buf_), sbuf);
+            const uint32_t st_col = rejected ? palette::kErrorPanic :
+                                    pending ? palette::kAccentPrimary :
+                                    palette::kTextSecondary;
+            lv_obj_set_style_text_color(harm_status_lbl_, lv_color_hex(st_col), 0);
         }
     }
 
@@ -395,11 +484,18 @@ void StatusStrip::refreshTempo(IUiBackend& backend) {
     }
 }
 
-void StatusStrip::closeOverlays() {
+void StatusStrip::closeOverlays(bool async) {
     if (overlay_backdrop_) {
-        lv_obj_delete(overlay_backdrop_);
+        lv_obj_t* target = overlay_backdrop_;
         overlay_backdrop_ = nullptr;
         overlay_card_ = nullptr;
+        if (async) {
+            lv_obj_add_flag(target, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_remove_flag(target, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_delete_async(target);
+        } else {
+            lv_obj_delete(target);
+        }
     }
     tempo_notice_ = nullptr;
     tempo_slider_ = nullptr;
@@ -407,6 +503,13 @@ void StatusStrip::closeOverlays() {
     harm_status_lbl_ = nullptr;
     harm_q_btn_ = nullptr;
     harm_ch_btn_ = nullptr;
+    harm_touch_btn_ = nullptr;
+    harm_preset_btn_ = nullptr;
+    for (int i = 0; i < 5; ++i) {
+        harm_row_lbls_[i] = nullptr;
+        harm_row_prev_[i] = nullptr;
+        harm_row_next_[i] = nullptr;
+    }
     active_overlay_ = OverlayKind::None;
     ToggleButtonStyleHelper::setState(tempo_btn_, false, false);
     ToggleButtonStyleHelper::setState(harm_btn_, false, false);
@@ -447,7 +550,7 @@ void StatusStrip::showOverlayBackdrop() {
             StatusStrip* strip = ctx->strip;
             IUiBackend* backend = ctx->backend;
             UiNavigationManager* nav = ctx->nav;
-            strip->closeOverlays();
+            strip->closeOverlays(true);
             if (backend && nav) strip->refresh(*backend, *nav);
         },
         LV_EVENT_CLICKED);
@@ -522,9 +625,11 @@ void StatusStrip::openHarmony(IUiBackend& backend) {
                                                   12, 48, 168, 40, q_on, q_on);
     harm_ch_btn_ = ToggleButtonStyleHelper::create(overlay_card_, ch_on ? "CH ACORDE: ON" : "CH ACORDE: OFF",
                                                    188, 48, 178, 40, ch_on, ch_on);
-    lv_obj_t* touch_b = createActionButton(overlay_card_, touch_on ? "TOUCH HARM: ON" : "TOUCH HARM: OFF",
-                                           374, 48, 178, 40, nullptr, nullptr, touch_on, false);
-    lv_obj_t* preset_b = createActionButton(overlay_card_, "PRESET C MAJ", 560, 48, 172, 40, nullptr, nullptr, false, false);
+    harm_touch_btn_ = ToggleButtonStyleHelper::create(overlay_card_, touch_on ? "TOUCH HARM: ON" : "TOUCH HARM: OFF",
+                                                      374, 48, 178, 40, touch_on, touch_on);
+    std::snprintf(harm_preset_buf_, sizeof(harm_preset_buf_), "PRESET: NORMAL");
+    harm_preset_btn_ = ToggleButtonStyleHelper::create(overlay_card_, harm_preset_buf_,
+                                                       560, 48, 172, 40, false, false);
 
     struct HarmBtnCtx { StatusStrip* strip; IUiBackend* backend; int kind; const char* param_id; int delta; };
     const auto on_harm_btn = [](lv_event_t* e) {
@@ -536,61 +641,59 @@ void StatusStrip::openHarmony(IUiBackend& backend) {
         const int kind = c->kind;
         const char* param_id = c->param_id;
         const int delta = c->delta;
+        UiCommandResult res{};
         if (kind == 0) {
+            if (!backend->isParameterEditable("harmony.scale_enable")) return;
             const bool cur = backend->model().getBool("harmony.scale_enable", false);
-            backend->requestParameterBool("harmony.scale_enable", !cur);
+            res = backend->requestParameterBool("harmony.scale_enable", !cur);
         } else if (kind == 1) {
+            if (!backend->isParameterEditable("harmony.chord_enable")) return;
             const bool cur = backend->model().getBool("harmony.chord_enable", false);
-            backend->requestParameterBool("harmony.chord_enable", !cur);
+            res = backend->requestParameterBool("harmony.chord_enable", !cur);
         } else if (kind == 2) {
+            if (!backend->isParameterEditable("harmony.apply_touch")) return;
             const bool cur = backend->model().getBool("harmony.apply_touch", false);
-            backend->requestParameterBool("harmony.apply_touch", !cur);
-            strip->openHarmony(*backend);
-            return;
+            res = backend->requestParameterBool("harmony.apply_touch", !cur);
         } else if (kind == 3) {
-            backend->requestParameterInt("harmony.preset", 1);
-            strip->openHarmony(*backend);
-            return;
+            if (!backend->isParameterEditable("harmony.preset")) return;
+            const int32_t cur = backend->model().getInt("harmony.preset", 0);
+            const int32_t next = findNextSupportedEnum(*backend, "harmony.preset", cur, 1, 5);
+            res = backend->requestParameterInt("harmony.preset", next);
         } else if (kind == 4 && param_id) {
+            if (!backend->isParameterEditable(param_id)) return;
             const ParameterDescriptor* d = ParameterRegistry::findById(param_id);
             if (d && d->enum_count > 0) {
                 const int32_t cur = backend->model().getInt(param_id, 0);
-                const int32_t next = (cur + delta + d->enum_count) % d->enum_count;
-                backend->requestParameterInt(param_id, next);
+                const int32_t next = findNextSupportedEnum(*backend, param_id, cur, delta, d->enum_count);
+                res = backend->requestParameterInt(param_id, next);
             }
-            strip->openHarmony(*backend);
-            return;
+        }
+        if (res.state == UiCommandState::Requested && res.token != 0) {
+            strip->harm_awaiting_token_ = true;
+            strip->harm_pending_token_ = res.token;
         }
         if (strip->nav_) strip->refresh(*backend, *strip->nav_);
     };
 
     attachLvContext<HarmBtnCtx>(harm_q_btn_, {this, &backend, 0, nullptr, 0}, on_harm_btn, LV_EVENT_CLICKED);
     attachLvContext<HarmBtnCtx>(harm_ch_btn_, {this, &backend, 1, nullptr, 0}, on_harm_btn, LV_EVENT_CLICKED);
-    attachLvContext<HarmBtnCtx>(touch_b, {this, &backend, 2, nullptr, 0}, on_harm_btn, LV_EVENT_CLICKED);
-    attachLvContext<HarmBtnCtx>(preset_b, {this, &backend, 3, nullptr, 0}, on_harm_btn, LV_EVENT_CLICKED);
+    attachLvContext<HarmBtnCtx>(harm_touch_btn_, {this, &backend, 2, nullptr, 0}, on_harm_btn, LV_EVENT_CLICKED);
+    attachLvContext<HarmBtnCtx>(harm_preset_btn_, {this, &backend, 3, nullptr, 0}, on_harm_btn, LV_EVENT_CLICKED);
 
-    struct EnumRow { const char* id; const char* lbl; int32_t val; };
-    const EnumRow rows[5] = {
-        {"harmony.root_note", "Fundamental", backend.model().getInt("harmony.root_note", hc.root)},
-        {"harmony.scale_type", "Escala", backend.model().getInt("harmony.scale_type", hc.scale)},
-        {"harmony.quant_mode", "Modo Quant.", backend.model().getInt("harmony.quant_mode", hc.quant)},
-        {"harmony.chord_type", "Tipo Acorde", backend.model().getInt("harmony.chord_type", hc.chord)},
-        {"harmony.voicing", "Voicing", backend.model().getInt("harmony.voicing", hc.open)}
+    static constexpr const char* kRowIds[5] = {
+        "harmony.root_note", "harmony.scale_type", "harmony.quant_mode",
+        "harmony.chord_type", "harmony.voicing"
     };
     for (int r = 0; r < 5; ++r) {
         const int32_t rx = 12 + (r % 2) * 368;
         const int32_t ry = 96 + (r / 2) * 44;
-        const ParameterDescriptor* d = ParameterRegistry::findById(rows[r].id);
-        const char* vtxt = (d && d->enum_values && rows[r].val >= 0 && rows[r].val < d->enum_count)
-                               ? d->enum_values[rows[r].val]
-                               : "--";
-        char tbuf[48]{};
-        std::snprintf(tbuf, sizeof(tbuf), "%s: %s", rows[r].lbl, vtxt);
-        lv_obj_t* p = createActionButton(overlay_card_, "<", rx, ry, 42, 38, nullptr, nullptr, false, false);
-        lv_obj_t* n = createActionButton(overlay_card_, ">", rx + 314, ry, 42, 38, nullptr, nullptr, false, false);
-        createLabel(overlay_card_, tbuf, rx + 50, ry + 9, 260, &lv_font_montserrat_14, palette::kTextPrimary);
-        attachLvContext<HarmBtnCtx>(p, {this, &backend, 4, rows[r].id, -1}, on_harm_btn, LV_EVENT_CLICKED);
-        attachLvContext<HarmBtnCtx>(n, {this, &backend, 4, rows[r].id, 1}, on_harm_btn, LV_EVENT_CLICKED);
+        harm_row_prev_[r] = createActionButton(overlay_card_, "<", rx, ry, 42, 38, nullptr, nullptr, false, false);
+        harm_row_next_[r] = createActionButton(overlay_card_, ">", rx + 314, ry, 42, 38, nullptr, nullptr, false, false);
+        harm_row_bufs_[r][0] = '\0';
+        harm_row_lbls_[r] = createLabel(overlay_card_, "", rx + 50, ry + 9, 260, &lv_font_montserrat_14, palette::kTextPrimary);
+        if (harm_row_lbls_[r]) lv_label_set_text_static(harm_row_lbls_[r], harm_row_bufs_[r]);
+        attachLvContext<HarmBtnCtx>(harm_row_prev_[r], {this, &backend, 4, kRowIds[r], -1}, on_harm_btn, LV_EVENT_CLICKED);
+        attachLvContext<HarmBtnCtx>(harm_row_next_[r], {this, &backend, 4, kRowIds[r], 1}, on_harm_btn, LV_EVENT_CLICKED);
     }
 
     harm_status_lbl_ = lv_label_create(overlay_card_);
@@ -679,7 +782,7 @@ void StatusStrip::openAreaModules(UiArea area, IUiBackend& backend, UiNavigation
             UiNavigationManager* nav = mc->nav;
             const ScreenId screen = mc->screen;
             const uint8_t sub_tab = mc->sub_tab;
-            strip->closeOverlays();
+            strip->closeOverlays(true);
             nav->requestNavigateTo(screen, sub_tab);
         }, LV_EVENT_CLICKED);
     }

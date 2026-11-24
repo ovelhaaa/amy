@@ -32,7 +32,20 @@ uint32_t sceneStateColor(const char* label) {
     if (std::strncmp(label, "PENDING", 7) == 0 || std::strcmp(label, "WAIT PATCH") == 0) return palette::kAccentPrimary;
     if (std::strcmp(label, "FAILED") == 0 || std::strcmp(label, "CORRUPT") == 0) return palette::kErrorPanic;
     if (std::strcmp(label, "PARTIAL") == 0 || std::strcmp(label, "INCOMP") == 0) return palette::kWarning;
+    if (std::strcmp(label, "SAVED") == 0) return palette::kPanelHighlight;
     return palette::kPlannedBadge;
+}
+
+uint32_t sceneBadgeTextColor(const char* label) {
+    if (!label) return palette::kTextPrimary;
+    if (std::strcmp(label, "ACTIVE") == 0 ||
+        std::strncmp(label, "PENDING", 7) == 0 ||
+        std::strcmp(label, "WAIT PATCH") == 0 ||
+        std::strcmp(label, "PARTIAL") == 0 ||
+        std::strcmp(label, "INCOMP") == 0) {
+        return palette::kBackground;
+    }
+    return palette::kTextPrimary;
 }
 
 lv_obj_t* createPill(lv_obj_t* parent, const char* text, int32_t x, int32_t y,
@@ -71,6 +84,11 @@ public:
     ScreenId id() const override { return ScreenId::Performance; }
 
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
+        parent_ = parent;
+        backend_ = &backend;
+        confirm_dialog_.close(false);
+        last_demo_panic_count_ = backend.model().diagnostics().demo_panic_count;
+        panic_active_ = false;
         legacy_ = nullptr;
         confirm_ = nullptr;
         oct_lbl_ = status_lbl_ = kb_ = nullptr;
@@ -100,8 +118,10 @@ public:
             lv_obj_set_style_pad_all(top, 2, 0);
             lv_obj_remove_flag(top, LV_OBJ_FLAG_SCROLLABLE);
 
-            patch_lbl_ = createLabel(top, "", 6, 3, 336, &lv_font_montserrat_14, palette::kAccentPrimary);
-            scene_lbl_ = createLabel(top, "", 6, 25, 336, &lv_font_montserrat_14, palette::kTextPrimary);
+            patch_lbl_ = createLabel(top, "", 6, 3, 330, &lv_font_montserrat_14, palette::kAccentPrimary);
+            if (patch_lbl_) lv_label_set_long_mode(patch_lbl_, LV_LABEL_LONG_MODE_DOTS);
+            scene_lbl_ = createLabel(top, "", 6, 25, 330, &lv_font_montserrat_14, palette::kTextPrimary);
+            if (scene_lbl_) lv_label_set_long_mode(scene_lbl_, LV_LABEL_LONG_MODE_DOTS);
 
             lv_obj_t* lib_btn = createActionButton(top, "TIMBRES >", 344, 6, 94, 36, nullptr, nullptr, false, false);
             attachLvContext<UiNavigationManager*>(lib_btn, &nav, [](lv_event_t* e) {
@@ -112,7 +132,7 @@ public:
 
             arp_pill_  = createPill(top, "ARP OFF",  444, 7, 80, 34, palette::kUnavailableBadge);
             seq_pill_  = createPill(top, "SEQ OFF",  528, 7, 82, 34, palette::kUnavailableBadge);
-            fx_pill_   = createPill(top, "FX LIVE",  614, 7, 80, 34, palette::kPanelHighlight);
+            fx_pill_   = createPill(top, "FX ON",    614, 7, 80, 34, palette::kActive);
             harm_pill_ = createPill(top, "-/-",      698, 7, 78, 34, palette::kUnavailableBadge);
         }
 
@@ -156,16 +176,32 @@ public:
     }
 
     void onDestroy() override {
+        confirm_dialog_.close(false);
         if (routing_root_) lv_obj_delete(routing_root_);
         routing_root_ = nullptr;
         routing_.reset();
     }
 
     void refresh(IUiBackend& backend) override {
+        backend_ = &backend;
         if (routing_) { routing_->refresh(); return; }
         if (legacy_) {
             refreshLegacy(backend);
             return;
+        }
+
+        const uint32_t demo_panics = backend.model().diagnostics().demo_panic_count;
+        const char* last_id = backend.lastCommandParameterId();
+        const bool is_panic_now =
+            (last_id && std::strcmp(last_id, "panic") == 0 &&
+             backend.lastCommandState() == UiCommandState::Requested);
+        const bool panic_triggered =
+            (demo_panics != last_demo_panic_count_) ||
+            (is_panic_now && !panic_active_);
+        panic_active_ = is_panic_now;
+        last_demo_panic_count_ = demo_panics;
+        if (panic_triggered && confirm_dialog_.isOpen()) {
+            confirm_dialog_.close(false);
         }
 
         // Context banner updates
@@ -217,11 +253,17 @@ public:
             }
         }
         if (fx_pill_) {
-            const uint32_t col = fx_bypass ? palette::kWarning :
-                                 (backend.isDemoMode() ? palette::kPanelHighlight : palette::kPanelHighlight);
+            const bool fx_avail = backend.isDemoMode() ||
+                                  (backend.isConnected() &&
+                                   backend.parameterStatus("fx.bypass_all") == FeatureStatus::Available);
+            const char* fx_txt = !fx_avail ? "FX N/A" : (fx_bypass ? "FX BYP" : "FX ON");
+            const uint32_t col = !fx_avail ? palette::kUnavailableBadge :
+                                 fx_bypass ? palette::kWarning : palette::kActive;
+            const uint32_t ink = fx_avail ? palette::kBackground : palette::kTextPrimary;
             lv_obj_set_style_bg_color(fx_pill_, lv_color_hex(col), 0);
             if (lv_obj_t* l = lv_obj_get_child(fx_pill_, 0)) {
-                setLabelIfChanged(l, fx_bypass ? "FX BYP" : (backend.isDemoMode() ? "FX DEMO" : "FX LIVE"));
+                setLabelIfChanged(l, fx_txt);
+                lv_obj_set_style_text_color(l, lv_color_hex(ink), 0);
             }
         }
         if (harm_pill_) {
@@ -282,6 +324,7 @@ public:
                 lv_obj_set_style_bg_color(scene_cards_[s].badge, lv_color_hex(sceneStateColor(ph)), 0);
                 if (lv_obj_t* l = lv_obj_get_child(scene_cards_[s].badge, 0)) {
                     setLabelIfChanged(l, ph);
+                    lv_obj_set_style_text_color(l, lv_color_hex(sceneBadgeTextColor(ph)), 0);
                 }
             }
             if (scene_cards_[s].card) {
@@ -294,6 +337,10 @@ public:
                 char lbl[32]{};
                 if (slot && slot->state == seq::SlotState::Valid) {
                     std::snprintf(lbl, sizeof(lbl), "C%u: %.10s", s + 1U, slot->config.name);
+                } else if (slot && slot->state == seq::SlotState::Corrupted) {
+                    std::snprintf(lbl, sizeof(lbl), "C%u: (CORRUPT)", s + 1U);
+                } else if (slot && slot->state == seq::SlotState::Incompatible) {
+                    std::snprintf(lbl, sizeof(lbl), "C%u: (INCOMP)", s + 1U);
                 } else {
                     std::snprintf(lbl, sizeof(lbl), "C%u: (EMPTY)", s + 1U);
                 }
@@ -410,10 +457,13 @@ private:
                 auto* c = static_cast<SceneSlotCtx*>(lv_event_get_user_data(e));
                 if (!c || !c->screen || !c->backend) return;
                 c->screen->selected_scene_slot_ = c->slot;
-                SceneOperation op;
-                op.slot = c->slot;
-                op.locks = sessionLockMask();
-                c->backend->requestScene(op);
+                const scene::Slot* slot = c->backend->sceneSlot(c->slot);
+                if (slot && slot->state == seq::SlotState::Valid) {
+                    SceneOperation op;
+                    op.slot = c->slot;
+                    op.locks = sessionLockMask();
+                    c->backend->requestScene(op);
+                }
                 c->screen->refresh(*c->backend);
             }, LV_EVENT_CLICKED);
         }
@@ -433,14 +483,18 @@ private:
                 if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
                 auto* c = static_cast<SceneSlotCtx*>(lv_event_get_user_data(e));
                 if (!c || !c->screen || !c->backend) return;
-                SceneOperation op;
-                op.slot = c->screen->selected_scene_slot_;
-                op.locks = sessionLockMask();
-                if (c->action == 1) op.action = SceneAction::Load;
-                else if (c->action == 2) op.action = SceneAction::Save;
-                else if (c->action == 3) op.action = SceneAction::Delete;
-                c->backend->requestScene(op);
-                c->screen->refresh(*c->backend);
+                if (c->action == 1) {
+                    SceneOperation op;
+                    op.action = SceneAction::Load;
+                    op.slot = c->screen->selected_scene_slot_;
+                    op.locks = sessionLockMask();
+                    c->backend->requestScene(op);
+                    c->screen->refresh(*c->backend);
+                } else if (c->action == 2) {
+                    c->screen->openSceneConfirm(SceneAction::Save);
+                } else if (c->action == 3) {
+                    c->screen->openSceneConfirm(SceneAction::Delete);
+                }
             }, LV_EVENT_CLICKED);
         };
         add_act("RECALL", 6, 88, 1, true);
@@ -471,13 +525,13 @@ private:
 
     void buildKeyboardStage(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) {
         struct OctCtx { IUiBackend* backend; UiNavigationManager* nav; int delta; };
-        createParameterSlider(parent, backend, "perf.master_volume", 8, 102, 320, 56,
+        createParameterSlider(parent, backend, "perf.master_volume", 8, 102, 310, 56,
                               PresentationLevel::StageMinimal, "MASTER LEVEL");
 
-        lv_obj_t* oct_dn = createActionButton(parent, "OCT -", 336, 106, 110, 48, nullptr, nullptr);
-        oct_lbl_ = createLabel(parent, "OCT +0", 454, 120, 84, &lv_font_montserrat_14, palette::kAccentPrimary);
+        lv_obj_t* oct_dn = createActionButton(parent, "OCT -", 324, 106, 92, 48, nullptr, nullptr);
+        oct_lbl_ = createLabel(parent, "OCT +0", 420, 120, 76, &lv_font_montserrat_14, palette::kAccentPrimary);
         if (oct_lbl_) lv_obj_set_style_text_align(oct_lbl_, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_t* oct_up = createActionButton(parent, "OCT +", 546, 106, 110, 48, nullptr, nullptr);
+        lv_obj_t* oct_up = createActionButton(parent, "OCT +", 500, 106, 92, 48, nullptr, nullptr);
 
         const auto on_oct = [](lv_event_t* e) {
             if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
@@ -490,7 +544,7 @@ private:
         attachLvContext<OctCtx>(oct_dn, {&backend, &nav, -1}, on_oct, LV_EVENT_CLICKED);
         attachLvContext<OctCtx>(oct_up, {&backend, &nav, 1}, on_oct, LV_EVENT_CLICKED);
 
-        createLabel(parent, "SAIR LIBERA TOUCH", 664, 120, 128, &lv_font_montserrat_14, palette::kTextSecondary);
+        createLabel(parent, "SAIR: SOLTA NOTAS", 600, 120, 192, &lv_font_montserrat_14, palette::kTextSecondary);
 
         kb_ = createVirtualKeyboard(parent, backend, nav, KeyboardDisplayMode::StageKeys2Oct, 8, 164, 784, 218);
     }
@@ -591,6 +645,106 @@ private:
         }
     }
 
+    void openSceneConfirm(SceneAction action) {
+        if (!parent_ || !backend_) return;
+        const uint8_t slot_idx = selected_scene_slot_;
+        const scene::Slot* slot = backend_->sceneSlot(slot_idx);
+        if (!slot) return;
+
+        pending_scene_action_ = action;
+        pending_scene_slot_ = slot_idx;
+
+        char title[48]{};
+        char body[160]{};
+        const char* detail = nullptr;
+        const char* confirm_lbl = "CONFIRMAR";
+        uint32_t border = palette::kAccentPrimary;
+        bool destructive = false;
+
+        if (action == SceneAction::Save) {
+            if (slot->state == seq::SlotState::Valid) {
+                std::snprintf(title, sizeof(title), "CONFIRMAR SOBRESCRITA");
+                std::snprintf(body, sizeof(body), "Sobrescrever CENA %u: %s?",
+                              unsigned(slot_idx + 1U),
+                              slot->config.name[0] ? slot->config.name : "SEM NOME");
+                detail = "A cena existente sera substituida pelos dominios capturados atuais.";
+                confirm_lbl = "SOBRESCREVER";
+                border = palette::kWarning;
+            } else if (slot->state == seq::SlotState::Empty) {
+                std::snprintf(title, sizeof(title), "CONFIRMAR SALVAMENTO");
+                std::snprintf(body, sizeof(body), "Salvar estado atual na CENA %u (SLOT VAZIO)?",
+                              unsigned(slot_idx + 1U));
+                detail = "Dominios disponiveis serao capturados e gravados no armazenamento.";
+                confirm_lbl = "SALVAR CENA";
+                border = palette::kAccentPrimary;
+            } else {
+                const char* st_txt = (slot->state == seq::SlotState::Corrupted) ? "CORRUPT" : "INCOMP";
+                std::snprintf(title, sizeof(title), "CONFIRMAR SOBRESCRITA");
+                std::snprintf(body, sizeof(body), "Sobrescrever CENA %u (%s)?",
+                              unsigned(slot_idx + 1U), st_txt);
+                detail = "Slot atual nao contem cena valida. Confirmar gravacao?";
+                confirm_lbl = "SOBRESCREVER";
+                border = palette::kWarning;
+            }
+        } else if (action == SceneAction::Delete) {
+            std::snprintf(title, sizeof(title), "CONFIRMAR EXCLUSAO");
+            if (slot->state == seq::SlotState::Valid) {
+                std::snprintf(body, sizeof(body), "Apagar CENA %u: %s?",
+                              unsigned(slot_idx + 1U),
+                              slot->config.name[0] ? slot->config.name : "SEM NOME");
+            } else {
+                std::snprintf(body, sizeof(body), "Apagar CENA %u (%s)?",
+                              unsigned(slot_idx + 1U),
+                              scenePhaseShort(scene::RecallPhase::Idle, slot));
+            }
+            detail = "Esta acao remove permanentemente a cena do armazenamento.";
+            confirm_lbl = "APAGAR CENA";
+            border = palette::kErrorPanic;
+            destructive = true;
+        } else {
+            return;
+        }
+
+        ConfirmDialogOptions opts{};
+        opts.title = title;
+        opts.body = body;
+        opts.detail = detail;
+        opts.cancel_label = "CANCELAR";
+        opts.confirm_label = confirm_lbl;
+        opts.border_color = border;
+        opts.destructive = destructive;
+        opts.user_data = this;
+        opts.on_confirm = [](void* ud) {
+            auto* self = static_cast<PerformanceScreen*>(ud);
+            if (self) self->executeConfirmedSceneAction();
+        };
+        opts.on_cancel = [](void* ud) {
+            auto* self = static_cast<PerformanceScreen*>(ud);
+            if (self && self->backend_) self->refresh(*self->backend_);
+        };
+        confirm_dialog_.open(parent_, opts);
+    }
+
+    void executeConfirmedSceneAction() {
+        if (!backend_) return;
+        SceneOperation op;
+        op.action = pending_scene_action_;
+        op.slot = pending_scene_slot_;
+        op.locks = sessionLockMask();
+        if (pending_scene_action_ == SceneAction::Save) {
+            op.domains = backend_->sceneCaptureDomains();
+        }
+        backend_->requestScene(op);
+        refresh(*backend_);
+    }
+
+    lv_obj_t* parent_ = nullptr;
+    IUiBackend* backend_ = nullptr;
+    ConfirmDialog confirm_dialog_{};
+    SceneAction pending_scene_action_ = SceneAction::Load;
+    uint8_t pending_scene_slot_ = 0;
+    uint32_t last_demo_panic_count_ = 0;
+    bool panic_active_ = false;
     std::unique_ptr<RoutingEditor> routing_;
     lv_obj_t* routing_root_ = nullptr;
     IUiBackend::LegacyOffsets expected_{};

@@ -61,7 +61,7 @@ public:
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav);
     void refresh(IUiBackend& backend, UiNavigationManager& nav);
     void refreshTempo(IUiBackend& backend);
-    void closeOverlays();
+    void closeOverlays(bool async = false);
     void openTempo(IUiBackend& backend);
     void openHarmony(IUiBackend& backend);
     void openAreaModules(UiArea area, IUiBackend& backend, UiNavigationManager& nav);
@@ -105,6 +105,13 @@ private:
     lv_obj_t*   harm_status_lbl_  = nullptr;
     lv_obj_t*   harm_q_btn_       = nullptr;
     lv_obj_t*   harm_ch_btn_      = nullptr;
+    lv_obj_t*   harm_touch_btn_   = nullptr;
+    lv_obj_t*   harm_preset_btn_  = nullptr;
+    lv_obj_t*   harm_row_lbls_[5]{};
+    lv_obj_t*   harm_row_prev_[5]{};
+    lv_obj_t*   harm_row_next_[5]{};
+    uint32_t    harm_pending_token_ = 0;
+    bool        harm_awaiting_token_ = false;
 
     char      patch_buf_[48]{};
     char      tempo_buf_[24]{};
@@ -113,6 +120,32 @@ private:
     char      ch_buf_[16]{};
     char      bpm_big_buf_[16]{};
     char      harm_status_buf_[128]{};
+    char      harm_preset_buf_[32]{};
+    char      harm_row_bufs_[5][48]{};
+};
+
+// ── Reusable Confirmation Modal (keeps top header + PANIC uncovered) ─────
+struct ConfirmDialogOptions {
+    const char* title = nullptr;
+    const char* body = nullptr;
+    const char* detail = nullptr;
+    const char* cancel_label = "CANCELAR";
+    const char* confirm_label = "CONFIRMAR";
+    uint32_t border_color = palette::kAccentPrimary;
+    bool destructive = false;
+    void (*on_confirm)(void* user_data) = nullptr;
+    void (*on_cancel)(void* user_data) = nullptr;
+    void* user_data = nullptr;
+};
+
+class ConfirmDialog {
+public:
+    bool open(lv_obj_t* parent, const ConfirmDialogOptions& opts);
+    void close(bool async = true);
+    bool isOpen() const { return backdrop_ != nullptr; }
+
+private:
+    lv_obj_t* backdrop_ = nullptr;
 };
 
 // ── Bottom Navigation Bar (800 x 48, 5 Fixed Areas) & Internal Sub-Tab Bar
