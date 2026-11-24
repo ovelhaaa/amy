@@ -198,27 +198,45 @@ struct TopologyGraph {
 
 inline TopologyGraph generateLayout(const Topology& topo, int16_t panel_w, int16_t panel_h) {
     TopologyGraph g{};
-    const int16_t node_w = 54;
-    const int16_t node_h = 24;
-    const int16_t start_x = 10;
-    const int16_t gap_x = 14;
+    const int16_t area_w = (panel_w > 180) ? panel_w : 180;
+    const int16_t area_h = (panel_h > 56) ? panel_h : 56;
+
+    auto clamp_i16 = [](int32_t v, int16_t lo, int16_t hi) -> int16_t {
+        if (v < lo) return lo;
+        if (v > hi) return hi;
+        return static_cast<int16_t>(v);
+    };
+
+    const int16_t margin_x = 4;
+    const int16_t out_w = clamp_i16(area_w / 11, 38, 56);
+    const int16_t out_h = clamp_i16(area_h / 2, 28, 48);
+    const int16_t out_gap = clamp_i16(area_w / 48, 8, 16);
+    const int16_t ops_area_w = area_w - 2 * margin_x - out_w - out_gap;
+    const int16_t gap_x = clamp_i16(ops_area_w / 45, 4, 16);
+    const int16_t node_w = clamp_i16((ops_area_w - 5 * gap_x) / 6, 20, 120);
+
+    const int16_t fb_headroom = clamp_i16(area_h / 9, 7, 14);
+    const int16_t row_gap = clamp_i16(area_h / 10, 4, 36);
+    const int16_t node_h = clamp_i16((area_h - fb_headroom - row_gap - 2) / 2, 24, 52);
+    const int16_t mod_y = fb_headroom;
+    const int16_t carr_y = clamp_i16(area_h - node_h - 2, mod_y + node_h + 2, area_h - node_h);
 
     for (unsigned i = 0; i < 6; ++i) {
         const unsigned op = 6 - i;
         g.nodes[i].op = uint8_t(op);
-        g.nodes[i].x = int16_t(start_x + i * (node_w + gap_x));
+        g.nodes[i].x = int16_t(margin_x + i * (node_w + gap_x));
         g.nodes[i].w = node_w;
         g.nodes[i].h = node_h;
         g.nodes[i].is_carrier = topo.isCarrier(op);
         g.nodes[i].has_fb = topo.hasFeedback(op);
-        g.nodes[i].y = g.nodes[i].is_carrier ? int16_t(48) : int16_t(20);
+        g.nodes[i].y = g.nodes[i].is_carrier ? carr_y : mod_y;
     }
 
     g.out_node.op = 0;
-    g.out_node.x = int16_t(428);
-    g.out_node.y = int16_t(30);
-    g.out_node.w = int16_t(44);
-    g.out_node.h = int16_t(36);
+    g.out_node.x = int16_t(area_w - margin_x - out_w);
+    g.out_node.y = int16_t((area_h - out_h) / 2);
+    g.out_node.w = out_w;
+    g.out_node.h = out_h;
     g.out_node.is_carrier = true;
     g.out_node.has_fb = false;
 
@@ -232,17 +250,29 @@ inline TopologyGraph generateLayout(const Topology& topo, int16_t panel_w, int16
                 e.src_op = uint8_t(src);
                 e.dst_op = uint8_t(dst);
                 e.type = EdgeType::Modulation;
-                e.point_count = 2;
 
                 if (g.nodes[src_idx].y == g.nodes[dst_idx].y) {
-                    if (g.nodes[src_idx].x < g.nodes[dst_idx].x) {
-                        e.points[0] = { int16_t(g.nodes[src_idx].x + g.nodes[src_idx].w), int16_t(g.nodes[src_idx].y + node_h / 2) };
-                        e.points[1] = { int16_t(g.nodes[dst_idx].x), int16_t(g.nodes[dst_idx].y + node_h / 2) };
+                    const int idx_diff = (src_idx > dst_idx) ? int(src_idx - dst_idx) : int(dst_idx - src_idx);
+                    if (idx_diff <= 1) {
+                        e.point_count = 2;
+                        if (g.nodes[src_idx].x < g.nodes[dst_idx].x) {
+                            e.points[0] = { int16_t(g.nodes[src_idx].x + node_w), int16_t(g.nodes[src_idx].y + node_h / 2) };
+                            e.points[1] = { int16_t(g.nodes[dst_idx].x), int16_t(g.nodes[dst_idx].y + node_h / 2) };
+                        } else {
+                            e.points[0] = { int16_t(g.nodes[src_idx].x), int16_t(g.nodes[src_idx].y + node_h / 2) };
+                            e.points[1] = { int16_t(g.nodes[dst_idx].x + node_w), int16_t(g.nodes[dst_idx].y + node_h / 2) };
+                        }
                     } else {
-                        e.points[0] = { int16_t(g.nodes[src_idx].x), int16_t(g.nodes[src_idx].y + node_h / 2) };
-                        e.points[1] = { int16_t(g.nodes[dst_idx].x + g.nodes[dst_idx].w), int16_t(g.nodes[dst_idx].y + node_h / 2) };
+                        // Detour below modulator row so line does not cross intermediate operator boxes
+                        const int16_t detour_y = clamp_i16(g.nodes[src_idx].y + node_h + 3, 2, area_h - 2);
+                        e.point_count = 4;
+                        e.points[0] = { int16_t(g.nodes[src_idx].x + node_w / 2), int16_t(g.nodes[src_idx].y + node_h) };
+                        e.points[1] = { int16_t(g.nodes[src_idx].x + node_w / 2), detour_y };
+                        e.points[2] = { int16_t(g.nodes[dst_idx].x + node_w / 2), detour_y };
+                        e.points[3] = { int16_t(g.nodes[dst_idx].x + node_w / 2), int16_t(g.nodes[dst_idx].y + node_h) };
                     }
                 } else {
+                    e.point_count = 2;
                     e.points[0] = { int16_t(g.nodes[src_idx].x + node_w / 2), int16_t(g.nodes[src_idx].y + node_h) };
                     e.points[1] = { int16_t(g.nodes[dst_idx].x + node_w / 2), int16_t(g.nodes[dst_idx].y) };
                 }
@@ -274,13 +304,15 @@ inline TopologyGraph generateLayout(const Topology& topo, int16_t panel_w, int16
         e.type = EdgeType::Feedback;
         e.point_count = 4;
         const auto& n = g.nodes[fb_idx];
-        e.points[0] = { int16_t(n.x + 8), int16_t(n.y) };
-        e.points[1] = { int16_t(n.x + 8), int16_t(n.y - 6) };
-        e.points[2] = { int16_t(n.x + n.w - 8), int16_t(n.y - 6) };
-        e.points[3] = { int16_t(n.x + n.w - 8), int16_t(n.y) };
+        const int16_t inset = clamp_i16(n.w / 6, 4, 12);
+        const int16_t loop_h = clamp_i16(fb_headroom - 2, 4, 8);
+        const int16_t top_y = clamp_i16(n.y - loop_h, 1, n.y);
+        e.points[0] = { int16_t(n.x + inset), n.y };
+        e.points[1] = { int16_t(n.x + inset), top_y };
+        e.points[2] = { int16_t(n.x + n.w - inset), top_y };
+        e.points[3] = { int16_t(n.x + n.w - inset), n.y };
     }
 
-    (void)panel_w; (void)panel_h;
     return g;
 }
 
