@@ -32,6 +32,7 @@ try {
     if (-not $gitSha) { $gitSha = 'unknown' }
     $gitBranch = (& git rev-parse --abbrev-ref HEAD 2>$null)
     if (-not $gitBranch) { $gitBranch = 'unknown' }
+    $gitDirtyAtStart = @(& git status --porcelain)
 
     $commonFlags = @(
         '-DSMKP4_VOICES=8',
@@ -242,8 +243,12 @@ print(r'Converted and verified 800x480 PNGs in $shotsDir')
     if (($finalHashes -join "`n") -ne ($inputHashes -join "`n")) {
         throw 'Build inputs changed during validation; rerun before declaring PASS'
     }
+    if ($gitSha -ne (& git rev-parse HEAD)) {
+        throw 'HEAD changed during validation; rerun to record the exact tested commit'
+    }
     $manifest = [ordered]@{
         branch = $gitBranch; commit = $gitSha; dirty = @(& git status --porcelain)
+        dirty_at_start = $gitDirtyAtStart
         compiler = $compiler; flags = $commonFlags; clean = [bool]$Clean
         source_hashes = $inputHashes; lvgl_objects = $lvglObjs.Count
         amy_objects = $amyObjects.Count; ui_objects = $uiObjects.Count
