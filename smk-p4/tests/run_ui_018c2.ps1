@@ -1,4 +1,4 @@
-param([switch]$Clean)
+param([switch]$Clean, [switch]$Regressions)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 Push-Location $repo
@@ -13,11 +13,14 @@ try {
     $uiIncDir = Join-Path $uiCompDir 'include'
     $amyRuntimeDir = Join-Path $smkP4 'components/amy_runtime'
     $amySrcDir = Join-Path $repo 'src'
-    $shotsDir = Join-Path $smkP4 'docs/ui_018c2_shots'
+    $shotsDir = Join-Path $smkP4 'docs/ui_018c2a_shots'
 
     $buildDir = Join-Path $repo 'build/ui_018c2'
     if ($Clean -and (Test-Path $buildDir)) {
-        Remove-Item -Recurse -Force $buildDir
+        $resolvedBuild = (Resolve-Path -LiteralPath $buildDir).Path
+        $expectedBuild = [IO.Path]::GetFullPath((Join-Path $repo 'build/ui_018c2'))
+        if ($resolvedBuild -ne $expectedBuild) { throw "Unsafe clean target: $resolvedBuild" }
+        Remove-Item -LiteralPath $resolvedBuild -Recurse -Force
     }
 
     $lvglObjDir = Join-Path $buildDir 'lvgl_obj'
@@ -53,10 +56,32 @@ try {
         '-DBLOCK_SIZE_BITS=8',
         '-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1',
         '-DAMY_EXCLUSIVE_FM_PHASE_RESTART=1'
+        '-fno-strict-aliasing'
     )
-    $configStamp = ($commonFlags -join ' ') + " | pool=128"
+    foreach ($tool in @('gcc', 'g++', 'ar', 'python', 'git')) {
+        if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Missing host dependency: $tool" }
+    }
+    & python -c 'from PIL import Image'
+    if ($LASTEXITCODE -ne 0) { throw 'Missing Python dependency: Pillow' }
+    # Fingerprint complete inputs, not only source timestamps. This invalidates
+    # caches after header edits, checkouts preserving timestamps, tool changes,
+    # source removal and interrupted builds. Never stamp a failed execution.
+    $inputDirs = @($uiCompDir, $amyRuntimeDir, $amySrcDir, $previewDir,
+                  (Join-Path $smkP4 'main'), (Join-Path $repo 'shared/smk_protocol'),
+                  (Join-Path $smkP4 'tests/nvs_mocks'), (Join-Path $lvgl 'src'))
+    $inputs = @($inputDirs | ForEach-Object {
+        Get-ChildItem -LiteralPath $_ -Recurse -File | Where-Object { $_.Extension -in @('.h', '.hpp', '.c', '.cpp') }
+    } | Sort-Object FullName -Unique)
+    $inputHashes = @($inputs | ForEach-Object {
+        $_.FullName.Substring($repo.Length) + ':' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+    })
+    $compiler = @(& gcc --version; & g++ --version; & ar --version) -join "`n"
+    $configStamp = ($commonFlags -join ' ') + " | pool=128 | O2 | C99/gnu11/C++20 | Wall/Wextra/Werror`n" +
+                   $compiler + "`n" + ($inputHashes -join "`n") + "`n" +
+                   (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
     $stampFile = Join-Path $buildDir '.build_config'
     $forceRebuild = $Clean -or (-not (Test-Path $stampFile)) -or ((Get-Content $stampFile -Raw).Trim() -ne $configStamp)
+    if (Test-Path $stampFile) { Remove-Item -LiteralPath $stampFile }
 
     Write-Host "=== SMK-P4 0.18-C.2a Host Test Suite ==="
     Write-Host "Branch : $gitBranch"
@@ -163,7 +188,6 @@ try {
             $uiCompiled++
         }
     }
-    Set-Content -Path $stampFile -Value $configStamp -Encoding UTF8
     Write-Host "[3/4] UI Blueprint ready ($($uiObjects.Count) objects, $uiCompiled compiled)"
 
     # 4. Link and run ui_018c2_test.cpp
@@ -190,6 +214,36 @@ for ppm in sorted(glob.glob(r'$shotsDir/*.ppm')):
 print(r'Converted and verified 800x480 PNGs in $shotsDir')
 "
     if ($LASTEXITCODE -ne 0) { throw 'PNG conversion failed' }
+    if ($Regressions) {
+        foreach ($test in @('ui_018c1_integration_test', 'ui_018c1a_hardening_test', 'sound_editor_ui_test')) {
+            $testSource = Join-Path $smkP4 "tests/$test.cpp"
+            $extra = @()
+            if ($test -eq 'sound_editor_ui_test') {
+                $extra = @((Join-Path $smkP4 'tests/smk25_0142_ui_test.cpp'),
+                           (Join-Path $smkP4 'tests/heap_probe.cpp'),
+                           '-Wl,--wrap=malloc', '-Wl,--wrap=calloc', '-Wl,--wrap=realloc', '-Wl,--wrap=free')
+                New-Item -ItemType Directory -Force (Join-Path $repo 'build/editor011') | Out-Null
+            }
+            $binary = Join-Path $buildDir "$test.exe"
+            & g++ -std=c++20 -O2 -Wall -Wextra -Werror @commonFlags @includeArgs $testSource @extra `
+                (Join-Path $smkP4 'main/ui_blueprint_performance_adapter.cpp') `
+                (Join-Path $amyRuntimeDir 'amy_runtime.cpp') @uiObjects @amyObjects $lvglArchive -lm -o $binary
+            if ($LASTEXITCODE -ne 0) { throw "Regression compile failed: $test" }
+            $regressionShots = Join-Path $buildDir $test
+            New-Item -ItemType Directory -Force $regressionShots | Out-Null
+            & $binary $regressionShots
+            if ($LASTEXITCODE -ne 0) { throw "Regression failed: $test" }
+        }
+    }
+    $manifest = [ordered]@{
+        branch = $gitBranch; commit = $gitSha; dirty = @(& git status --porcelain)
+        compiler = $compiler; flags = $commonFlags; clean = [bool]$Clean
+        source_hashes = $inputHashes; lvgl_objects = $lvglObjs.Count
+        amy_objects = $amyObjects.Count; ui_objects = $uiObjects.Count
+        result = 'PASS'; regressions = [bool]$Regressions; timestamp_utc = [DateTime]::UtcNow.ToString('o')
+    }
+    $manifest | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $buildDir 'test_manifest.json') -Encoding UTF8
+    Set-Content -LiteralPath $stampFile -Value $configStamp -Encoding UTF8
 } finally {
     Pop-Location
 }

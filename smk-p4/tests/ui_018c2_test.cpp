@@ -5,6 +5,7 @@
 #include "local_performance_backend.h"
 #include "performance_factory_routes.h"
 #include "../ui-preview/preview_harness.h"
+#include "../components/amy_runtime/fm_topology.h"
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -178,11 +179,12 @@ int main(int argc, char** argv) {
     UiBlueprint app(adapter);
     assert(app.begin());
 
+    bool sim_usb_connected = true;
     auto sync_runtime = [&](uint32_t dt_ms = 25) {
         preview::g_sim_tick_ms += dt_ms;
         runtime.apply(preview::g_sim_tick_ms);
         assert(runtime.render());
-        perf.publish(runtime.snapshot(), runtime.snapshot().active_notes == 0, 120, 0);
+        perf.publish(runtime.snapshot(), sim_usb_connected, 120, 0);
         preview::pumpFrame(app, dt_ms);
     };
     sync_runtime();
@@ -190,9 +192,14 @@ int main(int argc, char** argv) {
     const auto capture = [&](const char* name) {
         char path[256]{};
         std::snprintf(path, sizeof(path), "%s/%s.ppm", out_dir, name);
+        // Captures are real LVGL + AMY renders with injected host MIDI packets.
+        // Label them explicitly so they cannot be mistaken for physical USB tests.
+        auto* mode = findLabel(app.rootObject(), "P4 LIVE");
+        if (mode) lv_label_set_text(mode, "HOST SIM");
         preview::pumpFrame(app, 25);
         assert(preview::saveFramebufferPpm(path));
         std::printf("CAPTURED: %s\n", path);
+        if (mode) lv_label_set_text(mode, "P4 LIVE");
     };
 
     // ── C.2-A.1 & C.2-A.3: Scene selection without recall, explicit recall, active vs failed separation
@@ -671,6 +678,306 @@ int main(int argc, char** argv) {
     assert(objs_before == objs_after);
     assert(mem_after.free_size >= mem_before.free_size);
     assert(mem_after.frag_pct <= 5);
+
+    // ── C.2a: 32 FM Algorithms Geometry, FM/MIDI Ergonomics, Lifecycle & 16 Captures ──
+    auto rectsOverlap = [](const lv_area_t& a, const lv_area_t& b) {
+        return a.x1 <= b.x2 && a.x2 >= b.x1 && a.y1 <= b.y2 && a.y2 >= b.y1;
+    };
+    auto auditCardGeometry = [&](lv_obj_t* root) {
+        lv_obj_update_layout(root);
+        auto walk = [&](auto& self, lv_obj_t* obj) -> void {
+            if (!obj || lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN)) return;
+            lv_area_t oc{};
+            lv_obj_get_coords(obj, &oc);
+            assert(oc.x1 >= 0 && oc.y1 >= 0 && oc.x2 < 800 && oc.y2 < 480);
+            if (obj != root) {
+                lv_area_t pc{};
+                lv_obj_get_coords(lv_obj_get_parent(obj), &pc);
+                if (!(oc.x1 >= pc.x1 && oc.y1 >= pc.y1 && oc.x2 <= pc.x2 && oc.y2 <= pc.y2)) {
+                    std::printf("GEOMETRY_FAIL child=(%ld,%ld,%ld,%ld) parent=(%ld,%ld,%ld,%ld) text=%s\n",
+                                long(oc.x1),long(oc.y1),long(oc.x2),long(oc.y2),
+                                long(pc.x1),long(pc.y1),long(pc.x2),long(pc.y2),
+                                lv_obj_check_type(obj,&lv_label_class) ? lv_label_get_text(obj) : "[object]");
+                    std::fflush(stdout);
+                    assert(false);
+                }
+            }
+
+            // Check no badge overlaps sibling labels inside the same card
+            const uint32_t cnt = lv_obj_get_child_count(obj);
+            lv_obj_t* badge = nullptr;
+            for (uint32_t i = 0; i < cnt; ++i) {
+                lv_obj_t* ch = lv_obj_get_child(obj, int32_t(i));
+                if (lv_obj_get_child_count(ch) == 1 && !lv_obj_check_type(ch, &lv_button_class)) {
+                    lv_obj_t* inner = lv_obj_get_child(ch, 0);
+                    if (lv_obj_check_type(inner, &lv_label_class)) {
+                        const char* txt = lv_label_get_text(inner);
+                        if (txt && (std::strcmp(txt, "AVAIL") == 0 || std::strcmp(txt, "PLAN") == 0 ||
+                                    std::strcmp(txt, "N/A") == 0 || std::strcmp(txt, "DEMO") == 0)) {
+                            badge = ch;
+                        }
+                    }
+                }
+            }
+            if (badge) {
+                lv_area_t bc{};
+                lv_obj_get_coords(badge, &bc);
+                assert(bc.x1 >= oc.x1 && bc.x2 <= oc.x2 && bc.y1 >= oc.y1 && bc.y2 <= oc.y2);
+                for (uint32_t i = 0; i < cnt; ++i) {
+                    lv_obj_t* ch = lv_obj_get_child(obj, int32_t(i));
+                    if (ch != badge && lv_obj_check_type(ch, &lv_label_class)) {
+                        lv_area_t lc{};
+                        lv_obj_get_coords(ch, &lc);
+                        assert(!rectsOverlap(bc, lc));
+                    }
+                }
+            }
+            for (uint32_t i = 0; i < cnt; ++i) {
+                self(self, lv_obj_get_child(obj, int32_t(i)));
+            }
+        };
+        walk(walk, root);
+    };
+
+    // 1. Verify all 32 FM algorithms in both compact (614x66) and expanded (706x258) layouts
+    for (int algo = 1; algo <= 32; ++algo) {
+        const auto topo = smk::p4::fm::deriveTopology(algo);
+        assert(topo.carrierCount() >= 1);
+        assert(topo.carrierCount() + topo.modulatorCount() == 6);
+        for (int16_t mode = 0; mode < 2; ++mode) {
+            const int16_t aw = (mode == 0) ? 614 : 706;
+            const int16_t ah = (mode == 0) ? 66 : 258;
+            const auto g = smk::p4::fm::generateLayout(topo, aw, ah);
+            for (unsigned i = 0; i < 6; ++i) {
+                assert(g.nodes[i].op == 6 - i);
+                assert(g.nodes[i].x >= 0 && g.nodes[i].y >= 0);
+                assert(g.nodes[i].x + g.nodes[i].w <= aw);
+                assert(g.nodes[i].y + g.nodes[i].h <= ah);
+            }
+            assert(g.out_node.x >= 0 && g.out_node.y >= 0);
+            assert(g.out_node.x + g.out_node.w <= aw);
+            assert(g.out_node.y + g.out_node.h <= ah);
+            assert(g.out_node.x > g.nodes[5].x + g.nodes[5].w);
+            unsigned expected_edges = topo.carrierCount() + (topo.feedback_in != 0 ? 1 : 0);
+            bool modulation_seen[6][6]{};
+            bool out_seen[6]{};
+            unsigned feedback_seen = 0;
+            for (unsigned src = 1; src <= 6; ++src)
+                for (unsigned dst = 1; dst <= 6; ++dst)
+                    if (topo.connectsTo(src, dst)) ++expected_edges;
+            assert(g.edge_count == expected_edges);
+            for (unsigned e = 0; e < g.edge_count; ++e) {
+                const auto& edge = g.edges[e];
+                assert(edge.src_op >= 1 && edge.src_op <= 6);
+                if (edge.type == smk::p4::fm::EdgeType::Modulation) {
+                    assert(topo.connectsTo(edge.src_op, edge.dst_op));
+                    assert(!modulation_seen[edge.src_op - 1][edge.dst_op - 1]);
+                    modulation_seen[edge.src_op - 1][edge.dst_op - 1] = true;
+                } else if (edge.type == smk::p4::fm::EdgeType::AudioOut) {
+                    assert(edge.dst_op == 0 && topo.isCarrier(edge.src_op));
+                    assert(!out_seen[edge.src_op - 1]);
+                    out_seen[edge.src_op - 1] = true;
+                } else {
+                    assert(edge.src_op == topo.feedback_out && edge.dst_op == topo.feedback_in);
+                    ++feedback_seen;
+                }
+                assert(g.edges[e].point_count >= 2 && g.edges[e].point_count <= 4);
+                for (uint8_t p = 0; p < g.edges[e].point_count; ++p) {
+                    assert(g.edges[e].points[p].x >= 0 && g.edges[e].points[p].x <= aw);
+                    assert(g.edges[e].points[p].y >= 0 && g.edges[e].points[p].y <= ah);
+                }
+            }
+            assert(feedback_seen == (topo.feedback_in != 0 ? 1u : 0u));
+        }
+    }
+    std::puts("PASS: C.2a 32 FM algorithms compact & expanded geometry verified");
+
+    // 2. FM Editor captures & operator/algorithm verification
+    assert(adapter.requestSelectPatch(135, 0, 0).accepted());
+    sync_runtime();
+    runtime.loadPendingPatch();
+    for (int k = 0; k < 4; ++k) sync_runtime();
+    assert(app.navigation().navigateTo(ScreenId::SoundEditor, 1));
+    sync_runtime();
+    auditCardGeometry(app.contentObject());
+
+    // Exercise real mounted widgets for every topology and every selection.
+    // The summary and expanded graph must always highlight confirmed state.
+    for (int algo = 1; algo <= 32; ++algo) {
+        assert(adapter.requestParameterInt("fm.algo", algo).accepted());
+        sync_runtime();
+        assert(adapter.model().getInt("fm.algo", 0) == algo);
+        clickBtn(app.contentObject(), "EXPAND", app);
+        sync_runtime();
+        for (int op = 1; op <= 6; ++op) {
+            char label[16];
+            std::snprintf(label, sizeof(label), "OP %d", op);
+            auto* node_label = findLabel(lv_screen_active(), label, true);
+            assert(node_label);
+            // The editor's six top selectors have the same prefix; send the
+            // command through the adapter and inspect all graph node borders.
+            assert(adapter.requestParameterInt("fm.selected_op", op).accepted());
+            sync_runtime();
+            assert(adapter.model().getInt("fm.selected_op", 0) == op);
+            auto* header = findLabel(lv_screen_active(), "FM TOPOLOGY:", true);
+            assert(header);
+            auto* modal = lv_obj_get_parent(header);
+            auto* selected = findLabel(modal, label, true);
+            assert(selected);
+            assert(lv_obj_get_style_border_width(lv_obj_get_parent(selected), 0) == 3);
+            auditCardGeometry(modal);
+        }
+        clickBtn(lv_screen_active(), "CLOSE", app);
+    }
+
+    clickBtn(app.contentObject(), "OP 1", app);
+    sync_runtime();
+    assert(adapter.model().getInt("fm.selected_op", 1) == 1);
+    capture("02_fm_op1");
+
+    clickBtn(app.contentObject(), "OP 6", app);
+    sync_runtime();
+    assert(adapter.model().getInt("fm.selected_op", 1) == 6);
+    capture("03_fm_op6");
+
+    clickBtn(app.contentObject(), "GLOBAL", app);
+    sync_runtime();
+    auditCardGeometry(app.contentObject());
+    capture("01_fm_visao_global");
+    clickBtn(app.contentObject(), "OPERADOR", app);
+    sync_runtime();
+
+    for (const auto& algo_shot : std::initializer_list<std::pair<int, const char*>>{
+             {1, "04_fm_algo_01"}, {9, "05_fm_algo_09"}, {16, "06_fm_algo_16"}, {32, "07_fm_algo_32"}}) {
+        assert(adapter.requestParameterInt("fm.algo", algo_shot.first).accepted());
+        sync_runtime();
+        auditCardGeometry(app.contentObject());
+        capture(algo_shot.second);
+    }
+
+    clickBtn(app.contentObject(), "EXPAND", app);
+    sync_runtime();
+    capture("08_fm_topologia_expandida");
+    clickBtn(lv_screen_active(), "CLOSE", app);
+    sync_runtime();
+
+    clickBtn(app.contentObject(), "ALGO ", app, true);
+    sync_runtime();
+    capture("09_fm_selecao_algoritmo");
+
+    // Held note causes algorithm change rejection in modal
+    const uint8_t hold_note[4] = {0x09, 0x90, 62, 100};
+    assert(runtime.usbInput().transfer(hold_note, sizeof(hold_note), preview::g_sim_tick_ms));
+    sync_runtime();
+    clickBtn(lv_screen_active(), "05", app);
+    sync_runtime();
+    assert(adapter.model().getInt("fm.algo", 0) == 32);
+    assert(adapter.fmAlgorithmResult().state == UiCommandState::Rejected);
+    capture("10_fm_mudanca_rejeitada");
+    clickBtn(lv_screen_active(), "PANIC", app);
+    sync_runtime();
+    closeFmModals(false);
+    preview::pumpFrame(app, 25);
+
+    clickBtn(app.contentObject(), "USER / SAVE AS", app);
+    sync_runtime();
+    capture("16_user_presets_save_as");
+    clickBtn(lv_screen_active(), "CLOSE", app);
+    sync_runtime();
+
+    // 3. MIDI Learn ergonomics & captures
+    assert(app.navigation().navigateTo(ScreenId::MidiSettings, 1));
+    sync_runtime();
+    auditCardGeometry(app.contentObject());
+    capture("11_midi_lista_knobs");
+
+    for (unsigned knob = 1; knob <= 8; ++knob) {
+        char row[8], header[40];
+        std::snprintf(row, sizeof(row), "K%u ", knob);
+        std::snprintf(header, sizeof(header), "KNOB K%u SELECIONADO", knob);
+        clickBtn(app.contentObject(), row, app, true);
+        assert(findLabel(app.contentObject(), header));
+    }
+
+    clickBtn(app.contentObject(), "K3 ", app, true);
+    sync_runtime();
+    assert(findLabel(app.contentObject(), "KNOB K3 SELECIONADO") != nullptr);
+    capture("12_midi_knob_selecionado");
+
+    // Simulate USB connected + MIDI Learn waiting + CC received + Confirm
+    sim_usb_connected = true;
+    sync_runtime();
+    clickBtn(app.contentObject(), "LEARN", app);
+    sync_runtime();
+    capture("13_midi_learn_aguardando");
+
+    const uint8_t cc_msg[4] = {0x0B, 0xB0, 74, 90};
+    assert(runtime.usbInput().transfer(cc_msg, sizeof(cc_msg), preview::g_sim_tick_ms));
+    sync_runtime();
+    clickBtn(app.contentObject(), "CONFIRM K3", app);
+    sync_runtime();
+    assert(std::strstr(adapter.midiLearnStatus(), "K3 BOUND TO CH1 CC74"));
+    capture("14_midi_associacao_confirmada");
+
+    clickBtn(app.contentObject(), "DESTINATION", app);
+    sync_runtime();
+    capture("15_midi_destino_controle");
+    clickBtn(app.contentObject(), "CANCEL / BACK", app);
+    sync_runtime();
+
+    clickBtn(app.contentObject(), "LEARN + CC1", app);
+    sync_runtime();
+    const uint8_t cc1_msg[4] = {0x0B, 0xB0, 1, 55};
+    assert(runtime.usbInput().transfer(cc1_msg, sizeof(cc1_msg), preview::g_sim_tick_ms));
+    sync_runtime();
+    clickBtn(app.contentObject(), "CONFIRM K3", app);
+    sync_runtime();
+    assert(std::strstr(adapter.midiLearnStatus(), "K3 BOUND TO CH1 CC1"));
+    clickBtn(app.contentObject(), "LEARN", app);
+    clickBtn(app.contentObject(), "K4 ", app, true);
+    assert(std::strstr(adapter.midiLearnStatus(), "CANCELLED"));
+    clickBtn(app.contentObject(), "LEARN", app);
+    clickBtn(app.contentObject(), "TOCAR >", app);
+    sync_runtime();
+    assert(app.navigation().currentScreen() == ScreenId::Performance);
+    assert(std::strstr(adapter.midiLearnStatus(), "CANCELLED"));
+
+    // Simulated disconnect triggers Panic cleanly
+    sim_usb_connected = false;
+    runtime.usbInput().disconnect();
+    sync_runtime();
+    assert(runtime.snapshot().active_notes == 0);
+
+    // 4. Lifecycle stress: 200 FM modal cycles, 100 User Presets cycles, 100 MIDI Learn cycles
+    assert(app.navigation().navigateTo(ScreenId::SoundEditor, 1));
+    sync_runtime();
+    for (int i = 0; i < 200; ++i) {
+        clickBtn(app.contentObject(), (i % 2 == 0) ? "EXPAND" : "ALGO ", app, i % 2 != 0);
+        clickBtn(lv_screen_active(), "CLOSE", app);
+    }
+    for (int i = 0; i < 100; ++i) {
+        clickBtn(app.contentObject(), "USER / SAVE AS", app);
+        clickBtn(lv_screen_active(), "CLOSE", app);
+    }
+    assert(app.navigation().navigateTo(ScreenId::MidiSettings, 1));
+    sync_runtime();
+    for (int i = 0; i < 100; ++i) {
+        clickBtn(app.contentObject(), "LEARN", app);
+        clickBtn(app.contentObject(), "CANCEL", app);
+    }
+    assert(app.navigation().navigateTo(ScreenId::Performance, 0));
+    sync_runtime();
+    lv_mem_monitor_t mem_c2a{};
+    lv_mem_monitor(&mem_c2a);
+    const uint32_t objs_c2a = countObjects(app.rootObject());
+    std::printf("STRESS_018C2A: objs=%u->%u free=%zu->%zu diff=%zd peak=%zu frag=%u%%\n",
+                unsigned(objs_before), unsigned(objs_c2a),
+                mem_before.free_size, mem_c2a.free_size,
+                static_cast<ssize_t>(mem_before.free_size) - static_cast<ssize_t>(mem_c2a.free_size),
+                mem_c2a.max_used, mem_c2a.frag_pct);
+    assert(objs_c2a == objs_before);
+    assert(mem_c2a.free_size >= mem_before.free_size);
+    assert(mem_c2a.frag_pct <= 5);
 
     app.shutdown();
     std::puts("ALL 0.18-C.2 TIMBRES & MAIS TESTS AND STRESS PASSED.");

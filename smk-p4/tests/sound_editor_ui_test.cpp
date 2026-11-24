@@ -1005,7 +1005,12 @@ int main(){
     auto next_apply=[&]{next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);r.loadPendingPatch();assert(r.render());reboot.publish(r.snapshot(),false,0,0);next.service(preview::g_sim_tick_ms+=25);preview::pumpFrame(ui);};
     assert(next.requestSelectPatch(135).accepted());next_apply();
     assert(ui.navigation().navigateTo(ScreenId::SoundEditor,1));preview::pumpFrame(ui);
-    assert(button(ui.contentObject(),"FM BRIGHTNESS") && button(ui.contentObject(),"FM FEEDBACK"));
+    assert(button(ui.contentObject(),"OP RATIO") && button(ui.contentObject(),"OP LEVEL"));
+    auto* global=button(ui.contentObject(),"GLOBAL");assert(global);
+    lv_obj_send_event(global,LV_EVENT_CLICKED,nullptr);preview::pumpFrame(ui);
+    assert(button(ui.contentObject(),"FM DEPTH") && button(ui.contentObject(),"FEEDBACK"));
+    auto* operator_tab=button(ui.contentObject(),"OPERADOR");assert(operator_tab);
+    lv_obj_send_event(operator_tab,LV_EVENT_CLICKED,nullptr);preview::pumpFrame(ui);
     auto* algo_card=button(ui.contentObject(),"FM ALGORITHM");assert(algo_card);
     auto* op1_btn=button(ui.contentObject(),"OP 1");assert(op1_btn);
     auto* op3_btn=button(ui.contentObject(),"OP 3");assert(op3_btn);
