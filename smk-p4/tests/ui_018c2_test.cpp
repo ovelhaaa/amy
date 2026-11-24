@@ -842,6 +842,9 @@ int main(int argc, char** argv) {
             assert(adapter.requestParameterInt("fm.selected_op", op).accepted());
             sync_runtime();
             assert(adapter.model().getInt("fm.selected_op", 0) == op);
+            auto* op_selector = findButton(app.contentObject(), label);
+            assert(lv_color_eq(lv_obj_get_style_text_color(lv_obj_get_child(op_selector, 0), 0),
+                               lv_color_hex(palette::kBackground)));
             auto* header = findLabel(lv_screen_active(), "FM TOPOLOGY:", true);
             assert(header);
             auto* modal = lv_obj_get_parent(header);

@@ -177,6 +177,11 @@ void applyImmediateSelectionStyle(lv_obj_t* obj) {
     lv_obj_add_style(obj, &g_theme.button_active, LV_STATE_CHECKED);
     lv_obj_set_pos(obj, x, y);
     lv_obj_set_size(obj, w, h);
+    auto* label = lv_obj_get_child(obj, 0);
+    if (label && lv_obj_check_type(label, &lv_label_class)) {
+        // Let the label inherit the checked button's contrasting text color.
+        lv_obj_remove_local_style_prop(label, LV_STYLE_TEXT_COLOR, 0);
+    }
 }
 
 void applyPanicButtonStyle(lv_obj_t* obj) {
