@@ -996,21 +996,20 @@ int main(){
         preview::pumpFrame(ui);
         assert(preview::saveFramebufferPpm(tab_shots[tab]));
     }
-    // Check OSC tab contextual badges
+    // Check GERAL (tab 0) and AVANCADO (tab 4) contextual badges on FM patch
     assert(ui.navigation().navigateTo(ScreenId::SoundEditor,0));preview::pumpFrame(ui);
-    assert(button(ui.contentObject(),"MAIN MIX"));
+    assert(button(ui.contentObject(),"PATCH LEVEL"));
+    assert(ui.navigation().navigateTo(ScreenId::SoundEditor,4));preview::pumpFrame(ui);
     auto* pulse_card=button(ui.contentObject(),"PULSE WIDTH");assert(pulse_card && labels(pulse_card,"N/A")>=2 && labels(pulse_card,"PLAN")==0);
-    // Check FM tab shows both FM BRIGHTNESS and FM FEEDBACK and FM ALGORITHM
+    // Switch to DX7 FM patch 135 to test live interactive FM topology and operator switching
+    auto next_apply=[&]{next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);r.loadPendingPatch();assert(r.render());reboot.publish(r.snapshot(),false,0,0);next.service(preview::g_sim_tick_ms+=25);preview::pumpFrame(ui);};
+    assert(next.requestSelectPatch(135).accepted());next_apply();
     assert(ui.navigation().navigateTo(ScreenId::SoundEditor,1));preview::pumpFrame(ui);
     assert(button(ui.contentObject(),"FM BRIGHTNESS") && button(ui.contentObject(),"FM FEEDBACK"));
     auto* algo_card=button(ui.contentObject(),"FM ALGORITHM");assert(algo_card);
     auto* op1_btn=button(ui.contentObject(),"OP 1");assert(op1_btn);
     auto* op3_btn=button(ui.contentObject(),"OP 3");assert(op3_btn);
-    // Switch to DX7 FM patch 135 to test live interactive FM topology and operator switching
-    auto next_apply=[&]{next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);r.loadPendingPatch();assert(r.render());reboot.publish(r.snapshot(),false,0,0);next.service(preview::g_sim_tick_ms+=25);preview::pumpFrame(ui);};
-    assert(next.requestSelectPatch(135).accepted());next_apply();
-    assert(ui.navigation().navigateTo(ScreenId::SoundEditor,1));preview::pumpFrame(ui);
-    auto* live_op3=button(ui.contentObject(),"OP 3");assert(live_op3 && !lv_obj_has_state(live_op3,LV_STATE_DISABLED));
+    auto* live_op3=op3_btn;assert(live_op3 && !lv_obj_has_state(live_op3,LV_STATE_DISABLED));
     lv_obj_send_event(live_op3,LV_EVENT_CLICKED,nullptr);next_apply();
     assert(next.model().getInt("fm.selected_op",1)==3);
     // Check MOD tab Slot 1 interactive button click -> owner confirmation

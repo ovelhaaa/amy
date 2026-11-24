@@ -414,5 +414,81 @@ int main(int argc, char** argv) {
 
     app.shutdown();
     std::puts("PASS: C.2-B Patch Browser selection, loading, and discard protection");
+
+    // ── C.2-C: Sound Editor (contextual modules, FM vs Subtractive, Compare/Revert/Save As)
+    assert(app.begin());
+    sync_runtime();
+    // Ensure patch 4 (Subtractive Juno MOVING STRINGS) is loaded cleanly
+    if (adapter.patchNeedsDiscardConfirmation() || runtime.snapshot().patch_id != 4) {
+        assert(adapter.confirmPatchDiscard(4, 0, 0).accepted());
+        sync_runtime();
+        runtime.loadPendingPatch();
+        for (int k = 0; k < 4; ++k) sync_runtime();
+    }
+    assert(runtime.snapshot().patch_id == 4);
+    assert(app.navigation().navigateTo(ScreenId::SoundEditor, 0));
+    sync_runtime();
+    assert(findLabel(app.contentObject(), "MOTOR: SUBTRATIVO") != nullptr);
+    assert(findLabel(app.contentObject(), "OSCILADORES") != nullptr);
+    capture("04_sintese_geral");
+
+    clickBtn(app.contentObject(), "OSCILADORES", app);
+    sync_runtime();
+    assert(findLabel(app.contentObject(), "MIX DE OSCILADORES (SUBTRATIVO)") != nullptr);
+    capture("05_sintese_subtrativo");
+
+    clickBtn(app.contentObject(), "FILTRO / ENV", app);
+    sync_runtime();
+    assert(findLabel(app.contentObject(), "MOTOR FM:", true) == nullptr);
+    capture("07_sintese_filtro_env");
+
+    clickBtn(app.contentObject(), "LFO / MOD", app);
+    sync_runtime();
+    capture("08_sintese_lfo_mod");
+
+    // Switch to FM patch 135 -> sidebar & modules must adapt to FM 6-OP
+    assert(adapter.requestSelectPatch(135, 0, 0).accepted());
+    sync_runtime();
+    runtime.loadPendingPatch();
+    for (int k = 0; k < 4; ++k) sync_runtime();
+    assert(runtime.snapshot().patch_id == 135);
+    assert(findLabel(app.contentObject(), "MOTOR: FM 6-OP") != nullptr);
+    clickBtn(app.contentObject(), "FM / OPS", app);
+    sync_runtime();
+    capture("06_sintese_fm");
+
+    // Edit FM depth, test module switch preservation, Compare, Save As, Revert
+    assert(adapter.requestParameterFloat("fm.depth", 0.75f).accepted());
+    sync_runtime();
+    clickBtn(app.contentObject(), "GERAL", app);
+    sync_runtime();
+    clickBtn(app.contentObject(), "FM / OPS", app);
+    sync_runtime();
+    assert(std::abs(adapter.model().getFloat("fm.depth", 0.0f) - 0.75f) < 0.05f);
+
+    clickBtn(app.contentObject(), "COMPARE", app);
+    sync_runtime();
+    assert(runtime.snapshot().edit.compare == true);
+    capture("09_sintese_compare");
+    clickBtn(app.contentObject(), "COMPARE", app);
+    sync_runtime();
+    assert(runtime.snapshot().edit.compare == false);
+
+    clickBtn(app.contentObject(), "USER / SAVE AS", app);
+    sync_runtime();
+    assert(findLabel(lv_screen_active(), "USER PRESETS | SAVE ONLY WITH NOTES RELEASED") != nullptr);
+    capture("10_sintese_save_as");
+    clickBtn(lv_screen_active(), "CLOSE", app);
+    sync_runtime();
+
+    // Revert with confirmation dialog
+    clickBtn(app.contentObject(), "REVERT", app);
+    assert(findLabel(app.contentObject(), "CONFIRMAR REVERT") != nullptr);
+    clickBtn(app.contentObject(), "REVERTER", app);
+    for (int k = 0; k < 4; ++k) sync_runtime();
+    assert(!adapter.patchNeedsDiscardConfirmation());
+
+    app.shutdown();
+    std::puts("PASS: C.2-C Sound Editor contextual modules, FM/Sub adaptation, Compare/Revert/Save As");
     return 0;
 }

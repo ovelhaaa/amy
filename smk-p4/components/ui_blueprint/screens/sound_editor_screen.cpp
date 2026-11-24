@@ -7,157 +7,310 @@ namespace smk::p4::ui {
 
 namespace {
 
-constexpr const char* kEditorTabs[7] = {"OSC", "FM", "FILTER", "AMP", "ENV", "LFO", "MOD"};
+constexpr uint8_t mapSoundEditorModule(uint8_t raw_tab) {
+    if (raw_tab <= 4) return raw_tab;
+    return 3; // Legacy tabs 5 (LFO) and 6 (MOD) map cleanly to LFO / MOD
+}
 
 class SoundEditorScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::SoundEditor; }
 
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
-        const uint8_t tab = nav.subTab(ScreenId::SoundEditor) % 7;
-
-        // 1. Sub-tab bar (y = 4..40)
-        createSubTabBar(parent, kEditorTabs, 7, tab, ScreenId::SoundEditor, nav, 8, 4, 784, 36);
-
-        // 2. Contextual Patch & Synthesis Family Banner (y = 44..76)
-        lv_obj_t* banner = lv_obj_create(parent);
-        applyPanelStyle(banner, false);
-        lv_obj_set_pos(banner, 8, 44);
-        lv_obj_set_size(banner, 784, 32);
-        lv_obj_set_style_pad_all(banner, 4, 0);
-
+        parent_ = parent;
+        backend_ = &backend;
+        nav_ = &nav;
+        confirm_dialog_.close(false);
+        compare_btn_ = nullptr;
         const auto& patch = backend.model().activePatch();
-        char btxt[96];
-        std::snprintf(btxt, sizeof(btxt),
-                      "EDITING: %03u %s  |  FAMILY: %s  |  DEMO STATE (NO AMY DSP WRITES)",
-                      patch.id, patch.name, synthFamilyName(patch.family));
-        if(backend.hasSoundEditor())std::snprintf(btxt,sizeof(btxt),"%03u %s | %s",patch.id,patch.name,backend.soundEditStatus());
-        banner_=createLabel(banner, btxt, 6, 2, 760, &lv_font_montserrat_14, palette::kAccentPrimary);
-        if(backend.hasSoundEditor()){
-            struct Action { IUiBackend* backend;unsigned action; };
-            const char* labels[]={"COMPARE","REVERT","USER / SAVE AS"};
-            for(unsigned a=0;a<3;++a){
-                auto* button=createActionButton(parent,labels[a],8+int(a)*264,350,256,36,nullptr,nullptr);
-                attachLvContext<Action>(button,Action{&backend,a},[](lv_event_t* e){
-                    if(lv_event_get_code(e)!=LV_EVENT_CLICKED)return;
-                    auto* c=static_cast<Action*>(lv_event_get_user_data(e));
-                    if(c->action<2)c->backend->requestSoundAction(c->action);
-                    else showPresets(static_cast<lv_obj_t*>(lv_event_get_current_target(e)),*c->backend);
-                },LV_EVENT_CLICKED);
+        shown_family_ = patch.family;
+        const bool is_fm = (patch.family == SynthFamily::FM);
+        const uint8_t mod = mapSoundEditorModule(nav.subTab(ScreenId::SoundEditor));
+
+        // 1. Left Contextual Sidebar (x = 4..160, y = 4..384)
+        lv_obj_t* sidebar = lv_obj_create(parent);
+        applyPanelStyle(sidebar, false);
+        lv_obj_set_pos(sidebar, 4, 4);
+        lv_obj_set_size(sidebar, 156, 380);
+        lv_obj_set_style_pad_all(sidebar, 4, 0);
+        lv_obj_remove_flag(sidebar, LV_OBJ_FLAG_SCROLLABLE);
+
+        createLabel(sidebar, "SINTESE", 4, 2, 140, &lv_font_montserrat_14, palette::kAccentPrimary);
+        createLabel(sidebar, is_fm ? "MOTOR: FM 6-OP" : "MOTOR: SUBTRATIVO", 4, 20, 140,
+                    &lv_font_montserrat_14, palette::kActive);
+
+        const char* mod_labels[5] = {
+            "GERAL",
+            is_fm ? "FM / OPS" : "OSCILADORES",
+            "FILTRO / ENV",
+            "LFO / MOD",
+            "AVANCADO"
+        };
+        struct ModCtx { UiNavigationManager* nav; uint8_t mod; };
+        for (uint8_t i = 0; i < 5; ++i) {
+            lv_obj_t* btn = createActionButton(
+                sidebar, mod_labels[i], 2, 44 + i * 48, 144, 42,
+                nullptr, nullptr, mod == i, false);
+            if (btn) {
+                attachLvContext<ModCtx>(btn, {&nav, i}, [](lv_event_t* e) {
+                    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                    auto* c = static_cast<ModCtx*>(lv_event_get_user_data(e));
+                    if (c && c->nav) c->nav->requestNavigateTo(ScreenId::SoundEditor, c->mod);
+                }, LV_EVENT_CLICKED);
             }
         }
 
-        // 3. Tab-specific parameter grid (y = 82..386)
-        const int row2=backend.hasSoundEditor()?170:184,row3=backend.hasSoundEditor()?258:286;
-        const int cell_h=backend.hasSoundEditor()?78:94;
-        switch (tab) {
-            case 0: // OSC
-                if(backend.hasSoundEditor()){
-                    createParameterCard(parent, backend, "osc.1.level", 8,82,256,cell_h);
-                    createParameterCard(parent, backend, "osc.sub_level",272,82,256,cell_h);
-                    createParameterCard(parent, backend, "osc.noise_level",536,82,256,cell_h);
-                    createParameterCard(parent, backend, "osc.1.detune_ct",8,row2,388,cell_h);
-                    createParameterCard(parent, backend, "osc.1.pulse_width",404,row2,388,cell_h);
-                    auto* note=lv_obj_create(parent);applyPanelStyle(note,false);lv_obj_set_pos(note,8,row3);lv_obj_set_size(note,784,cell_h);
-                    createLabel(note,"NATIVE COMPONENT MIX",8,6,740,&lv_font_montserrat_14,palette::kAccentPrimary);
-                    createLabel(note,"MAIN = % OF ROM MIX; SUB/NOISE = NATIVE LEVEL. N/A: INCOMPATIBLE TOPOLOGY / PWM.",8,34,756,&lv_font_montserrat_14,palette::kTextSecondary);
-                    break;
+        lv_obj_t* lib_btn = createActionButton(sidebar, "BIBLIOTECA >", 2, 296, 144, 34, nullptr, nullptr);
+        lv_obj_t* perf_btn = createActionButton(sidebar, "TOCAR >", 2, 336, 144, 34, nullptr, nullptr);
+        if (lib_btn) {
+            attachLvContext<UiNavigationManager*>(lib_btn, &nav, [](lv_event_t* e) {
+                if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                auto* n = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
+                if (n) n->requestNavigateTo(ScreenId::PatchBrowser);
+            }, LV_EVENT_CLICKED);
+        }
+        if (perf_btn) {
+            attachLvContext<UiNavigationManager*>(perf_btn, &nav, [](lv_event_t* e) {
+                if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                auto* n = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
+                if (n) n->requestReturnToPerformance();
+            }, LV_EVENT_CLICKED);
+        }
+
+        // 2. Top Context Banner (x = 166..794, y = 4..38)
+        lv_obj_t* banner = lv_obj_create(parent);
+        applyPanelStyle(banner, false);
+        lv_obj_set_pos(banner, 166, 4);
+        lv_obj_set_size(banner, 628, 34);
+        lv_obj_set_style_pad_all(banner, 4, 0);
+        lv_obj_remove_flag(banner, LV_OBJ_FLAG_SCROLLABLE);
+
+        char btxt[96];
+        if (backend.hasSoundEditor()) {
+            std::snprintf(btxt, sizeof(btxt), "%03u %s (%s) | %s",
+                          patch.id, patch.name, is_fm ? "FM" : "SUB", backend.soundEditStatus());
+        } else {
+            std::snprintf(btxt, sizeof(btxt), "DEMO: %03u %s | %s (SEM AMY DSP)",
+                          patch.id, patch.name, synthFamilyName(patch.family));
+        }
+        banner_ = createLabel(banner, btxt, 6, 2, 612, &lv_font_montserrat_14, palette::kAccentPrimary);
+        if (banner_) lv_label_set_long_mode(banner_, LV_LABEL_LONG_MODE_DOTS);
+
+        // 3. Bottom Action Strip (x = 166..794, y = 344..384)
+        if (backend.hasSoundEditor()) {
+            struct ActionCtx { SoundEditorScreen* screen; IUiBackend* backend; unsigned action; };
+            compare_btn_ = createActionButton(parent, "COMPARE", 166, 344, 146, 38, nullptr, nullptr);
+            lv_obj_t* rev_btn = createActionButton(parent, "REVERT", 318, 344, 146, 38, nullptr, nullptr);
+            lv_obj_t* usr_btn = createActionButton(parent, "USER / SAVE AS", 470, 344, 182, 38, nullptr, nullptr, false, true);
+            lv_obj_t* mod_btn = createActionButton(parent, "MOD >", 658, 344, 136, 38, nullptr, nullptr);
+
+            const auto on_act = [](lv_event_t* e) {
+                if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                auto* c = static_cast<ActionCtx*>(lv_event_get_user_data(e));
+                if (!c || !c->backend || !c->screen) return;
+                if (c->action == 0) {
+                    c->backend->requestSoundAction(0);
+                } else if (c->action == 1) {
+                    if (c->backend->patchNeedsDiscardConfirmation()) {
+                        c->screen->openRevertConfirm();
+                    } else {
+                        c->backend->requestSoundAction(1);
+                    }
+                } else if (c->action == 2) {
+                    showPresets(static_cast<lv_obj_t*>(lv_event_get_current_target(e)), *c->backend);
                 }
-                createParameterCard(parent, backend, "osc.1.wave",        8, 82, 256, cell_h);
-                createParameterCard(parent, backend, "osc.1.pitch_st",    272, 82, 256, cell_h);
-                createParameterCard(parent, backend, "osc.1.detune_ct",   536, 82, 256, cell_h);
+            };
+            if (compare_btn_) attachLvContext<ActionCtx>(compare_btn_, {this, &backend, 0}, on_act, LV_EVENT_CLICKED);
+            if (rev_btn) attachLvContext<ActionCtx>(rev_btn, {this, &backend, 1}, on_act, LV_EVENT_CLICKED);
+            if (usr_btn) attachLvContext<ActionCtx>(usr_btn, {this, &backend, 2}, on_act, LV_EVENT_CLICKED);
+            if (mod_btn) {
+                attachLvContext<UiNavigationManager*>(mod_btn, &nav, [](lv_event_t* e) {
+                    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                    auto* n = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
+                    if (n) n->requestNavigateTo(ScreenId::Modulation);
+                }, LV_EVENT_CLICKED);
+            }
+        } else {
+            lv_obj_t* demo_bar = lv_obj_create(parent);
+            applyPanelStyle(demo_bar, false);
+            lv_obj_set_pos(demo_bar, 166, 344);
+            lv_obj_set_size(demo_bar, 628, 38);
+            lv_obj_set_style_pad_all(demo_bar, 4, 0);
+            createLabel(demo_bar, "DEMO RAM: Compare / Revert / User Presets requerem Audio Owner", 6, 4, 610,
+                        &lv_font_montserrat_14, palette::kTextSecondary);
+        }
 
-                createParameterCard(parent, backend, "osc.1.level",       8, row2, 256, cell_h);
-                createParameterCard(parent, backend, "osc.1.pan",         272, row2, 256, cell_h);
-                createParameterCard(parent, backend, "osc.1.pulse_width", 536, row2, 256, cell_h);
-
-                createParameterCard(parent, backend, "osc.1.unison",      8, row3, 256, cell_h);
-                createParameterCard(parent, backend, "osc.sub_level",     272, row3, 256, cell_h);
-                createParameterCard(parent, backend, "osc.noise_level",   536, row3, 256, cell_h);
+        // 4. Contextual Module Body (x = 166..794, y = 42..338, 628x296)
+        constexpr int32_t kX = 166;
+        constexpr int32_t kY = 42;
+        switch (mod) {
+            case 0: // GERAL
+                createParameterCard(parent, backend, "amp.level",      kX,       kY,       310, 92);
+                createParameterCard(parent, backend, "amp.pan",        kX + 318, kY,       310, 92);
+                createParameterCard(parent, backend, "amp.vel_sens",   kX,       kY + 100, 310, 92);
+                if (is_fm) {
+                    createParameterCard(parent, backend, "fm.depth",          kX + 318, kY + 100, 310, 92);
+                    createParameterCard(parent, backend, "fm.feedback",       kX,       kY + 200, 310, 92);
+                    createParameterCard(parent, backend, "perf.master_volume",kX + 318, kY + 200, 310, 92);
+                } else {
+                    createParameterCard(parent, backend, "osc.1.level",       kX + 318, kY + 100, 310, 92);
+                    createParameterCard(parent, backend, "filter.cutoff_hz",  kX,       kY + 200, 310, 92);
+                    createParameterCard(parent, backend, "perf.master_volume",kX + 318, kY + 200, 310, 92);
+                }
                 break;
 
-            case 1: // FM
-                createParameterCard(parent, backend, backend.hasSoundEditor()?"fm.depth":"fm.algo", 8, 82, 190, cell_h);
-                createParameterCard(parent, backend, "fm.selected_op", 206, 82, 190, cell_h);
-                createParameterCard(parent, backend, "fm.op.ratio",    404, 82, 190, cell_h);
-                createParameterCard(parent, backend, "fm.op.level",    602, 82, 190, cell_h);
+            case 1: // FM / OPS or OSCILADORES
+                if (is_fm) {
+                    createParameterCard(parent, backend, backend.hasSoundEditor() ? "fm.depth" : "fm.algo", kX, kY, 152, 88);
+                    createParameterCard(parent, backend, "fm.selected_op", kX + 158, kY, 152, 88);
+                    createParameterCard(parent, backend, "fm.op.ratio",    kX + 316, kY, 152, 88);
+                    createParameterCard(parent, backend, "fm.op.level",    kX + 474, kY, 154, 88);
 
-                createParameterCard(parent, backend, "fm.feedback",    8, row2, 190, cell_h);
-                createParameterCard(parent, backend, "fm.op.attack",   206, row2, 190, cell_h);
-                createParameterCard(parent, backend, "fm.op.decay",    404, row2, 190, cell_h);
-                createParameterCard(parent, backend, "fm.op.vel_sens", 602, row2, 190, cell_h);
+                    createParameterCard(parent, backend, "fm.feedback",    kX,       kY + 94, 152, 88);
+                    createParameterCard(parent, backend, "fm.op.attack",   kX + 158, kY + 94, 152, 88);
+                    createParameterCard(parent, backend, "fm.op.decay",    kX + 316, kY + 94, 152, 88);
+                    createParameterCard(parent, backend, "fm.op.vel_sens", kX + 474, kY + 94, 154, 88);
 
-                createFmAlgorithmSelector(parent, backend, 8, row3, 200, cell_h);
-                createFmTopologyDiagram(parent, backend, 216, row3, 576, cell_h);
-                break;
+                    createFmAlgorithmSelector(parent, backend, kX, kY + 188, 144, 108);
+                    createFmTopologyDiagram(parent, backend, kX + 148, kY + 188, 480, 108);
+                } else if (backend.hasSoundEditor()) {
+                    createParameterCard(parent, backend, "osc.1.level",       kX,       kY,      204, 92);
+                    createParameterCard(parent, backend, "osc.sub_level",     kX + 212, kY,      204, 92);
+                    createParameterCard(parent, backend, "osc.noise_level",   kX + 424, kY,      204, 92);
+                    createParameterCard(parent, backend, "osc.1.detune_ct",   kX,       kY + 100,310, 92);
+                    createParameterCard(parent, backend, "osc.1.pulse_width", kX + 318, kY + 100,310, 92);
 
-            case 2: // FILTER
-                createParameterCard(parent, backend, "filter.type",       8, 82, 256, cell_h);
-                createParameterCard(parent, backend, "filter.cutoff_hz",  272, 82, 256, cell_h);
-                createParameterCard(parent, backend, "filter.resonance",  536, 82, 256, cell_h);
-
-                createParameterCard(parent, backend, "filter.drive",      8, row2, 256, cell_h);
-                createParameterCard(parent, backend, "filter.keytrack",   272, row2, 256, cell_h);
-                createParameterCard(parent, backend, "filter.env_amount", 536, row2, 256, cell_h);
-
-                {
-                    lv_obj_t* fcard = lv_obj_create(parent);
-                    applyPanelStyle(fcard, false);
-                    lv_obj_set_pos(fcard, 8, row3);
-                    lv_obj_set_size(fcard, 784, cell_h);
-                    createLabel(fcard, "BIQUAD / ZDF FILTER TOPOLOGY NOTES", 8, 6, 420,
+                    lv_obj_t* note = lv_obj_create(parent);
+                    applyPanelStyle(note, false);
+                    lv_obj_set_pos(note, kX, kY + 200);
+                    lv_obj_set_size(note, 628, 92);
+                    createLabel(note, "MIX DE OSCILADORES (SUBTRATIVO)", 8, 6, 420,
                                 &lv_font_montserrat_14, palette::kAccentPrimary);
-                    createLabel(fcard,
-                                "Cutoff, Q, Keytrack & Env Amount: native AMY controls on Juno. Filter Type/Drive PLANNED.",
-                                8, 34, 756, &lv_font_montserrat_14, palette::kTextSecondary);
+                    createLabel(note, "MAIN = % do mix ROM; SUB/NOISE = nivel nativo; PWM/DETUNE ativos no Juno.",
+                                8, 34, 608, &lv_font_montserrat_14, palette::kTextSecondary);
+                } else {
+                    createParameterCard(parent, backend, "osc.1.wave",        kX,       kY,      204, 92);
+                    createParameterCard(parent, backend, "osc.1.pitch_st",    kX + 212, kY,      204, 92);
+                    createParameterCard(parent, backend, "osc.1.detune_ct",   kX + 424, kY,      204, 92);
+                    createParameterCard(parent, backend, "osc.1.level",       kX,       kY + 100,204, 92);
+                    createParameterCard(parent, backend, "osc.1.pulse_width", kX + 212, kY + 100,204, 92);
+                    createParameterCard(parent, backend, "osc.sub_level",     kX + 424, kY + 100,204, 92);
+                    createParameterCard(parent, backend, "osc.1.pan",         kX,       kY + 200,204, 92);
+                    createParameterCard(parent, backend, "osc.1.unison",      kX + 212, kY + 200,204, 92);
+                    createParameterCard(parent, backend, "osc.noise_level",   kX + 424, kY + 200,204, 92);
                 }
                 break;
 
-            case 3: // AMP
-                createParameterCard(parent, backend, "amp.level",          8,   82, 190, 110);
-                createParameterCard(parent, backend, "amp.pan",            206, 82, 190, 110);
-                createParameterCard(parent, backend, "amp.vel_sens",       404, 82, 190, 110);
-                createParameterCard(parent, backend, "amp.portamento_ms",  602, 82, 190, 110);
-                createParameterCard(parent, backend, "perf.master_volume", 8,   202, 388, 110);
+            case 2: // FILTRO / ENV
+                if (is_fm) {
+                    lv_obj_t* fnote = lv_obj_create(parent);
+                    applyPanelStyle(fnote, false);
+                    lv_obj_set_pos(fnote, kX, kY);
+                    lv_obj_set_size(fnote, 628, 36);
+                    lv_obj_set_style_pad_all(fnote, 4, 0);
+                    createLabel(fnote, "MOTOR FM: ENVELOPE DE AMPLITUDE (FILTRO ANALOGICO N/A NO DX7)",
+                                6, 4, 610, &lv_font_montserrat_14, palette::kWarning);
+                    createEnvelopeEditor(parent, backend, kX, kY + 42, 628, 134);
+                } else {
+                    createParameterCard(parent, backend, "filter.cutoff_hz",  kX,       kY, 204, 86);
+                    createParameterCard(parent, backend, "filter.resonance",  kX + 212, kY, 204, 86);
+                    createParameterCard(parent, backend, "filter.env_amount", kX + 424, kY, 204, 86);
+                    createParameterCard(parent, backend, "filter.keytrack",   kX,       kY + 92, 176, 88);
+                    createEnvelopeEditor(parent, backend, kX + 182, kY + 92, 446, 88);
+                }
+                createParameterCard(parent, backend, "env.amp.attack_ms",  kX,       kY + 186, 152, 110);
+                createParameterCard(parent, backend, "env.amp.decay_ms",   kX + 158, kY + 186, 152, 110);
+                createParameterCard(parent, backend, "env.amp.sustain",    kX + 316, kY + 186, 152, 110);
+                createParameterCard(parent, backend, "env.amp.release_ms", kX + 474, kY + 186, 154, 110);
                 break;
 
-            case 4: // ENV
-                createEnvelopeEditor(parent, backend, 8, 82, 784, 148);
-                createParameterCard(parent, backend, "env.amp.attack_ms",  8,   238, 150, backend.hasSoundEditor()?104:144);
-                createParameterCard(parent, backend, "env.amp.decay_ms",   166, 238, 150, backend.hasSoundEditor()?104:144);
-                createParameterCard(parent, backend, "env.amp.sustain",    324, 238, 150, backend.hasSoundEditor()?104:144);
-                createParameterCard(parent, backend, "env.amp.release_ms", 482, 238, 150, backend.hasSoundEditor()?104:144);
-                createParameterCard(parent, backend, "env.amp.curve",      640, 238, 152, backend.hasSoundEditor()?104:144);
+            case 3: // LFO / MOD
+                createParameterCard(parent, backend, "lfo.1.wave",    kX,       kY, 152, 88);
+                createParameterCard(parent, backend, "lfo.1.rate_hz", kX + 158, kY, 152, 88);
+                createParameterCard(parent, backend, "lfo.1.depth",   kX + 316, kY, 152, 88);
+                createParameterCard(parent, backend, "lfo.1.dest",    kX + 474, kY, 154, 88);
+                createModulationMatrixWidget(parent, backend, nav, 0, kX, kY + 94, 628, 202);
                 break;
 
-            case 5: // LFO
-                createParameterCard(parent, backend, "lfo.1.wave",      8,   82, 256, 110);
-                createParameterCard(parent, backend, "lfo.1.rate_hz",   272, 82, 256, 110);
-                createParameterCard(parent, backend, "lfo.1.depth",     536, 82, 256, 110);
+            case 4: // AVANCADO (preserves all secondary & planned parameters)
+                createParameterCard(parent, backend, "filter.type",       kX,       kY,       152, 92);
+                createParameterCard(parent, backend, "filter.drive",      kX + 158, kY,       152, 92);
+                createParameterCard(parent, backend, "amp.portamento_ms", kX + 316, kY,       152, 92);
+                createParameterCard(parent, backend, "env.amp.curve",     kX + 474, kY,       154, 92);
 
-                createParameterCard(parent, backend, "lfo.1.phase_deg", 8,   202, 256, 110);
-                createParameterCard(parent, backend, "lfo.1.sync",      272, 202, 256, 110);
-                createParameterCard(parent, backend, "lfo.1.dest",      536, 202, 256, 110);
-                break;
+                createParameterCard(parent, backend, "lfo.1.phase_deg",   kX,       kY + 100, 152, 92);
+                createParameterCard(parent, backend, "lfo.1.sync",        kX + 158, kY + 100, 152, 92);
+                createParameterCard(parent, backend, "osc.1.wave",        kX + 316, kY + 100, 152, 92);
+                createParameterCard(parent, backend, "osc.1.pitch_st",    kX + 474, kY + 100, 154, 92);
 
-            case 6: // MOD
-                createModulationMatrixWidget(parent, backend, nav, 0, 8, 82, 784, backend.hasSoundEditor()?260:298);
+                createParameterCard(parent, backend, "osc.1.pan",         kX,       kY + 200, 152, 92);
+                createParameterCard(parent, backend, "osc.1.unison",      kX + 158, kY + 200, 152, 92);
+                createParameterCard(parent, backend, "osc.1.pulse_width", kX + 316, kY + 200, 152, 92);
+                createParameterCard(parent, backend, "osc.1.detune_ct",   kX + 474, kY + 200, 154, 92);
                 break;
         }
 
+        refresh(backend);
         return true;
     }
 
+    void onDestroy() override {
+        confirm_dialog_.close(false);
+    }
+
     void refresh(IUiBackend& backend) override {
-        if(banner_ && backend.hasSoundEditor()){
-            char text[96];std::snprintf(text,sizeof(text),"%s | %s",backend.soundEditName(),backend.soundEditStatus());lv_label_set_text(banner_,text);
+        backend_ = &backend;
+        const auto& patch = backend.model().activePatch();
+        if (nav_ && patch.family != shown_family_) {
+            nav_->requestNavigateTo(ScreenId::SoundEditor, mapSoundEditorModule(nav_->subTab(ScreenId::SoundEditor)));
+            return;
         }
-        if(s_active_preset_modal_){
+        if (banner_ && backend.hasSoundEditor()) {
+            char text[96];
+            std::snprintf(text, sizeof(text), "%03u %s (%s) | %s",
+                          patch.id, backend.soundEditName(),
+                          patch.family == SynthFamily::FM ? "FM" : "SUB",
+                          backend.soundEditStatus());
+            if (std::strcmp(lv_label_get_text(banner_), text) != 0) {
+                lv_label_set_text(banner_, text);
+            }
+        }
+        if (compare_btn_ && backend.hasSoundEditor()) {
+            const bool cmp = std::strstr(backend.soundEditStatus(), "COMPARE") != nullptr;
+            if (cmp) lv_obj_add_state(compare_btn_, LV_STATE_CHECKED);
+            else lv_obj_remove_state(compare_btn_, LV_STATE_CHECKED);
+        }
+        if (s_active_preset_modal_) {
             lv_obj_send_event(s_active_preset_modal_, LV_EVENT_REFRESH, nullptr);
         }
     }
+
 private:
-    lv_obj_t* banner_=nullptr;
+    void openRevertConfirm() {
+        if (!parent_ || !backend_) return;
+        ConfirmDialogOptions opts{};
+        opts.title = "CONFIRMAR REVERT";
+        opts.body = "Descartar edicoes nao salvas do timbre atual?";
+        opts.detail = "Os parametros serao restaurados para o estado original do patch.";
+        opts.cancel_label = "CANCELAR";
+        opts.confirm_label = "REVERTER";
+        opts.border_color = palette::kWarning;
+        opts.destructive = true;
+        opts.user_data = backend_;
+        opts.on_confirm = [](void* ud) {
+            auto* b = static_cast<IUiBackend*>(ud);
+            if (b) b->requestSoundAction(1);
+        };
+        confirm_dialog_.open(parent_, opts);
+    }
+
+    lv_obj_t* parent_ = nullptr;
+    IUiBackend* backend_ = nullptr;
+    UiNavigationManager* nav_ = nullptr;
+    lv_obj_t* banner_ = nullptr;
+    lv_obj_t* compare_btn_ = nullptr;
+    SynthFamily shown_family_ = SynthFamily::Subtractive;
+    ConfirmDialog confirm_dialog_{};
     static inline lv_obj_t* s_active_preset_modal_ = nullptr;
     static constexpr uint32_t kOverwriteConfirmTimeoutMs=10000;
     static bool presetPending(PresetOperationState state) {

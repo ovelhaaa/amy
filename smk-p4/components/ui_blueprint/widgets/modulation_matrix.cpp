@@ -48,13 +48,15 @@ lv_obj_t* createModulationMatrixWidget(lv_obj_t* parent, IUiBackend& backend, Ui
     lv_obj_set_pos(box, x, y);
     lv_obj_set_size(box, w, h);
 
+    auto sx = [w](int32_t v) -> int32_t { return (v * w) / 784; };
+
     // Table header
-    createLabel(box, "SLOT", 8, 2, 54, &lv_font_montserrat_14, palette::kTextSecondary);
-    createLabel(box, "SOURCE", 84, 2, 140, &lv_font_montserrat_14, palette::kTextSecondary);
-    createLabel(box, "DESTINATION", 248, 2, 150, &lv_font_montserrat_14, palette::kTextSecondary);
-    createLabel(box, "AMOUNT", 422, 2, 160, &lv_font_montserrat_14, palette::kTextSecondary);
-    createLabel(box, "POLARITY", 602, 2, 100, &lv_font_montserrat_14, palette::kTextSecondary);
-    createLabel(box, "STATUS", 704, 2, 68, &lv_font_montserrat_14, palette::kTextSecondary);
+    createLabel(box, "SLOT",        sx(8),   2, sx(54),  &lv_font_montserrat_14, palette::kTextSecondary);
+    createLabel(box, "SOURCE",      sx(84),  2, sx(140), &lv_font_montserrat_14, palette::kTextSecondary);
+    createLabel(box, "DESTINATION", sx(248), 2, sx(150), &lv_font_montserrat_14, palette::kTextSecondary);
+    createLabel(box, "AMOUNT",      sx(422), 2, sx(160), &lv_font_montserrat_14, palette::kTextSecondary);
+    createLabel(box, "POLARITY",    sx(602), 2, sx(100), &lv_font_montserrat_14, palette::kTextSecondary);
+    createLabel(box, "STATUS",      sx(704), 2, sx(68),  &lv_font_montserrat_14, palette::kTextSecondary);
 
     const uint8_t base_slot = (page == 0) ? 0 : 4;
     const int32_t row_h = (h - 36) / 4;
@@ -126,24 +128,24 @@ lv_obj_t* createModulationMatrixWidget(lv_obj_t* parent, IUiBackend& backend, Ui
 
         char s_lbl[16];
         std::snprintf(s_lbl, sizeof(s_lbl), "M%u %s", unsigned(slot_idx + 1), slot.enabled ? "ON" : "OFF");
-        lv_obj_t* en_btn = createActionButton(box, s_lbl, 6, ry, 72, row_h - 6, nullptr, nullptr, slot.enabled, false);
-        lv_obj_t* src_btn = createActionButton(box, kSrcNames[slot.source % 10], 84, ry, 156, row_h - 6, nullptr, nullptr);
-        lv_obj_t* dst_btn = createActionButton(box, kDstNames[slot.dest % 10], 246, ry, 166, row_h - 6, nullptr, nullptr);
+        lv_obj_t* en_btn = createActionButton(box, s_lbl, sx(6), ry, sx(72), row_h - 6, nullptr, nullptr, slot.enabled, false);
+        lv_obj_t* src_btn = createActionButton(box, kSrcNames[slot.source % 10], sx(84), ry, sx(156), row_h - 6, nullptr, nullptr);
+        lv_obj_t* dst_btn = createActionButton(box, kDstNames[slot.dest % 10], sx(246), ry, sx(166), row_h - 6, nullptr, nullptr);
 
-        lv_obj_t* dec_btn = createActionButton(box, "-10", 418, ry, 44, row_h - 6, nullptr, nullptr);
+        lv_obj_t* dec_btn = createActionButton(box, "-10", sx(418), ry, sx(44), row_h - 6, nullptr, nullptr);
         char abuf[16];
         std::snprintf(abuf, sizeof(abuf), "%+d%%", int(slot.amount));
-        lv_obj_t* amt_lbl = createLabel(box, abuf, 466, ry + 8, 68, &lv_font_montserrat_14, palette::kAccentPrimary);
-        lv_obj_t* inc_btn = createActionButton(box, "+10", 536, ry, 44, row_h - 6, nullptr, nullptr);
+        lv_obj_t* amt_lbl = createLabel(box, abuf, sx(466), ry + 8, sx(68), &lv_font_montserrat_14, palette::kAccentPrimary);
+        lv_obj_t* inc_btn = createActionButton(box, "+10", sx(536), ry, sx(44), row_h - 6, nullptr, nullptr);
 
-        lv_obj_t* pol_btn = createActionButton(box, kPolNames[slot.polarity % 3], 586, ry, 106, row_h - 6, nullptr, nullptr);
+        lv_obj_t* pol_btn = createActionButton(box, kPolNames[slot.polarity % 3], sx(586), ry, sx(106), row_h - 6, nullptr, nullptr);
 
         const FeatureStatus st = backend.hasSoundEditor()
                                      ? ((slot_idx == 0) ? backend.parameterStatus("mod.slot1.dest") : FeatureStatus::Planned)
                                      : ((slot_idx == 0 && slot.source == 1 && slot.dest == 1)
                                             ? FeatureStatus::Available
                                             : FeatureStatus::Planned);
-        lv_obj_t* badge_box = createStatusBadge(box, st, 700, ry + 8);
+        lv_obj_t* badge_box = createStatusBadge(box, st, sx(700), ry + 8);
 
         if (backend.hasSoundEditor()) {
             const bool editable = (slot_idx == 0) && backend.isParameterEditable("mod.slot1.dest");
