@@ -1070,14 +1070,14 @@ int main(){
     lv_obj_send_event(pending_save_button,LV_EVENT_CLICKED,nullptr);
     const auto pending_save=next.presetOperationStatus();
     assert(pending_save.action==2 && pending_save.slot==15);
-    assert(pending_save.state==PresetOperationState::Requested ||
-           pending_save.state==PresetOperationState::WaitingForQuiet);
+    assert(pending_save.state==ui::PresetOperationState::Requested ||
+           pending_save.state==ui::PresetOperationState::WaitingForQuiet);
     const auto generation_at_close=r.commands().generation();
     lv_obj_send_event(browser_close,LV_EVENT_CLICKED,nullptr);
     assert(r.commands().generation()==generation_at_close);
     preview::pumpFrame(ui);
     for(unsigned i=0;i<6;++i)next_apply();
-    assert(next.presetOperationStatus().state==PresetOperationState::Confirmed);
+    assert(next.presetOperationStatus().state==ui::PresetOperationState::Confirmed);
     edit::Preset closed_panel_preset{};fx::FxConfig closed_panel_fx{};
     assert(reboot.transactionCoordinator().load(15,closed_panel_preset,closed_panel_fx));
     // 7. Effects Screen 0.18-B Pilot verification, contextual switch, slider coalescing & screenshot capture
