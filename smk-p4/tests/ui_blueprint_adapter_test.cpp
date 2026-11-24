@@ -113,7 +113,7 @@ static void lifecycle() {
     assert(nav.navigateTo(ScreenId::Performance,1));key=button(app.contentObject(),"C3");assert(key);
     lv_obj_send_event(key,LV_EVENT_PRESSED,nullptr);a.requestParameterInt("perf.octave_shift",1);
     nav.refreshActive();lv_obj_send_event(key,LV_EVENT_RELEASED,nullptr);assert(!a.isNoteHeld(48));
-    assert(nav.navigateTo(ScreenId::GlobalSettings));
+    assert(nav.navigateTo(ScreenId::GlobalSettings, 3));
     auto* reset=button(app.contentObject(),"RESET DEMO RAM DEFAULTS");assert(reset);
     m.s.master=101;m.s.patch_id=135;++m.rev;a.service(2);
     lv_obj_send_event(reset,LV_EVENT_CLICKED,nullptr);
