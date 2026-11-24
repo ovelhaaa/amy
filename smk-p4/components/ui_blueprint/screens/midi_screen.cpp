@@ -62,6 +62,9 @@ lv_obj_t* liveMidiButton(lv_obj_t* parent, IUiBackend& backend, const char* text
             auto* context = static_cast<LiveMidiAction*>(lv_event_get_user_data(event));
             if (!context || !context->backend) return;
             const unsigned target_knob = context->use_selected_knob ? unsigned(s_selected_knob) : context->knob;
+            if (context->action == IUiBackend::MidiAction::NextBank && learnIsActive(*context->backend)) {
+                context->backend->midiPerformanceAction(IUiBackend::MidiAction::Cancel, s_selected_knob);
+            }
             context->backend->midiPerformanceAction(context->action, target_knob);
         }, LV_EVENT_CLICKED);
     }
@@ -239,7 +242,10 @@ public:
 
             struct SelectKnobCtx { MidiScreen* screen; IUiBackend* backend; uint8_t slot; };
             for (unsigned i = 0; i < 8; ++i) {
-                lv_obj_t* kbtn = createActionButton(list_panel, "", 2, 2 + int(i) * 40, 250, 36, nullptr, nullptr, i == s_selected_knob, false);
+                lv_obj_t* kbtn = createActionButton(list_panel, "", 2, 2 + int(i) * 40, 250, 36, nullptr, nullptr, false, false);
+                if (kbtn) {
+                    applyImmediateSelectionStyle(kbtn);
+                }
                 knob_btns_[i] = kbtn;
                 if (kbtn) {
                     lv_obj_t* klbl = lv_obj_get_child(kbtn, 0);
@@ -288,7 +294,10 @@ public:
             }
 
             binding_ = createLabel(ctx_panel, "", 2, 146, 340, &lv_font_montserrat_14, palette::kActive);
-            if (binding_) lv_label_set_long_mode(binding_, LV_LABEL_LONG_MODE_DOTS);
+            if (binding_) {
+                lv_obj_set_height(binding_, 32);
+                lv_label_set_long_mode(binding_, LV_LABEL_LONG_MODE_WRAP);
+            }
 
             // Row 1: LEARN, LEARN + CC1, CANCEL
             liveMidiButton(ctx_panel, backend, "LEARN",       2,   178, 106, 38, Action::Learn, 0, true);
@@ -403,11 +412,18 @@ public:
         if (observation_) {
             char text[120]{};
             backend.midiObservationText(text, sizeof(text));
-            refreshMidiLabel(observation_, text);
+            if (sel_hdr_lbl_) {
+                const char* input = std::strstr(text, "CH ");
+                char observation[128];
+                std::snprintf(observation, sizeof(observation), "ULTIMO MIDI: %s",
+                              input ? input : "nenhum evento recebido");
+                refreshMidiLabel(observation_, observation);
+            } else refreshMidiLabel(observation_, text);
         }
         if (binding_) {
             char text[120]{};
-            backend.midiLastBindingText(text, sizeof(text));
+            if (sel_hdr_lbl_) std::snprintf(text, sizeof(text), "TAKEOVER: PICKUP\nFEEDBACK MIDI: N/A");
+            else backend.midiLastBindingText(text, sizeof(text));
             refreshMidiLabel(binding_, text);
         }
         for (unsigned i = 0; i < 16; ++i) {
