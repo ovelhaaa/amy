@@ -830,6 +830,21 @@ int main(int argc, char** argv) {
         clickBtn(lv_screen_active(), "CLOSE", app);
     }
 
+    clickBtn(app.contentObject(), "EXPAND", app);
+    assert(adapter.requestParameterInt("fm.algo", 1).state == UiCommandState::Requested);
+    auto* expanded_header = findLabel(lv_screen_active(), "FM TOPOLOGY:", true);
+    assert(expanded_header);
+    auto* expanded = lv_obj_get_parent(expanded_header);
+    clickBtn(expanded, "OP 2", app, true); // Owner has not processed the algorithm yet.
+    assert(adapter.model().getInt("fm.selected_op", 0) == 2);
+    assert(adapter.fmAlgorithmResult().state == UiCommandState::Requested);
+    assert(adapter.requestParameterInt("fm.selected_op", 7).state == UiCommandState::Rejected);
+    assert(adapter.model().getInt("fm.selected_op", 0) == 2);
+    sync_runtime();
+    assert(adapter.fmAlgorithmResult().state == UiCommandState::Confirmed);
+    auditCardGeometry(expanded);
+    clickBtn(lv_screen_active(), "CLOSE", app);
+
     clickBtn(app.contentObject(), "OP 1", app);
     sync_runtime();
     assert(adapter.model().getInt("fm.selected_op", 1) == 1);
@@ -872,7 +887,7 @@ int main(int argc, char** argv) {
     clickBtn(lv_screen_active(), "05", app);
     sync_runtime();
     assert(adapter.model().getInt("fm.algo", 0) == 32);
-    assert(adapter.fmAlgorithmResult().state == UiCommandState::Rejected);
+    assert(adapter.lastCommandState() == UiCommandState::Rejected);
     capture("10_fm_mudanca_rejeitada");
     clickBtn(lv_screen_active(), "PANIC", app);
     sync_runtime();
