@@ -725,7 +725,7 @@ int main(int argc, char** argv) {
                 assert(bc.x1 >= oc.x1 && bc.x2 <= oc.x2 && bc.y1 >= oc.y1 && bc.y2 <= oc.y2);
                 for (uint32_t i = 0; i < cnt; ++i) {
                     lv_obj_t* ch = lv_obj_get_child(obj, int32_t(i));
-                    if (ch != badge && lv_obj_check_type(ch, &lv_label_class)) {
+                    if (ch != badge && !lv_obj_has_flag(ch, LV_OBJ_FLAG_HIDDEN)) {
                         lv_area_t lc{};
                         lv_obj_get_coords(ch, &lc);
                         assert(!rectsOverlap(bc, lc));

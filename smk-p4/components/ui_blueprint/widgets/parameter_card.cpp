@@ -104,8 +104,10 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, IUiBackend& backend, const char*
             lv_obj_add_style(btn, &theme().button, 0);
             lv_obj_add_style(btn, &theme().button_active, LV_STATE_CHECKED);
             lv_obj_set_style_opa(btn, LV_OPA_50, LV_STATE_DISABLED);
-            lv_obj_set_pos(btn, 0, inner_h - 36);
-            lv_obj_set_size(btn, inner_w, 36);
+            const int32_t header_h = (level == PresentationLevel::BlueprintVerbose && w < 145) ? 40 : 20;
+            const int32_t ctrl_h = (inner_h - header_h < 36) ? inner_h - header_h : 36;
+            lv_obj_set_pos(btn, 0, inner_h - ctrl_h);
+            lv_obj_set_size(btn, inner_w, ctrl_h);
             lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
             if (pv.asBool()) lv_obj_add_state(btn, LV_STATE_CHECKED);
             if (!enabled) lv_obj_add_state(btn, LV_STATE_DISABLED);
@@ -160,7 +162,9 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, IUiBackend& backend, const char*
         const int32_t btn_w = (w < 140) ? 28 : ((level == PresentationLevel::StageStacked && w >= 200) ? 44 : 36);
         const lv_font_t* val_font = (level == PresentationLevel::StageStacked && h >= 110)
                                         ? &lv_font_montserrat_20 : &lv_font_montserrat_14;
-        const int32_t ctrl_y = inner_h - 36;
+        const int32_t header_h = (level == PresentationLevel::BlueprintVerbose && w < 145) ? 40 : 20;
+        const int32_t ctrl_h = (inner_h - header_h < 36) ? inner_h - header_h : 36;
+        const int32_t ctrl_y = inner_h - ctrl_h;
         const int32_t val_y = (val_font == &lv_font_montserrat_20) ? (ctrl_y + 4) : (ctrl_y + 8);
         const int32_t val_w = (inner_w > btn_w * 2 + 8) ? (inner_w - btn_w * 2 - 8) : 24;
         lv_obj_t* vlbl = createLabel(card, vbuf, btn_w + 4, val_y, val_w,
@@ -169,8 +173,8 @@ lv_obj_t* createParameterCard(lv_obj_t* parent, IUiBackend& backend, const char*
             lv_obj_set_style_text_align(vlbl, LV_TEXT_ALIGN_CENTER, 0);
             lv_label_set_long_mode(vlbl, LV_LABEL_LONG_MODE_DOTS);
         }
-        lv_obj_t* dec_btn = createActionButton(card, "-", 0, ctrl_y, btn_w, 36, nullptr, nullptr);
-        lv_obj_t* inc_btn = createActionButton(card, "+", inner_w - btn_w, ctrl_y, btn_w, 36, nullptr, nullptr);
+        lv_obj_t* dec_btn = createActionButton(card, "-", 0, ctrl_y, btn_w, ctrl_h, nullptr, nullptr);
+        lv_obj_t* inc_btn = createActionButton(card, "+", inner_w - btn_w, ctrl_y, btn_w, ctrl_h, nullptr, nullptr);
         setDisabledState(dec_btn, !enabled);
         setDisabledState(inc_btn, !enabled);
         if (dec_btn) lv_obj_set_style_opa(dec_btn, LV_OPA_50, LV_STATE_DISABLED);

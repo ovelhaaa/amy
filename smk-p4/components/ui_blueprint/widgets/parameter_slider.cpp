@@ -578,7 +578,7 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
         title_lbl = createLabel(card, title, title_x, 0, title_w, &lv_font_montserrat_14,
                                 enabled ? palette::kTextPrimary : palette::kTextSecondary);
         badge_box = createStatusBadge(card, status, inner_w - kBadgeW, 0);
-        const int32_t val_y = (h >= 96) ? 24 : 17;
+        const int32_t val_y = (h >= 96) ? 24 : 20;
         const lv_font_t* val_font = (h >= 104 && w >= 240) ? &lv_font_montserrat_20 : &lv_font_montserrat_14;
         vlbl = createLabel(card, vbuf, title_x, val_y, inner_w - 58 - title_x, val_font,
                            enabled ? palette::kAccentPrimary : palette::kTextSecondary);
@@ -607,7 +607,7 @@ lv_obj_t* createParameterSlider(lv_obj_t* parent, IUiBackend& backend, const cha
 
         const bool stage = (level != PresentationLevel::BlueprintVerbose) && (h >= 68);
         const int32_t bar_h = stage ? 18 : 14;
-        const int32_t bar_y = stage ? (inner_h - 20) : (inner_h - 16);
+        const int32_t bar_y = stage ? (inner_h - 20) : (inner_h - 14);
         lv_obj_set_pos(slider, 4, bar_y);
         lv_obj_set_size(slider, inner_w - 8, bar_h);
         lv_obj_set_ext_click_area(slider, 14);
