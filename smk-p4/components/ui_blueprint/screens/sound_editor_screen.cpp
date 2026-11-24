@@ -1,11 +1,14 @@
 #include "ui_screens.h"
 #include "ui_widgets.h"
+#include "fm_topology.h"
 #include <cstdio>
 #include <cstring>
 
 namespace smk::p4::ui {
 
 namespace {
+
+uint8_t s_fm_subview = 0; // 0 = OPERADOR, 1 = GLOBAL
 
 constexpr uint8_t mapSoundEditorModule(uint8_t raw_tab) {
     if (raw_tab <= 4) return raw_tab;
@@ -22,6 +25,8 @@ public:
         nav_ = &nav;
         confirm_dialog_.close(false);
         compare_btn_ = nullptr;
+        op_role_lbl_ = nullptr;
+        for (auto& b : fm_op_btns_) b = nullptr;
         const auto& patch = backend.model().activePatch();
         shown_family_ = patch.family;
         const bool is_fm = (patch.family == SynthFamily::FM);
@@ -161,18 +166,72 @@ public:
 
             case 1: // FM / OPS or OSCILADORES
                 if (is_fm) {
-                    createParameterCard(parent, backend, backend.hasSoundEditor() ? "fm.depth" : "fm.algo", kX, kY, 152, 88);
-                    createParameterCard(parent, backend, "fm.selected_op", kX + 158, kY, 152, 88);
-                    createParameterCard(parent, backend, "fm.op.ratio",    kX + 316, kY, 152, 88);
-                    createParameterCard(parent, backend, "fm.op.level",    kX + 474, kY, 154, 88);
+                    // Top bar: Algorithm Selector (220x58) + Operator & Sub-view Selector (402x58)
+                    createFmAlgorithmSelector(parent, backend, kX, kY, 220, 58);
 
-                    createParameterCard(parent, backend, "fm.feedback",    kX,       kY + 94, 152, 88);
-                    createParameterCard(parent, backend, "fm.op.attack",   kX + 158, kY + 94, 152, 88);
-                    createParameterCard(parent, backend, "fm.op.decay",    kX + 316, kY + 94, 152, 88);
-                    createParameterCard(parent, backend, "fm.op.vel_sens", kX + 474, kY + 94, 154, 88);
+                    lv_obj_t* op_panel = lv_obj_create(parent);
+                    applyPanelStyle(op_panel, false);
+                    lv_obj_set_pos(op_panel, kX + 226, kY);
+                    lv_obj_set_size(op_panel, 402, 58);
 
-                    createFmAlgorithmSelector(parent, backend, kX, kY + 188, 144, 108);
-                    createFmTopologyDiagram(parent, backend, kX + 148, kY + 188, 480, 108);
+                    op_role_lbl_ = createLabel(op_panel, "OP 1: CARRIER -> OUT", 0, 0, 230,
+                                               &lv_font_montserrat_14, palette::kActive);
+                    if (op_role_lbl_) lv_label_set_long_mode(op_role_lbl_, LV_LABEL_LONG_MODE_DOTS);
+
+                    struct FmViewCtx { UiNavigationManager* nav; uint8_t view; };
+                    lv_obj_t* op_tab = createActionButton(op_panel, "OPERADOR", 234, 0, 88, 20, nullptr, nullptr, s_fm_subview == 0, false);
+                    lv_obj_t* gl_tab = createActionButton(op_panel, "GLOBAL", 326, 0, 62, 20, nullptr, nullptr, s_fm_subview == 1, false);
+                    const auto on_fm_view = [](lv_event_t* e) {
+                        if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                        auto* c = static_cast<FmViewCtx*>(lv_event_get_user_data(e));
+                        if (!c || !c->nav) return;
+                        s_fm_subview = c->view;
+                        c->nav->requestNavigateTo(ScreenId::SoundEditor, 1);
+                    };
+                    if (op_tab) attachLvContext<FmViewCtx>(op_tab, {&nav, 0}, on_fm_view, LV_EVENT_CLICKED);
+                    if (gl_tab) attachLvContext<FmViewCtx>(gl_tab, {&nav, 1}, on_fm_view, LV_EVENT_CLICKED);
+
+                    struct OpSelCtx { SoundEditorScreen* screen; IUiBackend* backend; int op; };
+                    for (int op = 1; op <= 6; ++op) {
+                        char lbl[8];
+                        std::snprintf(lbl, sizeof(lbl), "OP %d", op);
+                        const int32_t bx = (op - 1) * 65;
+                        lv_obj_t* ob = createActionButton(op_panel, lbl, bx, 21, 61, 23, nullptr, nullptr, false, false);
+                        fm_op_btns_[op - 1] = ob;
+                        if (ob) {
+                            attachLvContext<OpSelCtx>(ob, {this, &backend, op}, [](lv_event_t* e) {
+                                if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                                auto* c = static_cast<OpSelCtx*>(lv_event_get_user_data(e));
+                                if (!c || !c->backend) return;
+                                c->backend->requestParameterInt("fm.selected_op", c->op);
+                                if (c->screen) c->screen->refresh(*c->backend);
+                            }, LV_EVENT_CLICKED);
+                        }
+                    }
+
+                    // Center 2x2 large parameter cards (310x66 each)
+                    if (s_fm_subview == 0) {
+                        createParameterCard(parent, backend, "fm.op.ratio",  kX,       kY + 61, 310, 65,
+                                            PresentationLevel::BlueprintVerbose, "OP RATIO");
+                        createParameterCard(parent, backend, "fm.op.level",  kX + 318, kY + 61, 310, 65,
+                                            PresentationLevel::BlueprintVerbose, "OP LEVEL");
+                        createParameterCard(parent, backend, "fm.op.attack", kX,       kY + 129, 310, 65,
+                                            PresentationLevel::BlueprintVerbose, "OP ATTACK");
+                        createParameterCard(parent, backend, "fm.op.decay",  kX + 318, kY + 129, 310, 65,
+                                            PresentationLevel::BlueprintVerbose, "OP DECAY");
+                    } else {
+                        createParameterCard(parent, backend, backend.hasSoundEditor() ? "fm.depth" : "fm.algo",
+                                            kX,       kY + 61, 310, 65,
+                                            PresentationLevel::BlueprintVerbose, backend.hasSoundEditor() ? "FM DEPTH" : nullptr);
+                        createParameterCard(parent, backend, "fm.feedback",    kX + 318, kY + 61, 310, 65,
+                                            PresentationLevel::BlueprintVerbose, "FEEDBACK");
+                        createParameterCard(parent, backend, "fm.op.vel_sens", kX,       kY + 129, 310, 65,
+                                            PresentationLevel::BlueprintVerbose, "OP VEL SENS");
+                        createParameterCard(parent, backend, "fm.selected_op", kX + 318, kY + 129, 310, 65);
+                    }
+
+                    // Bottom full-width compact topology diagram (628x101)
+                    createFmTopologyDiagram(parent, backend, kX, kY + 197, 628, 101);
                 } else if (backend.hasSoundEditor()) {
                     createParameterCard(parent, backend, "osc.1.level",       kX,       kY,      204, 92);
                     createParameterCard(parent, backend, "osc.sub_level",     kX + 212, kY,      204, 92);
@@ -256,14 +315,48 @@ public:
 
     void onDestroy() override {
         confirm_dialog_.close(false);
+        closeFmModals(false);
+        closePresetModal(false);
     }
 
     void refresh(IUiBackend& backend) override {
         backend_ = &backend;
         const auto& patch = backend.model().activePatch();
         if (nav_ && patch.family != shown_family_) {
+            closeFmModals(true);
             nav_->requestNavigateTo(ScreenId::SoundEditor, mapSoundEditorModule(nav_->subTab(ScreenId::SoundEditor)));
             return;
+        }
+        if (backend.lastCommandParameterId() && std::strcmp(backend.lastCommandParameterId(), "panic") == 0) {
+            confirm_dialog_.close(true);
+            closeFmModals(true);
+        }
+        if (op_role_lbl_) {
+            const int algo = backend.model().getInt("fm.algo", 1);
+            const int sel = backend.model().getInt("fm.selected_op", 1);
+            const auto topo = smk::p4::fm::deriveTopology(algo);
+            const bool is_carr = topo.isCarrier(unsigned(sel));
+            const bool has_fb = topo.hasFeedback(unsigned(sel));
+            char rbuf[48];
+            std::snprintf(rbuf, sizeof(rbuf), "OP %d: %s%s", sel,
+                          is_carr ? "CARRIER -> OUT" : "MODULATOR",
+                          has_fb ? " [FB]" : "");
+            if (std::strcmp(lv_label_get_text(op_role_lbl_), rbuf) != 0) {
+                lv_label_set_text(op_role_lbl_, rbuf);
+            }
+            lv_obj_set_style_text_color(op_role_lbl_,
+                                        lv_color_hex(is_carr ? palette::kActive : palette::kAccentPrimary), 0);
+            for (int op = 1; op <= 6; ++op) {
+                lv_obj_t* btn = fm_op_btns_[op - 1];
+                if (!btn) continue;
+                const bool c = topo.isCarrier(unsigned(op));
+                const bool s = (sel == op);
+                const uint32_t col = c ? palette::kActive : palette::kAccentPrimary;
+                if (s) lv_obj_add_state(btn, LV_STATE_CHECKED);
+                else lv_obj_remove_state(btn, LV_STATE_CHECKED);
+                lv_obj_set_style_border_color(btn, lv_color_hex(s ? palette::kTextPrimary : col), 0);
+                lv_obj_set_style_border_width(btn, s ? 2 : 1, 0);
+            }
         }
         if (banner_ && backend.hasSoundEditor()) {
             char text[96];
@@ -309,9 +402,25 @@ private:
     UiNavigationManager* nav_ = nullptr;
     lv_obj_t* banner_ = nullptr;
     lv_obj_t* compare_btn_ = nullptr;
+    lv_obj_t* op_role_lbl_ = nullptr;
+    lv_obj_t* fm_op_btns_[6]{};
     SynthFamily shown_family_ = SynthFamily::Subtractive;
     ConfirmDialog confirm_dialog_{};
     static inline lv_obj_t* s_active_preset_modal_ = nullptr;
+public:
+    static void closePresetModal(bool async) {
+        if (!s_active_preset_modal_) return;
+        lv_obj_t* target = s_active_preset_modal_;
+        s_active_preset_modal_ = nullptr;
+        if (async) {
+            lv_obj_add_flag(target, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_remove_flag(target, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_delete_async(target);
+        } else {
+            lv_obj_delete(target);
+        }
+    }
+public:
     static constexpr uint32_t kOverwriteConfirmTimeoutMs=10000;
     static bool presetPending(PresetOperationState state) {
         return state==PresetOperationState::Requested || state==PresetOperationState::WaitingForQuiet ||
@@ -494,9 +603,9 @@ public:
             lv_obj_set_style_text_color(c->info, lv_color_hex(r.accepted() ? palette::kAccentPrimary : palette::kWarning), 0);
         },LV_EVENT_CLICKED,context);
 
-        lv_obj_add_event_cb(close,[](lv_event_t* e){auto* c=static_cast<PresetPanel*>(lv_event_get_user_data(e));
-            if(c && c->root) lv_obj_delete(c->root);
-        },LV_EVENT_CLICKED,context);
+        lv_obj_add_event_cb(close,[](lv_event_t*){
+            closePresetModal(true);
+        },LV_EVENT_CLICKED,nullptr);
 
         lv_obj_send_event(slot,LV_EVENT_VALUE_CHANGED,nullptr);
     }
@@ -505,6 +614,7 @@ public:
 } // namespace
 
 void showUserPresetPanel(lv_obj_t* anchor,IUiBackend& backend){SoundEditorScreen::showPresets(anchor,backend);}
+void closeUserPresetPanel(bool async){SoundEditorScreen::closePresetModal(async);}
 
 ScreenView* createSoundEditorScreen() {
     return new SoundEditorScreen();

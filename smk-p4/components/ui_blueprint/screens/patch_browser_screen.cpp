@@ -324,6 +324,10 @@ public:
         return true;
     }
 
+    void onDestroy() override {
+        closeUserPresetPanel(false);
+    }
+
     void refresh(IUiBackend& backend) override {
         if (nav_ && shown_patch_ != backend.model().activePatch().id) {
             nav_->requestNavigateTo(ScreenId::PatchBrowser);
