@@ -9,6 +9,17 @@ namespace smk::p4::ui {
 
 namespace {
 
+const char* sceneOpResultShort(scene::RecallPhase phase) {
+    switch (phase) {
+        case scene::RecallPhase::WaitingBoundary: return "PENDENTE";
+        case scene::RecallPhase::WaitingPatch:    return "WAIT PATCH";
+        case scene::RecallPhase::Failed:          return "FALHOU";
+        case scene::RecallPhase::Cancelled:       return "CANCELADO";
+        case scene::RecallPhase::PartialApply:    return "PARCIAL";
+        default:                                  return nullptr;
+    }
+}
+
 const char* scenePhaseShort(scene::RecallPhase phase, const scene::Slot* slot) {
     switch (phase) {
         case scene::RecallPhase::WaitingBoundary: return "PENDING BAR";
@@ -214,13 +225,24 @@ public:
         }
 
         const SceneView sv = backend.sceneView();
+        const uint8_t op_slot = (sv.recall.pending < scene::kSlots)
+                                    ? sv.recall.pending
+                                    : s_last_recall_slot_;
+        const char* active_sc = (sv.recall.active < scene::kSlots && backend.sceneSlot(sv.recall.active))
+                                    ? backend.sceneSlot(sv.recall.active)->config.name
+                                    : "--";
         if (scene_lbl_) {
-            const char* active_sc = (sv.recall.active < scene::kSlots && backend.sceneSlot(sv.recall.active))
-                                        ? backend.sceneSlot(sv.recall.active)->config.name
-                                        : "--";
-            char sbuf[80]{};
-            std::snprintf(sbuf, sizeof(sbuf), "CENA ATIVA: %s | %s",
-                          active_sc, scenePhaseShort(sv.recall.phase, nullptr));
+            char sbuf[96]{};
+            const char* op_res = sceneOpResultShort(sv.recall.phase);
+            if (!op_res) {
+                std::snprintf(sbuf, sizeof(sbuf), "ATIVA: %s", active_sc);
+            } else if (op_slot < scene::kSlots) {
+                std::snprintf(sbuf, sizeof(sbuf), "ATIVA: %s | RECALL C%u: %s",
+                              active_sc, unsigned(op_slot + 1U), op_res);
+            } else {
+                std::snprintf(sbuf, sizeof(sbuf), "ATIVA: %s | RECALL: %s",
+                              active_sc, op_res);
+            }
             setLabelIfChanged(scene_lbl_, sbuf);
         }
 
@@ -284,8 +306,9 @@ public:
             const bool valid = slot && slot->state == seq::SlotState::Valid;
             const bool is_pend = (sv.recall.pending == i);
             const bool is_act = (sv.recall.active == i);
-            const bool is_fail = (is_act && (sv.recall.phase == scene::RecallPhase::Failed ||
-                                             sv.recall.phase == scene::RecallPhase::PartialApply));
+            const bool is_op = (op_slot < scene::kSlots) ? (op_slot == i) : is_act;
+            const bool is_fail = (is_op && (sv.recall.phase == scene::RecallPhase::Failed ||
+                                            sv.recall.phase == scene::RecallPhase::PartialApply));
 
             if (valid) lv_obj_remove_state(quick_[i], LV_STATE_DISABLED);
             else lv_obj_add_state(quick_[i], LV_STATE_DISABLED);
@@ -315,10 +338,13 @@ public:
             const bool sel = (selected_scene_slot_ == s);
             const bool is_act = (sv.recall.active == s);
             const bool is_pend = (sv.recall.pending == s);
+            const bool is_op = (op_slot < scene::kSlots) ? (op_slot == s) : is_act;
             const char* ph = is_pend ? "PENDING" :
                              (is_act ? "ACTIVE" : scenePhaseShort(scene::RecallPhase::Idle, slot));
-            if (is_act && sv.recall.phase == scene::RecallPhase::PartialApply) ph = "PARTIAL";
-            if (sel && sv.recall.phase == scene::RecallPhase::Failed) ph = "FAILED";
+            if (is_op && sv.recall.phase == scene::RecallPhase::PartialApply) ph = "PARTIAL";
+            else if (is_op && sv.recall.phase == scene::RecallPhase::WaitingPatch) ph = "WAIT PATCH";
+            else if (is_op && sv.recall.phase == scene::RecallPhase::Failed) ph = "FAILED";
+            else if (is_op && sv.recall.phase == scene::RecallPhase::Cancelled) ph = "CANCELLED";
 
             if (scene_cards_[s].badge) {
                 lv_obj_set_style_bg_color(scene_cards_[s].badge, lv_color_hex(sceneStateColor(ph)), 0);
@@ -348,10 +374,10 @@ public:
             }
         }
         if (scenes_notice_lbl_) {
-            char nbuf[96]{};
+            char nbuf[112]{};
             const char* notice_txt = (sv.notice && sv.notice[0]) ? sv.notice : scenePhaseShort(sv.recall.phase, nullptr);
-            std::snprintf(nbuf, sizeof(nbuf), "CENA %u | %s",
-                          unsigned(selected_scene_slot_ + 1U), notice_txt);
+            std::snprintf(nbuf, sizeof(nbuf), "SEL: C%u | ATIVA: %s | %s",
+                          unsigned(selected_scene_slot_ + 1U), active_sc, notice_txt);
             setLabelIfChanged(scenes_notice_lbl_, nbuf);
         }
         const uint8_t locks = sessionLockMask();
@@ -423,6 +449,7 @@ private:
                 attachLvContext<QuickScene>(quick_[s], {&backend, uint8_t(s)}, [](lv_event_t* e) {
                     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
                     const auto& q = *static_cast<const QuickScene*>(lv_event_get_user_data(e));
+                    s_last_recall_slot_ = q.slot;
                     SceneOperation op;
                     op.slot = q.slot;
                     op.locks = sessionLockMask();
@@ -457,13 +484,6 @@ private:
                 auto* c = static_cast<SceneSlotCtx*>(lv_event_get_user_data(e));
                 if (!c || !c->screen || !c->backend) return;
                 c->screen->selected_scene_slot_ = c->slot;
-                const scene::Slot* slot = c->backend->sceneSlot(c->slot);
-                if (slot && slot->state == seq::SlotState::Valid) {
-                    SceneOperation op;
-                    op.slot = c->slot;
-                    op.locks = sessionLockMask();
-                    c->backend->requestScene(op);
-                }
                 c->screen->refresh(*c->backend);
             }, LV_EVENT_CLICKED);
         }
@@ -484,6 +504,7 @@ private:
                 auto* c = static_cast<SceneSlotCtx*>(lv_event_get_user_data(e));
                 if (!c || !c->screen || !c->backend) return;
                 if (c->action == 1) {
+                    s_last_recall_slot_ = c->screen->selected_scene_slot_;
                     SceneOperation op;
                     op.action = SceneAction::Load;
                     op.slot = c->screen->selected_scene_slot_;
@@ -750,6 +771,7 @@ private:
     IUiBackend::LegacyOffsets expected_{};
     bool confirming_ = false;
     uint8_t selected_scene_slot_ = 0;
+    static inline uint8_t s_last_recall_slot_ = seq::kNoSlot;
     lv_obj_t* legacy_ = nullptr;
     lv_obj_t* legacy_rows_[3]{};
     lv_obj_t* confirm_ = nullptr;

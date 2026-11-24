@@ -425,6 +425,7 @@ int main(int argc, char** argv) {
 
         setSessionLockMask(perf_lock::Fx);
         clickBtn(app.contentObject(), "C5:", app, true);
+        clickBtn(app.contentObject(), "RECALL", app);
         for (int k = 0; k < 4; ++k) sync_runtime();
         assert(runtime.snapshot().scene.phase == scene::RecallPhase::Failed);
         assert(findLabel(app.contentObject(), "FAILED") != nullptr);
@@ -444,6 +445,7 @@ int main(int argc, char** argv) {
         adapter.setSceneStore(scenes);
 
         clickBtn(app.contentObject(), "C6:", app, true);
+        clickBtn(app.contentObject(), "RECALL", app);
         preview::g_sim_tick_ms += 25;
         runtime.apply(preview::g_sim_tick_ms);
         assert(runtime.snapshot().scene.phase == scene::RecallPhase::WaitingPatch);

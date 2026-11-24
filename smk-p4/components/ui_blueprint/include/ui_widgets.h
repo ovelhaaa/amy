@@ -112,6 +112,7 @@ private:
     lv_obj_t*   harm_row_next_[5]{};
     uint32_t    harm_pending_token_ = 0;
     bool        harm_awaiting_token_ = false;
+    const char* harm_pending_param_ = nullptr;
 
     char      patch_buf_[48]{};
     char      tempo_buf_[24]{};

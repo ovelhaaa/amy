@@ -124,6 +124,7 @@ bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManag
     harm_preset_buf_[0] = '\0';
     harm_pending_token_ = 0;
     harm_awaiting_token_ = false;
+    harm_pending_param_ = nullptr;
 
     root_ = lv_obj_create(parent);
     if (!root_) return false;
@@ -210,7 +211,14 @@ bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManag
                 auto* ctx = static_cast<StripCtx*>(lv_event_get_user_data(e));
                 if (!ctx || !ctx->backend) return;
                 const bool cur = ctx->backend->model().getBool("harmony.scale_enable", false);
-                ctx->backend->requestParameterBool("harmony.scale_enable", !cur);
+                const UiCommandResult res = ctx->backend->requestParameterBool("harmony.scale_enable", !cur);
+                if (ctx->strip && res.state == UiCommandState::Requested) {
+                    ctx->strip->harm_pending_param_ = "harmony.scale_enable";
+                    if (res.token != 0) {
+                        ctx->strip->harm_awaiting_token_ = true;
+                        ctx->strip->harm_pending_token_ = res.token;
+                    }
+                }
                 if (ctx->strip && ctx->nav) ctx->strip->refresh(*ctx->backend, *ctx->nav);
             },
             LV_EVENT_CLICKED);
@@ -228,7 +236,14 @@ bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManag
                 auto* ctx = static_cast<StripCtx*>(lv_event_get_user_data(e));
                 if (!ctx || !ctx->backend) return;
                 const bool cur = ctx->backend->model().getBool("harmony.chord_enable", false);
-                ctx->backend->requestParameterBool("harmony.chord_enable", !cur);
+                const UiCommandResult res = ctx->backend->requestParameterBool("harmony.chord_enable", !cur);
+                if (ctx->strip && res.state == UiCommandState::Requested) {
+                    ctx->strip->harm_pending_param_ = "harmony.chord_enable";
+                    if (res.token != 0) {
+                        ctx->strip->harm_awaiting_token_ = true;
+                        ctx->strip->harm_pending_token_ = res.token;
+                    }
+                }
                 if (ctx->strip && ctx->nav) ctx->strip->refresh(*ctx->backend, *ctx->nav);
             },
             LV_EVENT_CLICKED);
@@ -275,6 +290,7 @@ bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManag
                     if (ctx->strip) {
                         ctx->strip->harm_awaiting_token_ = false;
                         ctx->strip->harm_pending_token_ = 0;
+                        ctx->strip->harm_pending_param_ = nullptr;
                     }
                     ctx->backend->requestPanic();
                     if (ctx->nav) ctx->nav->refreshActive();
@@ -339,38 +355,62 @@ void StatusStrip::refresh(IUiBackend& backend, UiNavigationManager& nav) {
              backend.lastCommandState() == UiCommandState::Rejected ||
              backend.lastCommandState() == UiCommandState::Unsupported)) {
             harm_awaiting_token_ = false;
+            harm_pending_param_ = nullptr;
         }
     }
     const bool pending = !backend.isDemoMode() &&
                          (lh.pending || harm_awaiting_token_ ||
                           (is_harm_cmd && backend.lastCommandState() == UiCommandState::Requested));
+    if (!pending && !harm_awaiting_token_) {
+        harm_pending_param_ = nullptr;
+    }
+    const char* pending_param = pending
+        ? (harm_pending_param_ ? harm_pending_param_
+                               : (is_harm_cmd ? last_id : nullptr))
+        : nullptr;
     const bool rejected = !pending && is_harm_cmd &&
                           (backend.lastCommandState() == UiCommandState::Rejected ||
                            backend.lastCommandState() == UiCommandState::Unsupported);
+
+    auto paramMatches = [](const char* p, const char* target) -> bool {
+        return p && target && std::strcmp(p, target) == 0;
+    };
+    const bool q_pending = paramMatches(pending_param, "harmony.scale_enable") ||
+                           paramMatches(pending_param, "harmony.preset");
+    const bool ch_pending = paramMatches(pending_param, "harmony.chord_enable") ||
+                            paramMatches(pending_param, "harmony.preset");
+    const bool touch_pending = paramMatches(pending_param, "harmony.apply_touch");
+    const bool scale_pending = paramMatches(pending_param, "harmony.root_note") ||
+                               paramMatches(pending_param, "harmony.scale_type") ||
+                               paramMatches(pending_param, "harmony.preset");
+    const bool q_rejected = rejected && (paramMatches(last_id, "harmony.scale_enable") ||
+                                         paramMatches(last_id, "harmony.preset"));
+    const bool ch_rejected = rejected && (paramMatches(last_id, "harmony.chord_enable") ||
+                                          paramMatches(last_id, "harmony.preset"));
 
     if (harm_lbl_) {
         char hbuf[24]{};
         if (!harm_avail) {
             std::snprintf(hbuf, sizeof(hbuf), "HARM N/A");
-        } else if (pending) {
+        } else if (scale_pending) {
             std::snprintf(hbuf, sizeof(hbuf), "%s %s*", kRootNames[root_i], kScaleShort[scale_i]);
         } else {
             std::snprintf(hbuf, sizeof(hbuf), "%s %s", kRootNames[root_i], kScaleShort[scale_i]);
         }
         setStaticBufIfChanged(harm_lbl_, harm_buf_, sizeof(harm_buf_), hbuf);
-        ToggleButtonStyleHelper::setState(harm_btn_, active_overlay_ == OverlayKind::Harmony, pending);
+        ToggleButtonStyleHelper::setState(harm_btn_, active_overlay_ == OverlayKind::Harmony, scale_pending);
     }
 
     if (q_lbl_) {
-        const char* qtxt = !harm_avail ? "Q N/A" : pending ? "Q WAIT" : rejected ? "Q REJ" : (q_on ? "Q ON" : "Q OFF");
+        const char* qtxt = !harm_avail ? "Q N/A" : q_pending ? "Q WAIT" : q_rejected ? "Q REJ" : (q_on ? "Q ON" : "Q OFF");
         setStaticBufIfChanged(q_lbl_, q_buf_, sizeof(q_buf_), qtxt);
-        ToggleButtonStyleHelper::setState(q_btn_, harm_avail && q_on, pending || rejected);
+        ToggleButtonStyleHelper::setState(q_btn_, harm_avail && q_on, q_pending || q_rejected);
     }
 
     if (ch_lbl_) {
-        const char* chtxt = !harm_avail ? "CH N/A" : pending ? "CH WAIT" : rejected ? "CH REJ" : (ch_on ? "CH ON" : "CH OFF");
+        const char* chtxt = !harm_avail ? "CH N/A" : ch_pending ? "CH WAIT" : ch_rejected ? "CH REJ" : (ch_on ? "CH ON" : "CH OFF");
         setStaticBufIfChanged(ch_lbl_, ch_buf_, sizeof(ch_buf_), chtxt);
-        ToggleButtonStyleHelper::setState(ch_btn_, harm_avail && ch_on, pending || rejected);
+        ToggleButtonStyleHelper::setState(ch_btn_, harm_avail && ch_on, ch_pending || ch_rejected);
     }
 
     if (mods_btn_ && mods_lbl_) {
@@ -397,9 +437,9 @@ void StatusStrip::refresh(IUiBackend& backend, UiNavigationManager& nav) {
             setStaticBufIfChanged(tempo_big_lbl_, bpm_big_buf_, sizeof(bpm_big_buf_), bbuf);
         }
     } else if (active_overlay_ == OverlayKind::Harmony && overlay_backdrop_) {
-        ToggleButtonStyleHelper::setState(harm_q_btn_, harm_avail && q_on, pending);
-        ToggleButtonStyleHelper::setState(harm_ch_btn_, harm_avail && ch_on, pending);
-        ToggleButtonStyleHelper::setState(harm_touch_btn_, harm_avail && touch_on, pending);
+        ToggleButtonStyleHelper::setState(harm_q_btn_, harm_avail && q_on, q_pending);
+        ToggleButtonStyleHelper::setState(harm_ch_btn_, harm_avail && ch_on, ch_pending);
+        ToggleButtonStyleHelper::setState(harm_touch_btn_, harm_avail && touch_on, touch_pending);
         setDisabledIfChanged(harm_q_btn_, !harm_avail || !backend.isParameterEditable("harmony.scale_enable"));
         setDisabledIfChanged(harm_ch_btn_, !harm_avail || !backend.isParameterEditable("harmony.chord_enable"));
         setDisabledIfChanged(harm_touch_btn_, !harm_avail || !backend.isParameterEditable("harmony.apply_touch"));
@@ -446,11 +486,30 @@ void StatusStrip::refresh(IUiBackend& backend, UiNavigationManager& nav) {
 
         if (harm_status_lbl_) {
             const char* st = !harm_avail ? "INDISPONIVEL" : pending ? "PENDING" : rejected ? "REJEITADO" : "CONFIRMADO";
+            const char* active_id = pending ? pending_param : (is_harm_cmd ? last_id : nullptr);
+            const char* pshort = nullptr;
+            if (active_id) {
+                if (std::strcmp(active_id, "harmony.scale_enable") == 0) pshort = "Q";
+                else if (std::strcmp(active_id, "harmony.chord_enable") == 0) pshort = "CH";
+                else if (std::strcmp(active_id, "harmony.apply_touch") == 0) pshort = "TOUCH";
+                else if (std::strcmp(active_id, "harmony.root_note") == 0) pshort = "ROOT";
+                else if (std::strcmp(active_id, "harmony.scale_type") == 0) pshort = "ESCALA";
+                else if (std::strcmp(active_id, "harmony.quant_mode") == 0) pshort = "QUANT";
+                else if (std::strcmp(active_id, "harmony.chord_type") == 0) pshort = "ACORDE";
+                else if (std::strcmp(active_id, "harmony.voicing") == 0) pshort = "VOICING";
+                else if (std::strcmp(active_id, "harmony.preset") == 0) pshort = "PRESET";
+            }
             const int32_t usb_ch = backend.model().getInt("harmony.usb_channel", lh.configuration.channel + 1);
             char sbuf[128]{};
-            std::snprintf(sbuf, sizeof(sbuf),
-                          "Estado: %s | Escopo Q/CH: USB Ch %d + Arp + Touch(%s) | SEQ usa SEQ QUANT (CH=OFF)",
-                          st, int(usb_ch), touch_on ? "ON" : "OFF");
+            if (pshort && (pending || rejected || backend.lastCommandState() == UiCommandState::Confirmed)) {
+                std::snprintf(sbuf, sizeof(sbuf),
+                              "Estado: %s [%s] | Q/CH: USB Ch %d + Arp + Touch(%s) | SEQ=SEQ QUANT",
+                              st, pshort, int(usb_ch), touch_on ? "ON" : "OFF");
+            } else {
+                std::snprintf(sbuf, sizeof(sbuf),
+                              "Estado: %s | Q/CH: USB Ch %d + Arp + Touch(%s) | SEQ=SEQ QUANT",
+                              st, int(usb_ch), touch_on ? "ON" : "OFF");
+            }
             setStaticBufIfChanged(harm_status_lbl_, harm_status_buf_, sizeof(harm_status_buf_), sbuf);
             const uint32_t st_col = rejected ? palette::kErrorPanic :
                                     pending ? palette::kAccentPrimary :
@@ -642,25 +701,31 @@ void StatusStrip::openHarmony(IUiBackend& backend) {
         const char* param_id = c->param_id;
         const int delta = c->delta;
         UiCommandResult res{};
+        const char* req_param = nullptr;
         if (kind == 0) {
             if (!backend->isParameterEditable("harmony.scale_enable")) return;
+            req_param = "harmony.scale_enable";
             const bool cur = backend->model().getBool("harmony.scale_enable", false);
             res = backend->requestParameterBool("harmony.scale_enable", !cur);
         } else if (kind == 1) {
             if (!backend->isParameterEditable("harmony.chord_enable")) return;
+            req_param = "harmony.chord_enable";
             const bool cur = backend->model().getBool("harmony.chord_enable", false);
             res = backend->requestParameterBool("harmony.chord_enable", !cur);
         } else if (kind == 2) {
             if (!backend->isParameterEditable("harmony.apply_touch")) return;
+            req_param = "harmony.apply_touch";
             const bool cur = backend->model().getBool("harmony.apply_touch", false);
             res = backend->requestParameterBool("harmony.apply_touch", !cur);
         } else if (kind == 3) {
             if (!backend->isParameterEditable("harmony.preset")) return;
+            req_param = "harmony.preset";
             const int32_t cur = backend->model().getInt("harmony.preset", 0);
             const int32_t next = findNextSupportedEnum(*backend, "harmony.preset", cur, 1, 5);
             res = backend->requestParameterInt("harmony.preset", next);
         } else if (kind == 4 && param_id) {
             if (!backend->isParameterEditable(param_id)) return;
+            req_param = param_id;
             const ParameterDescriptor* d = ParameterRegistry::findById(param_id);
             if (d && d->enum_count > 0) {
                 const int32_t cur = backend->model().getInt(param_id, 0);
@@ -668,9 +733,12 @@ void StatusStrip::openHarmony(IUiBackend& backend) {
                 res = backend->requestParameterInt(param_id, next);
             }
         }
-        if (res.state == UiCommandState::Requested && res.token != 0) {
-            strip->harm_awaiting_token_ = true;
-            strip->harm_pending_token_ = res.token;
+        if (res.state == UiCommandState::Requested) {
+            strip->harm_pending_param_ = req_param;
+            if (res.token != 0) {
+                strip->harm_awaiting_token_ = true;
+                strip->harm_pending_token_ = res.token;
+            }
         }
         if (strip->nav_) strip->refresh(*backend, *strip->nav_);
     };
