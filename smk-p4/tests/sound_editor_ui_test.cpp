@@ -1000,7 +1000,11 @@ int main(){
     assert(ui.navigation().navigateTo(ScreenId::SoundEditor,0));preview::pumpFrame(ui);
     assert(button(ui.contentObject(),"PATCH LEVEL"));
     assert(ui.navigation().navigateTo(ScreenId::SoundEditor,4));preview::pumpFrame(ui);
-    auto* pulse_card=button(ui.contentObject(),"PULSE WIDTH");assert(pulse_card && labels(pulse_card,"N/A")>=2 && labels(pulse_card,"PLAN")==0);
+    // Narrow titles intentionally use LVGL dots; identify this card by its
+    // layout and canonical capability instead of the mutated display string.
+    auto* pulse_card=widgetAt(ui.contentObject(),&lv_obj_class,482,242);
+    assert(next.parameterStatus("osc.1.pulse_width")==FeatureStatus::Unavailable);
+    assert(pulse_card && labels(pulse_card,"N/A")>=2 && labels(pulse_card,"PLAN")==0);
     // Switch to DX7 FM patch 135 to test live interactive FM topology and operator switching
     auto next_apply=[&]{next.service(preview::g_sim_tick_ms+=25);r.apply(preview::g_sim_tick_ms);r.loadPendingPatch();assert(r.render());reboot.publish(r.snapshot(),false,0,0);next.service(preview::g_sim_tick_ms+=25);preview::pumpFrame(ui);};
     assert(next.requestSelectPatch(135).accepted());next_apply();
@@ -1058,8 +1062,24 @@ int main(){
     preview::pumpFrame(ui);
     auto* browser_close=button(lv_screen_active(),"CLOSE");
     assert(browser_close);
+    auto* browser_panel=lv_obj_get_parent(browser_close);
+    auto* save_slot=widgetAt(browser_panel,&lv_dropdown_class,12,42);
+    assert(save_slot);
+    select(save_slot,15);
+    auto* pending_save_button=button(browser_panel,"SAVE AS");assert(pending_save_button);
+    lv_obj_send_event(pending_save_button,LV_EVENT_CLICKED,nullptr);
+    const auto pending_save=next.presetOperationStatus();
+    assert(pending_save.action==2 && pending_save.slot==15);
+    assert(pending_save.state==PresetOperationState::Requested ||
+           pending_save.state==PresetOperationState::WaitingForQuiet);
+    const auto generation_at_close=r.commands().generation();
     lv_obj_send_event(browser_close,LV_EVENT_CLICKED,nullptr);
+    assert(r.commands().generation()==generation_at_close);
     preview::pumpFrame(ui);
+    for(unsigned i=0;i<6;++i)next_apply();
+    assert(next.presetOperationStatus().state==PresetOperationState::Confirmed);
+    edit::Preset closed_panel_preset{};fx::FxConfig closed_panel_fx{};
+    assert(reboot.transactionCoordinator().load(15,closed_panel_preset,closed_panel_fx));
     // 7. Effects Screen 0.18-B Pilot verification, contextual switch, slider coalescing & screenshot capture
     assert(ui.navigation().navigateTo(ScreenId::Effects, 0));
     preview::pumpFrame(ui);

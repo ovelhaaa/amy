@@ -184,7 +184,8 @@ int main(int argc, char** argv) {
         preview::g_sim_tick_ms += dt_ms;
         runtime.apply(preview::g_sim_tick_ms);
         assert(runtime.render());
-        perf.publish(runtime.snapshot(), sim_usb_connected, 120, 0);
+        perf.publish(runtime.snapshot(), false, 120, 0); // Host has no physical I2S output.
+        perf.publishMidi(sim_usb_connected, false, 0);
         preview::pumpFrame(app, dt_ms);
     };
     sync_runtime();
@@ -507,6 +508,9 @@ int main(int argc, char** argv) {
         bool load(performance::ControllerProfile& out) override { out = stored; return true; }
         bool save(const performance::ControllerProfile& in) override { stored = in; return true; }
     } profile_store;
+    // Host fixture: no USB task or physical controller is present.
+    runtime.usbInput().enableControls();
+    runtime.usbInput().identifyDevice(0x4353, 0x4b4d);
     adapter.setMidiInput(runtime.usbInput());
     adapter.setControllerProfileStore(profile_store);
 
@@ -616,6 +620,7 @@ int main(int argc, char** argv) {
 
     lv_mem_monitor_t mem_before{}, mem_after{};
     const uint32_t objs_before = countObjects(app.rootObject());
+    const uint32_t screen_objs_before = countObjects(lv_screen_active());
     lv_mem_monitor(&mem_before);
 
     // 500 area switches
@@ -815,10 +820,16 @@ int main(int argc, char** argv) {
 
     // Exercise real mounted widgets for every topology and every selection.
     // The summary and expanded graph must always highlight confirmed state.
+    const auto settleFmAlgorithm = [&](int expected) {
+        for (unsigned tick = 0; tick < 8 &&
+             (adapter.model().getInt("fm.algo", 0) != expected ||
+              adapter.fmAlgorithmResult().state == UiCommandState::Requested); ++tick) sync_runtime();
+        assert(adapter.model().getInt("fm.algo", 0) == expected);
+        assert(adapter.fmAlgorithmResult().state == UiCommandState::Confirmed);
+    };
     for (int algo = 1; algo <= 32; ++algo) {
         assert(adapter.requestParameterInt("fm.algo", algo).accepted());
-        sync_runtime();
-        assert(adapter.model().getInt("fm.algo", 0) == algo);
+        settleFmAlgorithm(algo);
         clickBtn(app.contentObject(), "EXPAND", app);
         sync_runtime();
         for (int op = 1; op <= 6; ++op) {
@@ -877,7 +888,7 @@ int main(int argc, char** argv) {
     for (const auto& algo_shot : std::initializer_list<std::pair<int, const char*>>{
              {1, "04_fm_algo_01"}, {9, "05_fm_algo_09"}, {16, "06_fm_algo_16"}, {32, "07_fm_algo_32"}}) {
         assert(adapter.requestParameterInt("fm.algo", algo_shot.first).accepted());
-        sync_runtime();
+        settleFmAlgorithm(algo_shot.first);
         auditCardGeometry(app.contentObject());
         capture(algo_shot.second);
     }
@@ -891,6 +902,13 @@ int main(int argc, char** argv) {
     clickBtn(app.contentObject(), "ALGO ", app, true);
     sync_runtime();
     capture("09_fm_selecao_algoritmo");
+    assert(adapter.requestParameterInt("fm.algo", 9).accepted());
+    settleFmAlgorithm(9);
+    assert(findLabel(lv_screen_active(), "09\nACT"));
+    assert(!findLabel(lv_screen_active(), "32\nACT"));
+    assert(adapter.requestParameterInt("fm.algo", 32).accepted());
+    settleFmAlgorithm(32);
+    assert(findLabel(lv_screen_active(), "32\nACT"));
 
     // Held note causes algorithm change rejection in modal
     const uint8_t hold_note[4] = {0x09, 0x90, 62, 100};
@@ -935,6 +953,14 @@ int main(int argc, char** argv) {
         std::snprintf(header, sizeof(header), "KNOB K%u SELECIONADO", knob);
         clickBtn(app.contentObject(), row, app, true);
         assert(findLabel(app.contentObject(), header));
+        for (unsigned candidate = 1; candidate <= 8; ++candidate) {
+            char candidate_row[8];
+            std::snprintf(candidate_row, sizeof(candidate_row), "K%u ", candidate);
+            auto* button = findButton(app.contentObject(), candidate_row, true);
+            assert(lv_obj_has_state(button, LV_STATE_CHECKED) == (candidate == knob));
+            assert(lv_color_eq(lv_obj_get_style_bg_color(button, 0),
+                   lv_color_hex(candidate == knob ? palette::kActive : palette::kPanelHighlight)));
+        }
     }
 
     clickBtn(app.contentObject(), "K3 ", app, true);
@@ -952,8 +978,11 @@ int main(int argc, char** argv) {
     const uint8_t cc_msg[4] = {0x0B, 0xB0, 74, 90};
     assert(runtime.usbInput().transfer(cc_msg, sizeof(cc_msg), preview::g_sim_tick_ms));
     sync_runtime();
+    std::printf("LEARN_CANDIDATE: %s\n", adapter.midiLearnStatus());
     clickBtn(app.contentObject(), "CONFIRM K3", app);
     sync_runtime();
+    std::printf("LEARN_CONFIRM: %s\n", adapter.midiLearnStatus());
+    std::fflush(stdout);
     assert(std::strstr(adapter.midiLearnStatus(), "K3 BOUND TO CH1 CC74"));
     capture("14_midi_associacao_confirmada");
 
@@ -972,6 +1001,10 @@ int main(int argc, char** argv) {
     sync_runtime();
     assert(std::strstr(adapter.midiLearnStatus(), "K3 BOUND TO CH1 CC1"));
     clickBtn(app.contentObject(), "LEARN", app);
+    clickBtn(app.contentObject(), "BANK", app);
+    assert(std::strstr(adapter.midiLearnStatus(), "CANCELLED"));
+    clickBtn(app.contentObject(), "BANK", app);
+    clickBtn(app.contentObject(), "LEARN", app);
     clickBtn(app.contentObject(), "K4 ", app, true);
     assert(std::strstr(adapter.midiLearnStatus(), "CANCELLED"));
     clickBtn(app.contentObject(), "LEARN", app);
@@ -985,6 +1018,13 @@ int main(int argc, char** argv) {
     runtime.usbInput().disconnect();
     sync_runtime();
     assert(runtime.snapshot().active_notes == 0);
+    assert(app.navigation().navigateTo(ScreenId::MidiSettings, 1));
+    sync_runtime();
+    assert(findLabel(app.contentObject(), "USB: OFFLINE"));
+    capture("17_midi_usb_offline");
+    sim_usb_connected = true;
+    runtime.usbInput().identifyDevice(0x4353, 0x4b4d);
+    sync_runtime();
 
     // 4. Lifecycle stress: 200 FM modal cycles, 100 User Presets cycles, 100 MIDI Learn cycles
     assert(app.navigation().navigateTo(ScreenId::SoundEditor, 1));
@@ -992,16 +1032,20 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 200; ++i) {
         clickBtn(app.contentObject(), (i % 2 == 0) ? "EXPAND" : "ALGO ", app, i % 2 != 0);
         clickBtn(lv_screen_active(), "CLOSE", app);
+        assert(lv_mem_test() == LV_RESULT_OK);
     }
     for (int i = 0; i < 100; ++i) {
         clickBtn(app.contentObject(), "USER / SAVE AS", app);
         clickBtn(lv_screen_active(), "CLOSE", app);
+        assert(lv_mem_test() == LV_RESULT_OK);
     }
     assert(app.navigation().navigateTo(ScreenId::MidiSettings, 1));
     sync_runtime();
     for (int i = 0; i < 100; ++i) {
         clickBtn(app.contentObject(), "LEARN", app);
+        assert(std::strstr(adapter.midiLearnStatus(), "MOVE A MIDI CONTROL"));
         clickBtn(app.contentObject(), "CANCEL", app);
+        assert(std::strstr(adapter.midiLearnStatus(), "CANCELLED"));
     }
     assert(app.navigation().navigateTo(ScreenId::Performance, 0));
     sync_runtime();
@@ -1021,14 +1065,17 @@ int main(int argc, char** argv) {
     lv_mem_monitor_t mem_c2a{};
     lv_mem_monitor(&mem_c2a);
     const uint32_t objs_c2a = countObjects(app.rootObject());
-    std::printf("STRESS_018C2A: objs=%u->%u free=%zu->%zu diff=%zd peak=%zu frag=%u%%\n",
+    std::printf("STRESS_018C2A: objs=%u->%u free=%zu->%zu largest=%zu->%zu diff=%zd peak=%zu frag=%u%%->%u%%\n",
                 unsigned(objs_before), unsigned(objs_c2a),
                 mem_before.free_size, mem_c2a.free_size,
+                mem_before.free_biggest_size, mem_c2a.free_biggest_size,
                 static_cast<ssize_t>(mem_before.free_size) - static_cast<ssize_t>(mem_c2a.free_size),
-                mem_c2a.max_used, mem_c2a.frag_pct);
+                mem_c2a.max_used, mem_before.frag_pct, mem_c2a.frag_pct);
     assert(objs_c2a == objs_before);
     assert(mem_c2a.free_size >= mem_before.free_size);
     assert(mem_c2a.frag_pct <= 5);
+    assert(countObjects(lv_screen_active()) == screen_objs_before);
+    assert(lv_mem_test() == LV_RESULT_OK);
 
     app.shutdown();
     std::puts("ALL 0.18-C.2 TIMBRES & MAIS TESTS AND STRESS PASSED.");
