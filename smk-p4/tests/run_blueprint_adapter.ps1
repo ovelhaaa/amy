@@ -6,7 +6,9 @@ try {
     # run_preview.ps1 and run_amy.ps1 produce the libraries/objects used here.
     $lvgl=Join-Path $repo '../../../smk-p4/managed_components/lvgl__lvgl'
     if(Test-Path smk-p4/managed_components/lvgl__lvgl) { $lvgl=Join-Path $repo 'smk-p4/managed_components/lvgl__lvgl' }
-    $uiObjects=Get-ChildItem build/ui_blueprint_host/ui_obj/*.o | ForEach-Object FullName
+    $uiObjects=Get-ChildItem build/ui_blueprint_host/ui_obj/*.o | Where-Object {
+        $_.Name -notin @('amy_runtime.o', 'ui_blueprint_performance_adapter.o')
+    } | ForEach-Object FullName
     $amyBuild=if($Voices -eq 4) { 'build/smk_p4_amy' } else { "build/smk_p4_amy_$Voices" }
     $extraFlags=@()
     $suffix="$Voices"

@@ -674,10 +674,11 @@ static void runFxHardening018b1Suite(amy::Runtime& runtime, LocalAmyPerformanceB
         apply();
         assert(runtime.snapshot().active_notes >= 1 && runtime.snapshot().sustain_active);
 
-        assert(ui.navigation().navigateTo(ScreenId::Performance, 0));
+        assert(ui.navigation().navigateTo(ScreenId::Performance, 1));
         preview::pumpFrame(ui);
-        const auto touch_perf = adapter.requestNoteOn(67, 100);
-        assert(touch_perf.accepted());
+        auto* touch_key = button(ui.contentObject(), "G4");
+        assert(touch_key);
+        lv_obj_send_event(touch_key, LV_EVENT_PRESSED, nullptr);
         apply();
         assert(adapter.isNoteHeld(67));
 
@@ -685,7 +686,7 @@ static void runFxHardening018b1Suite(amy::Runtime& runtime, LocalAmyPerformanceB
         assert(ui.navigation().navigateTo(ScreenId::Effects, 0));
         preview::pumpFrame(ui);
         apply();
-        // Touch note from Performance safely released on screen change; USB sustained note + Seq + Lock stay alive!
+        // Touch keyboard note safely released on leaving TECLADO; USB sustained note + Seq + Lock stay alive!
         assert(!adapter.isNoteHeld(67));
         assert(runtime.snapshot().active_notes >= 1 && runtime.snapshot().sustain_active);
         assert(runtime.snapshot().sequencer.playing);
@@ -828,7 +829,7 @@ int main(){
     assert(r.commands().edits.push(legacy));
     r.apply(preview::g_sim_tick_ms += 25);
     publish();
-    assert(app.navigation().navigateTo(ScreenId::Performance, 0));
+    assert(app.navigation().navigateTo(ScreenId::Modulation, 0));
     preview::pumpFrame(app);
     auto* open_legacy = button(app.contentObject(), "LEGACY OFFSETS");
     assert(open_legacy);
@@ -1272,11 +1273,17 @@ int main(){
     assert(r.snapshot().edit.performance_macros[0]==101);
     assert(r.snapshot().edit.performance_macros[6]==positions[6]);
     assert(ui.navigation().navigateTo(ScreenId::Performance,0));preview::pumpFrame(ui);
-    for(const char* macro:{"CHARACTER","BRIGHTNESS","MOTION","SHAPE","ATTACK","RELEASE","SPACE","EDGE"})
+    for(const char* macro:{"CHARACTER","BRIGHTNESS","MOTION","SHAPE"})
         assert(labels(ui.contentObject(),macro)==1);
+    assert(ui.navigation().navigateTo(ScreenId::Performance,4));preview::pumpFrame(ui);
+    for(const char* macro:{"ATTACK","RELEASE","SPACE","EDGE"})
+        assert(labels(ui.contentObject(),macro)==1);
+    assert(ui.navigation().navigateTo(ScreenId::Performance,0));preview::pumpFrame(ui);
     assert(preview::saveFramebufferPpm("build/editor011/performance_014.ppm"));
 
     const auto open_routes = [&] {
+        assert(ui.navigation().navigateTo(ScreenId::Modulation, 0));
+        preview::pumpFrame(ui);
         auto* open = button(ui.contentObject(), "ROUTING EDITOR");
         assert(open);
         lv_obj_send_event(open, LV_EVENT_CLICKED, nullptr);
@@ -1395,7 +1402,7 @@ int main(){
     assert(legacy_profile.knobs==custom_profile.knobs);
     assert(next.requestSoundAction(1).accepted());next_apply();
     assert(!reboot.unsaved());
-    assert(ui.navigation().navigateTo(ScreenId::Performance,0));preview::pumpFrame(ui);
+    assert(ui.navigation().navigateTo(ScreenId::Modulation,0));preview::pumpFrame(ui);
     route_content=open_routes();
     lv_obj_send_event(button(route_content,"RESET POSITION"),LV_EVENT_CLICKED,nullptr);
     assert(r.snapshot().edit.performance_macros[6]!=performance::kNeutral[6]);
@@ -1437,15 +1444,15 @@ int main(){
     assert(next.requestParameterFloat("filter.cutoff_hz",2000).accepted());
     next_apply();
     const auto previous_patch=r.snapshot().patch_id;
-    auto* advance=button(ui.contentObject(),"NEXT >");
-    assert(advance);
-    lv_obj_send_event(advance,LV_EVENT_CLICKED,nullptr);
+    stepPatchWithConfirmation(next,ui.navigation(),1);
+    preview::pumpFrame(ui);
     assert(button(ui.contentObject(),"DISCARD & LOAD"));
     assert(!reboot.busy() && r.snapshot().patch_id==previous_patch);
     lv_obj_send_event(button(ui.contentObject(),"CANCEL"),LV_EVENT_CLICKED,nullptr);
     assert(!button(ui.contentObject(),"DISCARD & LOAD"));
     assert(reboot.unsaved() && r.snapshot().edit.manual[edit::Cutoff]==2000);
-    lv_obj_send_event(advance,LV_EVENT_CLICKED,nullptr);
+    stepPatchWithConfirmation(next,ui.navigation(),1);
+    preview::pumpFrame(ui);
     lv_obj_send_event(button(ui.contentObject(),"DISCARD & LOAD"),LV_EVENT_CLICKED,nullptr);
     assert(reboot.busy());
     next_apply();

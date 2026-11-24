@@ -395,21 +395,30 @@ void testNavigation(UiBlueprint& app) {
     assert(nav.currentScreen() == ScreenId::Performance);
     assert(nav.historyDepth() == 0);
 
-    // Verify bottom nav bank cycling and clicking nav bar buttons
-    for (int b = 0; b < 3; ++b) {
-        lv_obj_t* bank_btn = findButtonWithLabel(app.rootObject(), "BANK:");
-        assert(bank_btn != nullptr);
-        lv_obj_send_event(bank_btn, LV_EVENT_CLICKED, nullptr);
+    // Verify 5 fixed areas (no legacy BANK: cycling button) and session area persistence
+    assert(findButtonWithLabel(app.rootObject(), "BANK:") == nullptr);
+    assert(nav.navigateTo(ScreenId::SoundEditor, 1));
+    pumpFrame(app);
+    assert(nav.currentArea() == UiArea::Timbres);
+    lv_obj_t* footer = lv_obj_get_child(app.rootObject(), 2);
+    assert(footer != nullptr);
+    for (const char* area_lbl : {"TOCAR", "TIMBRES", "RITMO", "FX", "MAIS", "TIMBRES"}) {
+        lv_obj_t* abtn = findButtonWithLabel(footer, area_lbl);
+        assert(abtn != nullptr);
+        lv_obj_send_event(abtn, LV_EVENT_CLICKED, nullptr);
         pumpFrame(app);
     }
+    assert(nav.currentScreen() == ScreenId::SoundEditor && nav.subTab(ScreenId::SoundEditor) == 1);
+    assert(nav.returnToPerformance());
+    pumpFrame(app);
 
-    std::puts("PASS: [2/7] UiNavigationManager screens, deferred navigation, history back-stack and bank cycling");
+    std::puts("PASS: [2/7] UiNavigationManager screens, deferred navigation, history back-stack and 5-area navigation");
 }
 
 void testVirtualKeyboardLifecycle(UiBlueprint& app, UiDemoBackend& demo) {
     auto& nav = app.navigation();
     assert(nav.returnToPerformance());
-    assert(nav.navigateTo(ScreenId::Performance, 0)); // MACRO FOCUS (1-octave keyboard C4..C5)
+    assert(nav.navigateTo(ScreenId::Performance, 1)); // TECLADO (2-octave keyboard C3..C5)
     pumpFrame(app);
 
     // Reset octave to 0 and clear event log
@@ -529,13 +538,17 @@ void testVirtualKeyboardLifecycle(UiBlueprint& app, UiDemoBackend& demo) {
     assert(demo.model().diagnostics().active_voices == 0);
     assert(demo.noteOnCount() == 1 && demo.noteOffCount() == 1);
 
-    // 7. Performance 8-macro sliders & Macro/Keys mode switch
+    // 7. Performance Stage V3 macro sliders & sub-mode switch (MACROS 1-4 / 5-8 / CENAS / TECLADO / ENCADEAR)
     assert(nav.returnToPerformance());
     pumpFrame(app);
-    assert(findButtonWithLabel(app.contentObject(), "KEYS FOCUS >") != nullptr);
+    assert(findButtonWithLabel(app.contentObject(), "MACROS 1-4") != nullptr);
+    assert(findButtonWithLabel(app.contentObject(), "MACROS 5-8") != nullptr);
+    assert(findButtonWithLabel(app.contentObject(), "CENAS 1-8") != nullptr);
+    assert(findButtonWithLabel(app.contentObject(), "TECLADO") != nullptr);
+    assert(findButtonWithLabel(app.contentObject(), "ENCADEAR [PLAN]") != nullptr);
     assert(findFirstWidgetOfType(app.contentObject(), &lv_slider_class) != nullptr);
 
-    lv_obj_t* mode_btn = findButtonWithLabel(app.contentObject(), "KEYS FOCUS >");
+    lv_obj_t* mode_btn = findButtonWithLabel(app.contentObject(), "TECLADO");
     assert(mode_btn != nullptr);
     lv_obj_send_event(mode_btn, LV_EVENT_CLICKED, nullptr);
     pumpFrame(app);
@@ -588,14 +601,19 @@ void testMockPerformanceBackendContract() {
     assert(mock.requestSelectPatch(0, 0).state == UiCommandState::Unsupported);
     assert(mock.model().activePatch().id == 135);
 
-    // 4. NEXT > button on Performance skips unsupported patches and selects 128
-    lv_obj_t* next_btn = findButtonWithLabel(live_app.contentObject(), "NEXT >");
-    assert(next_btn != nullptr);
-    lv_obj_send_event(next_btn, LV_EVENT_CLICKED, nullptr);
+    // 4. TIMBRES > opens PatchBrowser; stepPatchWithConfirmation skips unsupported patches and selects 128
+    lv_obj_t* lib_btn = findButtonWithLabel(live_app.contentObject(), "TIMBRES >");
+    assert(lib_btn != nullptr);
+    lv_obj_send_event(lib_btn, LV_EVENT_CLICKED, nullptr);
+    pumpFrame(live_app);
+    assert(live_app.navigation().currentScreen() == ScreenId::PatchBrowser);
+    stepPatchWithConfirmation(mock, live_app.navigation(), 1);
     pumpFrame(live_app);
     assert(mock.model().activePatch().id == 128);
 
-    // 5. Note On / Note Off / Panic through IUiBackend
+    // 5. Note On / Note Off / Panic through IUiBackend (on TECLADO sub-tab)
+    assert(live_app.navigation().navigateTo(ScreenId::Performance, 1));
+    pumpFrame(live_app);
     lv_obj_t* key_c4 = findButtonWithLabel(live_app.contentObject(), "C4");
     assert(key_c4 != nullptr);
     lv_obj_send_event(key_c4, LV_EVENT_PRESSED, nullptr);
@@ -625,13 +643,13 @@ void testInteractions(UiBlueprint& app) {
     lv_obj_send_event(slider, LV_EVENT_VALUE_CHANGED, nullptr);
     pumpFrame(app);
 
-    // Keys focus view on Performance
+    // Keys focus view on Performance (TECLADO with MASTER LEVEL slider + 2-octave keyboard)
     assert(nav.navigateTo(ScreenId::Performance, 1));
     pumpFrame(app);
-    lv_obj_t* arc = findFirstWidgetOfType(app.contentObject(), &lv_arc_class);
-    assert(arc != nullptr);
-    lv_arc_set_value(arc, 75);
-    lv_obj_send_event(arc, LV_EVENT_VALUE_CHANGED, nullptr);
+    lv_obj_t* kslider = findFirstWidgetOfType(app.contentObject(), &lv_slider_class);
+    assert(kslider != nullptr);
+    lv_slider_set_value(kslider, 75, LV_ANIM_OFF);
+    lv_obj_send_event(kslider, LV_EVENT_VALUE_CHANGED, nullptr);
     pumpFrame(app);
 
     // 2. Patch Browser interactions

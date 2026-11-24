@@ -137,12 +137,12 @@ int main(int argc,char** argv) {
     };
 
     frame();
-    click(app.rootObject(),"SEQ");
+    click(app.rootObject(),"RITMO");
     assert(app.navigation().currentScreen()==ScreenId::Sequencer);
     assert(findLabel(content,"ENGINE UNAVAILABLE"));
     assert(runtime.begin());
     publish();
-    assert(findLabel(content,"STOPPED") && findLabel(app.rootObject(),"SEQUENCER"));
+    assert(findLabel(content,"STOPPED") && app.navigation().currentScreen()==ScreenId::Sequencer);
     assert(findLabel(content,"01-") && findLabel(content,"16-"));
     capture("empty");
 
@@ -211,10 +211,10 @@ int main(int argc,char** argv) {
     pointerEvent(input,380,20,false);
     frame();
     assert(findLabel(app.rootObject(),"GLOBAL TEMPO  /  INTERNAL"));
-    click(app.rootObject(),"+");
+    click(app.rootObject(),"+1 BPM");
     block();
     assert(snap.sequencer.bpm==121 && snap.arp.tempo.bpm==121);
-    click(app.rootObject(),"X");
+    click(app.rootObject(),"FECHAR");
     assert(adapter.requestParameterInt("perf.bpm",240).accepted());
     block();
     assert(snap.sequencer.bpm==240 && snap.arp.tempo.bpm==240);
@@ -257,7 +257,7 @@ int main(int argc,char** argv) {
     click(app.rootObject(),"FX");
     assert(app.navigation().currentScreen()==ScreenId::Effects && snap.sequencer.playing);
     block();
-    click(app.rootObject(),"SEQ");
+    click(app.rootObject(),"RITMO");
     assert(findLabel(content,"PLAYING") && findLabel(content,"STEP 03  NOTE C#4"));
     click(content,"RESTART");
     block();
@@ -304,7 +304,7 @@ int main(int argc,char** argv) {
     click(app.rootObject(),"PANIC");
     block();
     assert(!snap.sequencer.playing && !snap.arp.sounding && !snap.active_notes);
-    click(app.rootObject(),"SEQ");
+    click(app.rootObject(),"RITMO");
     click(content,"PLAY");
     block();
     assert(snap.sequencer.playing);
@@ -400,7 +400,7 @@ int main(int argc,char** argv) {
            findLabel(content,"LIVE TRANSPOSE ON"));
     capture("live-transpose");
     click(app.rootObject(),"FX");
-    click(app.rootObject(),"SEQ");
+    click(app.rootObject(),"RITMO");
     assert(snap.sequencer.midi.mode==seq::InputMode::StepRecord);
     runtime.usbInput().disconnect();
     block();
@@ -434,12 +434,12 @@ int main(int argc,char** argv) {
     std::printf("MEASURE LVGL panel heap free: settings=%zu bytes, editor=%zu bytes\n",settings_free,editor_free);
 
     click(app.rootObject(),"FX");
-    click(app.rootObject(),"SEQ");
+    click(app.rootObject(),"RITMO");
     const size_t mounted=freeBytes();
     click(app.rootObject(),"FX");
     const size_t unmounted=freeBytes();
     for(int i=0;i<40;++i) {
-        click(app.rootObject(),"SEQ");
+        click(app.rootObject(),"RITMO");
         assert(freeBytes()==mounted);
         click(app.rootObject(),"FX");
         assert(freeBytes()==unmounted);
@@ -449,7 +449,7 @@ int main(int argc,char** argv) {
     assert(patterns.begin());
     adapter.setPatternStore(patterns);
     click(app.rootObject(),"FX");
-    click(app.rootObject(),"SEQ");
+    click(app.rootObject(),"RITMO");
     runtime.commands().panic();
     block();
     const auto browser_heap=freeBytes();
@@ -544,7 +544,7 @@ int main(int argc,char** argv) {
     setSessionLockMask(0);
     assert(app.navigation().returnToPerformance());
     frame();
-    click(content,"SCENES");
+    click(content,"SELETIVO >");
     assert(app.navigation().currentScreen()==ScreenId::Scenes);
     assert(findLabel(content,"08 EMPTY"));
     capture("scenes-empty");
@@ -657,10 +657,10 @@ int main(int argc,char** argv) {
     assert(app.navigation().returnToPerformance());
     frame();
     lv_area_t macro_bounds{},quick_bounds{};
-    lv_obj_get_coords(lv_obj_get_parent(findLabel(content,"ATTACK")),&macro_bounds);
-    lv_obj_get_coords(findButton(content,"SCENES"),&quick_bounds);
+    lv_obj_get_coords(lv_obj_get_parent(findLabel(content,"SHAPE")),&macro_bounds);
+    lv_obj_get_coords(findButton(content,"SELETIVO >"),&quick_bounds);
     assert(macro_bounds.y2<quick_bounds.y1);
-    click(content,"3");
+    click(content,"C3 ",true);
     block();
     if(snap.scene.phase==scene::RecallPhase::WaitingPatch) block();
     assert(snap.scene.phase==scene::RecallPhase::Confirmed && snap.scene.active==2);

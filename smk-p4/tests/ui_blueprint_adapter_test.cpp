@@ -95,6 +95,7 @@ static void lifecycle() {
     m.s.flags=smk::link::kAudioLive|smk::link::kUsbConnected;a.service(2);preview::pumpFrame(app);
     assert(button(app.rootObject(),"AUD: RUN") && button(app.rootObject(),"MIDI: OK"));
     m.error=true;preview::pumpFrame(app);assert(button(app.rootObject(),"MIDI: ERR"));m.error=false;
+    assert(nav.navigateTo(ScreenId::Performance,1));
     auto* key=button(app.contentObject(),"C4");assert(key);
     lv_obj_send_event(key,LV_EVENT_PRESSED,nullptr);lv_obj_send_event(key,LV_EVENT_PRESSED,nullptr);
     assert(m.ons==1);lv_obj_send_event(key,LV_EVENT_CLICKED,nullptr);
@@ -102,10 +103,10 @@ static void lifecycle() {
     lv_obj_send_event(key,LV_EVENT_PRESS_LOST,nullptr);assert(m.offs==1);
     lv_obj_send_event(key,LV_EVENT_PRESSED,nullptr);assert(a.isNoteHeld(60));
     lv_obj_delete(key);assert(!a.isNoteHeld(60)); // child-first external deletion
-    assert(nav.navigateTo(ScreenId::Performance,0));key=button(app.contentObject(),"C4");assert(key);
+    assert(nav.navigateTo(ScreenId::Performance,1));key=button(app.contentObject(),"C4");assert(key);
     lv_obj_send_event(key,LV_EVENT_PRESSED,nullptr);
     auto* keyboard=lv_obj_get_parent(key);lv_obj_delete(keyboard);assert(!a.isNoteHeld(60)); // parent DELETE before child callbacks
-    assert(nav.navigateTo(ScreenId::Performance,0));key=button(app.contentObject(),"C4");assert(key);
+    assert(nav.navigateTo(ScreenId::Performance,1));key=button(app.contentObject(),"C4");assert(key);
     lv_obj_send_event(key,LV_EVENT_PRESSED,nullptr);assert(nav.navigateTo(ScreenId::Harmony));assert(!a.isNoteHeld(60));
     unsigned ons=m.ons;key=button(app.contentObject(),"C3");assert(key);lv_obj_send_event(key,LV_EVENT_PRESSED,nullptr);assert(m.ons==ons);
     assert(nav.navigateTo(ScreenId::Layers));key=button(app.contentObject(),"C3");assert(key);lv_obj_send_event(key,LV_EVENT_PRESSED,nullptr);assert(m.ons==ons);
@@ -139,6 +140,7 @@ static void lifecycle() {
     assert(repeat.free_size==after.free_size && repeat.frag_pct<=5);
     std::printf("PASS adapter LVGL: delete orders, PRESS_LOST, duplicate suppression, preview isolation, octave/navigation; 1400 screens free=%zu peak=%zu largest=%zu frag=%u%% second_window_growth=0\n",after.free_size,after.max_used,after.free_biggest_size,after.frag_pct);
     assert(preview::saveFramebufferPpm("build/p404/live_mock_stage.ppm"));
+    assert(nav.navigateTo(ScreenId::Performance,1));
     key=button(app.contentObject(),"C5");if(!key) key=button(app.contentObject(),"C4");assert(key);
     lv_obj_send_event(key,LV_EVENT_PRESSED,nullptr);app.shutdown();
     for(unsigned n=0;n<128;++n) assert(!a.isNoteHeld(static_cast<uint8_t>(n)));

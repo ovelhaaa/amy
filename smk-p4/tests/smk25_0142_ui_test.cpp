@@ -141,7 +141,7 @@ void testSmk25LegacyUi(amy::Runtime& runtime,LocalAmyPerformanceBackend& backend
     click(tempo_panel,"SAVE GLOBAL TEMPO");
     frame();
     assert(saved_tempo==120 && std::strcmp(adapter.tempoSaveNotice(),"GLOBAL TEMPO SAVED")==0);
-    click(tempo_panel,"X");
+    click(tempo_panel,"FECHAR");
     midi(0x90,60,100);
     assert(runtime.snapshot().arp.sounding && runtime.snapshot().arp.held_count==1);
     assert(preview::saveFramebufferPpm("build/editor011/tempo0151_arp.ppm"));
