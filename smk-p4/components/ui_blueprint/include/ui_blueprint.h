@@ -29,8 +29,12 @@ public:
     lv_obj_t* rootObject() const { return root_; }
     lv_obj_t* contentObject() const { return content_; }
 
+    StatusStrip& statusStrip() { return status_strip_; }
+    const StatusStrip& statusStrip() const { return status_strip_; }
+
 private:
     static void onNavigate(void* user_data, ScreenId new_screen);
+    static void onAreaClick(void* user_data, UiArea area);
 
     IUiBackend&         backend_;
     UiNavigationManager nav_{};

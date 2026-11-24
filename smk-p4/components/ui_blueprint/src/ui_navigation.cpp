@@ -3,6 +3,54 @@
 
 namespace smk::p4::ui {
 
+const char* areaLabel(UiArea area) {
+    switch (area) {
+        case UiArea::Tocar:   return "TOCAR";
+        case UiArea::Timbres: return "TIMBRES";
+        case UiArea::Ritmo:   return "RITMO";
+        case UiArea::Fx:      return "FX";
+        case UiArea::Mais:    return "MAIS";
+        default:              return "---";
+    }
+}
+
+UiArea screenArea(ScreenId id) {
+    switch (id) {
+        case ScreenId::Performance:
+        case ScreenId::Scenes:
+            return UiArea::Tocar;
+        case ScreenId::PatchBrowser:
+        case ScreenId::SoundEditor:
+        case ScreenId::Layers:
+        case ScreenId::Mixer:
+        case ScreenId::Modulation:
+            return UiArea::Timbres;
+        case ScreenId::Sequencer:
+        case ScreenId::Arpeggiator:
+        case ScreenId::Drums:
+            return UiArea::Ritmo;
+        case ScreenId::Effects:
+            return UiArea::Fx;
+        case ScreenId::MidiSettings:
+        case ScreenId::GlobalSettings:
+        case ScreenId::Diagnostics:
+        case ScreenId::Harmony:
+        default:
+            return UiArea::Mais;
+    }
+}
+
+ScreenId defaultScreenForArea(UiArea area) {
+    switch (area) {
+        case UiArea::Tocar:   return ScreenId::Performance;
+        case UiArea::Timbres: return ScreenId::PatchBrowser;
+        case UiArea::Ritmo:   return ScreenId::Sequencer;
+        case UiArea::Fx:      return ScreenId::Effects;
+        case UiArea::Mais:
+        default:              return ScreenId::MidiSettings;
+    }
+}
+
 const char* screenTitle(ScreenId id) {
     switch (id) {
         case ScreenId::Performance:    return "01 PERFORMANCE STAGE";
@@ -81,11 +129,13 @@ bool UiNavigationManager::begin(lv_obj_t* content_container, IUiBackend& backend
     backend_ = &backend;
     history_depth_ = 0;
     transitions_ = 0;
-    nav_bank_ = 0;
     pending_nav_ = false;
     pending_home_ = false;
     for (size_t i = 0; i < kScreenCount; ++i) {
         sub_tabs_[i] = 0;
+    }
+    for (size_t a = 0; a < kAreaCount; ++a) {
+        area_screens_[a] = defaultScreenForArea(static_cast<UiArea>(a));
     }
     current_ = ScreenId::Performance;
     mounted_ = mountScreen(ScreenId::Performance);
@@ -134,6 +184,7 @@ bool UiNavigationManager::navigateTo(ScreenId target, uint8_t sub_tab) {
 
     unmountCurrent();
     current_ = target;
+    area_screens_[static_cast<size_t>(screenArea(target))] = target;
     ++transitions_;
     backend_->model().diagnostics().screen_switches = transitions_;
     if (on_navigate_) {
@@ -141,6 +192,17 @@ bool UiNavigationManager::navigateTo(ScreenId target, uint8_t sub_tab) {
     }
     mounted_ = mountScreen(target);
     return mounted_;
+}
+
+bool UiNavigationManager::navigateToArea(UiArea area) {
+    if (static_cast<size_t>(area) >= kAreaCount) return false;
+    const ScreenId target = area_screens_[static_cast<size_t>(area)];
+    return navigateTo(target);
+}
+
+ScreenId UiNavigationManager::areaScreen(UiArea area) const {
+    const size_t idx = static_cast<size_t>(area);
+    return (idx < kAreaCount) ? area_screens_[idx] : ScreenId::Performance;
 }
 
 bool UiNavigationManager::back() {
@@ -153,6 +215,7 @@ bool UiNavigationManager::back() {
     const ScreenId prev = history_[--history_depth_];
     unmountCurrent();
     current_ = prev;
+    area_screens_[static_cast<size_t>(screenArea(prev))] = prev;
     ++transitions_;
     backend_->model().diagnostics().screen_switches = transitions_;
     if (on_navigate_) {
@@ -166,11 +229,8 @@ bool UiNavigationManager::returnToPerformance() {
     pending_nav_ = false;
     pending_home_ = false;
     history_depth_ = 0;
-    nav_bank_ = 0;
+    area_screens_[static_cast<size_t>(UiArea::Tocar)] = ScreenId::Performance;
     if (mounted_ && current_ == ScreenId::Performance) {
-        if (backend_) {
-            backend_->releaseAllUiNotes();
-        }
         refreshActive();
         if (on_navigate_) on_navigate_(on_navigate_user_, current_);
         return true;
@@ -193,6 +253,11 @@ void UiNavigationManager::requestNavigateTo(ScreenId target, uint8_t sub_tab) {
     pending_home_ = false;
     pending_target_ = target;
     pending_sub_tab_ = sub_tab;
+}
+
+void UiNavigationManager::requestNavigateToArea(UiArea area) {
+    if (static_cast<size_t>(area) >= kAreaCount) return;
+    requestNavigateTo(area_screens_[static_cast<size_t>(area)]);
 }
 
 void UiNavigationManager::requestReturnToPerformance() {
@@ -262,10 +327,10 @@ bool UiNavigationManager::mountScreen(ScreenId target) {
 }
 
 void UiNavigationManager::unmountCurrent() {
-    // Always release any active UI touch notes before tearing down the screen
-    if (backend_) {
-        backend_->releaseAllUiNotes();
-    }
+    // Note lifecycle contract (0.18-C.1): generic screen unmounting NEVER calls
+    // releaseAllUiNotes(). USB MIDI, Sustain, Arp, Sequencer, and non-keyboard notes
+    // stay alive across navigation. VirtualKeyboard widgets release only their own
+    // touch notes via LV_EVENT_DELETE when torn down.
     if (active_view_) {
         active_view_->onDestroy();
         delete active_view_;

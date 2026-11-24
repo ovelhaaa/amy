@@ -48,46 +48,88 @@ T* attachLvContext(lv_obj_t* obj, const T& value, lv_event_cb_t handler, lv_even
     return ctx;
 }
 
-// ── Top Global Status Strip (800 x 42) ───────────────────────────────────
+// ── Top Global Musical Header (800 x 44, Variant A + Overlays) ───────────
 class StatusStrip {
 public:
+    enum class OverlayKind : uint8_t {
+        None = 0,
+        Tempo = 1,
+        Harmony = 2,
+        AreaModules = 3
+    };
+
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav);
     void refresh(IUiBackend& backend, UiNavigationManager& nav);
     void refreshTempo(IUiBackend& backend);
-    void closeTempo();
+    void closeOverlays();
+    void openTempo(IUiBackend& backend);
+    void openHarmony(IUiBackend& backend);
+    void openAreaModules(UiArea area, IUiBackend& backend, UiNavigationManager& nav);
+    void toggleAreaModules(UiArea area, IUiBackend& backend, UiNavigationManager& nav);
+    OverlayKind activeOverlay() const { return active_overlay_; }
+    UiArea overlayArea() const { return overlay_area_; }
 
 private:
+    void showOverlayBackdrop();
+    void toggleTempo(IUiBackend& backend);
+    void toggleHarmony(IUiBackend& backend);
+
+    lv_obj_t* parent_root_ = nullptr;
+    IUiBackend* backend_   = nullptr;
+    UiNavigationManager* nav_ = nullptr;
     lv_obj_t* root_        = nullptr;
     lv_obj_t* demo_badge_  = nullptr;
-    lv_obj_t* screen_lbl_  = nullptr;
     lv_obj_t* patch_lbl_   = nullptr;
     lv_obj_t* midi_lbl_    = nullptr;
     lv_obj_t* audio_lbl_   = nullptr;
-    lv_obj_t* voices_lbl_  = nullptr;
-    lv_obj_t* home_btn_    = nullptr;
-    lv_obj_t* panic_btn_   = nullptr;
+    lv_obj_t* tempo_btn_   = nullptr;
     lv_obj_t* tempo_label_ = nullptr;
-    lv_obj_t* tempo_panel_ = nullptr;
-    lv_obj_t* tempo_notice_ = nullptr;
-    lv_obj_t* tempo_slider_ = nullptr;
-    void toggleTempo(lv_obj_t* parent,IUiBackend& backend);
+    lv_obj_t* harm_btn_    = nullptr;
+    lv_obj_t* harm_lbl_    = nullptr;
+    lv_obj_t* q_btn_       = nullptr;
+    lv_obj_t* q_lbl_       = nullptr;
+    lv_obj_t* ch_btn_      = nullptr;
+    lv_obj_t* ch_lbl_      = nullptr;
+    lv_obj_t* mods_btn_    = nullptr;
+    lv_obj_t* mods_lbl_    = nullptr;
+    lv_obj_t* panic_btn_   = nullptr;
+
+    // Overlay container (covers only y = kContentTop .. kContentBottom - 1)
+    OverlayKind active_overlay_ = OverlayKind::None;
+    UiArea      overlay_area_   = UiArea::Timbres;
+    lv_obj_t*   overlay_backdrop_ = nullptr;
+    lv_obj_t*   overlay_card_     = nullptr;
+    lv_obj_t*   tempo_notice_     = nullptr;
+    lv_obj_t*   tempo_slider_     = nullptr;
+    lv_obj_t*   tempo_big_lbl_    = nullptr;
+    lv_obj_t*   harm_status_lbl_  = nullptr;
+    lv_obj_t*   harm_q_btn_       = nullptr;
+    lv_obj_t*   harm_ch_btn_      = nullptr;
+
     char      patch_buf_[48]{};
-    char      voices_buf_[24]{};
     char      tempo_buf_[24]{};
+    char      harm_buf_[24]{};
+    char      q_buf_[16]{};
+    char      ch_buf_[16]{};
+    char      bpm_big_buf_[16]{};
+    char      harm_status_buf_[128]{};
 };
 
-// ── Bottom Navigation Bar (800 x 46) & Internal Sub-Tab Bar ──────────────
+// ── Bottom Navigation Bar (800 x 48, 5 Fixed Areas) & Internal Sub-Tab Bar
 class BottomNavBar {
 public:
-    bool build(lv_obj_t* parent, UiNavigationManager& nav);
+    using AreaClickCallback = void (*)(void* user_data, UiArea area);
+
+    bool build(lv_obj_t* parent, UiNavigationManager& nav,
+               AreaClickCallback on_area_click = nullptr, void* user_data = nullptr);
     void refresh(UiNavigationManager& nav);
 
 private:
-    lv_obj_t* root_        = nullptr;
-    lv_obj_t* buttons_[6]{};
-    lv_obj_t* labels_[6]{};
-    lv_obj_t* bank_btn_    = nullptr;
-    lv_obj_t* bank_lbl_    = nullptr;
+    lv_obj_t*         root_ = nullptr;
+    lv_obj_t*         buttons_[5]{};
+    lv_obj_t*         labels_[5]{};
+    AreaClickCallback on_area_click_ = nullptr;
+    void*             on_area_user_  = nullptr;
 };
 
 lv_obj_t* createSubTabBar(lv_obj_t* parent, const char* const* tab_names, uint8_t tab_count,

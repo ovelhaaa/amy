@@ -62,7 +62,7 @@ bool UiBlueprint::begin(lv_obj_t* root_parent) {
     nav_.setOnNavigate(onNavigate, this);
 
     if (!status_strip_.build(root_, backend_, nav_)) return false;
-    if (!nav_bar_.build(root_, nav_)) return false;
+    if (!nav_bar_.build(root_, nav_, onAreaClick, this)) return false;
     if (!nav_.begin(content_, backend_)) return false;
 
     shown_rev_ = backend_.model().revision();
@@ -127,9 +127,27 @@ void UiBlueprint::service(uint32_t now_ms) {
 void UiBlueprint::onNavigate(void* user_data, ScreenId) {
     auto* self = static_cast<UiBlueprint*>(user_data);
     if (!self) return;
-    self->status_strip_.closeTempo();
+    self->status_strip_.closeOverlays();
     self->status_strip_.refresh(self->backend_, self->nav_);
     self->nav_bar_.refresh(self->nav_);
+}
+
+void UiBlueprint::onAreaClick(void* user_data, UiArea area) {
+    auto* self = static_cast<UiBlueprint*>(user_data);
+    if (!self) return;
+    if (area != self->nav_.currentArea()) {
+        self->status_strip_.closeOverlays();
+        self->nav_.requestNavigateToArea(area);
+        return;
+    }
+    if (area == UiArea::Timbres || area == UiArea::Ritmo || area == UiArea::Mais) {
+        self->status_strip_.toggleAreaModules(area, self->backend_, self->nav_);
+        return;
+    }
+    self->status_strip_.closeOverlays();
+    if (area == UiArea::Tocar && self->nav_.currentScreen() != ScreenId::Performance) {
+        self->nav_.requestReturnToPerformance();
+    }
 }
 
 } // namespace smk::p4::ui

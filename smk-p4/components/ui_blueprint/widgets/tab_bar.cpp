@@ -5,30 +5,11 @@ namespace smk::p4::ui {
 
 namespace {
 
-// Navigation banks (always <= 6 screen destinations visible at once + 1 bank cycle button)
-// Bank 0 (Primary): PERFORMANCE | SOUND | LAYERS | FX | SEQ | HARMONY
-// Bank 1 (Tools):   PERFORMANCE | PATCHES | MIXER | MOD | ARP | DRUMS
-// Bank 2 (System):  PERFORMANCE | PATCHES | MIDI | SETTINGS | DIAG | HARMONY
-constexpr ScreenId kBankScreens[3][6] = {
-    {ScreenId::Performance, ScreenId::SoundEditor, ScreenId::Layers,
-     ScreenId::Effects,     ScreenId::Sequencer,   ScreenId::Harmony},
-    {ScreenId::Performance, ScreenId::PatchBrowser,ScreenId::Mixer,
-     ScreenId::Modulation,  ScreenId::Arpeggiator, ScreenId::Drums},
-    {ScreenId::Performance, ScreenId::PatchBrowser,ScreenId::MidiSettings,
-     ScreenId::GlobalSettings, ScreenId::Diagnostics, ScreenId::Harmony}
-};
-
-constexpr const char* kBankButtonLabels[3] = {
-    "BANK: MAIN >",
-    "BANK: TOOLS >",
-    "BANK: SYS >"
-};
-
-struct NavBtnCtx {
-    UiNavigationManager* nav   = nullptr;
-    BottomNavBar*        bar   = nullptr;
-    uint8_t              slot  = 0;
-    bool                 is_bank_toggle = false;
+struct AreaBtnCtx {
+    UiNavigationManager*              nav   = nullptr;
+    BottomNavBar::AreaClickCallback cb    = nullptr;
+    void*                             user  = nullptr;
+    UiArea                            area  = UiArea::Tocar;
 };
 
 struct SubTabCtx {
@@ -39,8 +20,12 @@ struct SubTabCtx {
 
 } // namespace
 
-bool BottomNavBar::build(lv_obj_t* parent, UiNavigationManager& nav) {
+bool BottomNavBar::build(lv_obj_t* parent, UiNavigationManager& nav,
+                         AreaClickCallback on_area_click, void* user_data) {
     if (!parent) return false;
+    on_area_click_ = on_area_click;
+    on_area_user_ = user_data;
+
     root_ = lv_obj_create(parent);
     if (!root_) return false;
     applyPanelStyle(root_, false);
@@ -49,58 +34,39 @@ bool BottomNavBar::build(lv_obj_t* parent, UiNavigationManager& nav) {
     lv_obj_set_style_radius(root_, 0, 0);
     lv_obj_set_style_pad_all(root_, 0, 0);
 
-    // 6 destination buttons (each 108px wide) + 1 bank selector button (122px wide)
-    for (uint8_t i = 0; i < 6; ++i) {
-        const int32_t bx = 6 + i * 110;
+    // 5 fixed permanent musical areas: TOCAR | TIMBRES | RITMO | FX | MAIS
+    for (uint8_t i = 0; i < 5; ++i) {
+        const int32_t bx = 8 + static_cast<int32_t>(i) * 158;
+        const UiArea area = static_cast<UiArea>(i);
         lv_obj_t* btn = lv_button_create(root_);
         if (!btn) continue;
         lv_obj_remove_style_all(btn);
         lv_obj_add_style(btn, &theme().tab_button, 0);
         lv_obj_add_style(btn, &theme().tab_button_active, LV_STATE_CHECKED);
         lv_obj_set_pos(btn, bx, 4);
-        lv_obj_set_size(btn, 106, 38);
+        lv_obj_set_size(btn, 150, 40);
         lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
 
         lv_obj_t* lbl = lv_label_create(btn);
         if (lbl) {
+            lv_label_set_text_static(lbl, areaLabel(area));
             lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
             lv_obj_center(lbl);
         }
         buttons_[i] = btn;
         labels_[i] = lbl;
 
-        attachLvContext<NavBtnCtx>(
-            btn, NavBtnCtx{&nav, this, i, false},
+        attachLvContext<AreaBtnCtx>(
+            btn, AreaBtnCtx{&nav, on_area_click_, on_area_user_, area},
             [](lv_event_t* e) {
                 if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-                auto* ctx = static_cast<NavBtnCtx*>(lv_event_get_user_data(e));
+                auto* ctx = static_cast<AreaBtnCtx*>(lv_event_get_user_data(e));
                 if (!ctx || !ctx->nav) return;
-                const uint8_t bank = ctx->nav->navBank() % 3;
-                const ScreenId target = kBankScreens[bank][ctx->slot];
-                ctx->nav->navigateTo(target);
-            },
-            LV_EVENT_CLICKED);
-    }
-
-    bank_btn_ = lv_button_create(root_);
-    if (bank_btn_) {
-        applyButtonStyle(bank_btn_, false, true);
-        lv_obj_set_pos(bank_btn_, 666, 4);
-        lv_obj_set_size(bank_btn_, 128, 38);
-        bank_lbl_ = lv_label_create(bank_btn_);
-        if (bank_lbl_) {
-            lv_obj_set_style_text_font(bank_lbl_, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(bank_lbl_, lv_color_hex(palette::kBackground), 0);
-            lv_obj_center(bank_lbl_);
-        }
-        attachLvContext<NavBtnCtx>(
-            bank_btn_, NavBtnCtx{&nav, this, 0, true},
-            [](lv_event_t* e) {
-                if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-                auto* ctx = static_cast<NavBtnCtx*>(lv_event_get_user_data(e));
-                if (!ctx || !ctx->nav || !ctx->bar) return;
-                ctx->nav->cycleNavBank();
-                ctx->bar->refresh(*ctx->nav);
+                if (ctx->cb) {
+                    ctx->cb(ctx->user, ctx->area);
+                } else {
+                    ctx->nav->navigateToArea(ctx->area);
+                }
             },
             LV_EVENT_CLICKED);
     }
@@ -111,30 +77,16 @@ bool BottomNavBar::build(lv_obj_t* parent, UiNavigationManager& nav) {
 
 void BottomNavBar::refresh(UiNavigationManager& nav) {
     if (!root_) return;
-    const uint8_t bank = nav.navBank() % 3;
-    const ScreenId active = nav.currentScreen();
+    const UiArea active = nav.currentArea();
 
-    for (uint8_t i = 0; i < 6; ++i) {
-        if (!buttons_[i] || !labels_[i]) continue;
-        const ScreenId dest = kBankScreens[bank][i];
-        const char* short_name = screenShortName(dest);
-        if (std::strcmp(lv_label_get_text(labels_[i]), short_name) != 0) {
-            lv_label_set_text_static(labels_[i], short_name);
-        }
-
-        const bool want_checked = (dest == active);
+    for (uint8_t i = 0; i < 5; ++i) {
+        if (!buttons_[i]) continue;
+        const bool want_checked = (static_cast<uint8_t>(active) == i);
         const bool is_checked = lv_obj_has_state(buttons_[i], LV_STATE_CHECKED);
         if (want_checked && !is_checked) {
             lv_obj_add_state(buttons_[i], LV_STATE_CHECKED);
         } else if (!want_checked && is_checked) {
             lv_obj_remove_state(buttons_[i], LV_STATE_CHECKED);
-        }
-    }
-
-    if (bank_lbl_) {
-        const char* bank_name = kBankButtonLabels[bank];
-        if (std::strcmp(lv_label_get_text(bank_lbl_), bank_name) != 0) {
-            lv_label_set_text_static(bank_lbl_, bank_name);
         }
     }
 }

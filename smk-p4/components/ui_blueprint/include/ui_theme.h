@@ -8,12 +8,12 @@ namespace smk::p4::ui {
 constexpr int32_t kScreenWidth = 800;
 constexpr int32_t kScreenHeight = 480;
 
-// Layout regions within 800x480
-constexpr int32_t kStatusStripHeight = 42;
-constexpr int32_t kNavBarHeight = 46;
+// Layout regions within 800x480 (0.18-A Variant A header 44px + fixed 5-area footer 48px)
+constexpr int32_t kStatusStripHeight = 44;
+constexpr int32_t kNavBarHeight = 48;
 constexpr int32_t kContentTop = kStatusStripHeight;
 constexpr int32_t kContentBottom = kScreenHeight - kNavBarHeight;
-constexpr int32_t kContentHeight = kContentBottom - kContentTop; // 392 px
+constexpr int32_t kContentHeight = kContentBottom - kContentTop; // 388 px
 constexpr int32_t kMargin = 8;
 constexpr int32_t kMinTouchTarget = 36;
 

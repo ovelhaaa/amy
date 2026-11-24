@@ -25,11 +25,23 @@ enum class ScreenId : uint8_t {
     Count         = 15
 };
 
+enum class UiArea : uint8_t {
+    Tocar   = 0,
+    Timbres = 1,
+    Ritmo   = 2,
+    Fx      = 3,
+    Mais    = 4,
+    Count   = 5
+};
+
 enum class UiMode : uint8_t {
     PerformanceMode = 0,
     EditMode        = 1
 };
 
+const char* areaLabel(UiArea area);
+UiArea screenArea(ScreenId id);
+ScreenId defaultScreenForArea(UiArea area);
 const char* screenTitle(ScreenId id);
 const char* screenShortName(ScreenId id);
 UiMode screenMode(ScreenId id);
@@ -52,6 +64,7 @@ class UiNavigationManager {
 public:
     static constexpr size_t kHistoryCapacity = 16;
     static constexpr size_t kScreenCount     = static_cast<size_t>(ScreenId::Count);
+    static constexpr size_t kAreaCount       = static_cast<size_t>(UiArea::Count);
 
     UiNavigationManager() = default;
     ~UiNavigationManager() { shutdown(); }
@@ -59,19 +72,24 @@ public:
     bool begin(lv_obj_t* content_container, IUiBackend& backend);
     void shutdown();
 
-    // Direct navigation (releases any active UI touch notes before tearing down the screen)
+    // Direct navigation (preserves USB MIDI, Arp, Sequencer, and non-keyboard notes;
+    // VirtualKeyboard widgets release their own touch notes on LV_EVENT_DELETE)
     bool navigateTo(ScreenId target, uint8_t sub_tab = 0xFF);
+    bool navigateToArea(UiArea area);
     bool back();
     bool returnToPerformance();
 
-    // Deferred navigation: schedules a screen or sub-tab transition to be processed
+    // Deferred navigation: schedules a screen, area, or sub-tab transition to be processed
     // safely outside of an active LVGL widget callback (e.g. inside UiBlueprint::service).
     void requestNavigateTo(ScreenId target, uint8_t sub_tab = 0xFF);
+    void requestNavigateToArea(UiArea area);
     void requestReturnToPerformance();
     bool hasPendingNavigation() const { return pending_nav_; }
     bool processPendingNavigation();
 
     ScreenId currentScreen() const { return current_; }
+    UiArea currentArea() const { return screenArea(current_); }
+    ScreenId areaScreen(UiArea area) const;
     UiMode currentMode() const { return screenMode(current_); }
     PresentationLevel currentPresentationLevel() const { return screenPresentationLevel(current_); }
     uint8_t subTab(ScreenId screen) const;
@@ -84,13 +102,6 @@ public:
     void refreshActive();
     void refreshActiveView();
     lv_obj_t* contentRoot() const { return content_root_; }
-
-    // Nav bar bank toggle (0 = Primary 6: PERF/SOUND/LAYERS/FX/SEQ/HARMONY,
-    // 1 = Secondary: PERF/PATCHES/MIXER/MOD/ARP/DRUMS,
-    // 2 = System: PERF/MIDI/SETTINGS/DIAG)
-    uint8_t navBank() const { return nav_bank_; }
-    void setNavBank(uint8_t bank) { nav_bank_ = bank % 3; }
-    void cycleNavBank() { nav_bank_ = (nav_bank_ + 1) % 3; }
 
     using NavigationCallback = void (*)(void* user_data, ScreenId new_screen);
     void setOnNavigate(NavigationCallback cb, void* user_data) {
@@ -106,10 +117,16 @@ private:
     IUiBackend*        backend_          = nullptr;
     ScreenView*        active_view_      = nullptr;
     ScreenId           current_          = ScreenId::Performance;
+    ScreenId           area_screens_[kAreaCount]{
+        ScreenId::Performance,
+        ScreenId::PatchBrowser,
+        ScreenId::Sequencer,
+        ScreenId::Effects,
+        ScreenId::MidiSettings
+    };
     ScreenId           history_[kHistoryCapacity]{};
     size_t             history_depth_    = 0;
     uint8_t            sub_tabs_[kScreenCount]{};
-    uint8_t            nav_bank_         = 0;
     uint32_t           transitions_      = 0;
     bool               mounted_          = false;
     bool               pending_nav_      = false;
