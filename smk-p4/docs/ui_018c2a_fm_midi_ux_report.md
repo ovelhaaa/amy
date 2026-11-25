@@ -159,9 +159,16 @@ com `result: PASS` (240 objetos LVGL, 20 objetos AMY, 34 objetos UI).
 | Suíte / verificação | Resultado | Métricas LVGL / TLSF (início → fim, pico, frag.) |
 |---|---|---|
 | `ui_018c2_test` (C.2 + C.2a: 32 algos, 6 ops, MIDI Learn, stress) | `PASS` | C.2: `objs=91→91`, `free=74632→74632 B`, `largest=73624→73624 B`, `diff=0`, `peak=89728 B`, `frag=2%→2%`<br>C.2a: `objs=91→91`, `free=74632→74632 B`, `largest=73624→73624 B`, `diff=0`, `peak=100680 B`, `frag=2%→2%` |
-| `ui_018c1_integration_test` (500 navs, notas/Arp/Seq, Lock) | `PASS` | `objs=91→91`, `free=74656→74656 B`, `largest=73648→73648 B`, `diff=0`, `peak=75472 B`, `frag=2%→2%` (500 nav host: mediana 4654,1 µs, P95 6677,9 µs, max 10355,3 µs) |
+| `ui_018c1_integration_test` (500 navs, notas/Arp/Seq, Lock) | `PASS` | `objs=91→91`, `free=74656→74656 B`, `largest=73648→73648 B`, `diff=0`, `peak=75472 B`, `frag=2%→2%` (500 nav host: mediana 3798,8 µs, P95 6530,4 µs, max 7966,9 µs) |
 | `ui_018c1a_hardening_test` (Scene Safety, Harmony Overlay) | `PASS` | `objs=91→91`, `free=75744→75744 B`, `largest=74680→74680 B`, `diff=0`, `peak=66816 B`, `frag=2%→2%` |
-| `sound_editor_ui_test` + `smk25_0142_ui_test` + `unified_ui_test` | `PASS` | `objs=96→96`, `free=75600→75600 B`, `largest=75536→75536 B`, `diff=0`, `peak=81320 B`, `frag=1%→1%` (500 nav FX); Inspector 50-toggle `diff=0 B`; Idle 200-ticks `diff=0 B` |
+| `sound_editor_ui_test` + `smk25_0142_ui_test` | `PASS` | `objs=96→96`, `free=75600→75600 B`, `largest=75536→75536 B`, `diff=0`, `peak=81320 B`, `frag=1%→1%` (500 nav FX); Inspector 50-toggle `diff=0 B`; Idle 200-ticks `diff=0 B` |
+
+Validação complementar, executada pelo script de preview existente (separada do
+build limpo acima):
+
+| Comando | Resultado | Evidência |
+|---|---|---|
+| `powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_preview.ps1` | `PASS` | Sete grupos de testes, limites 800×480, 700 montagens: `free=71632→71632 B`, `diff=0 B`, `peak=105176 B`, `frag=0%`; 23 previews em `build/ui_preview_shots/`. |
 
 Builds finais executados:
 
@@ -185,7 +192,7 @@ Tamanhos reais de `firmware.bin`: 1.515.712 B (`guition-editor-8`) e 1.621.200 B
 
 ### Falha herdada fora do perfil editor
 
-`run_amy.ps1 -Voices 8 -SoundLibrary` falha em
+**FAIL:** `run_amy.ps1 -Voices 8 -SoundLibrary` falha em
 `tests/polyphony_test.cpp:82`, no orçamento legado do motor. A mesma execução
 falhou em checkout isolado da base `6245e006`, na mesma asserção. Inicialização
 AMY e teste musical USB anteriores a ela passaram em ambos os checkouts.
@@ -200,6 +207,10 @@ a suíte legada completa como PASS. Logs locais: `build/ui_018c2a_amy.log`,
 Todas as imagens são renders LVGL reais, com AMY real e MIDI **simulado no
 host**, identificado no cabeçalho. São 16 vistas exigidas, uma vista USB offline
 adicional e 20 vistas de regressão C.2 na pasta `ui_018c2a_shots/`.
+As 16 vistas exigidas foram revistas visualmente após a validação final: não
+foram observadas sobreposições relevantes nos painéis FM nem cortes importantes
+nos textos contextuais MIDI. Reticências em títulos/status secundários continuam
+intencionais; a auditoria geométrica complementa essa revisão visual.
 
 | Vista exigida | Captura |
 |---|---|
