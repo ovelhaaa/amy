@@ -104,7 +104,7 @@ public:
         confirm_ = nullptr;
         oct_lbl_ = status_lbl_ = kb_ = nullptr;
         patch_lbl_ = scene_lbl_ = arp_pill_ = seq_pill_ = fx_pill_ = harm_pill_ = nullptr;
-        scenes_notice_lbl_ = nullptr;
+        scenes_notice_lbl_ = scenes_domains_lbl_ = nullptr;
         for (auto& q : quick_) q = nullptr;
         for (auto& c : scene_cards_) c = {};
         for (auto& l : lock_btns_) l = nullptr;
@@ -130,9 +130,25 @@ public:
             lv_obj_remove_flag(top, LV_OBJ_FLAG_SCROLLABLE);
 
             patch_lbl_ = createLabel(top, "", 6, 3, 330, &lv_font_montserrat_14, palette::kAccentPrimary);
-            if (patch_lbl_) lv_label_set_long_mode(patch_lbl_, LV_LABEL_LONG_MODE_DOTS);
+            if (patch_lbl_) {
+                lv_label_set_long_mode(patch_lbl_, LV_LABEL_LONG_MODE_DOTS);
+                lv_obj_add_flag(patch_lbl_, LV_OBJ_FLAG_CLICKABLE);
+                attachLvContext<UiNavigationManager*>(patch_lbl_, &nav, [](lv_event_t* e) {
+                    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                    auto* n = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
+                    if (n) n->requestNavigateTo(ScreenId::PatchBrowser);
+                }, LV_EVENT_CLICKED);
+            }
             scene_lbl_ = createLabel(top, "", 6, 25, 330, &lv_font_montserrat_14, palette::kTextPrimary);
-            if (scene_lbl_) lv_label_set_long_mode(scene_lbl_, LV_LABEL_LONG_MODE_DOTS);
+            if (scene_lbl_) {
+                lv_label_set_long_mode(scene_lbl_, LV_LABEL_LONG_MODE_DOTS);
+                lv_obj_add_flag(scene_lbl_, LV_OBJ_FLAG_CLICKABLE);
+                attachLvContext<UiNavigationManager*>(scene_lbl_, &nav, [](lv_event_t* e) {
+                    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                    auto* n = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
+                    if (n) n->requestNavigateTo(ScreenId::Performance, 5);
+                }, LV_EVENT_CLICKED);
+            }
 
             lv_obj_t* lib_btn = createActionButton(top, "TIMBRES >", 344, 6, 94, 36, nullptr, nullptr, false, false);
             attachLvContext<UiNavigationManager*>(lib_btn, &nav, [](lv_event_t* e) {
@@ -141,10 +157,24 @@ public:
                 if (n) n->requestNavigateTo(ScreenId::PatchBrowser);
             }, LV_EVENT_CLICKED);
 
+            struct PillNavCtx { UiNavigationManager* nav; ScreenId screen; };
+            const auto bindPill = [&](lv_obj_t* pill, ScreenId target) {
+                if (!pill) return;
+                lv_obj_add_flag(pill, LV_OBJ_FLAG_CLICKABLE);
+                attachLvContext<PillNavCtx>(pill, {&nav, target}, [](lv_event_t* e) {
+                    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                    const auto* c = static_cast<const PillNavCtx*>(lv_event_get_user_data(e));
+                    if (c && c->nav) c->nav->requestNavigateTo(c->screen);
+                }, LV_EVENT_CLICKED);
+            };
             arp_pill_  = createPill(top, "ARP OFF",  444, 7, 80, 34, palette::kUnavailableBadge);
             seq_pill_  = createPill(top, "SEQ OFF",  528, 7, 82, 34, palette::kUnavailableBadge);
             fx_pill_   = createPill(top, "FX ON",    614, 7, 80, 34, palette::kActive);
             harm_pill_ = createPill(top, "-/-",      698, 7, 78, 34, palette::kUnavailableBadge);
+            bindPill(arp_pill_, ScreenId::Arpeggiator);
+            bindPill(seq_pill_, ScreenId::Sequencer);
+            bindPill(fx_pill_, ScreenId::Effects);
+            bindPill(harm_pill_, ScreenId::Harmony);
         }
 
         // 2. Stage V3 Sub-Mode Bar (y = 60..96)
@@ -231,23 +261,43 @@ public:
         const char* active_sc = (sv.recall.active < scene::kSlots && backend.sceneSlot(sv.recall.active))
                                     ? backend.sceneSlot(sv.recall.active)->config.name
                                     : "--";
+        const arp::Status* ast = backend.arpStatus();
+        const seq::Status* sst = backend.sequencerStatus();
+        const uint8_t locks_mask = sessionLockMask();
+
         if (scene_lbl_) {
-            char sbuf[96]{};
+            char pat_part[28]{};
+            if (sst) {
+                const bool has_act = sst->active_slot < seq::kPatternSlots;
+                const bool has_pend = sst->pending_slot < seq::kPatternSlots;
+                if (has_act && has_pend) {
+                    std::snprintf(pat_part, sizeof(pat_part), " | PAT %02u->%02u",
+                                  unsigned(sst->active_slot + 1U), unsigned(sst->pending_slot + 1U));
+                } else if (has_pend) {
+                    std::snprintf(pat_part, sizeof(pat_part), " | PAT ->%02u",
+                                  unsigned(sst->pending_slot + 1U));
+                } else if (has_act) {
+                    std::snprintf(pat_part, sizeof(pat_part), " | PAT %02u%s",
+                                  unsigned(sst->active_slot + 1U), sst->modified ? "*" : "");
+                } else if (sst->modified) {
+                    std::snprintf(pat_part, sizeof(pat_part), " | PAT RAM*");
+                }
+            }
+            char sbuf[120]{};
             const char* op_res = sceneOpResultShort(sv.recall.phase);
             if (!op_res) {
-                std::snprintf(sbuf, sizeof(sbuf), "ATIVA: %s", active_sc);
+                std::snprintf(sbuf, sizeof(sbuf), "ATIVA: %s%s%s", active_sc, pat_part,
+                              locks_mask ? " | LK" : "");
             } else if (op_slot < scene::kSlots) {
-                std::snprintf(sbuf, sizeof(sbuf), "ATIVA: %s | RECALL C%u: %s",
-                              active_sc, unsigned(op_slot + 1U), op_res);
+                std::snprintf(sbuf, sizeof(sbuf), "ATIVA: %.10s%s | RECALL C%u: %s",
+                              active_sc, pat_part, unsigned(op_slot + 1U), op_res);
             } else {
-                std::snprintf(sbuf, sizeof(sbuf), "ATIVA: %s | RECALL: %s",
-                              active_sc, op_res);
+                std::snprintf(sbuf, sizeof(sbuf), "ATIVA: %.10s%s | RECALL: %s",
+                              active_sc, pat_part, op_res);
             }
             setLabelIfChanged(scene_lbl_, sbuf);
         }
 
-        const arp::Status* ast = backend.arpStatus();
-        const seq::Status* sst = backend.sequencerStatus();
         const bool arp_on = ast ? ast->config.enabled : backend.model().getBool("arp.enable", false);
         const bool seq_on = sst ? sst->playing : backend.model().getBool("seq.playing", false);
         const bool fx_bypass = backend.model().getBool("fx.bypass_all", false);
@@ -255,23 +305,37 @@ public:
         const bool ch_on = backend.model().getBool("harmony.chord_enable", false);
 
         if (arp_pill_) {
-            lv_obj_set_style_bg_color(arp_pill_, lv_color_hex(arp_on ? palette::kActive : palette::kUnavailableBadge), 0);
+            const bool arp_lat = ast && ast->config.latch && !ast->held_count && ast->length > 0;
+            const bool arp_run = ast && ast->length > 0;
+            const bool arp_arm = ast && ast->config.enabled && ast->armed && !arp_run;
+            const char* atxt = !arp_on ? "ARP OFF" :
+                               arp_lat ? "ARP LAT" :
+                               arp_run ? "ARP RUN" :
+                               arp_arm ? "ARP ARM" : "ARP ON";
+            const uint32_t abg = !arp_on ? palette::kUnavailableBadge :
+                                 arp_arm ? palette::kAccentPrimary : palette::kActive;
+            lv_obj_set_style_bg_color(arp_pill_, lv_color_hex(abg), 0);
             if (lv_obj_t* l = lv_obj_get_child(arp_pill_, 0)) {
-                setLabelIfChanged(l, arp_on ? "ARP ON" : "ARP OFF");
+                setLabelIfChanged(l, atxt);
                 lv_obj_set_style_text_color(l, lv_color_hex(arp_on ? palette::kBackground : palette::kTextPrimary), 0);
             }
         }
         if (seq_pill_) {
-            lv_obj_set_style_bg_color(seq_pill_, lv_color_hex(seq_on ? palette::kActive : palette::kUnavailableBadge), 0);
+            const bool pat_pend = sst && sst->pending_slot < seq::kPatternSlots;
+            const uint32_t sbg = pat_pend ? palette::kAccentPrimary :
+                                 seq_on   ? palette::kActive : palette::kUnavailableBadge;
+            lv_obj_set_style_bg_color(seq_pill_, lv_color_hex(sbg), 0);
             if (lv_obj_t* l = lv_obj_get_child(seq_pill_, 0)) {
                 char sb[16]{};
-                if (seq_on && sst && sst->current_step < seq::kSteps) {
+                if (pat_pend) {
+                    std::snprintf(sb, sizeof(sb), "SEQ P>%u", unsigned(sst->pending_slot + 1U));
+                } else if (seq_on && sst && sst->current_step < seq::kSteps) {
                     std::snprintf(sb, sizeof(sb), "SEQ S%u", unsigned(sst->current_step + 1U));
                 } else {
-                    std::snprintf(sb, sizeof(sb), seq_on ? "SEQ ON" : "SEQ OFF");
+                    std::snprintf(sb, sizeof(sb), seq_on ? "SEQ RUN" : "SEQ OFF");
                 }
                 setLabelIfChanged(l, sb);
-                lv_obj_set_style_text_color(l, lv_color_hex(seq_on ? palette::kBackground : palette::kTextPrimary), 0);
+                lv_obj_set_style_text_color(l, lv_color_hex((seq_on || pat_pend) ? palette::kBackground : palette::kTextPrimary), 0);
             }
         }
         if (fx_pill_) {
@@ -379,6 +443,36 @@ public:
             std::snprintf(nbuf, sizeof(nbuf), "SEL: C%u | ATIVA: %s | %s",
                           unsigned(selected_scene_slot_ + 1U), active_sc, notice_txt);
             setLabelIfChanged(scenes_notice_lbl_, nbuf);
+        }
+        if (scenes_domains_lbl_) {
+            const scene::Slot* sel_slot = backend.sceneSlot(selected_scene_slot_);
+            char dbuf[128]{"APLICAR: -- (SLOT VAZIO)"};
+            if (sel_slot && sel_slot->state == seq::SlotState::Valid) {
+                const uint8_t stored = sel_slot->config.domains;
+                const uint8_t eff = scene::effectiveDomains(stored, stored, sessionLockMask(), true);
+                static constexpr const char* kDomNames[7] = {
+                    "PATCH*", "PATTERN", "FX", "HARMONY", "ARP", "MACROS", "TEMPO"
+                };
+                static constexpr uint8_t kDomLocks[7] = {
+                    0, 0, perf_lock::Fx, perf_lock::Harmony, perf_lock::Arp, perf_lock::Macros, 0
+                };
+                unsigned used = static_cast<unsigned>(std::snprintf(dbuf, sizeof(dbuf), "APLICAR: "));
+                unsigned count = 0;
+                for (unsigned d = 0; d < 7 && used + 12 < sizeof(dbuf); ++d) {
+                    const uint8_t bit = static_cast<uint8_t>(1U << d);
+                    if ((eff & bit) != 0U) {
+                        used += static_cast<unsigned>(std::snprintf(
+                            dbuf + used, sizeof(dbuf) - used, "%s%s", count ? " | " : "", kDomNames[d]));
+                        ++count;
+                    } else if ((stored & bit) != 0U && (sessionLockMask() & kDomLocks[d]) != 0U) {
+                        used += static_cast<unsigned>(std::snprintf(
+                            dbuf + used, sizeof(dbuf) - used, "%s%s(LK)", count ? " | " : "", kDomNames[d]));
+                        ++count;
+                    }
+                }
+                if (count == 0) std::snprintf(dbuf, sizeof(dbuf), "APLICAR: NENHUM (LOCKED)");
+            }
+            setLabelIfChanged(scenes_domains_lbl_, dbuf);
         }
         const uint8_t locks = sessionLockMask();
         static constexpr uint8_t kLockBits[4] = {perf_lock::Fx, perf_lock::Harmony, perf_lock::Arp, perf_lock::Macros};
@@ -495,10 +589,11 @@ private:
         lv_obj_set_style_pad_all(bar, 4, 0);
         lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
 
-        scenes_notice_lbl_ = createLabel(bar, "CENA 1 | --", 6, 4, 768, &lv_font_montserrat_14, palette::kTextSecondary);
+        scenes_notice_lbl_ = createLabel(bar, "CENA 1 | --", 6, 2, 768, &lv_font_montserrat_14, palette::kTextSecondary);
+        scenes_domains_lbl_ = createLabel(bar, "APLICAR: --", 6, 20, 768, &lv_font_montserrat_14, palette::kAccentPrimary);
 
         const auto add_act = [&](const char* lbl, int32_t x, int32_t w, int act, bool acc = false) {
-            lv_obj_t* b = createActionButton(bar, lbl, x, 36, w, 48, nullptr, nullptr, acc, acc);
+            lv_obj_t* b = createActionButton(bar, lbl, x, 40, w, 46, nullptr, nullptr, acc, acc);
             attachLvContext<SceneSlotCtx>(b, {this, &backend, 0, act}, [](lv_event_t* e) {
                 if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
                 auto* c = static_cast<SceneSlotCtx*>(lv_event_get_user_data(e));
@@ -520,7 +615,7 @@ private:
         };
         add_act("RECALL", 6, 88, 1, true);
 
-        lv_obj_t* mod_btn = createActionButton(bar, "SELETIVO...", 98, 36, 114, 48, nullptr, nullptr, false, false);
+        lv_obj_t* mod_btn = createActionButton(bar, "SELETIVO...", 98, 40, 114, 46, nullptr, nullptr, false, false);
         attachLvContext<UiNavigationManager*>(mod_btn, &nav, [](lv_event_t* e) {
             if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
             auto* n = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
@@ -533,7 +628,7 @@ private:
         static constexpr const char* kLockNames[4] = {"LK FX", "LK HARM", "LK ARP", "LK MAC"};
         static constexpr uint8_t kLockBits[4] = {perf_lock::Fx, perf_lock::Harmony, perf_lock::Arp, perf_lock::Macros};
         for (uint8_t li = 0; li < 4; ++li) {
-            lock_btns_[li] = createActionButton(bar, kLockNames[li], 406 + li * 93, 36, 88, 48, nullptr, nullptr, false, false);
+            lock_btns_[li] = createActionButton(bar, kLockNames[li], 406 + li * 93, 40, 88, 46, nullptr, nullptr, false, false);
             attachLvContext<SceneSlotCtx>(lock_btns_[li], {this, &backend, kLockBits[li], 4}, [](lv_event_t* e) {
                 if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
                 auto* c = static_cast<SceneSlotCtx*>(lv_event_get_user_data(e));
@@ -788,6 +883,7 @@ private:
     SceneCard scene_cards_[scene::kSlots]{};
     lv_obj_t* lock_btns_[4]{};
     lv_obj_t* scenes_notice_lbl_ = nullptr;
+    lv_obj_t* scenes_domains_lbl_ = nullptr;
 };
 
 } // namespace
