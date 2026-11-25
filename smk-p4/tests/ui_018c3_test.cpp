@@ -265,6 +265,9 @@ int main(int argc, char** argv) {
     }
     request(seq::Action::Play);
     assert(adapter.requestArpTransport(true).accepted()); sync_runtime();
+    assert(runtime.usbInput().transfer(on,sizeof(on),preview::g_sim_tick_ms));
+    for(unsigned i=0;i<64;++i) sync_runtime();
+    assert(runtime.snapshot().arp.length>0 && adapter.sequencerStatus()->playing);
     assert(nav.navigateTo(ScreenId::Effects)); sync_runtime(); capture("25_fx_while_running");
     // No musical mutations or transport commands may be caused by navigation.
     assert(nav.navigateTo(ScreenId::Performance)); sync_runtime();
@@ -285,6 +288,7 @@ int main(int argc, char** argv) {
         times.push_back(std::chrono::duration<double,std::micro>(std::chrono::steady_clock::now()-start).count());
     }
     assert(adapter.sequencerStatus()->playing);
+    assert(runtime.snapshot().arp.length>0);
     assert(runtime.snapshot().generation==generation);
     assert(adapter.sequencerStatus()->command.token==command);
     assert(runtime.snapshot().arp.tempo.phase>phase);
