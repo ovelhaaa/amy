@@ -21,6 +21,9 @@
 #endif
 #if defined(CONFIG_SMKP4_UI_BLUEPRINT)
 #include "ui_blueprint.h"
+#ifdef CONFIG_SMKP4_BOOT_SPLASH
+#include "p4my_splash.h"
+#endif
 #include "ui_blueprint_performance_adapter.h"
 #else
 #include "performance_ui.h"
@@ -459,6 +462,15 @@ extern "C" void app_main() {
 #endif
     const bool display_ready = smk::p4::beginDisplayTest(diagnostic);
     const bool ui_ready=display_ready && !diagnostic && ui.begin();
+#ifdef CONFIG_SMKP4_BOOT_SPLASH
+    static smk::p4::ui::P4mySplash splash;
+    if(ui_ready) {
+        smk::p4::ui::P4mySplash::Config splash_config;
+        splash_config.fps=CONFIG_SMKP4_SPLASH_FPS<=20 ? 20 : 30;
+        if(!splash.begin(lv_screen_active(),uint32_t(esp_timer_get_time()/1000),splash_config))
+            ESP_LOGE(kTag,"P4my splash unavailable; Performance continues");
+    }
+#endif
     if(!display_ready || (!diagnostic && !ui_ready)) ESP_LOGE(kTag,"Display/UI failed; audio owner continues");
 #ifdef CONFIG_SMKP4_HARDWARE_017B_TELEMETRY
     reportHeap("after_display");
@@ -470,6 +482,12 @@ extern "C" void app_main() {
             backend.publish(current.engine,current.running && current.physical,current.render_max_us,current.render_deadlines);
         backend.publishMidi(usb_host.state()==smk::p4::usb::Host::State::Connected,
             usb_host.state()==smk::p4::usb::Host::State::Error,runtime.usbInput().events.load());
+#ifdef CONFIG_SMKP4_BOOT_SPLASH
+        const uint32_t splash_now_ms=uint32_t(esp_timer_get_time()/1000);
+        // Only the control/LVGL owner touches the overlay. Readiness is real.
+        if(current.engine.ready || current.error!=ESP_OK) splash.finish(splash_now_ms);
+        splash.service(splash_now_ms);
+#endif
         if (display_ready) smk::p4::serviceDisplayTest();
         if(ui_ready) ui.service(static_cast<uint32_t>(esp_timer_get_time()/1000));
         if (xTaskGetTickCount() - last_report >= pdMS_TO_TICKS(smk::p4::config::kDiagnosticsIntervalMs)) {

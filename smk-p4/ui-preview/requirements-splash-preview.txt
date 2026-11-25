@@ -1,0 +1,2 @@
+# Host-only PNG/GIF export; not linked into firmware.
+Pillow==12.3.0

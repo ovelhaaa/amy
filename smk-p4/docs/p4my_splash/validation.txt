@@ -1,0 +1,69 @@
+P4my software validation — 2026-11-25
+
+PASS powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_splash.ps1
+  GCC/MinGW -O2 -std=c++20 -Wall -Wextra -Werror, real LVGL 9.3 RGB565.
+  50 lifecycle cycles: zero measured LVGL heap leak.
+  Early finish/idempotence, tick wrap, parent deletion, invalid FPS,
+  preserved underlying Performance placeholder, no splash timers,
+  low-memory refusal without destroying Performance.
+  P4mySplash sizeof: 3976 bytes (fixed state, host ABI).
+  Initial LVGL heap delta: 11416 bytes.
+  Final run under concurrent SDK compilation: seek + software render
+  mean 14800.1 us, max 44490.2 us over 91 frames.
+  Earlier low-load runs: mean 9590.8–11145.8 us, max 19474.5–21023.9 us.
+  These are wall-clock host measurements, not P4 deadline/audio qualification.
+  Four PNGs and GIF rendered and inspected; no operator reference attached.
+
+PASS direct full preview integration executable
+  Splash exit retains the genuine UiBlueprint Performance tree/navigation;
+  all 23 existing screen/tab captures rendered at 800 x 480.
+  Reproducible runner: run_preview.ps1 -PreviewOnly (result below).
+
+FAIL powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_preview.ps1
+  Existing blueprint_test_suite.cpp:378 assumes Scenes is the final enum item;
+  current ScreenId ends with Patterns=15, Count=16. The suite never creates a
+  splash. Existing navigation/UI changes were present before this task and
+  remain outside this commit. This is not counted as a passing regression suite.
+  An earlier concurrent attempt failed finding lvgl.h; the sequential rerun
+  reached the above actual assertion. No regression expectations were changed.
+
+PASS actual ESP32-P4 compiler checks of standalone_main.cpp and p4my_splash.cpp
+  Reused compile_commands.json from guition-editor-8 with BOOT_SPLASH=1,
+  SPLASH_FPS=30; separate build/p4my_target_main.o and target_splash.o outputs.
+  Compilation alone is not full firmware or hardware validation.
+
+PASS initial PlatformIO guition-editor-8 build using cached pre-splash config.
+  This was explicitly NOT counted as verification of enabled integration.
+  Baseline: PIO RAM 70272 bytes, Flash 1519524 bytes.
+BLOCKED subsequent PlatformIO rebuild at environment setup: uv/esptool dependency
+  reinstall timed out at 60 s. Disabling component manager failed resolving lvgl;
+  normal component manager was restored and no project dependency was changed.
+PASS direct ESP-IDF CMake configure, BOOT_SPLASH=1 / SPLASH_FPS=30 confirmed.
+  IDF_PATH=C:/.platformio/packages/framework-espidf
+  From smk-p4: C:/.platformio/packages/tool-cmake/bin/cmake.exe -S . -B .pio/build/guition-editor-8
+  Full build result recorded below when complete.
+
+MANUAL physical cold boot, audio/render timing and additional PSRAM load.
+NOT RUN firmware upload, physical display/audio acceptance, reference matching.
+
+PASS powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_preview.ps1 -PreviewOnly
+  Genuine Performance exit and all 23 PNG exports passed with final module.
+  PreviewOnly explicitly skips the separately executed (failing) regression suite.
+PASS local offline esptool 5.1.0 environment recovery (no repository dependencies changed):
+  C:/.platformio/penv/Scripts/uv.exe pip install --offline --reinstall-package pygments --python=C:/.platformio/penv/Scripts/python.exe -e C:/.platformio/packages/tool-esptoolpy
+  Restored missing rich-click and incomplete pygments metadata using cached packages.
+NOT RUN to completion: full CMake SDK build, stopped after 484/1602 steps to
+  resume supported PlatformIO build with recovered toolchain and cached objects.
+  C:/.platformio/packages/tool-cmake/bin/cmake.exe --build .pio/build/guition-editor-8 --parallel 8
+
+PASS final PreviewOnly rerun after low-memory guard: genuine Performance retained, 23 captures.
+
+PASS final supported PlatformIO build WITH splash enabled (908.95 s):
+  $env:PYTHONIOENCODING='utf-8'; $env:PYTHONUTF8='1'; $env:UV_OFFLINE='true'
+  C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-editor-8 -j 8
+  CONFIG_SMKP4_BOOT_SPLASH=1, CONFIG_SMKP4_SPLASH_FPS=30 confirmed in generated header.
+  Includes final low-memory guard; firmware ELF and BIN generated, no upload.
+  RAM:   [==        ]  22.6% (used 74200 bytes from 327680 bytes)
+  Flash: [=         ]   9.1% (used 1527776 bytes from 16777216 bytes)
+  Build/test workspace also contained pre-existing, unstaged UI work.
+  PIO RAM summary is not a complete P4 DRAM0/DRAM1 or PSRAM runtime budget.

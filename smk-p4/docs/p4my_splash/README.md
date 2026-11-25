@@ -1,0 +1,106 @@
+# P4my boot identity
+
+## Implemented and architecture
+
+Independent `P4mySplash` in `components/ui_blueprint/include/p4my_splash.h`
+and `src/p4my_splash.cpp`. Original geometric, slightly inclined polyline logo,
+navy grid, sine/triangle waves, radial markers, layered amber strokes, subtitle
+and original AMY credit. No third-party artwork or fonts were added. Existing
+AMY attribution and licenses are retained.
+
+Scope follows the explicit P4 request (800 x 480), superseding only the older
+S3/284 x 76 scope in root specs.md/AGENTS.md for this task. S3, AMY core, DSP,
+MIDI, audio drivers and the Performance layout are unchanged. Existing local
+UI redesign changes are outside this commit. The operator reference image/GIF
+was not attached; visual fidelity to that reference remains unverified.
+
+The existing standalone control/LVGL owner mounts the overlay above the built
+Performance tree. It continues servicing the backend and display. No timer,
+worker, delay, audio callback or cross-task LVGL access is introduced. A real
+engine-ready snapshot (or a reported engine error) requests a bounded 180 ms
+fade. No fake boot status is displayed. The musical initialization does not
+wait for the timeline. On already-ready boots most of the nominal animation
+will intentionally be skipped. Diagnostic and legacy non-Blueprint UI remain
+unchanged. Nominal completion holds the final composition until readiness.
+
+The built-in LVGL allocator receives a startup preflight (20 KB free, 2 KB
+largest block); a depleted pool skips the optional overlay and reports failure.
+This headroom is a guard, not a physical memory qualification.
+
+All points live in three fixed 161-point arrays shared by five mutable LVGL
+lines. LVGL objects/styles allocate at begin, not explicitly each frame. The
+phase slows exponentially. The firmware instance is static: its fixed point
+storage remains reserved after close; all LVGL objects/styles are released. `close()`, repeated begin, destruction and external
+parent deletion are supported; no timers can remain orphaned. The splash owner
+must outlive its LVGL objects and be destroyed before LVGL shutdown.
+
+## Configuration and preview
+
+- `CONFIG_SMKP4_BOOT_SPLASH=n`: disables the boot overlay.
+- `CONFIG_SMKP4_SPLASH_FPS=20`: reduced update rate; 21-30 select 30 FPS.
+- `P4mySplash::Config`: duration (default 2700 ms), exit duration (0-1000 ms),
+  frame rate (20 or 30). Invalid config fails before object creation.
+- `seek(elapsed_ms)`: deterministic manual playback, with the nominal timeline
+  scaled by configured duration. It does not advance the owner clock.
+
+Nominal reveal: grid 0-400, secondary waves 200-900, amber 400-1200,
+logo 900-1800, subtitle 1800-2300, AMY 2300-2700 ms.
+
+From the repository root, using the existing GCC/MinGW and LVGL 9.3 checkout:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_splash.ps1
+powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_splash.ps1 -Manual
+powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_preview.ps1
+# Capture/integration path independently of the existing regression suite:
+powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_preview.ps1 -PreviewOnly
+$env:PYTHONIOENCODING='utf-8'
+$env:PYTHONUTF8='1'
+C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-editor-8 -j 8
+```
+
+The splash runner reuses the existing LVGL host archive preparation and compiles
+with `-Wall -Wextra -Werror`. Python/Pillow exports PNG/GIF from actual RGB565
+LVGL captures; it is a host-only dependency already available on this machine,
+with no firmware memory/Flash/real-time impact. Tested export dependency:
+Pillow 12.3.0, MIT-CMU (installed package metadata), source
+[python-pillow/Pillow](https://github.com/python-pillow/Pillow). Maintenance
+stays with upstream; no library code is vendored or patched. The host pin is
+`ui-preview/requirements-splash-preview.txt`; install it only if needed.
+Pillow is required by this export helper, not by the module or firmware.
+Existing preview already provides PNG export; Pillow supplies GIF packing here.
+The GIF helper holds 91 RGB frames (~100 MiB pixel storage, estimate, not RSS).
+Firmware memory/Flash dependency impact is zero; no audio-time code is added. `build/p4my_splash/replay.html`
+provides Play/Pause and a time slider over 91 captured frames (no simulated UI).
+The four committed 800 x 480 milestones are 0, 700, 1400 and 2700 ms. GIF is
+review-only; firmware renders primitives. GIF delay granularity may round the
+33 ms frame duration; the HTML replay uses 33 ms nominal scheduling.
+
+## Validation
+
+See validation.txt for measured results and actual command status.
+The standalone splash harness checks early finish/idempotence, repeated
+lifecycle/heap balance, tick wrap, parent deletion, invalid configuration and
+preservation of the underlying object. The normal preview additionally tests
+exit over the genuine UiBlueprint Performance tree before its existing full
+navigation/capture regression. No firmware was uploaded.
+
+## Hardware assumptions, risks and next smallest step
+
+No new wiring/controller assumptions. Uses the existing P4 800 x 480 port.
+Additional PSRAM/style/software drawing load requires board measurement;
+host timings do not prove physical render deadlines or audio stability.
+Kconfig changes may require refreshing an existing PlatformIO generated
+configuration; verify BOOT_SPLASH and SPLASH_FPS in config/sdkconfig.h.
+The animation starts after the existing display and UI setup: it cannot cover
+work before display initialization, and does not move that initialization.
+
+MANUAL (not executed; no upload authorized): after an independently authorized
+firmware deployment, cold boot with the current qualified wiring. Verify no
+stalled Performance entry, correct landscape/colors, responsive touch after
+fade, normal MIDI notes/release/Panic, and no regression in same-boot audio
+counters. Measure internal/PSRAM before/during/after, UI frame duration and
+underruns over repeated boots, at 30 and 20 FPS. Repeat with BOOT_SPLASH=n.
+Expect no splash in diagnostic/legacy profiles and no changes to stored patches.
+Next smallest step: compare these captures against the missing operator
+reference, then qualify render cost on the actual board without changing audio.

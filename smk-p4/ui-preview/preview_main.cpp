@@ -1,4 +1,5 @@
 #include "preview_harness.h"
+#include "p4my_splash.h"
 #include <cstdio>
 
 using namespace smk::p4::ui;
@@ -13,6 +14,18 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "FAIL: UiBlueprint::begin() failed\n");
         return 1;
     }
+
+    // Exercise the boot overlay over the genuine existing Performance tree.
+    P4mySplash splash;
+    if (!splash.begin(lv_screen_active(), g_sim_tick_ms)) return 1;
+    splash.seek(2700);
+    pumpFrame(app, 33);
+    splash.finish(g_sim_tick_ms);
+    pumpFrame(app, 180);
+    splash.service(g_sim_tick_ms);
+    if (splash.active() || !lv_obj_is_valid(app.rootObject()) ||
+        app.navigation().currentScreen() != ScreenId::Performance) return 1;
+    std::puts("PASS: P4my exit preserves genuine Performance tree and navigation");
 
     struct CaptureSpec {
         ScreenId    screen;

@@ -27,3 +27,12 @@ powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_preview.ps1
 ## 2. Target Hardware Preview Entry Point (`esp_preview_main.cpp`)
 
 `esp_preview_main.cpp` shows how `smk::p4::ui::UiBlueprint` mounts on the Guition JC-ESP32P4-M3 (`ST7701S + GT911`, `800×480` RGB565) reusing `smk::p4::beginDisplayTest(false)` without duplicating the display/touch HAL or initializing audio/USB.
+
+
+## P4my boot splash preview
+
+`./smk-p4/ui-preview/run_splash.ps1` builds the independent LVGL splash,
+checks lifecycle/early exit and exports four 800 x 480 milestones plus a GIF.
+Use `-Manual` to open a Play/Pause and time-slider replay. The normal preview
+also checks splash teardown over the genuine Performance screen.
+See [implementation, configuration and measurements](../docs/p4my_splash/README.md).

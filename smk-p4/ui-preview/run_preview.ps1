@@ -1,4 +1,4 @@
-param([ValidateSet(96,128)][int]$PoolKB=128,[switch]$LvglOnly)
+param([ValidateSet(96,128)][int]$PoolKB=128,[switch]$LvglOnly,[switch]$PreviewOnly)
 $ErrorActionPreference = "Stop"
 
 $PreviewDir = $PSScriptRoot
@@ -155,6 +155,7 @@ foreach ($file in $UiCppFiles) {
     }
 }
 
+if (-not $PreviewOnly) {
 Write-Host "[3/4] Building and running blueprint_test_suite.exe ..."
 $TestSuiteSrc = Join-Path $UiCompDir "tests\blueprint_test_suite.cpp"
 $TestSuiteExe = Join-Path $BuildDir "blueprint_test_suite.exe"
@@ -170,6 +171,8 @@ if ($LASTEXITCODE -ne 0) { throw "Failed linking blueprint_test_suite.exe" }
 
 & $TestSuiteExe
 if ($LASTEXITCODE -ne 0) { throw "blueprint_test_suite.exe FAILED" }
+
+} else { Write-Host "[3/4] PreviewOnly: regression suite explicitly skipped" }
 
 Write-Host "[4/4] Building and running preview_main.exe (800x480 framebuffer capture) ..."
 $PreviewSrc = Join-Path $PreviewDir "preview_main.cpp"

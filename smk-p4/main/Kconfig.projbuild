@@ -9,6 +9,16 @@ config SMKP4_UI_BLUEPRINT
     help
         Reuses the existing UI task and LVGL display/touch. Legacy UI remains
         default until physical memory/audio integration gates pass.
+config SMKP4_BOOT_SPLASH
+    bool "P4my animated boot identity"
+    depends on SMKP4_UI_BLUEPRINT
+    default y
+config SMKP4_SPLASH_FPS
+    int "Splash frame rate (20, or 21-30 rounded to 30)"
+    depends on SMKP4_BOOT_SPLASH
+    range 20 30
+    default 30
+
 config SMKP4_SOUND_LIBRARY
     bool "Opt-in 0.7 resident FM library candidate (128/135/138/142)"
     depends on SMKP4_STANDALONE

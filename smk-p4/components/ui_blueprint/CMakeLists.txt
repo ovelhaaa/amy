@@ -1,6 +1,7 @@
 if(CONFIG_SMKP4_UI_BLUEPRINT OR CMAKE_PROJECT_NAME STREQUAL "smk_p4_ui_blueprint")
 set(blueprint_sources
         "src/ui_theme.cpp"
+        "src/p4my_splash.cpp"
         "src/ui_parameters.cpp"
         "src/ui_model.cpp"
         "src/ui_demo_backend.cpp"
