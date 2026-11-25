@@ -153,13 +153,16 @@ public:
                 std::snprintf(b[7], sizeof(b[7]), "NOTICE: %s", backend.model().lastNotice());
                 break;
 
-            case 3: // SISTEMA
-                std::snprintf(b[0], sizeof(b[0]), "VERSAO FW: %s", d.firmware_version);
-                std::snprintf(b[1], sizeof(b[1]), "PLACA ALVO: GUITION JC-ESP32P4-M3 (800x480)");
-                std::snprintf(b[2], sizeof(b[2]), "UPTIME: %lu ms", static_cast<unsigned long>(d.uptime_ms));
-                std::snprintf(b[3], sizeof(b[3]), "TROCAS DE TELA: %lu", static_cast<unsigned long>(d.screen_switches));
-                std::snprintf(b[4], sizeof(b[4]), "PARAMETROS REGISTRADOS: %u", unsigned(ParameterRegistry::count()));
-                std::snprintf(b[5], sizeof(b[5]), "PANICS DEMO: %lu", static_cast<unsigned long>(d.demo_panic_count));
+            case 3: // SISTEMA / ABOUT P4my
+                std::snprintf(b[0], sizeof(b[0]), "P4my - Digital Performance Synth | Powered by AMY");
+                std::snprintf(b[1], sizeof(b[1]), "VERSAO FW: %s | ESP32-P4 (800x480)", d.firmware_version);
+                std::snprintf(b[2], sizeof(b[2]), "UPTIME: %lu ms | TROCAS DE TELA: %lu",
+                              static_cast<unsigned long>(d.uptime_ms),
+                              static_cast<unsigned long>(d.screen_switches));
+                std::snprintf(b[3], sizeof(b[3]), "PARAMETROS: %u | VOZES MAX: %u",
+                              unsigned(ParameterRegistry::count()), unsigned(d.max_voices));
+                std::snprintf(b[4], sizeof(b[4]), "CREDITOS: AMY Synthesizer (shorepine) | LVGL 9.3.0");
+                std::snprintf(b[5], sizeof(b[5]), "BUILD: ESP-IDF 5.5.2 | GUITION JC-ESP32P4-M3");
                 std::snprintf(b[6], sizeof(b[6]), "BACKEND: %s | CONECTADO: %s",
                               backend.backendName(), backend.isConnected() ? "SIM" : "NAO");
                 std::snprintf(b[7], sizeof(b[7]), "QUALIFICACAO FISICA: PENDENTE (HOST VALIDADO)");

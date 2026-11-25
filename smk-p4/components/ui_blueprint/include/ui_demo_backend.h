@@ -31,7 +31,7 @@ public:
     bool isConnected() const override { return true; }
     bool isBusy() const override { return false; }
     const char* backendName() const override { return "UiDemoBackend (RAM-Only Simulation)"; }
-    const char* modeBadgeText() const override { return "UI DEMO"; }
+    const char* modeBadgeText() const override { return "P4my SIM"; }
     const char* statusText() const override { return model_.lastNotice(); }
 
     // Availability & command state (IUiBackend)

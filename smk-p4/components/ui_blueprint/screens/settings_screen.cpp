@@ -144,7 +144,7 @@ public:
                 createStatusBadge(store_card, backend.isDemoMode() ? FeatureStatus::Demo : FeatureStatus::Available, 540, 6);
 
                 createLabel(store_card,
-                            "FW: SMK-P4 UI 0.18-C.2 | TARGET: GUITION JC-ESP32P4-M3 | LVGL 9.3.0 / ESP-IDF 5.5.2",
+                            "FW: P4my (0.18-C.3a) | TARGET: GUITION JC-ESP32P4-M3 | LVGL 9.3.0 / ESP-IDF 5.5.2",
                             8, 40, 608, &lv_font_montserrat_14, palette::kTextPrimary);
                 createLabel(store_card,
                             backend.isDemoMode()

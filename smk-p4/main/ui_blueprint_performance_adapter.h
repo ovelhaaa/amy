@@ -20,7 +20,7 @@ public:
     bool isBusy() const override { return patch_.active || backend_.busy(); }
     bool hasMidiError() const override { return backend_.midiError(); }
     const char* backendName() const override { return "LOCAL AMY / BLUEPRINT 1.1"; }
-    const char* modeBadgeText() const override { return "P4 LIVE"; }
+    const char* modeBadgeText() const override { return "P4my"; }
     const char* statusText() const override { return backend_.status(); }
     ui::FeatureStatus parameterStatus(const char* id) const override;
     bool isParameterValueSupported(const char*,int32_t) const override;
