@@ -109,7 +109,7 @@ public:
             char name[32];
             formatNotes(name,sizeof(name),"",&s->pattern[index],1,UINT8_MAX);
             std::snprintf(text,sizeof(text),"%02u%s\n%s",index+1,
-                          (s->upper_octaves&(uint32_t(1)<<index))?"  +OCT":"",name);
+                          (s->upper_octaves&(uint32_t(1)<<index))?" +OCT":"",name);
             setLabel(cell_labels_[i],text);
         }
         const char* notice=backend.arpNotice();

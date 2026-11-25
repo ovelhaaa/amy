@@ -461,7 +461,7 @@ const ParameterDescriptor kDescriptors[] = {
      ParameterScale::Linear, "Arpeggiator", "MAIN", nullptr, 0, kStdCtrl,
      FeatureStatus::Planned, nullptr, -1, "smk-s3/components/sequencer/include/arpeggiator.h",
      "Enable note arpeggiator"},
-    {"arp.restart", "arp", "RESTART ON NEW CHORD", ParameterValueType::Bool, 0, 1, 0, 1, "",
+    {"arp.restart", "arp", "RESTART", ParameterValueType::Bool, 0, 1, 0, 1, "",
      ParameterScale::Linear, "Arpeggiator", "PATTERN", nullptr, 0, kStdCtrl,
      FeatureStatus::Planned, nullptr, -1, "arpeggiator.h", "Restart when the first key of a new gesture is pressed"},
     {"arp.clock_source", "arp", "CLOCK SRC", ParameterValueType::Enum, 0.0f, 2.0f, 0.0f, 1.0f, "",
