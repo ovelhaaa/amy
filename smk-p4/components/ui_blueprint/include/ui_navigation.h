@@ -98,8 +98,12 @@ public:
 
     bool sequencerEdit() const { return sequencer_edit_; }
     void setSequencerEdit(bool edit) { sequencer_edit_=edit; }
+    uint8_t sequencerPage() const { return sequencer_page_; }
+    void setSequencerPage(uint8_t page) { sequencer_page_ = static_cast<uint8_t>(page & 1u); }
     uint8_t patternSelection() const { return pattern_selection_; }
     void setPatternSelection(uint8_t slot) { if(slot<seq::kPatternSlots) pattern_selection_=slot; }
+    seq::SwitchMode patternSwitchMode() const { return pattern_switch_mode_; }
+    void setPatternSwitchMode(seq::SwitchMode mode) { pattern_switch_mode_ = mode; }
     size_t historyDepth() const { return history_depth_; }
     uint32_t transitionCount() const { return transitions_; }
     ScreenView* activeView() const { return active_view_; }
@@ -134,7 +138,9 @@ private:
     uint8_t            sub_tabs_[kScreenCount]{};
     uint32_t           transitions_      = 0;
     bool sequencer_edit_=false;
+    uint8_t sequencer_page_=0;
     uint8_t pattern_selection_=0;
+    seq::SwitchMode pattern_switch_mode_=seq::SwitchMode::Immediate;
     bool               mounted_          = false;
     bool               pending_nav_      = false;
     bool               pending_home_     = false;

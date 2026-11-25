@@ -120,7 +120,8 @@ void UiBlueprint::service(uint32_t now_ms) {
     } else {
         status_strip_.refreshTempo(backend_);
         if(cur==ScreenId::Arpeggiator || cur==ScreenId::Effects || cur==ScreenId::Sequencer ||
-           cur==ScreenId::Scenes || (cur==ScreenId::Performance && backend_.sceneSlot(0))) nav_.refreshActiveView();
+           cur==ScreenId::Patterns || cur==ScreenId::Scenes ||
+           (cur==ScreenId::Performance && backend_.sceneSlot(0))) nav_.refreshActiveView();
     }
 }
 

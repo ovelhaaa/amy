@@ -133,6 +133,10 @@ bool UiNavigationManager::begin(lv_obj_t* content_container, IUiBackend& backend
     backend_ = &backend;
     history_depth_ = 0;
     transitions_ = 0;
+    sequencer_edit_ = false;
+    sequencer_page_ = 0;
+    pattern_selection_ = 0;
+    pattern_switch_mode_ = seq::SwitchMode::Immediate;
     pending_nav_ = false;
     pending_home_ = false;
     for (size_t i = 0; i < kScreenCount; ++i) {

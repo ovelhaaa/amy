@@ -70,8 +70,10 @@ public:
         }
 
         browser_slot_=nav.patternSelection();
+        browser_switch_=nav.patternSwitchMode();
         if(library_only_) { openBrowser(); return true; }
         edit_=nav.sequencerEdit();
+        page_=nav.sequencerPage();
         auto* play_tab=button(parent,"PLAY MODE",8,4,148,38,ViewPlay);
         auto* edit_tab=button(parent,"EDIT MODE",164,4,148,38,ViewEdit);
         auto* active_tab=edit_?edit_tab:play_tab;
@@ -194,23 +196,43 @@ public:
             }
         }
         capture_revision_=midi.capture_revision;
-        char buf[96];
+        char buf[128];
         constexpr const char* modes[]{"NORMAL","STEP INPUT","STEP RECORD"};
-        std::snprintf(buf,sizeof(buf),"%s  TRANSPOSE %+d st  LIVE %s  STEP %02u",modes[unsigned(midi.mode)],midi.effective,midi.live?"ON":"OFF",status->current_step<seq::kSteps?status->current_step+1:0);
+        const bool off_page=edit_ && editing && (midi.selected/8u)!=page_;
+        if(editing) {
+            std::snprintf(buf,sizeof(buf),"%s  REC %02u%s  TR %+d  LIVE %s  STEP %02u",
+                          modes[unsigned(midi.mode)],unsigned(midi.selected)+1u,
+                          off_page?(midi.selected<8u?" (OFF-PAGE 1-8)":" (OFF-PAGE 9-16)"):"",
+                          midi.effective,midi.live?"ON":"OFF",
+                          status->current_step<seq::kSteps?status->current_step+1:0);
+        } else {
+            std::snprintf(buf,sizeof(buf),"%s  TRANSPOSE %+d st  LIVE %s  STEP %02u%s",
+                          modes[unsigned(midi.mode)],midi.effective,midi.live?"ON":"OFF",
+                          status->current_step<seq::kSteps?status->current_step+1:0,
+                          edit_?(page_==0?"  PG 1-8":"  PG 9-16"):"");
+        }
         text(midi_,buf);
         if(shown_mode_!=midi.mode) {
             shown_mode_=midi.mode;
             lv_obj_set_style_text_color(midi_,lv_color_hex(midi.mode==seq::InputMode::StepRecord?
                 palette::kAccentPrimary:palette::kTextPrimary),0);
         }
+        for(unsigned i=0;i<3;++i) if(mode_buttons_[i]) {
+            const bool active=unsigned(midi.mode)==i;
+            lv_obj_set_style_bg_color(mode_buttons_[i],lv_color_hex(active?(i==2?palette::kAccentPrimary:palette::kActive):palette::kPanelHighlight),0);
+            lv_obj_set_style_text_color(lv_obj_get_child(mode_buttons_[i],0),
+                lv_color_hex(active?palette::kBackground:palette::kTextPrimary),0);
+        }
         if(live_) text(lv_obj_get_child(live_,0),midi.live?"LIVE TRANSPOSE ON":"LIVE TRANSPOSE OFF");
         if(settings_info_) {
             char last[12]="--";
             if(midi.last_note!=seq::kNoStep) noteName(last,sizeof(last),midi.last_note);
-            std::snprintf(buf,sizeof(buf),"STEP %02u   LAST %s / VEL %u   %s   MANUAL %+d / LIVE %+d",
-                selected_+1,last,midi.last_velocity,midi.smk_connected?"SMK25 OK":
+            const char* cmd_state=(result.state==UiCommandState::Requested || result.state==UiCommandState::Rejected) &&
+                result.notice && *result.notice ? result.notice : "";
+            std::snprintf(buf,sizeof(buf),"STEP %02u   LAST %s / VEL %u   %s   MANUAL %+d / LIVE %+d%s%s",
+                (editing?midi.selected:selected_)+1,last,midi.last_velocity,midi.smk_connected?"SMK25 OK":
                 backend.model().diagnostics().midi_connected?"USB MIDI OK":"USB WAITING",
-                status->transpose,midi.live_offset);
+                status->transpose,midi.live_offset,*cmd_state?"  ":"",cmd_state);
             text(settings_info_,confirm_==Live?"ANY CAPTURES ALL MUSICAL NOTES. SET TRANSPOSE CH OR TAP LIVE AGAIN.":buf);
             text(lv_obj_get_child(live_,0),midi.live?"LIVE TRANSPOSE ON":"LIVE TRANSPOSE OFF");
             text(lv_obj_get_child(thru_,0),midi.thru?"AUDITION ON":"AUDITION OFF");
@@ -268,13 +290,14 @@ public:
                 text(pitches_[row],(row==0 || row==4 || row==8 || row==11)?buf:"");
             }
         }
+        const bool page_changed=shown_page_!=page_;
         const bool selection_changed=shown_selected_!=selected_;
         for(unsigned col=0;col<8;++col) {
-            const unsigned i=(selected_/8)*8+col;
+            const unsigned i=page_*8u+col;
             const auto& cell=pattern->steps[i];
             const bool current=status->current_step==i;
             const bool was_current=shown_playhead_==i;
-            if(octave_changed || cell.note!=shown_steps_[i].note || cell.enabled!=shown_steps_[i].enabled ||
+            if(octave_changed || page_changed || cell.note!=shown_steps_[i].note || cell.enabled!=shown_steps_[i].enabled ||
                shown_length_!=pattern->length || current!=was_current || selection_changed) {
                 const int row=octave_*12+11-cell.note;
                 const bool visible=cell.enabled && row>=0 && row<kPitchRows;
@@ -296,12 +319,13 @@ public:
                 shown_steps_[i]=cell;
             }
         }
-        if(status->current_step!=shown_playhead_ || selection_changed) {
-            show(playhead_,status->current_step!=seq::kNoStep && status->current_step/8==selected_/8);
+        if(status->current_step!=shown_playhead_ || page_changed) {
+            show(playhead_,status->current_step!=seq::kNoStep && status->current_step/8u==page_);
             if(status->current_step!=seq::kNoStep)
                 lv_obj_set_x(playhead_,(status->current_step%8)*kColumnWidth);
         }
         shown_octave_=octave_;
+        shown_page_=page_;
         shown_selected_=selected_;
         shown_length_=pattern->length;
         shown_playhead_=status->current_step;
@@ -384,7 +408,7 @@ private:
         if(!pattern || x<0 || x>=kGridWidth || y<0 || y>=kPitchRows*row_height_) return;
         const int pitch=octave_*12+11-y/row_height_;
         if(pitch>127) return;
-        selected_=(selected_/8)*8+unsigned(x/kColumnWidth);
+        selected_=page_*8u+unsigned(x/kColumnWidth);
         saveSelection();
         seq::Request request;
         request.index=uint8_t(selected_);
@@ -416,6 +440,7 @@ private:
         lv_obj_add_flag(panel_,LV_OBJ_FLAG_HIDDEN);
         lv_obj_delete_async(panel_);
         panel_=settings_info_=editor_note_=nullptr;
+        for(auto*& btn:mode_buttons_) btn=nullptr;
         live_=play_live_; thru_=source_=nullptr;
         for(unsigned i=InputChannel;i<ParameterCount;++i) sliders_[i]=values_[i]=nullptr;
     }
@@ -429,9 +454,9 @@ private:
                     &lv_font_montserrat_14,palette::kTextPrimary);
         if(settings) {
             settings_info_=createLabel(panel_,"",18,52,612,&lv_font_montserrat_14,palette::kTextPrimary);
-            button(panel_,"NORMAL PLAY",18,78,126,44,Normal);
-            button(panel_,"STEP INPUT",151,78,124,44,StepInput);
-            button(panel_,"STEP RECORD",282,78,126,44,StepRecord);
+            mode_buttons_[0]=button(panel_,"NORMAL PLAY",18,78,126,44,Normal);
+            mode_buttons_[1]=button(panel_,"STEP INPUT",151,78,124,44,StepInput);
+            mode_buttons_[2]=button(panel_,"STEP RECORD",282,78,126,44,StepRecord);
             live_=button(panel_,"",424,78,204,44,Live);
             thru_=button(panel_,"",18,136,150,46,Thru);
             source_=button(panel_,"",18,190,150,44,Source);
@@ -578,7 +603,7 @@ private:
         const char* operation=backend_->patternNotice();
         if(browser_confirm_==BrowserAction::Delete) operation="CONFIRM DELETE: DESTINATION SHOWN IN DIALOG";
         else if(browser_confirm_==BrowserAction::Load) operation="CHOOSE SAVE & LOAD, DISCARD & LOAD, OR CANCEL";
-        else if(browser_confirm_==BrowserAction::Save) operation="CONFIRM OVERWRITE: DESTINATION SHOWN IN DIALOG";
+        else if(browser_confirm_==BrowserAction::Save) operation="CONFIRM SAVE: DESTINATION SHOWN IN DIALOG";
         char message[112];
         std::snprintf(message,sizeof(message),"%s   %s",
                       status && status->modified?"PATTERN MODIFIED":"PATTERN CLEAN",
@@ -606,21 +631,29 @@ private:
 
     void confirmStorage(BrowserAction action) {
         pending_browser_action_=action;
-        char title[80];
+        char title[96];
         const auto* slot=backend_->patternSlot(browser_slot_);
-        std::snprintf(title,sizeof(title),"%s SLOT %02u: %s",action==BrowserAction::Delete?"DELETE":"OVERWRITE",
-            browser_slot_+1,slot?slot->name:"");
+        const bool empty=!slot || slot->state==seq::SlotState::Empty;
         if(action==BrowserAction::SaveLoad) {
             const auto* status=backend_->sequencerStatus();
-            std::snprintf(title,sizeof(title),"SAVE SLOT %02u THEN LOAD SLOT %02u",
-                status?status->active_slot+1:0,browser_slot_+1);
+            const uint8_t src_slot=status && status->active_slot<seq::kPatternSlots?status->active_slot+1:0;
+            std::snprintf(title,sizeof(title),"SAVE SLOT %02u -> LOAD SLOT %02u",
+                src_slot,browser_slot_+1);
+        } else if(action==BrowserAction::Delete) {
+            std::snprintf(title,sizeof(title),"DELETE PATTERN - SLOT %02u%s%s",
+                browser_slot_+1,slot && slot->name[0]?": ":"",slot && slot->name[0]?slot->name:"");
+        } else if(empty) {
+            std::snprintf(title,sizeof(title),"SAVE NEW PATTERN - SLOT %02u",browser_slot_+1);
+        } else {
+            std::snprintf(title,sizeof(title),"OVERWRITE PATTERN - SLOT %02u%s%s",
+                browser_slot_+1,slot && slot->name[0]?": ":"",slot && slot->name[0]?slot->name:"");
         }
         ConfirmDialogOptions opts;
         opts.title=title;
         opts.body="Storage quiet silences audio and stops transport. Continue?";
         opts.confirm_label="CONFIRM";
         opts.cancel_label="CANCEL";
-        opts.destructive=true;
+        opts.destructive=(action!=BrowserAction::Save) || !empty;
         opts.user_data=this;
         opts.on_confirm=[](void* data) {
             auto* view=static_cast<SequencerScreen*>(data);
@@ -641,6 +674,7 @@ private:
         }
         if(action==BrowserAction::Mode) {
             browser_switch_=browser_switch_==seq::SwitchMode::Immediate?seq::SwitchMode::NextBar:seq::SwitchMode::Immediate;
+            nav_->setPatternSwitchMode(browser_switch_);
             refreshBrowser();
             return;
         }
@@ -701,13 +735,13 @@ private:
             return;
         }
         if(control==Page) {
-            selected_=(selected_+8)%seq::kSteps;
-            saveSelection();
-            selectStep();
+            page_=uint8_t((page_+1u)&1u);
+            nav_->setSequencerPage(page_);
+            refresh(*backend_);
             return;
         }
         if(control>=SelectFirst) {
-            selected_=(edit_?(selected_/8)*8:0)+unsigned(control-SelectFirst);
+            selected_=(edit_?page_*8u:0u)+unsigned(control-SelectFirst);
             const auto& step=pattern->steps[selected_];
             if(step.enabled) octave_=step.note/12;
             saveSelection();
@@ -834,6 +868,12 @@ private:
             std::snprintf(drops,sizeof(drops),"VOICE DROPS %lu",static_cast<unsigned long>(status->voice_drops));
             message=drops;
         }
+        if(!message && edit_ && status && status->midi.mode!=seq::InputMode::Normal &&
+           (status->midi.selected/8u)!=page_) {
+            std::snprintf(drops,sizeof(drops),"REC CURSOR STEP %02u (PAGE %s)",
+                          unsigned(status->midi.selected)+1u,status->midi.selected<8u?"1-8":"9-16");
+            message=drops;
+        }
         if(!message && status && status->midi.last_note!=seq::kNoStep) {
             char note[8];
             noteName(note,sizeof(note),status->midi.last_note);
@@ -847,6 +887,7 @@ private:
     void saveSelection() { nav_->setSubTab(ScreenId::Sequencer,uint8_t(octave_*seq::kSteps+selected_+1)); }
 
     lv_obj_t* play_live_=nullptr;
+    lv_obj_t* mode_buttons_[3]{};
     bool library_only_=false,edit_=false;
     lv_obj_t *parent_=nullptr,*panel_=nullptr,*midi_=nullptr,*settings_info_=nullptr,
              *editor_note_=nullptr,*live_=nullptr,*thru_=nullptr,*source_=nullptr;
@@ -875,6 +916,7 @@ private:
     int octave_=5,shown_octave_=-1;
     int row_height_=kRowHeight;
     unsigned selected_=0,shown_selected_=seq::kSteps,shown_length_=0;
+    uint8_t page_=0,shown_page_=UINT8_MAX;
     uint8_t shown_playhead_=seq::kNoStep;
     seq::InputMode shown_mode_=seq::InputMode::Normal;
     bool shown_playing_=false;
