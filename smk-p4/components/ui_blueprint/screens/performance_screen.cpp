@@ -11,11 +11,11 @@ namespace {
 
 const char* sceneOpResultShort(scene::RecallPhase phase) {
     switch (phase) {
-        case scene::RecallPhase::WaitingBoundary: return "PENDENTE";
+        case scene::RecallPhase::WaitingBoundary: return "PENDING";
         case scene::RecallPhase::WaitingPatch:    return "WAIT PATCH";
-        case scene::RecallPhase::Failed:          return "FALHOU";
-        case scene::RecallPhase::Cancelled:       return "CANCELADO";
-        case scene::RecallPhase::PartialApply:    return "PARCIAL";
+        case scene::RecallPhase::Failed:          return "FAILED";
+        case scene::RecallPhase::Cancelled:       return "CANCELLED";
+        case scene::RecallPhase::PartialApply:    return "PARTIAL";
         default:                                  return nullptr;
     }
 }
@@ -93,6 +93,7 @@ void setLabelIfChanged(lv_obj_t* lbl, const char* text) {
 class PerformanceScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::Performance; }
+    bool hasBlockingConfirmation() const override { return confirm_dialog_.isOpen(); }
 
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
         parent_ = parent;
@@ -103,7 +104,7 @@ public:
         legacy_ = nullptr;
         confirm_ = nullptr;
         oct_lbl_ = status_lbl_ = kb_ = nullptr;
-        patch_lbl_ = scene_lbl_ = arp_pill_ = seq_pill_ = fx_pill_ = harm_pill_ = nullptr;
+        patch_lbl_ = scene_lbl_ = recall_op_lbl_ = arp_pill_ = seq_pill_ = fx_pill_ = harm_pill_ = nullptr;
         scenes_notice_lbl_ = scenes_domains_lbl_ = nullptr;
         for (auto& q : quick_) q = nullptr;
         for (auto& c : scene_cards_) c = {};
@@ -120,16 +121,16 @@ public:
         }
         if (view_mode == 2) return buildLegacy(parent, backend, nav);
 
-        // 1. Musical Context Banner (y = 4..56, full 800px width, no sidebar)
+        // 1. Musical Context Banner (y = 2..58, full 800px width, no sidebar)
         lv_obj_t* top = lv_obj_create(parent);
         if (top) {
             applyPanelStyle(top, false);
-            lv_obj_set_pos(top, 8, 4);
-            lv_obj_set_size(top, 784, 52);
+            lv_obj_set_pos(top, 8, 2);
+            lv_obj_set_size(top, 784, 56);
             lv_obj_set_style_pad_all(top, 2, 0);
             lv_obj_remove_flag(top, LV_OBJ_FLAG_SCROLLABLE);
 
-            patch_lbl_ = createLabel(top, "", 6, 3, 330, &lv_font_montserrat_14, palette::kAccentPrimary);
+            patch_lbl_ = createLabel(top, "", 6, 1, 322, &lv_font_montserrat_14, palette::kAccentPrimary);
             if (patch_lbl_) {
                 lv_label_set_long_mode(patch_lbl_, LV_LABEL_LONG_MODE_DOTS);
                 lv_obj_add_flag(patch_lbl_, LV_OBJ_FLAG_CLICKABLE);
@@ -139,7 +140,7 @@ public:
                     if (n) n->requestNavigateTo(ScreenId::PatchBrowser);
                 }, LV_EVENT_CLICKED);
             }
-            scene_lbl_ = createLabel(top, "", 6, 25, 330, &lv_font_montserrat_14, palette::kTextPrimary);
+            scene_lbl_ = createLabel(top, "", 6, 18, 322, &lv_font_montserrat_14, palette::kTextPrimary);
             if (scene_lbl_) {
                 lv_label_set_long_mode(scene_lbl_, LV_LABEL_LONG_MODE_DOTS);
                 lv_obj_add_flag(scene_lbl_, LV_OBJ_FLAG_CLICKABLE);
@@ -149,35 +150,47 @@ public:
                     if (n) n->requestNavigateTo(ScreenId::Performance, 5);
                 }, LV_EVENT_CLICKED);
             }
+            recall_op_lbl_ = createLabel(top, "", 6, 35, 322, &lv_font_montserrat_14, palette::kWarning);
+            if (recall_op_lbl_) {
+                lv_label_set_long_mode(recall_op_lbl_, LV_LABEL_LONG_MODE_CLIP);
+                lv_obj_add_flag(recall_op_lbl_, LV_OBJ_FLAG_CLICKABLE);
+                attachLvContext<UiNavigationManager*>(recall_op_lbl_, &nav, [](lv_event_t* e) {
+                    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                    auto* n = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
+                    if (n) n->requestNavigateTo(ScreenId::Performance, 5);
+                }, LV_EVENT_CLICKED);
+            }
 
-            lv_obj_t* lib_btn = createActionButton(top, "TIMBRES >", 344, 6, 94, 36, nullptr, nullptr, false, false);
+            lv_obj_t* lib_btn = createActionButton(top, "TIMBRES >", 334, 3, 88, 46, nullptr, nullptr, false, false);
             attachLvContext<UiNavigationManager*>(lib_btn, &nav, [](lv_event_t* e) {
                 if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
                 auto* n = *static_cast<UiNavigationManager**>(lv_event_get_user_data(e));
                 if (n) n->requestNavigateTo(ScreenId::PatchBrowser);
             }, LV_EVENT_CLICKED);
 
-            struct PillNavCtx { UiNavigationManager* nav; ScreenId screen; };
-            const auto bindPill = [&](lv_obj_t* pill, ScreenId target) {
+            struct PillNavCtx { UiNavigationManager* nav; ScreenId screen; bool harmony_overlay; };
+            const auto bindPill = [&](lv_obj_t* pill, ScreenId target, bool harmony_overlay = false) {
                 if (!pill) return;
                 lv_obj_add_flag(pill, LV_OBJ_FLAG_CLICKABLE);
-                attachLvContext<PillNavCtx>(pill, {&nav, target}, [](lv_event_t* e) {
+                attachLvContext<PillNavCtx>(pill, {&nav, target, harmony_overlay}, [](lv_event_t* e) {
                     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
                     const auto* c = static_cast<const PillNavCtx*>(lv_event_get_user_data(e));
-                    if (c && c->nav) c->nav->requestNavigateTo(c->screen);
+                    if (!c || !c->nav) return;
+                    if (c->harmony_overlay && c->nav->requestOpenHarmonyOverlay()) return;
+                    c->nav->requestNavigateTo(c->screen);
                 }, LV_EVENT_CLICKED);
             };
-            arp_pill_  = createPill(top, "ARP OFF",  444, 7, 80, 34, palette::kUnavailableBadge);
-            seq_pill_  = createPill(top, "SEQ OFF",  528, 7, 82, 34, palette::kUnavailableBadge);
-            fx_pill_   = createPill(top, "FX ON",    614, 7, 80, 34, palette::kActive);
-            harm_pill_ = createPill(top, "-/-",      698, 7, 78, 34, palette::kUnavailableBadge);
+            arp_pill_  = createPill(top, "ARP OFF",  426, 3, 84, 46, palette::kUnavailableBadge);
+            seq_pill_  = createPill(top, "SEQ OFF",  514, 3, 86, 46, palette::kUnavailableBadge);
+            fx_pill_   = createPill(top, "FX ON",    604, 3, 82, 46, palette::kActive);
+            harm_pill_ = createPill(top, "HARM OFF", 690, 3, 88, 46, palette::kUnavailableBadge);
             bindPill(arp_pill_, ScreenId::Arpeggiator);
             bindPill(seq_pill_, ScreenId::Sequencer);
             bindPill(fx_pill_, ScreenId::Effects);
-            bindPill(harm_pill_, ScreenId::Harmony);
+            bindPill(harm_pill_, ScreenId::Harmony, true);
         }
 
-        // 2. Stage V3 Sub-Mode Bar (y = 60..96)
+        // 2. Stage V3 Sub-Mode Bar (y = 61..97)
         struct ModeDef { const char* label; uint8_t tab; bool plan; };
         static constexpr ModeDef kModes[5] = {
             {"MACROS 1-4",     0, false},
@@ -190,7 +203,7 @@ public:
         for (uint8_t i = 0; i < 5; ++i) {
             const bool sel = (view_mode == kModes[i].tab);
             lv_obj_t* btn = createActionButton(
-                parent, kModes[i].label, 8 + i * 158, 60, 150, 36,
+                parent, kModes[i].label, 8 + i * 158, 61, 150, 36,
                 nullptr, nullptr, sel, sel && !kModes[i].plan);
             attachLvContext<ModeCtx>(btn, {&nav, kModes[i].tab}, [](lv_event_t* e) {
                 if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
@@ -255,6 +268,20 @@ public:
         }
 
         const SceneView sv = backend.sceneView();
+        if (sv.recall.pending < scene::kSlots) {
+            s_last_recall_slot_ = sv.recall.pending;
+            s_last_recall_token_ = sv.recall.token;
+        } else if (sv.recall.token != 0 && sv.recall.token != s_last_recall_token_) {
+            s_last_recall_token_ = sv.recall.token;
+            if (!s_last_recall_from_ui_) {
+                if (sv.recall.phase == scene::RecallPhase::Confirmed && sv.recall.active < scene::kSlots) {
+                    s_last_recall_slot_ = sv.recall.active;
+                } else {
+                    s_last_recall_slot_ = seq::kNoSlot;
+                }
+            }
+            s_last_recall_from_ui_ = false;
+        }
         const uint8_t op_slot = (sv.recall.pending < scene::kSlots)
                                     ? sv.recall.pending
                                     : s_last_recall_slot_;
@@ -283,19 +310,44 @@ public:
                     std::snprintf(pat_part, sizeof(pat_part), " | PAT RAM*");
                 }
             }
-            char sbuf[120]{};
-            const char* op_res = sceneOpResultShort(sv.recall.phase);
-            if (!op_res) {
-                std::snprintf(sbuf, sizeof(sbuf), "ATIVA: %s%s%s", active_sc, pat_part,
-                              locks_mask ? " | LK" : "");
-            } else if (op_slot < scene::kSlots) {
-                std::snprintf(sbuf, sizeof(sbuf), "ATIVA: %.10s%s | RECALL C%u: %s",
-                              active_sc, pat_part, unsigned(op_slot + 1U), op_res);
-            } else {
-                std::snprintf(sbuf, sizeof(sbuf), "ATIVA: %.10s%s | RECALL: %s",
-                              active_sc, pat_part, op_res);
-            }
+            char sbuf[96]{};
+            std::snprintf(sbuf, sizeof(sbuf), "SC: %s%s%s", active_sc, pat_part,
+                          locks_mask ? " | LK" : "");
             setLabelIfChanged(scene_lbl_, sbuf);
+        }
+
+        if (recall_op_lbl_) {
+            char obuf[64]{};
+            uint32_t ocol = palette::kTextSecondary;
+            const char* op_res = sceneOpResultShort(sv.recall.phase);
+            if (op_res) {
+                if (op_slot < scene::kSlots) {
+                    std::snprintf(obuf, sizeof(obuf), "RECALL C%u: %s",
+                                  unsigned(op_slot + 1U), op_res);
+                } else {
+                    std::snprintf(obuf, sizeof(obuf), "RECALL: %s", op_res);
+                }
+                if (sv.recall.phase == scene::RecallPhase::Failed) {
+                    ocol = palette::kErrorPanic;
+                } else if (sv.recall.phase == scene::RecallPhase::PartialApply ||
+                           sv.recall.phase == scene::RecallPhase::Cancelled) {
+                    ocol = palette::kWarning;
+                } else {
+                    ocol = palette::kAccentPrimary;
+                }
+            } else if (sv.notice && (std::strstr(sv.notice, "REJECTED") != nullptr ||
+                                     std::strstr(sv.notice, "PATTERN REFERENCE") != nullptr ||
+                                     std::strstr(sv.notice, "BUSY") != nullptr)) {
+                if (s_last_recall_slot_ < scene::kSlots) {
+                    std::snprintf(obuf, sizeof(obuf), "RECALL C%u: REJECTED",
+                                  unsigned(s_last_recall_slot_ + 1U));
+                } else {
+                    std::snprintf(obuf, sizeof(obuf), "RECALL: REJECTED");
+                }
+                ocol = palette::kErrorPanic;
+            }
+            setLabelIfChanged(recall_op_lbl_, obuf);
+            lv_obj_set_style_text_color(recall_op_lbl_, lv_color_hex(ocol), 0);
         }
 
         const bool arp_on = ast ? ast->config.enabled : backend.model().getBool("arp.enable", false);
@@ -353,12 +405,15 @@ public:
             }
         }
         if (harm_pill_) {
-            const bool hon = q_on || ch_on;
+            const bool harm_avail = backend.isDemoMode() || backend.model().live_harmony.available;
+            const bool hon = harm_avail && (q_on || ch_on);
             lv_obj_set_style_bg_color(harm_pill_, lv_color_hex(hon ? palette::kAccentPrimary : palette::kUnavailableBadge), 0);
             if (lv_obj_t* l = lv_obj_get_child(harm_pill_, 0)) {
-                char hb[16]{};
-                std::snprintf(hb, sizeof(hb), "%s/%s", q_on ? "Q" : "-", ch_on ? "CH" : "-");
-                setLabelIfChanged(l, hb);
+                const char* htxt = !harm_avail ? "HARM N/A" :
+                                   (q_on && ch_on) ? "Q+CH" :
+                                   q_on ? "Q ON" :
+                                   ch_on ? "CH ON" : "HARM OFF";
+                setLabelIfChanged(l, htxt);
                 lv_obj_set_style_text_color(l, lv_color_hex(hon ? palette::kBackground : palette::kTextPrimary), 0);
             }
         }
@@ -370,7 +425,7 @@ public:
             const bool valid = slot && slot->state == seq::SlotState::Valid;
             const bool is_pend = (sv.recall.pending == i);
             const bool is_act = (sv.recall.active == i);
-            const bool is_op = (op_slot < scene::kSlots) ? (op_slot == i) : is_act;
+            const bool is_op = (op_slot < scene::kSlots) && (op_slot == i);
             const bool is_fail = (is_op && (sv.recall.phase == scene::RecallPhase::Failed ||
                                             sv.recall.phase == scene::RecallPhase::PartialApply));
 
@@ -402,7 +457,7 @@ public:
             const bool sel = (selected_scene_slot_ == s);
             const bool is_act = (sv.recall.active == s);
             const bool is_pend = (sv.recall.pending == s);
-            const bool is_op = (op_slot < scene::kSlots) ? (op_slot == s) : is_act;
+            const bool is_op = (op_slot < scene::kSlots) && (op_slot == s);
             const char* ph = is_pend ? "PENDING" :
                              (is_act ? "ACTIVE" : scenePhaseShort(scene::RecallPhase::Idle, slot));
             if (is_op && sv.recall.phase == scene::RecallPhase::PartialApply) ph = "PARTIAL";
@@ -446,31 +501,60 @@ public:
         }
         if (scenes_domains_lbl_) {
             const scene::Slot* sel_slot = backend.sceneSlot(selected_scene_slot_);
-            char dbuf[128]{"APLICAR: -- (SLOT VAZIO)"};
+            char dbuf[144]{"RECALL TOTAL: -- (SLOT VAZIO)"};
             if (sel_slot && sel_slot->state == seq::SlotState::Valid) {
                 const uint8_t stored = sel_slot->config.domains;
-                const uint8_t eff = scene::effectiveDomains(stored, stored, sessionLockMask(), true);
+                SceneOperation op{};
+                op.action = SceneAction::Load;
+                op.slot = selected_scene_slot_;
+                op.domains = stored;
+                op.locks = sessionLockMask();
+                op.mode = scene::RecallMode::Immediate;
+                op.apply_tempo = false; // Matches RECALL button's SceneOperation default
+                const uint8_t eff = scene::effectiveDomains(stored, op.domains, op.locks, op.apply_tempo);
+                const scene::Reject compat = backend.sceneCompatibility(op);
                 static constexpr const char* kDomNames[7] = {
                     "PATCH*", "PATTERN", "FX", "HARMONY", "ARP", "MACROS", "TEMPO"
                 };
                 static constexpr uint8_t kDomLocks[7] = {
                     0, 0, perf_lock::Fx, perf_lock::Harmony, perf_lock::Arp, perf_lock::Macros, 0
                 };
-                unsigned used = static_cast<unsigned>(std::snprintf(dbuf, sizeof(dbuf), "APLICAR: "));
+                unsigned used = static_cast<unsigned>(std::snprintf(dbuf, sizeof(dbuf), "RECALL TOTAL: "));
                 unsigned count = 0;
-                for (unsigned d = 0; d < 7 && used + 12 < sizeof(dbuf); ++d) {
+                for (unsigned d = 0; d < 7 && used + 16 < sizeof(dbuf); ++d) {
                     const uint8_t bit = static_cast<uint8_t>(1U << d);
                     if ((eff & bit) != 0U) {
                         used += static_cast<unsigned>(std::snprintf(
                             dbuf + used, sizeof(dbuf) - used, "%s%s", count ? " | " : "", kDomNames[d]));
                         ++count;
-                    } else if ((stored & bit) != 0U && (sessionLockMask() & kDomLocks[d]) != 0U) {
+                    } else if ((stored & bit) != 0U && (op.locks & kDomLocks[d]) != 0U) {
                         used += static_cast<unsigned>(std::snprintf(
                             dbuf + used, sizeof(dbuf) - used, "%s%s(LK)", count ? " | " : "", kDomNames[d]));
                         ++count;
+                    } else if ((stored & bit) != 0U && bit == scene::Tempo && !op.apply_tempo) {
+                        used += static_cast<unsigned>(std::snprintf(
+                            dbuf + used, sizeof(dbuf) - used, "%sTEMPO(OFF)", count ? " | " : ""));
+                        ++count;
                     }
                 }
-                if (count == 0) std::snprintf(dbuf, sizeof(dbuf), "APLICAR: NENHUM (LOCKED)");
+                if (eff == 0) {
+                    std::snprintf(dbuf, sizeof(dbuf), "RECALL TOTAL: NENHUM%s",
+                                  (stored == scene::Tempo && !op.apply_tempo) ? " (TEMPO OFF)" : " (LOCKED)");
+                    used = static_cast<unsigned>(std::strlen(dbuf));
+                }
+                if (compat != scene::Reject::None && used + 16 < sizeof(dbuf)) {
+                    const char* ctxt =
+                        (compat == scene::Reject::PatternUnavailable) ? " [PAT N/A]" :
+                        (compat == scene::Reject::PatchUnavailable)   ? " [PATCH N/A]" :
+                        (compat == scene::Reject::IncompatibleMacros) ? " [MAC INCOMP]" :
+                        (compat == scene::Reject::CompareActive)      ? " [COMPARE]" :
+                        (compat == scene::Reject::EmptySelection)     ? " [NO DOM]" : " [INCOMPAT]";
+                    std::snprintf(dbuf + used, sizeof(dbuf) - used, "%s", ctxt);
+                }
+            } else if (sel_slot && sel_slot->state == seq::SlotState::Corrupted) {
+                std::snprintf(dbuf, sizeof(dbuf), "RECALL TOTAL: -- (CORRUPT)");
+            } else if (sel_slot && sel_slot->state == seq::SlotState::Incompatible) {
+                std::snprintf(dbuf, sizeof(dbuf), "RECALL TOTAL: -- (INCOMP)");
             }
             setLabelIfChanged(scenes_domains_lbl_, dbuf);
         }
@@ -544,6 +628,7 @@ private:
                     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
                     const auto& q = *static_cast<const QuickScene*>(lv_event_get_user_data(e));
                     s_last_recall_slot_ = q.slot;
+                    s_last_recall_from_ui_ = true;
                     SceneOperation op;
                     op.slot = q.slot;
                     op.locks = sessionLockMask();
@@ -590,7 +675,7 @@ private:
         lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
 
         scenes_notice_lbl_ = createLabel(bar, "CENA 1 | --", 6, 2, 768, &lv_font_montserrat_14, palette::kTextSecondary);
-        scenes_domains_lbl_ = createLabel(bar, "APLICAR: --", 6, 20, 768, &lv_font_montserrat_14, palette::kAccentPrimary);
+        scenes_domains_lbl_ = createLabel(bar, "RECALL TOTAL: --", 6, 20, 768, &lv_font_montserrat_14, palette::kAccentPrimary);
 
         const auto add_act = [&](const char* lbl, int32_t x, int32_t w, int act, bool acc = false) {
             lv_obj_t* b = createActionButton(bar, lbl, x, 40, w, 46, nullptr, nullptr, acc, acc);
@@ -600,6 +685,7 @@ private:
                 if (!c || !c->screen || !c->backend) return;
                 if (c->action == 1) {
                     s_last_recall_slot_ = c->screen->selected_scene_slot_;
+                    s_last_recall_from_ui_ = true;
                     SceneOperation op;
                     op.action = SceneAction::Load;
                     op.slot = c->screen->selected_scene_slot_;
@@ -867,6 +953,8 @@ private:
     bool confirming_ = false;
     uint8_t selected_scene_slot_ = 0;
     static inline uint8_t s_last_recall_slot_ = seq::kNoSlot;
+    static inline uint32_t s_last_recall_token_ = 0;
+    static inline bool s_last_recall_from_ui_ = false;
     lv_obj_t* legacy_ = nullptr;
     lv_obj_t* legacy_rows_[3]{};
     lv_obj_t* confirm_ = nullptr;
@@ -875,6 +963,7 @@ private:
     lv_obj_t* kb_         = nullptr;
     lv_obj_t* patch_lbl_  = nullptr;
     lv_obj_t* scene_lbl_  = nullptr;
+    lv_obj_t* recall_op_lbl_ = nullptr;
     lv_obj_t* arp_pill_   = nullptr;
     lv_obj_t* seq_pill_   = nullptr;
     lv_obj_t* fx_pill_    = nullptr;
