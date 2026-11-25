@@ -1,3 +1,17 @@
+# SMK-P4 UI 0.18-C.3 — Rhythm Performance
+
+RITMO provides a contextual sidebar (SEQUENCER, ARP, PATTERNS, DRUMS), separate
+Sequencer PLAY/EDIT views, eight-step editor pages and the existing 16-slot
+Pattern backend with explicit storage confirmations. Drums remains planned.
+See the [architecture, captures and validation report](docs/ui_018c3_rhythm_performance_report.md).
+
+```powershell
+powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_ui_018c3.ps1 -Clean -Regressions
+```
+
+The host build requires the same GCC/G++, ar, Git, Pillow and pinned LVGL 9.3
+as C.2a. No flash or physical qualification is part of this stage.
+
 # SMK-P4 UI 0.18-C.2a - FM / MIDI
 
 FM GLOBAL/OPERADOR views, expanded topology and contextual MIDI Learn.
