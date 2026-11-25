@@ -182,8 +182,10 @@ int main(int argc, char** argv) {
     click("EDIT MODE");
     const auto pattern=*adapter.sequencerPattern();
     const auto packed=nav.subTab(ScreenId::Sequencer);
+    const auto page_before=nav.sequencerPage();
     click("1-8 / 9-16");
-    assert(nav.subTab(ScreenId::Sequencer)!=packed);
+    assert(nav.subTab(ScreenId::Sequencer)==packed);
+    assert(nav.sequencerPage()!=page_before);
     capture("12_selected_second_page");
     clickBtn(root,"STEP ",app,true); sync_runtime(); capture("13_velocity_gate_inspector"); click("CLOSE");
 

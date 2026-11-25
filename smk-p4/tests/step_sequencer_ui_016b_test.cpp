@@ -147,7 +147,12 @@ int main(int argc,char** argv) {
     capture("empty");
 
     const auto cell=[&](int step,int note) {
-        const int x=61+45*step+20, y=kContentTop+126+(71-note)*17+8;
+        if(!app.navigation().sequencerEdit()) click(content,"EDIT MODE");
+        const uint8_t target_page=uint8_t((step/8)&1);
+        if(app.navigation().sequencerPage()!=target_page) click(content,"1-8 / 9-16");
+        lv_area_t hbounds{};
+        lv_obj_get_coords(findButton(content,target_page==0?"01":"09",true),&hbounds);
+        const int x=hbounds.x1+(step%8)*72+20, y=hbounds.y2+2+(71-note)*12+6;
         pointerEvent(input,x,y,true);
         pointerEvent(input,x,y,false);
         frame();
@@ -166,17 +171,19 @@ int main(int argc,char** argv) {
     assert(findLabel(content,"C5"));
     click(content,"OCT -");
     assert(findLabel(content,"C4"));
-    click(content,"ENABLED / OFF");
+    click(content,"STEP ",true);
+    click(content,"ENABLE / REST");
     block();
-    assert(!snap.sequencer_pattern.steps[0].enabled && findLabel(content,"REST / ENABLE"));
-    click(content,"REST / ENABLE");
+    assert(!snap.sequencer_pattern.steps[0].enabled && findLabel(content,"STEP 01   F4   REST"));
+    click(content,"ENABLE / REST");
     block();
-    assert(snap.sequencer_pattern.steps[0].enabled);
+    assert(snap.sequencer_pattern.steps[0].enabled && findLabel(content,"STEP 01   F4   ENABLED"));
+    click(content,"CLOSE");
 
     const auto slider=[&](const char* label,int value) {
         auto* title=findLabel(content,label,true);
         assert(title);
-        auto* control=lv_obj_get_child(content,lv_obj_get_index(title)+1);
+        auto* control=lv_obj_get_child(lv_obj_get_parent(title),lv_obj_get_index(title)+1);
         assert(lv_obj_check_type(control,&lv_slider_class));
         lv_slider_set_value(control,value,LV_ANIM_OFF);
         lv_obj_send_event(control,LV_EVENT_VALUE_CHANGED,nullptr);
@@ -189,12 +196,15 @@ int main(int argc,char** argv) {
     slider("GATE",99);
     assert(snap.sequencer_pattern.steps[0].velocity==81 && snap.sequencer_pattern.steps[0].gate==99);
     capture("selected");
+    click(content,"STEP ",true);
     click(content,"LOAD DEMO PATTERN");
     assert(findLabel(content,"TAP LOAD DEMO AGAIN"));
     click(content,"LOAD DEMO PATTERN");
     block();
+    click(content,"CLOSE");
     assert(snap.sequencer_pattern.steps[0].note==60 && !snap.sequencer_pattern.steps[1].enabled);
     capture("demo");
+    click(content,"PLAY MODE");
     slider("LENGTH",4);
     slider("SWING",75);
     slider("TRANSPOSE",12);
@@ -223,12 +233,13 @@ int main(int argc,char** argv) {
     click(content,"PLAY");
     assert(!snap.sequencer.playing && findLabel(content,"COMMAND PENDING"));
     block();
-    assert(snap.sequencer.playing && findLabel(content,"PLAYING"));
+    assert(snap.sequencer.playing && findLabel(content,"PENDING"));
     const auto waitFor=[&](uint8_t step) {
         for(int i=0;i<55 && snap.sequencer.current_step!=step;++i) block();
         assert(snap.sequencer.current_step==step);
     };
     waitFor(0);
+    assert(findLabel(content,"RUNNING"));
     const auto highlighted=[&](const char* step) {
         return lv_color_eq(lv_obj_get_style_bg_color(findButton(content,step,true),LV_PART_MAIN),
                            lv_color_hex(palette::kAccentPrimary));
@@ -236,6 +247,7 @@ int main(int argc,char** argv) {
     assert(highlighted("01+"));
     assert(snap.active_notes==2 && snap.last_notes[0]==72);
     capture("playing");
+    click(content,"EDIT MODE");
     cell(2,61);
     block();
     assert(snap.sequencer_pattern.steps[2].note==61 && snap.sequencer.playing);
@@ -258,7 +270,7 @@ int main(int argc,char** argv) {
     assert(app.navigation().currentScreen()==ScreenId::Effects && snap.sequencer.playing);
     block();
     click(app.rootObject(),"RITMO");
-    assert(findLabel(content,"PLAYING") && findLabel(content,"STEP 03  NOTE C#4"));
+    assert(findLabel(content,"RUNNING") && findLabel(content,"STEP 03  NOTE C#4"));
     click(content,"RESTART");
     block();
     waitFor(0);
@@ -267,9 +279,10 @@ int main(int argc,char** argv) {
         request.token=runtime.commands().nextToken();
         assert(runtime.commands().pushSequencer(request));
     }
+    if(app.navigation().sequencerEdit()) click(content,"PLAY MODE");
     click(content,"DIV ",true);
     assert(findLabel(content,"COMMAND QUEUE FULL"));
-    click(content,"STOP");
+    click(content,"STOP SEQ");
     assert(runtime.commands().sequencer.overflows()==1);
     block();
     assert(!snap.sequencer.playing && snap.active_notes==1 && findLabel(content,"STOPPED"));
@@ -312,10 +325,13 @@ int main(int argc,char** argv) {
     assert(adapter.confirmPatchDiscard(129,0).accepted());
     for(int i=0;i<10 && snap.patch_id!=129;++i) block();
     assert(snap.patch_id==129 && !snap.sequencer.playing && snap.sequencer_pattern.steps[0].enabled);
+    click(content,"EDIT MODE");
+    click(content,"STEP ",true);
     click(content,"CLEAR PATTERN");
     assert(findLabel(content,"TAP CLEAR AGAIN"));
     click(content,"CLEAR PATTERN");
     block();
+    click(content,"CLOSE");
     for(const auto& step:snap.sequencer_pattern.steps) assert(!step.enabled);
     for(int i=0;i<int(seq::kSteps);++i) {
         cell(i,60+i%12);
@@ -335,7 +351,7 @@ int main(int argc,char** argv) {
     runtime.usbInput().identifyDevice(0x4353,0x4b4d);
     click(content,"STEP INPUT");
     block();
-    assert(findLabel(content,"STEP INPUT +12"));
+    assert(findLabel(content,"STEP INPUT  REC 16  TR +12",true));
     const auto midi=[&](uint8_t status,uint8_t note,uint8_t velocity) {
         const uint8_t packet[]{uint8_t(status>>4),status,note,velocity};
         assert(runtime.usbInput().packet(packet,preview::g_sim_tick_ms));
@@ -347,6 +363,7 @@ int main(int argc,char** argv) {
     capture("midi-settings");
     midi(0x80,72,0);
     click(content,"CLOSE");
+    if(app.navigation().sequencerPage()!=0) click(content,"1-8 / 9-16");
     click(content,"04",true);
     block();
     click(content,"MIDI / REC");
@@ -368,10 +385,10 @@ int main(int argc,char** argv) {
     for(int i=0;i<3;++i) block();
     assert(snap.sequencer_pattern.steps[0].note==74);
     capture("step-editor");
-    click(content,"CLOSE");
-    click(content,"REST / NEXT");
+    click(content,"INSERT REST");
     block();
     assert(snap.sequencer.midi.selected==1 && !snap.sequencer_pattern.steps[0].enabled);
+    click(content,"CLOSE");
 
     // The queued slider value replaces only its adjacent, unsent predecessor.
     seq::Request edit;
@@ -405,7 +422,7 @@ int main(int argc,char** argv) {
     runtime.usbInput().disconnect();
     block();
     assert(!snap.sequencer.playing && snap.sequencer.midi.mode==seq::InputMode::Normal &&
-           findLabel(content,"NORMAL +12"));
+           findLabel(content,"NORMAL  TRANSPOSE +12",true));
     click(content,"MIDI / REC");
     assert(findLabel(content,"STEP 03   LAST -- / VEL 0   USB WAITING",true));
     runtime.usbInput().identifyDevice(0x4353,0x4b4d);
@@ -453,10 +470,11 @@ int main(int argc,char** argv) {
     runtime.commands().panic();
     block();
     const auto browser_heap=freeBytes();
-    click(content,"PATTERNS");
+    click(app.rootObject(),"PATTERNS");
     assert(findLabel(content,"01 EMPTY") && findLabel(content,"16 EMPTY"));
     const auto writes_before_cancel=fake_nvs::writes;
     click(content,"SAVE");
+    click(app.rootObject(),"CONFIRM");
     for(int i=0;i<10 && std::strcmp(adapter.patternNotice(),"READY TO WRITE / CANCEL AVAILABLE");++i)
         block();
     assert(std::strcmp(adapter.patternNotice(),"READY TO WRITE / CANCEL AVAILABLE")==0);
@@ -465,6 +483,7 @@ int main(int argc,char** argv) {
     for(int i=0;i<3;++i) block();
     assert(fake_nvs::writes==writes_before_cancel && patterns.load(0).state==seq::SlotState::Empty);
     click(content,"SAVE");
+    click(app.rootObject(),"CONFIRM");
     assert(adapter.patternBusy());
     assert(findLabel(content,"PATTERN MODIFIED   REQUESTED",true));
     for(int i=0;i<10;++i) block();
@@ -483,14 +502,15 @@ int main(int argc,char** argv) {
     assert(findLabel(content,"01 Opening *"));
     click(content,"02 EMPTY");
     click(content,"SAVE");
+    click(app.rootObject(),"CONFIRM");
     for(int i=0;i<10;++i) block();
     assert(snap.sequencer.active_slot==1 && !snap.sequencer.modified);
-    click(content,"CLOSE");
+    click(app.rootObject(),"SEQUENCER");
     edit.value=40;
     assert(adapter.requestSequencer(edit).accepted());
     block();
     assert(snap.sequencer.modified);
-    click(content,"PATTERNS");
+    click(app.rootObject(),"PATTERNS");
     click(content,"01 Opening");
     click(content,"LOAD");
     assert(findLabel(content,"PATTERN MODIFIED   CHOOSE",true));
@@ -498,10 +518,10 @@ int main(int argc,char** argv) {
     click(content,"DISCARD & LOAD");
     block();
     assert(snap.sequencer.active_slot==0 && !snap.sequencer.modified);
-    click(content,"CLOSE");
+    click(app.rootObject(),"SEQUENCER");
     click(content,"PLAY");
     block();
-    click(content,"PATTERNS");
+    click(app.rootObject(),"PATTERNS");
     click(content,"02 PATTERN 02");
     click(content,"SWITCH MODE");
     click(content,"LOAD");
@@ -512,26 +532,28 @@ int main(int argc,char** argv) {
     click(content,"CANCEL QUEUE");
     block();
     assert(snap.sequencer.pending_slot==seq::kNoSlot);
-    click(content,"CLOSE");
-    click(content,"STOP");
+    click(app.rootObject(),"SEQUENCER");
+    click(content,"STOP SEQ");
     block();
-    click(content,"PATTERNS");
+    click(app.rootObject(),"PATTERNS");
     click(content,"02 PATTERN 02");
     click(content,"DELETE");
-    click(content,"DELETE");
+    click(app.rootObject(),"CONFIRM");
     for(int i=0;i<10;++i) block();
     assert(findLabel(content,"02 EMPTY"));
-    click(content,"LOAD");
+    assert(lv_obj_has_state(findButton(content,"LOAD"),LV_STATE_DISABLED));
+    adapter.requestPattern({ui::PatternAction::Load,1});
+    frame();
     assert(findLabel(content,"PATTERN CLEAN   REJECTED",true));
     capture("pattern-error");
-    click(content,"CLOSE");
+    click(app.rootObject(),"SEQUENCER");
     capture("pattern-active");
     // LVGL alternates two allocations after a close. Warm both paths and
     // compare the same point in that cycle to catch cumulative leakage.
     size_t settled[2]{};
     for(int i=0;i<28;++i) {
-        click(content,"PATTERNS");
-        click(content,"CLOSE");
+        click(app.rootObject(),"PATTERNS");
+        click(app.rootObject(),"SEQUENCER");
         if(i==2 || i==3) settled[i%2]=freeBytes();
         if(i>=4) assert(freeBytes()==settled[i%2]);
     }
