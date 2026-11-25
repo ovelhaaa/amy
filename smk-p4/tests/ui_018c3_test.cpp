@@ -55,6 +55,13 @@ void clickBtn(lv_obj_t* root, const char* text, UiBlueprint& app, bool prefix = 
     preview::pumpFrame(app, 25);
 }
 
+lv_obj_t* findSlider(lv_obj_t* root,int maximum) {
+    if(lv_obj_check_type(root,&lv_slider_class) && lv_slider_get_max_value(root)==maximum) return root;
+    for(unsigned i=0;i<lv_obj_get_child_count(root);++i)
+        if(auto* child=findSlider(lv_obj_get_child(root,int(i)),maximum)) return child;
+    return nullptr;
+}
+
 uint32_t countObjects(lv_obj_t* obj) {
     if (!obj) return 0;
     uint32_t count = 1;
@@ -124,7 +131,10 @@ int main(int argc, char** argv) {
         char path[256]{};
         std::snprintf(path, sizeof(path), "%s/%s.ppm", out_dir, name);
         preview::pumpFrame(app, 25);
+        auto* badge=findLabel(app.rootObject(),"P4 LIVE");
+        if(badge) { lv_label_set_text(badge,"HOST SIM"); lv_refr_now(nullptr); }
         assert(preview::saveFramebufferPpm(path));
+        if(badge) lv_label_set_text(badge,"P4 LIVE");
         std::printf("CAPTURED: %s\n", path);
     };
 
@@ -142,6 +152,21 @@ int main(int argc, char** argv) {
     click("LOAD DEMO PATTERN");
     click("CLOSE");
     capture("11_edit_piano_roll");
+    for(unsigned i=0;i<seq::kSteps;++i) {
+        if(i==8) click("1-8 / 9-16");
+        char label[4]; std::snprintf(label,sizeof(label),"%02u",i+1);
+        clickBtn(root,label,app,true); sync_runtime();
+        assert((nav.subTab(ScreenId::Sequencer)-1)%seq::kSteps==i);
+    }
+    auto* velocity=findSlider(root,127); assert(velocity);
+    lv_slider_set_value(velocity,91,LV_ANIM_OFF);
+    lv_obj_send_event(velocity,LV_EVENT_RELEASED,nullptr); sync_runtime();
+    assert(adapter.sequencerPattern()->steps[15].velocity==91);
+    auto* gate=findSlider(root,100); assert(gate);
+    lv_slider_set_value(gate,42,LV_ANIM_OFF);
+    lv_obj_send_event(gate,LV_EVENT_RELEASED,nullptr); sync_runtime();
+    assert(adapter.sequencerPattern()->steps[15].gate==42);
+    capture("13_velocity_gate");
     click("PLAY MODE"); click("PLAY");
     assert(adapter.sequencerStatus()->playing);
     capture("07_seq_running");
@@ -243,6 +268,9 @@ int main(int argc, char** argv) {
     assert(nav.navigateTo(ScreenId::Performance)); sync_runtime();
     const auto objects=countObjects(lv_screen_active());
     lv_mem_monitor_t initial{}; lv_mem_monitor(&initial);
+    const auto generation=runtime.snapshot().generation;
+    const auto command=adapter.sequencerStatus()->command.token;
+    const auto phase=runtime.snapshot().arp.tempo.phase;
     std::vector<double> times;
     for(unsigned i=0;i<500;++i) {
         const auto start=std::chrono::steady_clock::now();
@@ -255,6 +283,9 @@ int main(int argc, char** argv) {
         times.push_back(std::chrono::duration<double,std::micro>(std::chrono::steady_clock::now()-start).count());
     }
     assert(adapter.sequencerStatus()->playing);
+    assert(runtime.snapshot().generation==generation);
+    assert(adapter.sequencerStatus()->command.token==command);
+    assert(runtime.snapshot().arp.tempo.phase>phase);
     lv_mem_monitor_t final{}; lv_mem_monitor(&final);
     const auto stats=computeLatency(times);
     std::printf("C3 STRESS objs=%u->%u free=%zu->%zu largest=%zu->%zu peak=%zu frag=%u->%u median=%.1f p95=%.1f max=%.1f us\n",

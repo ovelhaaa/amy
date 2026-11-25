@@ -151,7 +151,7 @@ public:
         const auto result=backend.sequencerResult();
         const int transport_width=238;
         if(lv_obj_get_width(transport_)!=transport_width) lv_obj_set_width(transport_,transport_width);
-        text(transport_,status?(status->playing?"RUNNING":"STOPPED"):"ENGINE UNAVAILABLE");
+        text(transport_,status?(status->playing?(status->current_step==seq::kNoStep?"PENDING":"RUNNING"):"STOPPED"):"ENGINE UNAVAILABLE");
         const bool playing=status && status->playing;
         if(playing!=shown_playing_) {
             lv_obj_set_style_bg_color(play_,lv_color_hex(playing?palette::kActive:palette::kPanelHighlight),0);
@@ -508,8 +508,8 @@ private:
         browserButton("DELETE",524,241,104,BrowserAction::Delete);
         browserButton("DISCARD & LOAD",8,292,198,BrowserAction::Discard);
         browserButton("SAVE & LOAD",214,292,198,BrowserAction::SaveLoad);
-        browser_info_=createLabel(browser_,"",8,346,620,&lv_font_montserrat_14,palette::kWarning);
-        browser_detail_=createLabel(browser_,"",8,323,620,&lv_font_montserrat_14,palette::kTextSecondary);
+        browser_info_=createLabel(browser_,"",8,363,620,&lv_font_montserrat_14,palette::kWarning);
+        browser_detail_=createLabel(browser_,"",8,338,620,&lv_font_montserrat_14,palette::kTextSecondary);
         fillName();
         refreshBrowser();
     }
@@ -577,7 +577,7 @@ private:
         text(browser_detail_,details);
         const char* operation=backend_->patternNotice();
         if(browser_confirm_==BrowserAction::Delete) operation="CONFIRM DELETE: DESTINATION SHOWN IN DIALOG";
-        else if(browser_confirm_==BrowserAction::Load) operation="CHOOSE SAVE & LOAD, DISCARD & LOAD, OR CLOSE";
+        else if(browser_confirm_==BrowserAction::Load) operation="CHOOSE SAVE & LOAD, DISCARD & LOAD, OR CANCEL";
         else if(browser_confirm_==BrowserAction::Save) operation="CONFIRM OVERWRITE: DESTINATION SHOWN IN DIALOG";
         char message[112];
         std::snprintf(message,sizeof(message),"%s   %s",
@@ -592,7 +592,7 @@ private:
         for(unsigned i=0;i<9;++i) if(browser_actions_[i]) {
             const auto action=BrowserAction(i);
             bool available=true;
-            if(action==BrowserAction::Load) available=valid && !busy;
+            if(action==BrowserAction::Load) available=valid && (!busy || (status && status->pending_slot<seq::kPatternSlots));
             if(action==BrowserAction::Save) available=writable && !busy && storage_ready;
             if(action==BrowserAction::Rename || action==BrowserAction::Delete) available=valid && !busy && storage_ready;
             if(action==BrowserAction::Discard || action==BrowserAction::SaveLoad) {
