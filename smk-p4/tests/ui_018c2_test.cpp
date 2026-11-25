@@ -278,7 +278,7 @@ int main(int argc, char** argv) {
     assert(runtime.snapshot().arp.config.enabled == false);
     assert(runtime.snapshot().fx.config.delay_mix < 0.05f);
     assert(adapter.model().getInt("perf.macro.1", 64) == 64);
-    assert(findLabel(app.contentObject(), "ATIVA: INTRO") != nullptr);
+    assert(findLabel(app.contentObject(), "SC: INTRO") != nullptr);
     assert(findLabel(app.contentObject(), "SEL: C2", true) != nullptr);
     capture("18_cena_selecionada_sem_recall");
 
@@ -306,7 +306,8 @@ int main(int argc, char** argv) {
     for (int k = 0; k < 4; ++k) sync_runtime();
     assert(runtime.snapshot().scene.active == 0);
     assert(runtime.snapshot().scene.phase == scene::RecallPhase::Failed);
-    assert(findLabel(app.contentObject(), "ATIVA: INTRO | RECALL C5: FALHOU") != nullptr);
+    assert(findLabel(app.contentObject(), "SC: INTRO | LK") != nullptr &&
+           findLabel(app.contentObject(), "RECALL C5: FAILED") != nullptr);
     assert(findLabel(app.contentObject(), "CENA ATIVA: INTRO | FAILED") == nullptr);
     capture("20_cena_ativa_falha_outro_slot");
     setSessionLockMask(0);

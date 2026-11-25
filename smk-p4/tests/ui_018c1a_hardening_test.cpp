@@ -355,6 +355,8 @@ int main(int argc, char** argv) {
     clickBtn(footer, "TOCAR", app);
     sync_runtime();
     assert(findLabel(app.contentObject(), "CONFIRMAR EXCLUSAO") == nullptr);
+    clickBtn(app.contentObject(), "CENAS 1-8", app);
+    sync_runtime();
 
     // 8. PANIC with open confirmation modal
     assert(adapter.requestNoteOn(64, 100).accepted());
