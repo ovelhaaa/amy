@@ -434,8 +434,9 @@ void StatusStrip::refresh(IUiBackend& backend, UiNavigationManager& nav) {
         const bool has_mods = (area == UiArea::Timbres || area == UiArea::Ritmo || area == UiArea::Mais);
         const char* mtxt = has_mods ? "MODS" : "TOCAR";
         setStaticTextIfChanged(mods_lbl_, mtxt);
-        const bool is_perf = (nav.currentScreen() == ScreenId::Performance);
-        const bool want_dis = (!has_mods && is_perf);
+        const bool is_perf_home = (nav.currentScreen() == ScreenId::Performance &&
+                                   nav.subTab(ScreenId::Performance) == 0);
+        const bool want_dis = (!has_mods && is_perf_home);
         const bool is_dis = lv_obj_has_state(mods_btn_, LV_STATE_DISABLED);
         if (want_dis && !is_dis) lv_obj_add_state(mods_btn_, LV_STATE_DISABLED);
         else if (!want_dis && is_dis) lv_obj_remove_state(mods_btn_, LV_STATE_DISABLED);
@@ -817,24 +818,24 @@ void StatusStrip::openAreaModules(UiArea area, IUiBackend& backend, UiNavigation
     if (area == UiArea::Timbres) {
         heading = "TIMBRES > SELECIONE O MODULO (LARGURA INTEGRAL 800 PX)";
         entries[0] = {"BIBLIOTECA", "Catalogo P4 ROM e User NVS", ScreenId::PatchBrowser, 0, false};
-        entries[1] = {"SINTESE", "Editor FM / Subtrativo (7 abas)", ScreenId::SoundEditor, 0, false};
+        entries[1] = {"SINTESE", "Editor contextual FM 6-OP / Subtrativo", ScreenId::SoundEditor, 0, false};
         entries[2] = {"CAMADAS", "Layer A/B e Split [PLANNED]", ScreenId::Layers, 0, true};
         entries[3] = {"MODULACAO", "Matriz, Routing Editor e Legacy", ScreenId::Modulation, 0, false};
         entries[4] = {"MIXER", "Niveis e balanco [PLANNED]", ScreenId::Mixer, 0, true};
         count = 5;
     } else if (area == UiArea::Ritmo) {
         heading = "RITMO > MODULOS";
-        entries[0] = {"SEQUENCIADOR", "16 passos, Play/Edit e Padroes", ScreenId::Sequencer, 0xFF, false};
+        entries[0] = {"SEQUENCIADOR", "16 passos PLAY/EDIT e Step Record", ScreenId::Sequencer, 0xFF, false};
         entries[1] = {"ARPEJADOR", "Transporte independente e Latch", ScreenId::Arpeggiator, 0, false};
-        entries[2] = {"PATTERNS", "16 slots persistentes", ScreenId::Patterns, 0xFF, false};
+        entries[2] = {"PATTERNS", "Biblioteca de 16 slots NVS", ScreenId::Patterns, 0xFF, false};
         entries[3] = {"BATERIA", "Drum tracks [PLANNED]", ScreenId::Drums, 0, true};
         count = 4;
     } else {
         heading = "MAIS > SELECIONE O MODULO (LARGURA INTEGRAL 800 PX)";
-        entries[0] = {"MIDI / SMK25", "USB Host, mapeamento e Learn", ScreenId::MidiSettings, 0, false};
-        entries[1] = {"PREFERENCIAS", "Performance Locks e Config", ScreenId::GlobalSettings, 0, false};
+        entries[0] = {"MIDI / SMK25", "USB Host, SMK25 e MIDI Learn", ScreenId::MidiSettings, 0, false};
+        entries[1] = {"PREFERENCIAS", "Performance Locks e configuracoes", ScreenId::GlobalSettings, 0, false};
         entries[2] = {"DIAGNOSTICOS", "Heap LVGL, USB, AMY e vozes", ScreenId::Diagnostics, 0, false};
-        entries[3] = {"HARMONIA", "Tela completa de visualizacao", ScreenId::Harmony, 0, false};
+        entries[3] = {"HARMONIA", "Quantizer, Chord Assist e visualizador", ScreenId::Harmony, 0, false};
         count = 4;
     }
 

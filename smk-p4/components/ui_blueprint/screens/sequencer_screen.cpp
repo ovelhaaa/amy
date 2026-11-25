@@ -53,6 +53,7 @@ class SequencerScreen final : public ScreenView {
 public:
     explicit SequencerScreen(bool library=false): library_only_(library) {}
     ScreenId id() const override { return library_only_?ScreenId::Patterns:ScreenId::Sequencer; }
+    bool hasBlockingConfirmation() const override { return dialog_.isOpen(); }
 
     bool build(lv_obj_t* parent,IUiBackend& backend,UiNavigationManager& nav) override {
         parent=createRhythmPanel(parent,nav,id());

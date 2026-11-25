@@ -15,6 +15,7 @@ struct SysActionCtx {
 class SettingsScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::GlobalSettings; }
+    bool hasBlockingConfirmation() const override { return confirm_dialog_.isOpen(); }
 
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
         parent_ = parent;

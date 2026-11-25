@@ -236,9 +236,14 @@ bool UiNavigationManager::back() {
 bool UiNavigationManager::returnToPerformance() {
     pending_nav_ = false;
     pending_home_ = false;
+    if (mounted_ && active_view_ && active_view_->hasBlockingConfirmation()) {
+        return false;
+    }
     history_depth_ = 0;
     area_screens_[static_cast<size_t>(UiArea::Tocar)] = ScreenId::Performance;
-    if (mounted_ && current_ == ScreenId::Performance) {
+    const uint8_t prev_tab = sub_tabs_[static_cast<size_t>(ScreenId::Performance)];
+    sub_tabs_[static_cast<size_t>(ScreenId::Performance)] = 0;
+    if (mounted_ && current_ == ScreenId::Performance && prev_tab == 0) {
         refreshActive();
         if (on_navigate_) on_navigate_(on_navigate_user_, current_);
         return true;

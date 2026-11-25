@@ -18,6 +18,7 @@ constexpr uint8_t mapSoundEditorModule(uint8_t raw_tab) {
 class SoundEditorScreen final : public ScreenView {
 public:
     ScreenId id() const override { return ScreenId::SoundEditor; }
+    bool hasBlockingConfirmation() const override { return confirm_dialog_.isOpen(); }
 
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
         parent_ = parent;

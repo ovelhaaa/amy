@@ -60,6 +60,11 @@ bool UiBlueprint::begin(lv_obj_t* root_parent) {
     lv_obj_set_size(content_, kScreenWidth, kContentHeight);
 
     nav_.setOnNavigate(onNavigate, this);
+    nav_.setOnOpenHarmonyOverlay([](void* user_data) {
+        auto* self = static_cast<UiBlueprint*>(user_data);
+        if (!self) return;
+        self->status_strip_.openHarmony(self->backend_);
+    }, this);
 
     if (!status_strip_.build(root_, backend_, nav_)) return false;
     if (!nav_bar_.build(root_, nav_, onAreaClick, this)) return false;
@@ -137,8 +142,12 @@ void UiBlueprint::onAreaClick(void* user_data, UiArea area) {
     auto* self = static_cast<UiBlueprint*>(user_data);
     if (!self) return;
     if (area == UiArea::Tocar) {
+        if (self->nav_.activeView() && self->nav_.activeView()->hasBlockingConfirmation()) {
+            return;
+        }
         self->status_strip_.closeOverlays();
-        if (self->nav_.currentScreen() != ScreenId::Performance) {
+        if (self->nav_.currentScreen() != ScreenId::Performance ||
+            self->nav_.subTab(ScreenId::Performance) != 0) {
             self->nav_.requestReturnToPerformance();
         }
         return;

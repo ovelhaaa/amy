@@ -59,6 +59,7 @@ public:
     virtual bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) = 0;
     virtual void refresh(IUiBackend& backend) = 0;
     virtual void onDestroy() {}
+    virtual bool hasBlockingConfirmation() const { return false; }
 };
 
 class UiNavigationManager {
@@ -118,6 +119,17 @@ public:
         on_navigate_user_ = user_data;
     }
 
+    using HarmonyOverlayCallback = void (*)(void* user_data);
+    void setOnOpenHarmonyOverlay(HarmonyOverlayCallback cb, void* user_data) {
+        on_harmony_overlay_ = cb;
+        on_harmony_overlay_user_ = user_data;
+    }
+    bool requestOpenHarmonyOverlay() {
+        if (!on_harmony_overlay_) return false;
+        on_harmony_overlay_(on_harmony_overlay_user_);
+        return true;
+    }
+
 private:
     bool mountScreen(ScreenId target);
     void unmountCurrent();
@@ -146,8 +158,10 @@ private:
     bool               pending_home_     = false;
     ScreenId           pending_target_   = ScreenId::Performance;
     uint8_t            pending_sub_tab_  = 0xFF;
-    NavigationCallback on_navigate_      = nullptr;
-    void*              on_navigate_user_ = nullptr;
+    NavigationCallback     on_navigate_             = nullptr;
+    void*                  on_navigate_user_        = nullptr;
+    HarmonyOverlayCallback on_harmony_overlay_      = nullptr;
+    void*                  on_harmony_overlay_user_ = nullptr;
 };
 
 } // namespace smk::p4::ui
