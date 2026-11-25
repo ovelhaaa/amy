@@ -1,111 +1,49 @@
-CURRENT — operator-reference revision, 2026-11-25
+FINALIZATION & HARDENING — 2026-11-25 (baseline a8fd098)
 
-Implemented: curved italic native A8 wordmark/AMY credit, 4 halo, full-width
-wave geometry matched at nominal final time, radial arcs and corner ticks,
-tracked subtitle and reference layout. No audio/MIDI/AMY changes.
-The supplied reference is archived as operator_reference.png; it is not used
-as a runtime screen image. Four native 800 x 480 captures and GIF refreshed.
+Implemented:
+- Explicit P4mySplash state machine: Inactive, Animating, FinalHold (250 ms),
+  WaitingForEngine (bounded wait_timeout_ms=8000), Exiting (180 ms fade), Closed.
+- Separated musical readiness (setEngineReady) from animation progress and
+  dismissal (Touch, MIDI Note On vel>0, ExplicitCommand, EngineError, ParentDeleted).
+- Non-intrusive MIDI Note On detection via relaxed atomic counter in UsbInput
+  (clock 0xF8, Active Sensing 0xFE, Note On vel=0 ignored; Note On passes to AMY).
+- Touch dismissal stops event bubbling so underlying Performance controls are never hit.
+- Render optimization: clamped timeline, final composition rendered once and frozen
+  during FinalHold/WaitingForEngine/Exiting (zero trig/invalidation/style churn),
+  exp() hoisted out of wave loop, setOpaIfChanged, lightweight Metrics.
+- Navigation regression fix in blueprint_test_suite.cpp:378 (separate commit):
+  ScreenId::Patterns (15) is the final enum entry, back() unwinds Patterns -> Scenes -> Diagnostics.
+  Note: run_preview.ps1 (full regression) still hits a pre-existing unrelated layout
+  overflow on ArpeggiatorScreen demo mode (screen 7 tab 0, w=784 in 640px panel).
+- P4my visual identity: "P4my" / "P4my SIM" header badge and About/System info
+  in DiagnosticsScreen (SISTEMA tab).
 
-PASS python smk-p4/ui-preview/generate_wordmark.py
-  Local installed Arial Italic; fixed text artwork only, no font binary copied.
-  Five LVGL A8 masks: 36140 immutable bytes in Flash, native stride aligned to 4.
 PASS powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_splash.ps1
-  Final code: 50 create/delete cycles, zero measured LVGL heap leak,
-  early finish/idempotence, 20/30 FPS, tick wrap, parent deletion,
-  low-memory refusal, retained underlying object and no splash timers.
-  Initial LVGL heap delta 3696 bytes; fixed state 3976 bytes on host ABI.
-  Compared with original 11416-byte initial heap delta using the same harness.
-  Peak process/RSS and physical P4 heap were not measured.
-  Host seek + software render: avg 2316.3 us, max 4835.1 us (91 frames).
-  Host measurements have uncontrolled load; no physical frame/audio claim.
+  18/18 lifecycle cases: engine ready before/during/after animation, unavailable timeout,
+  init error, touch dismiss + non-propagation, MIDI Note On vel>0 vs vel=0/Clock/Sense,
+  idempotent dismiss, static wait freeze (wave_updates unchanged), 20/30 FPS, tick wrap,
+  parent deletion, invalid config, low-memory refusal, 50 create/delete cycles.
+  MEMORY object=4024 bytes (+48 B vs a8fd098 3976 B); initial LVGL delta=3736 bytes (+40 B);
+  repeated lifecycle leak=0 bytes; no splash timers.
+  HOST seek+software-render avg=1772.3 us, max=2822.7 us (91 frames; vs a8fd098 avg 2316.3 us, max 4835.1 us).
+  Exported PNGs (including 06_early_dismiss.png, 07_static_hold.png), p4my_preview.gif, replay.html.
+
 PASS powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_preview.ps1 -PreviewOnly
-  Genuine Performance exit, navigation preserved, all 23 native captures passed.
+  Genuine Performance exit, navigation preserved, 24 native 800x480 PNG captures (including 14d_about_p4my.png).
+
 FAIL powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_preview.ps1
-  Same existing assertion blueprint_test_suite.cpp:378 (Scenes expected last,
-  current enum ends in Patterns). The suite does not create this splash.
-  Existing unrelated UI work and its regression expectations are not changed.
-PASS final build (72.73 seconds), splash enabled at 30 FPS:
-  $env:PYTHONIOENCODING='utf-8'; $env:PYTHONUTF8='1'; $env:UV_OFFLINE='true'
-  C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-editor-8 -j 8
-  RAM: 74200 bytes (PIO summary, unchanged from first splash iteration).
-  Flash: 1564798 bytes (+37022 versus 1527776 first iteration).
+  blueprint_test_suite.cpp:378 fixed; blocked by pre-existing unrelated layout overflow
+  on screen 7 (Arpeggiator) tab 0 demo mode: coords=(168,270)..(951,289).
+
+PASS powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_arp_015.ps1
+PASS powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_step_sequencer_016a.ps1
+PASS powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_pattern_library_017a.ps1
+
+PASS clean PlatformIO build guition-editor-8 (427.96 s) + check_blueprint_build.py:
+  CONFIG_SMKP4_BOOT_SPLASH=1, CONFIG_SMKP4_SPLASH_FPS=30 confirmed in sdkconfig.h.
+  RAM: 74276 bytes (22.7%, +76 B vs a8fd098 74200 B).
+  Flash: 1565266 bytes (9.3%, +468 B vs a8fd098 1564798 B).
   ELF and BIN generated; no firmware upload.
-  PIO summary is not a complete DRAM0/DRAM1/PSRAM runtime memory budget.
-  Validation used the workspace with pre-existing unrelated UI changes.
-PASS visual inspection of final and logo-reveal captures against operator image.
-  Close reconstruction, not a claim of pixel-identical reproduction.
-MANUAL physical cold boot, 20/30 FPS qualification and audio diagnostics.
-NOT RUN firmware upload or physical measurements. No new hardware pin assumptions.
-Next smallest step: operator visual approval, then independent board qualification.
 
------ Historical first iteration (before operator supplied reference) -----
-
-P4my software validation — 2026-11-25
-
-PASS powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_splash.ps1
-  GCC/MinGW -O2 -std=c++20 -Wall -Wextra -Werror, real LVGL 9.3 RGB565.
-  50 lifecycle cycles: zero measured LVGL heap leak.
-  Early finish/idempotence, tick wrap, parent deletion, invalid FPS,
-  preserved underlying Performance placeholder, no splash timers,
-  low-memory refusal without destroying Performance.
-  P4mySplash sizeof: 3976 bytes (fixed state, host ABI).
-  Initial LVGL heap delta: 11416 bytes.
-  Final run under concurrent SDK compilation: seek + software render
-  mean 14800.1 us, max 44490.2 us over 91 frames.
-  Earlier low-load runs: mean 9590.8–11145.8 us, max 19474.5–21023.9 us.
-  These are wall-clock host measurements, not P4 deadline/audio qualification.
-  Four PNGs and GIF rendered and inspected; no operator reference attached.
-
-PASS direct full preview integration executable
-  Splash exit retains the genuine UiBlueprint Performance tree/navigation;
-  all 23 existing screen/tab captures rendered at 800 x 480.
-  Reproducible runner: run_preview.ps1 -PreviewOnly (result below).
-
-FAIL powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_preview.ps1
-  Existing blueprint_test_suite.cpp:378 assumes Scenes is the final enum item;
-  current ScreenId ends with Patterns=15, Count=16. The suite never creates a
-  splash. Existing navigation/UI changes were present before this task and
-  remain outside this commit. This is not counted as a passing regression suite.
-  An earlier concurrent attempt failed finding lvgl.h; the sequential rerun
-  reached the above actual assertion. No regression expectations were changed.
-
-PASS actual ESP32-P4 compiler checks of standalone_main.cpp and p4my_splash.cpp
-  Reused compile_commands.json from guition-editor-8 with BOOT_SPLASH=1,
-  SPLASH_FPS=30; separate build/p4my_target_main.o and target_splash.o outputs.
-  Compilation alone is not full firmware or hardware validation.
-
-PASS initial PlatformIO guition-editor-8 build using cached pre-splash config.
-  This was explicitly NOT counted as verification of enabled integration.
-  Baseline: PIO RAM 70272 bytes, Flash 1519524 bytes.
-BLOCKED subsequent PlatformIO rebuild at environment setup: uv/esptool dependency
-  reinstall timed out at 60 s. Disabling component manager failed resolving lvgl;
-  normal component manager was restored and no project dependency was changed.
-PASS direct ESP-IDF CMake configure, BOOT_SPLASH=1 / SPLASH_FPS=30 confirmed.
-  IDF_PATH=C:/.platformio/packages/framework-espidf
-  From smk-p4: C:/.platformio/packages/tool-cmake/bin/cmake.exe -S . -B .pio/build/guition-editor-8
-  Full build result recorded below when complete.
-
-MANUAL physical cold boot, audio/render timing and additional PSRAM load.
-NOT RUN firmware upload, physical display/audio acceptance, reference matching.
-
-PASS powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_preview.ps1 -PreviewOnly
-  Genuine Performance exit and all 23 PNG exports passed with final module.
-  PreviewOnly explicitly skips the separately executed (failing) regression suite.
-PASS local offline esptool 5.1.0 environment recovery (no repository dependencies changed):
-  C:/.platformio/penv/Scripts/uv.exe pip install --offline --reinstall-package pygments --python=C:/.platformio/penv/Scripts/python.exe -e C:/.platformio/packages/tool-esptoolpy
-  Restored missing rich-click and incomplete pygments metadata using cached packages.
-NOT RUN to completion: full CMake SDK build, stopped after 484/1602 steps to
-  resume supported PlatformIO build with recovered toolchain and cached objects.
-  C:/.platformio/packages/tool-cmake/bin/cmake.exe --build .pio/build/guition-editor-8 --parallel 8
-
-PASS final PreviewOnly rerun after low-memory guard: genuine Performance retained, 23 captures.
-
-PASS final supported PlatformIO build WITH splash enabled (908.95 s):
-  $env:PYTHONIOENCODING='utf-8'; $env:PYTHONUTF8='1'; $env:UV_OFFLINE='true'
-  C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-editor-8 -j 8
-  CONFIG_SMKP4_BOOT_SPLASH=1, CONFIG_SMKP4_SPLASH_FPS=30 confirmed in generated header.
-  Includes final low-memory guard; firmware ELF and BIN generated, no upload.
-  RAM:   [==        ]  22.6% (used 74200 bytes from 327680 bytes)
-  Flash: [=         ]   9.1% (used 1527776 bytes from 16777216 bytes)
-  Build/test workspace also contained pre-existing, unstaged UI work.
-  PIO RAM summary is not a complete P4 DRAM0/DRAM1 or PSRAM runtime budget.
+MANUAL physical cold boot, touch dismiss, USB MIDI Note On dismiss, 20/30 FPS, audio/I2S deadlines.
+NOT RUN firmware upload or physical measurements.

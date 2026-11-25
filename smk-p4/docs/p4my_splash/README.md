@@ -92,6 +92,18 @@ preservation of the underlying object. The normal preview additionally tests
 exit over the genuine UiBlueprint Performance tree before its existing full
 navigation/capture regression. No firmware was uploaded.
 
+## Finalization & Hardening (baseline `a8fd098`)
+
+- **Lifecycle State Machine:** `Inactive` → `Animating` (2700 ms) → `FinalHold` (250 ms) → `WaitingForEngine` (bounded `wait_timeout_ms=8000`) → `Exiting` (180 ms fade) → `Closed`.
+- **Musical Readiness & Safe Dismiss:** `setEngineReady()` is decoupled from animation progress. Early dismiss is supported via intentional touch (`LV_EVENT_PRESSED` with bubbling stopped), USB MIDI Note On (`vel > 0` via lock-free atomic counter in `UsbInput`, passing the note through to AMY untouched), explicit `finish()`, or `setEngineError()`. MIDI Clock (`0xF8`), Active Sensing (`0xFE`), and Note On with `vel == 0` do not dismiss.
+- **Render Optimization:** Timeline clamps at `duration_ms`; final frame renders once and freezes waveforms/styles during `FinalHold`, `WaitingForEngine`, and `Exiting`.
+- **P4my Identity:** Header badge (`P4my` / `P4my SIM`) and `MAIS > DIAGNOSTICOS > SISTEMA` About view (`P4my - Digital Performance Synth | Powered by AMY`, FW version, ESP32-P4 target, AMY credits, build info).
+- **Physical Qualification Procedure (Guition ESP32-P4):**
+  1. Flash `guition-editor-8` (or `-bench`) only after explicit operator authorization.
+  2. Cold boot: verify full 2700 ms P4my reveal + 250 ms hold + 180 ms fade to Performance; check serial `SPLASH_DONE` log (`dur_ms`, `ready_ms`, `reason`, `frames`, `waves`, `render_avg_us`, `render_max_us`) and zero `AUDIO` underruns/deadlines.
+  3. Repeat cold boot and tap touchscreen mid-animation: verify immediate fade without triggering underlying Performance controls.
+  4. Repeat cold boot and play a note on SMK25 V2: verify immediate fade AND audible note with zero dropped/duplicated Note On.
+
 ## Hardware assumptions, risks and next smallest step
 
 No new wiring/controller assumptions. Uses the existing P4 800 x 480 port.

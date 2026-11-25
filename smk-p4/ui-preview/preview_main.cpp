@@ -56,7 +56,8 @@ int main(int argc, char** argv) {
         {ScreenId::MidiSettings,   0, "12a_midi_channels.ppm"},
         {ScreenId::MidiSettings,   1, "12b_midi_cc_learn.ppm"},
         {ScreenId::GlobalSettings, 0, "13_global_settings.ppm"},
-        {ScreenId::Diagnostics,    0, "14_diagnostics.ppm"}
+        {ScreenId::Diagnostics,    0, "14_diagnostics.ppm"},
+        {ScreenId::Diagnostics,    3, "14d_about_p4my.ppm"}
     };
 
     // Trigger a non-scale note (C#4 = 61) so Harmony visualizer shows quantization & chord tones
