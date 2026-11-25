@@ -147,10 +147,10 @@ void testSmk25LegacyUi(amy::Runtime& runtime,LocalAmyPerformanceBackend& backend
     assert(preview::saveFramebufferPpm("build/editor011/tempo0151_arp.ppm"));
     for(unsigned i=0;i<amy::kCommandCapacity;++i)
         assert(runtime.commands().push({amy::CommandType::Master,0,64,0,0,preview::g_sim_tick_ms}));
-    click(content,"STOP");
+    click(content,"STOP ARP");
     frame();
     assert(!runtime.snapshot().arp.sounding && !runtime.snapshot().arp.length);
-    click(content,"PLAY");
+    click(content,"PLAY ARP");
     frame();
     assert(runtime.snapshot().arp.armed);
     midi(0x99,47,100);
