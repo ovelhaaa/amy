@@ -1,3 +1,45 @@
+CURRENT — operator-reference revision, 2026-11-25
+
+Implemented: curved italic native A8 wordmark/AMY credit, 4 halo, full-width
+wave geometry matched at nominal final time, radial arcs and corner ticks,
+tracked subtitle and reference layout. No audio/MIDI/AMY changes.
+The supplied reference is archived as operator_reference.png; it is not used
+as a runtime screen image. Four native 800 x 480 captures and GIF refreshed.
+
+PASS python smk-p4/ui-preview/generate_wordmark.py
+  Local installed Arial Italic; fixed text artwork only, no font binary copied.
+  Five LVGL A8 masks: 36140 immutable bytes in Flash, native stride aligned to 4.
+PASS powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_splash.ps1
+  Final code: 50 create/delete cycles, zero measured LVGL heap leak,
+  early finish/idempotence, 20/30 FPS, tick wrap, parent deletion,
+  low-memory refusal, retained underlying object and no splash timers.
+  Initial LVGL heap delta 3696 bytes; fixed state 3976 bytes on host ABI.
+  Compared with original 11416-byte initial heap delta using the same harness.
+  Peak process/RSS and physical P4 heap were not measured.
+  Host seek + software render: avg 2316.3 us, max 4835.1 us (91 frames).
+  Host measurements have uncontrolled load; no physical frame/audio claim.
+PASS powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_preview.ps1 -PreviewOnly
+  Genuine Performance exit, navigation preserved, all 23 native captures passed.
+FAIL powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_preview.ps1
+  Same existing assertion blueprint_test_suite.cpp:378 (Scenes expected last,
+  current enum ends in Patterns). The suite does not create this splash.
+  Existing unrelated UI work and its regression expectations are not changed.
+PASS final build (72.73 seconds), splash enabled at 30 FPS:
+  $env:PYTHONIOENCODING='utf-8'; $env:PYTHONUTF8='1'; $env:UV_OFFLINE='true'
+  C:/.platformio/penv/Scripts/pio.exe run -d smk-p4 -e guition-editor-8 -j 8
+  RAM: 74200 bytes (PIO summary, unchanged from first splash iteration).
+  Flash: 1564798 bytes (+37022 versus 1527776 first iteration).
+  ELF and BIN generated; no firmware upload.
+  PIO summary is not a complete DRAM0/DRAM1/PSRAM runtime memory budget.
+  Validation used the workspace with pre-existing unrelated UI changes.
+PASS visual inspection of final and logo-reveal captures against operator image.
+  Close reconstruction, not a claim of pixel-identical reproduction.
+MANUAL physical cold boot, 20/30 FPS qualification and audio diagnostics.
+NOT RUN firmware upload or physical measurements. No new hardware pin assumptions.
+Next smallest step: operator visual approval, then independent board qualification.
+
+----- Historical first iteration (before operator supplied reference) -----
+
 P4my software validation — 2026-11-25
 
 PASS powershell -ExecutionPolicy Bypass -File smk-p4/ui-preview/run_splash.ps1

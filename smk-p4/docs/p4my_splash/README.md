@@ -3,16 +3,20 @@
 ## Implemented and architecture
 
 Independent `P4mySplash` in `components/ui_blueprint/include/p4my_splash.h`
-and `src/p4my_splash.cpp`. Original geometric, slightly inclined polyline logo,
-navy grid, sine/triangle waves, radial markers, layered amber strokes, subtitle
-and original AMY credit. No third-party artwork or fonts were added. Existing
-AMY attribution and licenses are retained.
+and `src/p4my_splash.cpp`. The operator reference now drives the composition:
+italic curved wordmark, 4 with amber halo, full-width sine/triangle waves,
+centered upper/lower radial tick arcs, four corner tick clusters, two amber
+rails, tracked subtitle at y=282 and italic AMY credit at y=320.
+The reference is archived as `operator_reference.png`; it is not rendered by
+firmware. Existing AMY attribution and licenses are retained.
 
 Scope follows the explicit P4 request (800 x 480), superseding only the older
 S3/284 x 76 scope in root specs.md/AGENTS.md for this task. S3, AMY core, DSP,
 MIDI, audio drivers and the Performance layout are unchanged. Existing local
-UI redesign changes are outside this commit. The operator reference image/GIF
-was not attached; visual fidelity to that reference remains unverified.
+UI redesign changes are outside this commit. The reference was supplied after
+the first iteration and the final LVGL capture was visually compared with it.
+This is a close reconstruction, not a pixel-identical copy (RGB565 output,
+LVGL subtitle font and sampled wave lines differ from the reference).
 
 The existing standalone control/LVGL owner mounts the overlay above the built
 Performance tree. It continues servicing the backend and display. No timer,
@@ -27,7 +31,10 @@ The built-in LVGL allocator receives a startup preflight (20 KB free, 2 KB
 largest block); a depleted pool skips the optional overlay and reports failure.
 This headroom is a guard, not a physical memory qualification.
 
-All points live in three fixed 161-point arrays shared by five mutable LVGL
+The grid and 56 technical tick/rail segments use one LVGL draw callback with
+bounded loops and flash-resident coordinates. Drawing stays on the UI owner;
+there are no explicit frame buffer allocations in this callback.
+All waveform points live in three fixed 161-point arrays shared by five mutable LVGL
 lines. LVGL objects/styles allocate at begin, not explicitly each frame. The
 phase slows exponentially. The firmware instance is static: its fixed point
 storage remains reserved after close; all LVGL objects/styles are released. `close()`, repeated begin, destruction and external
@@ -102,5 +109,29 @@ fade, normal MIDI notes/release/Panic, and no regression in same-boot audio
 counters. Measure internal/PSRAM before/during/after, UI frame duration and
 underruns over repeated boots, at 30 and 20 FPS. Repeat with BOOT_SPLASH=n.
 Expect no splash in diagnostic/legacy profiles and no changes to stored patches.
-Next smallest step: compare these captures against the missing operator
-reference, then qualify render cost on the actual board without changing audio.
+Next smallest step: operator review of the updated captures, then qualification
+of render cost on the actual board without changing audio.
+
+
+## Wordmark artwork provenance and regeneration
+
+`src/p4my_wordmark.inc` stores five small native LVGL A8 masks (P, 4, my,
+4 halo, and the AMY credit), 36,140 bytes of immutable pixel data. There is no
+full-screen raster animation, font engine or GIF dependency in firmware.
+A8 images blend at native dimensions; their opacity animates with the existing
+timeline. Font binaries and font tables are not embedded or distributed.
+
+The fixed text artwork was rendered locally with the installed Windows Arial
+Italic (104 px for the wordmark, 17 px for credit), supersampled 4x. Its installed
+name-table permission covers creating/displaying content; the font software
+itself remains on the operator machine. No font binary was copied into the repo.
+The source generator accepts a separately installed font through `--font`:
+
+```powershell
+python smk-p4/ui-preview/generate_wordmark.py --font C:/Windows/Fonts/ariali.ttf
+```
+
+Pillow 12.3.0 is the same pinned host dependency already used for capture export.
+The generated include is committed, so normal firmware and host builds need no
+font or regeneration. Different input fonts change the wordmark; this is artwork
+regeneration, not a runtime fallback. LVGL keeps the subtitle as ordinary text.
