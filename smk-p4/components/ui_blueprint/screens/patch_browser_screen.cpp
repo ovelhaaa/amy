@@ -66,6 +66,7 @@ public:
             g_browser.has_selection = true;
         }
         status_note_lbl_ = nullptr;
+        locks_lbl_ = nullptr;
         load_btn_ = nullptr;
         quick_load_btn_ = nullptr;
 
@@ -293,6 +294,8 @@ public:
         lv_obj_t* mac_lbl = createLabel(insp, macros_line, 4, 98, 232, &lv_font_montserrat_14, palette::kTextPrimary);
         if (mac_lbl) lv_label_set_long_mode(mac_lbl, LV_LABEL_LONG_MODE_DOTS);
 
+        locks_lbl_ = createLabel(insp, "", 4, 118, 232, &lv_font_montserrat_14, palette::kTextSecondary);
+
         status_note_lbl_ = createLabel(insp, "", 4, 140, 232, &lv_font_montserrat_14, palette::kWarning);
         if (status_note_lbl_) lv_label_set_long_mode(status_note_lbl_, LV_LABEL_LONG_MODE_DOTS);
 
@@ -346,6 +349,23 @@ private:
         const bool loading = backend.isPatchLoading();
         const bool busy = backend.isBusy();
 
+        if (locks_lbl_) {
+            const uint8_t locks = sessionLockMask();
+            char locks_line[64]{"LOCKS: NENHUM"};
+            if (locks != 0U) {
+                std::snprintf(locks_line, sizeof(locks_line), "LOCKS:%s%s%s%s",
+                              (locks & perf_lock::Fx) ? " FX" : "",
+                              (locks & perf_lock::Harmony) ? " HARM" : "",
+                              (locks & perf_lock::Arp) ? " ARP" : "",
+                              (locks & perf_lock::Macros) ? " MAC" : "");
+            }
+            if (std::strcmp(lv_label_get_text(locks_lbl_), locks_line) != 0) {
+                lv_label_set_text(locks_lbl_, locks_line);
+            }
+            lv_obj_set_style_text_color(
+                locks_lbl_, lv_color_hex(locks ? palette::kAccentPrimary : palette::kTextSecondary), 0);
+        }
+
         if (status_note_lbl_) {
             const char* note = "";
             uint32_t col = palette::kTextSecondary;
@@ -394,6 +414,7 @@ private:
     bool last_loading_ = false;
     bool last_error_ = false;
     lv_obj_t* status_note_lbl_ = nullptr;
+    lv_obj_t* locks_lbl_ = nullptr;
     lv_obj_t* load_btn_ = nullptr;
     lv_obj_t* quick_load_btn_ = nullptr;
 };

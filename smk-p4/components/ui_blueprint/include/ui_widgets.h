@@ -120,7 +120,7 @@ private:
     char      q_buf_[16]{};
     char      ch_buf_[16]{};
     char      bpm_big_buf_[16]{};
-    char      harm_status_buf_[128]{};
+    char      harm_status_buf_[160]{};
     char      harm_preset_buf_[32]{};
     char      harm_row_bufs_[5][48]{};
 };

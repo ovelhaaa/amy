@@ -151,7 +151,7 @@ bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManag
         lv_obj_center(badge_lbl);
     }
 
-    // 2. Patch + MIDI/Audio status box (x=90..298)
+    // 2. Patch + MIDI/Audio status box (x=90..298) -> Quick Action to PatchBrowser
     lv_obj_t* info_box = lv_obj_create(root_);
     if (info_box) {
         applyPanelStyle(info_box, false);
@@ -159,6 +159,19 @@ bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManag
         lv_obj_set_size(info_box, 208, 36);
         lv_obj_set_style_pad_all(info_box, 0, 0);
         lv_obj_remove_flag(info_box, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(info_box, LV_OBJ_FLAG_CLICKABLE);
+        attachLvContext<StripCtx>(
+            info_box, StripCtx{this, &backend, &nav},
+            [](lv_event_t* e) {
+                if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+                auto* ctx = static_cast<StripCtx*>(lv_event_get_user_data(e));
+                if (!ctx || !ctx->nav) return;
+                if (ctx->strip) ctx->strip->closeOverlays();
+                if (ctx->nav->currentScreen() != ScreenId::PatchBrowser) {
+                    ctx->nav->requestNavigateTo(ScreenId::PatchBrowser);
+                }
+            },
+            LV_EVENT_CLICKED);
 
         std::snprintf(patch_buf_, sizeof(patch_buf_), "001 INIT");
         patch_lbl_ = createLabel(info_box, patch_buf_, 4, 1, 200, &lv_font_montserrat_14, palette::kAccentPrimary);
@@ -503,15 +516,21 @@ void StatusStrip::refresh(IUiBackend& backend, UiNavigationManager& nav) {
                 else if (std::strcmp(active_id, "harmony.preset") == 0) pshort = "PRESET";
             }
             const int32_t usb_ch = backend.model().getInt("harmony.usb_channel", lh.configuration.channel + 1);
-            char sbuf[128]{};
+            const seq::Status* sst = backend.sequencerStatus();
+            const char* seq_q_txt = sst ? (sst->quantize ? "ON" : "OFF") : "--";
+            const int live_tr_st = sst ? int(sst->midi.effective) : 0;
+            const bool live_tr_on = sst && sst->midi.live;
+            char sbuf[160]{};
             if (pshort && (pending || rejected || backend.lastCommandState() == UiCommandState::Confirmed)) {
                 std::snprintf(sbuf, sizeof(sbuf),
-                              "Estado: %s [%s] | Q/CH: USB Ch %d + Arp + Touch(%s) | SEQ=SEQ QUANT",
-                              st, pshort, int(usb_ch), touch_on ? "ON" : "OFF");
+                              "Estado: %s [%s] | Q/CH: USB Ch%d+Arp+Touch(%s)\nSEQ Q: %s | LIVE TR: %s (%+d st)",
+                              st, pshort, int(usb_ch), touch_on ? "ON" : "OFF",
+                              seq_q_txt, live_tr_on ? "ON" : "OFF", live_tr_st);
             } else {
                 std::snprintf(sbuf, sizeof(sbuf),
-                              "Estado: %s | Q/CH: USB Ch %d + Arp + Touch(%s) | SEQ=SEQ QUANT",
-                              st, int(usb_ch), touch_on ? "ON" : "OFF");
+                              "Estado: %s | Q/CH: USB Ch%d+Arp+Touch(%s)\nSEQ Q: %s | LIVE TR: %s (%+d st)",
+                              st, int(usb_ch), touch_on ? "ON" : "OFF",
+                              seq_q_txt, live_tr_on ? "ON" : "OFF", live_tr_st);
             }
             setStaticBufIfChanged(harm_status_lbl_, harm_status_buf_, sizeof(harm_status_buf_), sbuf);
             const uint32_t st_col = rejected ? palette::kErrorPanic :
