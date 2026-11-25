@@ -1,5 +1,5 @@
 #include "ui_screens.h"
-#include "ui_widgets.h"
+#include "ui_rhythm.h"
 #include <cstdio>
 #include <cstring>
 
@@ -11,16 +11,17 @@ public:
     ScreenId id() const override { return ScreenId::Arpeggiator; }
 
     bool build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManager& nav) override {
+        parent=createRhythmPanel(parent,nav,id());
         constexpr auto compact=PresentationLevel::StageMinimal;
-        createParameterCard(parent,backend,"arp.enable",8,4,116,72,compact);
-        createParameterCard(parent,backend,"arp.latch",130,4,116,72,compact);
-        createParameterCard(parent,backend,"arp.restart",252,4,206,72,compact);
-        createParameterCard(parent,backend,"arp.rate",8,130,142,82,compact);
-        createParameterCard(parent,backend,"arp.octaves",156,130,146,82,compact);
+        createParameterCard(parent,backend,"arp.enable",8,4,148,72,compact);
+        createParameterCard(parent,backend,"arp.latch",164,4,148,72,compact);
+        createParameterCard(parent,backend,"arp.restart",320,4,196,72,compact);
+        createParameterCard(parent,backend,"arp.rate",8,190,148,82,compact);
+        createParameterCard(parent,backend,"arp.octaves",164,190,148,82,compact);
         constexpr auto timing=PresentationLevel::StageStacked;
-        createParameterCard(parent,backend,"arp.gate_pct",308,130,146,82,timing);
-        createParameterCard(parent,backend,"arp.swing_pct",460,130,146,82,timing);
-        createParameterCard(parent,backend,"perf.bpm",612,130,180,82,timing);
+        createParameterCard(parent,backend,"arp.gate_pct",320,190,148,82,timing);
+        createParameterCard(parent,backend,"arp.swing_pct",476,190,152,82,timing);
+
 
         if(backend.isDemoMode()) {
             createLabel(parent,"DEMO / PREVIEW",8,226,784,&lv_font_montserrat_14,palette::kTextSecondary);
@@ -30,7 +31,7 @@ public:
 
         struct ActionContext { IUiBackend* backend; unsigned action; };
         const auto addButton=[&](const char* text,int x,int y,int width,unsigned action) -> lv_obj_t* {
-            auto* button=createActionButton(parent,text,x,y,width,36,nullptr,nullptr);
+            auto* button=createActionButton(parent,text,x,y,width,action<=3?44:36,nullptr,nullptr);
             if(!button) return nullptr;
             if(!backend.arpStatus()) lv_obj_add_state(button,LV_STATE_DISABLED);
             attachLvContext<ActionContext>(button,{&backend,action},[](lv_event_t* e) {
@@ -42,29 +43,29 @@ public:
             },LV_EVENT_CLICKED);
             return button;
         };
-        createLabel(parent,"INTERNAL",466,4,92,&lv_font_montserrat_14,palette::kTextSecondary);
-        addButton("PLAY",466,30,72,0);
-        addButton("STOP",544,30,72,1);
-        addButton("CLEAR LATCH",622,30,170,3);
+
+        addButton("PLAY ARP",8,84,198,0);
+        addButton("STOP ARP",214,84,198,1);
+        addButton("CLEAR LATCH",420,84,208,3);
         constexpr const char* directions[]{"UP","DOWN","UP / DOWN","RANDOM","AS PLAYED"};
         for(unsigned i=0;i<5;++i) {
-            modes_[i]=addButton(directions[i],8+131*i,84,123,4+i);
+            modes_[i]=addButton(directions[i],8+124*i,136,116,4+i);
             if(modes_[i]) lv_obj_set_style_bg_color(modes_[i],lv_color_hex(palette::kActive),LV_STATE_CHECKED);
         }
-        addButton("TAP",663,84,129,2);
-        state_=createLabel(parent,"",8,222,784,&lv_font_montserrat_14,palette::kAccentPrimary);
-        held_=createLabel(parent,"",8,250,784,&lv_font_montserrat_14,palette::kTextSecondary);
+        addButton("TAP",524,22,104,2);
+        state_=createLabel(parent,"",8,282,620,&lv_font_montserrat_14,palette::kAccentPrimary);
+        held_=createLabel(parent,"",8,306,620,&lv_font_montserrat_14,palette::kTextSecondary);
         for(unsigned i=0;i<8;++i) {
             cells_[i]=lv_obj_create(parent);
             if(!cells_[i]) continue;
             applyPanelStyle(cells_[i],false);
             lv_obj_remove_flag(cells_[i],LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_set_pos(cells_[i],8+98*i,275);
-            lv_obj_set_size(cells_[i],92,67);
-            cell_labels_[i]=createLabel(cells_[i],"",2,2,76,&lv_font_montserrat_14,palette::kTextPrimary);
-            if(cell_labels_[i]) lv_obj_set_height(cell_labels_[i],48);
+            lv_obj_set_pos(cells_[i],8+78*i,332);
+            lv_obj_set_size(cells_[i],72,40);
+            cell_labels_[i]=createLabel(cells_[i],"",2,2,66,&lv_font_montserrat_14,palette::kTextPrimary);
+            if(cell_labels_[i]) lv_obj_set_height(cell_labels_[i],38);
         }
-        error_=createLabel(parent,"",8,357,784,&lv_font_montserrat_14,palette::kTextSecondary);
+        error_=createLabel(parent,"",8,374,620,&lv_font_montserrat_14,palette::kTextSecondary);
         return true;
     }
 

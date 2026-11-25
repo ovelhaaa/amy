@@ -1,5 +1,5 @@
 #include "ui_screens.h"
-#include "ui_widgets.h"
+#include "ui_rhythm.h"
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -9,8 +9,8 @@ namespace smk::p4::ui {
 
 namespace {
 
-constexpr int kGridX=61, kGridY=126, kPitchRows=12, kRowHeight=17;
-constexpr int kColumnWidth=45, kGridWidth=seq::kSteps*kColumnWidth;
+constexpr int kGridX=40, kGridY=126, kPitchRows=12, kRowHeight=17;
+constexpr int kColumnWidth=72, kGridWidth=8*kColumnWidth;
 constexpr tempo::Division kDivisions[]{
     tempo::Division::Quarter,tempo::Division::Eighth,tempo::Division::Sixteenth,
     tempo::Division::ThirtySecond,tempo::Division::EighthTriplet,tempo::Division::SixteenthTriplet
@@ -43,7 +43,7 @@ class SequencerScreen final : public ScreenView {
     enum Control : uint8_t {
         Play, Stop, Restart, Division, Quantize, OctaveDown, OctaveUp, Enabled,
         Demo, Clear, Settings, Editor, Close, Normal, StepInput, StepRecord, Live, Thru, Source,
-        PitchDown, PitchUp, PitchOctaveDown, PitchOctaveUp, InsertRest, ToggleStep, PrevStep, NextStep, Patterns, SelectFirst
+        PitchDown, PitchUp, PitchOctaveDown, PitchOctaveUp, InsertRest, ToggleStep, PrevStep, NextStep, Patterns, ViewPlay, ViewEdit, Page, SelectFirst
     };
     enum Parameter { Length, Swing, Transpose, Velocity, Gate, InputChannel, LiveChannel,
                      RecordGate, Reference, ParameterCount };
@@ -51,13 +51,15 @@ class SequencerScreen final : public ScreenView {
     struct SliderContext { SequencerScreen* view; Parameter param; };
 
 public:
-    ScreenId id() const override { return ScreenId::Sequencer; }
+    explicit SequencerScreen(bool library=false): library_only_(library) {}
+    ScreenId id() const override { return library_only_?ScreenId::Patterns:ScreenId::Sequencer; }
 
     bool build(lv_obj_t* parent,IUiBackend& backend,UiNavigationManager& nav) override {
+        parent=createRhythmPanel(parent,nav,id());
         parent_=parent;
         backend_=&backend;
         nav_=&nav;
-        const int saved=nav.subTab(id());
+        const int saved=nav.subTab(ScreenId::Sequencer);
         if(saved>0 && saved<=11*int(seq::kSteps)) {
             octave_=(saved-1)/int(seq::kSteps);
             selected_=unsigned(saved-1)%seq::kSteps;
@@ -67,29 +69,37 @@ public:
             return true;
         }
 
-        play_=button(parent,"PLAY",8,4,66,36,Play);
-        button(parent,"STOP",78,4,66,36,Stop);
-        button(parent,"RESTART",148,4,96,36,Restart);
-        transport_=createLabel(parent,"",255,6,74,&lv_font_montserrat_14,palette::kTextPrimary);
-        midi_=createLabel(parent,"",331,6,158,&lv_font_montserrat_14,palette::kTextPrimary);
-        feedback_=createLabel(parent,"",255,25,236,&lv_font_montserrat_14,palette::kWarning);
-        button(parent,"LOAD DEMO PATTERN",493,4,170,36,Demo);
-        button(parent,"CLEAR PATTERN",669,4,123,36,Clear);
-        division_=button(parent,"",8,48,117,38,Division);
-        makeSlider(parent,Length,137,45,121,1,16);
-        makeSlider(parent,Swing,274,45,121,50,75);
-        makeSlider(parent,Transpose,411,45,132,-24,24);
-        quantize_=button(parent,"",548,48,150,38,Quantize);
-        button(parent,"MIDI / REC",700,48,92,38,Settings);
-
-        const bool library=backend.patternSlot(0)!=nullptr;
-        const int grid_y=library?153:kGridY;
-        row_height_=library?15:kRowHeight;
-        if(library) {
-            button(parent,"PATTERNS",8,88,123,34,Patterns);
-            pattern_summary_=createLabel(parent,"",144,97,630,&lv_font_montserrat_14,palette::kTextPrimary);
+        browser_slot_=nav.patternSelection();
+        if(library_only_) { openBrowser(); return true; }
+        edit_=nav.sequencerEdit();
+        auto* play_tab=button(parent,"PLAY MODE",8,4,148,38,ViewPlay);
+        auto* edit_tab=button(parent,"EDIT MODE",164,4,148,38,ViewEdit);
+        auto* active_tab=edit_?edit_tab:play_tab;
+        lv_obj_set_style_border_color(active_tab,lv_color_hex(palette::kAccentPrimary),0);
+        lv_obj_set_style_border_width(active_tab,2,0);
+        button(parent,"MIDI / REC",480,4,148,38,Settings);
+        play_=button(parent,"PLAY",8,48,120,44,Play);
+        button(parent,"STOP SEQ",136,48,120,44,Stop);
+        button(parent,"RESTART",264,48,112,44,Restart);
+        transport_=createLabel(parent,"",388,53,238,&lv_font_montserrat_14,palette::kTextPrimary);
+        feedback_=createLabel(parent,"",388,74,238,&lv_font_montserrat_14,palette::kWarning);
+        midi_=createLabel(parent,"",8,99,620,&lv_font_montserrat_14,palette::kTextPrimary);
+        pattern_summary_=createLabel(parent,"",8,122,620,&lv_font_montserrat_14,palette::kTextPrimary);
+        if(!edit_) {
+            play_live_=live_=button(parent,"LIVE TRANSPOSE",8,156,248,48,Live);
+            quantize_=button(parent,"",264,156,228,48,Quantize);
+            division_=button(parent,"",500,156,128,48,Division);
+            makeSlider(parent,Transpose,12,221,194,-24,24);
+            makeSlider(parent,Swing,222,221,194,50,75);
+            makeSlider(parent,Length,432,221,194,1,16);
+            for(unsigned i=0;i<seq::kSteps;++i)
+                headers_[i]=button(parent,"",8+int(i)*39,292,37,46,Control(SelectFirst+i));
+            refresh(backend);
+            return true;
         }
-
+        button(parent,"1-8 / 9-16",320,4,152,38,Page);
+        const int grid_y=184;
+        row_height_=12;
         auto* grid=rectangle(parent,kGridX,grid_y,kGridWidth,kPitchRows*row_height_,palette::kBackground);
         lv_obj_add_flag(grid,LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(grid,[](lv_event_t* event) {
@@ -108,10 +118,10 @@ public:
             const bool black=pitch==1 || pitch==3 || pitch==6 || pitch==8 || pitch==10;
             rectangle(grid,0,row*row_height_,kGridWidth,row_height_-1,
                       pitch==0?palette::kPanelHighlight:black?palette::kKeyBlack:palette::kPanel);
-            pitches_[row]=createLabel(parent,"",8,grid_y+row*row_height_+1,50,&lv_font_montserrat_14,
+            pitches_[row]=createLabel(parent,"",0,grid_y+row*row_height_,38,&lv_font_montserrat_14,
                                       pitch==0?palette::kAccentPrimary:palette::kTextSecondary);
         }
-        for(unsigned i=0;i<seq::kSteps;++i) {
+        for(unsigned i=0;i<8;++i) {
             const auto x=int(i)*kColumnWidth;
             headers_[i]=button(parent,"",kGridX+x,grid_y-33,kColumnWidth-1,31,Control(SelectFirst+i));
             if(i>0) rectangle(grid,x-1,0,i%4?1:2,kPitchRows*row_height_,palette::kBorder);
@@ -121,24 +131,27 @@ public:
         playhead_=rectangle(grid,0,0,3,kPitchRows*row_height_,palette::kAccentPrimary);
         show(playhead_,false);
 
-        button(parent,"OCT -",8,343,68,38,OctaveDown);
-        button(parent,"OCT +",81,343,68,38,OctaveUp);
-        selection_=lv_obj_get_child(button(parent,"",154,343,165,38,Editor),0);
-        makeSlider(parent,Velocity,328,338,137,1,127);
-        makeSlider(parent,Gate,486,338,135,1,100);
-        enabled_=button(parent,"",646,343,146,38,Enabled);
+        button(parent,"OCT -",8,334,68,44,OctaveDown);
+        button(parent,"OCT +",81,334,68,44,OctaveUp);
+        selection_=lv_obj_get_child(button(parent,"",154,334,165,44,Editor),0);
+        makeSlider(parent,Velocity,328,333,137,1,127);
+        makeSlider(parent,Gate,486,333,135,1,100);
+
         refresh(backend);
         return true;
     }
 
+    void onDestroy() override { dialog_.close(false); }
+
     void refresh(IUiBackend& backend) override {
+        if(library_only_) { refreshBrowser(); return; }
         if(!play_) return;
         const auto* status=backend.sequencerStatus();
         const auto* pattern=backend.sequencerPattern();
         const auto result=backend.sequencerResult();
-        const int transport_width=status?74:220;
+        const int transport_width=238;
         if(lv_obj_get_width(transport_)!=transport_width) lv_obj_set_width(transport_,transport_width);
-        text(transport_,status?(status->playing?"PLAYING":"STOPPED"):"ENGINE UNAVAILABLE");
+        text(transport_,status?(status->playing?"RUNNING":"STOPPED"):"ENGINE UNAVAILABLE");
         const bool playing=status && status->playing;
         if(playing!=shown_playing_) {
             lv_obj_set_style_bg_color(play_,lv_color_hex(playing?palette::kActive:palette::kPanelHighlight),0);
@@ -148,7 +161,7 @@ public:
         }
         showFeedback(result,status);
         if(!status || !pattern) {
-            show(playhead_,false);
+            if(playhead_) show(playhead_,false);
             shown_playhead_=seq::kNoStep;
             return;
         }
@@ -161,8 +174,11 @@ public:
                               slot->state==seq::SlotState::Valid?slot->name:"RAM");
             if(status->pending_slot<seq::kPatternSlots)
                 std::snprintf(pending,sizeof(pending),"  NEXT %02u",status->pending_slot+1u);
+            char scene_name[24]="--";
+            const auto active_scene=backend.sceneView().recall.active;
+            if(active_scene<8) std::snprintf(scene_name,sizeof(scene_name),"%02u",active_scene+1);
             char summary[112];
-            std::snprintf(summary,sizeof(summary),"%s  %s%s",active,status->modified?"MODIFIED":"CLEAN",pending);
+            std::snprintf(summary,sizeof(summary),"%s  %s%s  SCENE %s",active,status->modified?"MODIFIED":"CLEAN",pending,scene_name);
             text(pattern_summary_,summary);
             refreshBrowser();
         }
@@ -180,13 +196,14 @@ public:
         capture_revision_=midi.capture_revision;
         char buf[96];
         constexpr const char* modes[]{"NORMAL","STEP INPUT","STEP RECORD"};
-        std::snprintf(buf,sizeof(buf),"%s %+d%s",modes[unsigned(midi.mode)],midi.effective,midi.live?" LT":"");
+        std::snprintf(buf,sizeof(buf),"%s  TRANSPOSE %+d st  LIVE %s  STEP %02u",modes[unsigned(midi.mode)],midi.effective,midi.live?"ON":"OFF",status->current_step<seq::kSteps?status->current_step+1:0);
         text(midi_,buf);
         if(shown_mode_!=midi.mode) {
             shown_mode_=midi.mode;
             lv_obj_set_style_text_color(midi_,lv_color_hex(midi.mode==seq::InputMode::StepRecord?
                 palette::kAccentPrimary:palette::kTextPrimary),0);
         }
+        if(live_) text(lv_obj_get_child(live_,0),midi.live?"LIVE TRANSPOSE ON":"LIVE TRANSPOSE OFF");
         if(settings_info_) {
             char last[12]="--";
             if(midi.last_note!=seq::kNoStep) noteName(last,sizeof(last),midi.last_note);
@@ -206,9 +223,27 @@ public:
         unsigned div=0;
         while(div+1<std::size(kDivisions) && kDivisions[div]!=status->division) ++div;
         std::snprintf(buf,sizeof(buf),"DIV %s",kDivisionNames[div]);
-        text(lv_obj_get_child(division_,0),buf);
-        text(lv_obj_get_child(quantize_,0),status->quantize?"SCALE QUANTIZE ON":"SCALE QUANTIZE OFF");
+        if(division_) text(lv_obj_get_child(division_,0),buf);
+        if(quantize_) text(lv_obj_get_child(quantize_,0),status->quantize?"SCALE QUANTIZE ON":"SCALE QUANTIZE OFF");
 
+        if(!edit_) {
+            updateSlider(Length,pattern->length);
+            updateSlider(Swing,status->swing);
+            updateSlider(Transpose,status->transpose);
+            for(unsigned i=0;i<seq::kSteps;++i) {
+                const bool current=status->current_step==i;
+                const auto& cell=pattern->steps[i];
+                if(!(shown_steps_[i]==cell) || shown_playhead_==i || current || shown_length_!=pattern->length) {
+                    std::snprintf(buf,sizeof(buf),"%02u%s",i+1,cell.enabled?"+":"-");
+                    text(lv_obj_get_child(headers_[i],0),buf);
+                    lv_obj_set_style_bg_color(headers_[i],lv_color_hex(current?palette::kAccentPrimary:palette::kPanelHighlight),0);
+                    shown_steps_[i]=cell;
+                }
+            }
+            shown_playhead_=status->current_step;
+            shown_length_=pattern->length;
+            return;
+        }
         const auto& step=pattern->steps[selected_];
         char note[8];
         noteName(note,sizeof(note),step.note);
@@ -219,12 +254,10 @@ public:
             text(editor_note_,buf);
         }
         updateSlider(Length,pattern->length);
-        updateSlider(Swing,status->swing);
-        updateSlider(Transpose,status->transpose);
         updateSlider(Velocity,step.velocity);
         updateSlider(Gate,step.gate);
 
-        text(lv_obj_get_child(enabled_,0), midi.mode==seq::InputMode::StepRecord?"REST / NEXT":
+        if(enabled_) text(lv_obj_get_child(enabled_,0), midi.mode==seq::InputMode::StepRecord?"REST / NEXT":
              step.enabled?"ENABLED / OFF":"REST / ENABLE");
 
         const bool octave_changed=shown_octave_!=octave_;
@@ -232,11 +265,12 @@ public:
             for(int row=0;row<kPitchRows;++row) {
                 const int pitch=octave_*12+11-row;
                 if(pitch<=127) noteName(buf,sizeof(buf),pitch); else buf[0]=0;
-                text(pitches_[row],buf);
+                text(pitches_[row],(row==0 || row==4 || row==8 || row==11)?buf:"");
             }
         }
         const bool selection_changed=shown_selected_!=selected_;
-        for(unsigned i=0;i<seq::kSteps;++i) {
+        for(unsigned col=0;col<8;++col) {
+            const unsigned i=(selected_/8)*8+col;
             const auto& cell=pattern->steps[i];
             const bool current=status->current_step==i;
             const bool was_current=shown_playhead_==i;
@@ -246,26 +280,26 @@ public:
                 const bool visible=cell.enabled && row>=0 && row<kPitchRows;
                 const char marker=!cell.enabled?'-':visible?'+':row<0?'^':'v';
                 std::snprintf(buf,sizeof(buf),"%02u%c",i+1,marker);
-                text(lv_obj_get_child(headers_[i],0),buf);
+                text(lv_obj_get_child(headers_[col],0),buf);
                 const auto color=current?palette::kAccentPrimary:i==selected_?palette::kActive:
                     i>=pattern->length?palette::kBackground:palette::kPanelHighlight;
-                lv_obj_set_style_bg_color(headers_[i],lv_color_hex(color),0);
-                lv_obj_set_style_text_color(lv_obj_get_child(headers_[i],0),
+                lv_obj_set_style_bg_color(headers_[col],lv_color_hex(color),0);
+                lv_obj_set_style_text_color(lv_obj_get_child(headers_[col],0),
                     lv_color_hex(current || i==selected_?palette::kBackground:palette::kTextPrimary),0);
-                show(notes_[i],visible);
+                show(notes_[col],visible);
                 if(visible) {
-                    lv_obj_set_y(notes_[i],row*row_height_+2);
+                    lv_obj_set_y(notes_[col],row*row_height_+2);
                     const auto note_color=i>=pattern->length?palette::kTextSecondary:
                         i==selected_?palette::kTextPrimary:palette::kActive;
-                    lv_obj_set_style_bg_color(notes_[i],lv_color_hex(note_color),0);
+                    lv_obj_set_style_bg_color(notes_[col],lv_color_hex(note_color),0);
                 }
                 shown_steps_[i]=cell;
             }
         }
-        if(status->current_step!=shown_playhead_) {
-            show(playhead_,status->current_step!=seq::kNoStep);
+        if(status->current_step!=shown_playhead_ || selection_changed) {
+            show(playhead_,status->current_step!=seq::kNoStep && status->current_step/8==selected_/8);
             if(status->current_step!=seq::kNoStep)
-                lv_obj_set_x(playhead_,status->current_step*kColumnWidth);
+                lv_obj_set_x(playhead_,(status->current_step%8)*kColumnWidth);
         }
         shown_octave_=octave_;
         shown_selected_=selected_;
@@ -318,6 +352,7 @@ private:
     }
 
     void updateSlider(Parameter param,int value) {
+        if(!sliders_[param]) return;
         if(lv_obj_has_state(sliders_[param],LV_STATE_PRESSED)) return;
         if(lv_slider_get_value(sliders_[param])!=value) lv_slider_set_value(sliders_[param],value,LV_ANIM_OFF);
         formatSlider(param,value);
@@ -349,7 +384,7 @@ private:
         if(!pattern || x<0 || x>=kGridWidth || y<0 || y>=kPitchRows*row_height_) return;
         const int pitch=octave_*12+11-y/row_height_;
         if(pitch>127) return;
-        selected_=unsigned(x/kColumnWidth);
+        selected_=(selected_/8)*8+unsigned(x/kColumnWidth);
         saveSelection();
         seq::Request request;
         request.index=uint8_t(selected_);
@@ -378,40 +413,44 @@ private:
 
     void closePanel() {
         if(!panel_) return;
-        lv_obj_delete(panel_);
+        lv_obj_add_flag(panel_,LV_OBJ_FLAG_HIDDEN);
+        lv_obj_delete_async(panel_);
         panel_=settings_info_=editor_note_=nullptr;
+        live_=play_live_; thru_=source_=nullptr;
         for(unsigned i=InputChannel;i<ParameterCount;++i) sliders_[i]=values_[i]=nullptr;
     }
 
     void openPanel(bool settings) {
         closePanel();
-        panel_=rectangle(parent_,60,92,722,244,palette::kPanel);
+        panel_=rectangle(parent_,0,146,640,240,palette::kPanel);
         lv_obj_add_flag(panel_,LV_OBJ_FLAG_CLICKABLE);
-        button(panel_,"CLOSE",610,10,96,40,Close);
+        button(panel_,"CLOSE",532,8,96,40,Close);
         createLabel(panel_,settings?"MIDI / RECORD SETTINGS":"EDIT SELECTED STEP",18,18,400,
                     &lv_font_montserrat_14,palette::kTextPrimary);
         if(settings) {
-            settings_info_=createLabel(panel_,"",18,52,680,&lv_font_montserrat_14,palette::kTextPrimary);
+            settings_info_=createLabel(panel_,"",18,52,612,&lv_font_montserrat_14,palette::kTextPrimary);
             button(panel_,"NORMAL PLAY",18,78,126,44,Normal);
             button(panel_,"STEP INPUT",151,78,124,44,StepInput);
             button(panel_,"STEP RECORD",282,78,126,44,StepRecord);
-            live_=button(panel_,"",415,78,174,44,Live);
+            live_=button(panel_,"",424,78,204,44,Live);
             thru_=button(panel_,"",18,136,150,46,Thru);
             source_=button(panel_,"",18,190,150,44,Source);
-            makeSlider(panel_,InputChannel,192,136,230,0,16);
-            makeSlider(panel_,LiveChannel,451,136,240,0,16);
-            makeSlider(panel_,RecordGate,192,190,230,1,100);
-            makeSlider(panel_,Reference,451,190,240,0,127);
+            makeSlider(panel_,InputChannel,180,136,202,0,16);
+            makeSlider(panel_,LiveChannel,408,136,220,0,16);
+            makeSlider(panel_,RecordGate,180,190,202,1,100);
+            makeSlider(panel_,Reference,408,190,220,0,127);
         } else {
-            editor_note_=createLabel(panel_,"",18,70,680,&lv_font_montserrat_28,palette::kTextPrimary);
-            button(panel_,"SEMITONE -",18,130,156,52,PitchDown);
-            button(panel_,"SEMITONE +",188,130,156,52,PitchUp);
-            button(panel_,"OCTAVE -",358,130,156,52,PitchOctaveDown);
-            button(panel_,"OCTAVE +",528,130,156,52,PitchOctaveUp);
-            button(panel_,"INSERT REST",18,190,156,44,InsertRest);
-            button(panel_,"ENABLE / REST",188,190,156,44,ToggleStep);
-            button(panel_,"PREV STEP",358,190,156,44,PrevStep);
-            button(panel_,"NEXT STEP",528,190,156,44,NextStep);
+            editor_note_=createLabel(panel_,"",18,70,612,&lv_font_montserrat_28,palette::kTextPrimary);
+            button(panel_,"SEMITONE -",10,100,146,44,PitchDown);
+            button(panel_,"SEMITONE +",166,100,146,44,PitchUp);
+            button(panel_,"OCTAVE -",322,100,146,44,PitchOctaveDown);
+            button(panel_,"OCTAVE +",478,100,146,44,PitchOctaveUp);
+            button(panel_,"INSERT REST",10,150,146,44,InsertRest);
+            button(panel_,"ENABLE / REST",166,150,146,44,ToggleStep);
+            button(panel_,"PREV STEP",322,150,146,44,PrevStep);
+            button(panel_,"NEXT STEP",478,150,146,44,NextStep);
+            button(panel_,"LOAD DEMO PATTERN",10,200,300,36,Demo);
+            button(panel_,"CLEAR PATTERN",320,200,304,36,Clear);
         }
         refresh(*backend_);
     }
@@ -422,6 +461,7 @@ private:
 
     void browserButton(const char* label,int x,int y,int w,BrowserAction action) {
         auto* obj=createActionButton(browser_,label,x,y,w,40,nullptr,nullptr);
+        browser_actions_[unsigned(action)]=obj;
         attachLvContext<BrowserContext>(obj,{this,action},[](lv_event_t* event) {
             auto* ctx=static_cast<BrowserContext*>(lv_event_get_user_data(event));
             ctx->view->browserPress(ctx->action);
@@ -431,29 +471,30 @@ private:
     void openBrowser() {
         if(browser_) return;
         closePanel();
-        browser_=rectangle(parent_,0,0,800,385,palette::kPanel);
+        browser_=rectangle(parent_,0,0,640,385,palette::kPanel);
         lv_obj_add_flag(browser_,LV_OBJ_FLAG_CLICKABLE);
         createLabel(browser_,"PATTERNS",12,12,105,&lv_font_montserrat_14,palette::kTextPrimary);
-        browser_mode_=createLabel(browser_,"",128,12,170,&lv_font_montserrat_14,palette::kTextPrimary);
-        browserButton("SWITCH MODE",305,4,136,BrowserAction::Mode);
-        browserButton("CANCEL QUEUE",447,4,151,BrowserAction::Cancel);
-        browserButton("CLOSE",656,4,132,BrowserAction::Close);
+        browser_mode_=createLabel(browser_,"",128,12,162,&lv_font_montserrat_14,palette::kTextPrimary);
+        browserButton("SWITCH MODE",294,4,150,BrowserAction::Mode);
+        browserButton("CANCEL QUEUE",450,4,178,BrowserAction::Cancel);
+
         for(uint8_t i=0;i<seq::kPatternSlots;++i) {
-            auto* obj=browser_slots_[i]=createActionButton(browser_,"",12+196*(i%4),53+46*(i/4),188,42,nullptr,nullptr);
+            auto* obj=browser_slots_[i]=createActionButton(browser_,"",8+156*(i%4),53+46*(i/4),150,42,nullptr,nullptr);
             auto* label=lv_obj_get_child(obj,0);
-            lv_obj_set_width(label,174);
+            lv_obj_set_width(label,138);
             lv_label_set_long_mode(label,LV_LABEL_LONG_DOT);
             attachLvContext<SlotContext>(obj,{this,i},[](lv_event_t* event) {
                 auto* ctx=static_cast<SlotContext*>(lv_event_get_user_data(event));
                 ctx->view->browser_slot_=ctx->slot;
+                ctx->view->nav_->setPatternSelection(ctx->slot);
                 ctx->view->browser_confirm_=BrowserAction::Close;
                 ctx->view->fillName();
                 ctx->view->refreshBrowser();
             },LV_EVENT_CLICKED);
         }
         browser_name_=lv_textarea_create(browser_);
-        lv_obj_set_pos(browser_name_,12,241);
-        lv_obj_set_size(browser_name_,216,40);
+        lv_obj_set_pos(browser_name_,8,241);
+        lv_obj_set_size(browser_name_,196,40);
         lv_textarea_set_one_line(browser_name_,true);
         lv_textarea_set_max_length(browser_name_,seq::kPatternNameBytes-1);
         lv_textarea_set_placeholder_text(browser_name_,"Pattern name");
@@ -461,15 +502,14 @@ private:
             auto* view=static_cast<SequencerScreen*>(lv_event_get_user_data(event));
             view->showNameKeyboard();
         },LV_EVENT_CLICKED,this);
-        browserButton("LOAD",236,241,128,BrowserAction::Load);
-        browserButton("SAVE",371,241,128,BrowserAction::Save);
-        browserButton("RENAME",506,241,128,BrowserAction::Rename);
-        browserButton("DELETE",641,241,147,BrowserAction::Delete);
-        browserButton("DISCARD & LOAD",12,292,186,BrowserAction::Discard);
-        browserButton("SAVE & LOAD",205,292,175,BrowserAction::SaveLoad);
-        browser_info_=createLabel(browser_,"",12,346,776,&lv_font_montserrat_14,palette::kWarning);
-        const auto* status=backend_->sequencerStatus();
-        if(status && status->active_slot<seq::kPatternSlots) browser_slot_=status->active_slot;
+        browserButton("LOAD",212,241,96,BrowserAction::Load);
+        browserButton("SAVE",316,241,96,BrowserAction::Save);
+        browserButton("RENAME",420,241,96,BrowserAction::Rename);
+        browserButton("DELETE",524,241,104,BrowserAction::Delete);
+        browserButton("DISCARD & LOAD",8,292,198,BrowserAction::Discard);
+        browserButton("SAVE & LOAD",214,292,198,BrowserAction::SaveLoad);
+        browser_info_=createLabel(browser_,"",8,346,620,&lv_font_montserrat_14,palette::kWarning);
+        browser_detail_=createLabel(browser_,"",8,323,620,&lv_font_montserrat_14,palette::kTextSecondary);
         fillName();
         refreshBrowser();
     }
@@ -477,15 +517,16 @@ private:
     void showNameKeyboard() {
         if(browser_keyboard_) return;
         browser_keyboard_=lv_keyboard_create(browser_);
-        lv_obj_set_size(browser_keyboard_,776,168);
-        lv_obj_align(browser_keyboard_,LV_ALIGN_TOP_LEFT,12,65);
+        lv_obj_set_size(browser_keyboard_,620,168);
+        lv_obj_align(browser_keyboard_,LV_ALIGN_TOP_LEFT,8,65);
         lv_keyboard_set_textarea(browser_keyboard_,browser_name_);
         lv_obj_add_event_cb(browser_keyboard_,[](lv_event_t* event) {
             const auto code=lv_event_get_code(event);
             if(code!=LV_EVENT_READY && code!=LV_EVENT_CANCEL) return;
             auto* view=static_cast<SequencerScreen*>(lv_event_get_user_data(event));
             if(code==LV_EVENT_CANCEL) view->fillName();
-            lv_obj_delete(view->browser_keyboard_);
+            lv_obj_add_flag(view->browser_keyboard_,LV_OBJ_FLAG_HIDDEN);
+            lv_obj_delete_async(view->browser_keyboard_);
             view->browser_keyboard_=nullptr;
         },LV_EVENT_ALL,this);
     }
@@ -524,15 +565,70 @@ private:
             }
         }
         browser_shown_slot_=browser_slot_;
+        const auto* selected=backend_->patternSlot(browser_slot_);
+        char details[120];
+        if(selected && selected->state==seq::SlotState::Valid) {
+            const auto& cfg=selected->settings;
+            unsigned d=0;
+            while(d+1<std::size(kDivisions) && kDivisions[d]!=cfg.division) ++d;
+            std::snprintf(details,sizeof(details),"SLOT %02u  LEN %u  %s  SW %u%%  TR %+d  Q %s  VERIFIED",
+                browser_slot_+1,cfg.pattern.length,kDivisionNames[d],cfg.swing,cfg.transpose,cfg.quantize?"ON":"OFF");
+        } else std::snprintf(details,sizeof(details),"SLOT %02u  %s",browser_slot_+1,selected?"NO VALID PATTERN":"UNAVAILABLE");
+        text(browser_detail_,details);
         const char* operation=backend_->patternNotice();
-        if(browser_confirm_==BrowserAction::Delete) operation="TAP DELETE AGAIN TO CONFIRM";
+        if(browser_confirm_==BrowserAction::Delete) operation="CONFIRM DELETE: DESTINATION SHOWN IN DIALOG";
         else if(browser_confirm_==BrowserAction::Load) operation="CHOOSE SAVE & LOAD, DISCARD & LOAD, OR CLOSE";
-        else if(browser_confirm_==BrowserAction::Save) operation="TAP SAVE AGAIN TO OVERWRITE THIS SLOT";
+        else if(browser_confirm_==BrowserAction::Save) operation="CONFIRM OVERWRITE: DESTINATION SHOWN IN DIALOG";
         char message[112];
         std::snprintf(message,sizeof(message),"%s   %s",
                       status && status->modified?"PATTERN MODIFIED":"PATTERN CLEAN",
-                      *operation?operation:"STOP PLAYBACK TO SAVE, RENAME OR DELETE");
+                      *operation?operation:"SAVE / RENAME / DELETE MAY STOP TRANSPORT");
         text(browser_info_,message);
+        const bool valid=selected && selected->state==seq::SlotState::Valid;
+        const bool writable=selected && (valid || selected->state==seq::SlotState::Empty);
+        const bool busy=backend_->patternBusy();
+        const auto* arp=backend_->arpStatus();
+        const bool storage_ready=status && !status->playing && (!arp || !arp->length) && !backend_->model().diagnostics().active_voices;
+        for(unsigned i=0;i<9;++i) if(browser_actions_[i]) {
+            const auto action=BrowserAction(i);
+            bool available=true;
+            if(action==BrowserAction::Load) available=valid && !busy;
+            if(action==BrowserAction::Save) available=writable && !busy && storage_ready;
+            if(action==BrowserAction::Rename || action==BrowserAction::Delete) available=valid && !busy && storage_ready;
+            if(action==BrowserAction::Discard || action==BrowserAction::SaveLoad) {
+                show(browser_actions_[i],browser_confirm_==BrowserAction::Load);
+                available=valid && !busy && (action!=BrowserAction::SaveLoad || (storage_ready && status && status->active_slot<seq::kPatternSlots));
+            }
+            if(available) lv_obj_remove_state(browser_actions_[i],LV_STATE_DISABLED);
+            else lv_obj_add_state(browser_actions_[i],LV_STATE_DISABLED);
+        }
+    }
+
+    void confirmStorage(BrowserAction action) {
+        pending_browser_action_=action;
+        char title[80];
+        const auto* slot=backend_->patternSlot(browser_slot_);
+        std::snprintf(title,sizeof(title),"%s SLOT %02u: %s",action==BrowserAction::Delete?"DELETE":"OVERWRITE",
+            browser_slot_+1,slot?slot->name:"");
+        if(action==BrowserAction::SaveLoad) {
+            const auto* status=backend_->sequencerStatus();
+            std::snprintf(title,sizeof(title),"SAVE SLOT %02u THEN LOAD SLOT %02u",
+                status?status->active_slot+1:0,browser_slot_+1);
+        }
+        ConfirmDialogOptions opts;
+        opts.title=title;
+        opts.body="Storage quiet silences audio and stops transport. Continue?";
+        opts.confirm_label="CONFIRM";
+        opts.cancel_label="CANCEL";
+        opts.destructive=true;
+        opts.user_data=this;
+        opts.on_confirm=[](void* data) {
+            auto* view=static_cast<SequencerScreen*>(data);
+            view->storage_confirmed_=true;
+            view->browser_confirm_=view->pending_browser_action_==BrowserAction::SaveLoad?BrowserAction::Load:view->pending_browser_action_;
+            view->browserPress(view->pending_browser_action_);
+        };
+        dialog_.open(nav_->contentRoot(),opts);
     }
 
     void browserPress(BrowserAction action) {
@@ -564,21 +660,20 @@ private:
         case BrowserAction::Discard:
         case BrowserAction::SaveLoad:
             if(browser_confirm_!=BrowserAction::Load) return;
+            if(action==BrowserAction::SaveLoad && !storage_confirmed_) { confirmStorage(action); return; }
             operation.discard=action==BrowserAction::Discard;
             if(!operation.discard) operation.action=PatternAction::SaveAndLoad;
             break;
         case BrowserAction::Save:
-            if(slot && slot->state==seq::SlotState::Valid && browser_confirm_!=action) {
-                browser_confirm_=action;
-                refreshBrowser();
+            if(browser_confirm_!=action) {
+                confirmStorage(action);
                 return;
             }
             operation.action=PatternAction::Save;
             break;
         case BrowserAction::Delete:
             if(browser_confirm_!=action) {
-                browser_confirm_=action;
-                refreshBrowser();
+                confirmStorage(action);
                 return;
             }
             operation.action=PatternAction::Delete;
@@ -588,6 +683,7 @@ private:
         default: return;
         }
         browser_confirm_=BrowserAction::Close;
+        storage_confirmed_=false;
         std::snprintf(operation.name,sizeof(operation.name),"%s",lv_textarea_get_text(browser_name_));
         backend_->requestPattern(operation);
         refreshBrowser();
@@ -599,8 +695,19 @@ private:
         if(!status || !pattern) return;
         const bool confirmed=confirm_==control;
         confirm_=Play;
+        if(control==ViewPlay || control==ViewEdit) {
+            nav_->setSequencerEdit(control==ViewEdit);
+            nav_->requestNavigateTo(ScreenId::Sequencer);
+            return;
+        }
+        if(control==Page) {
+            selected_=(selected_+8)%seq::kSteps;
+            saveSelection();
+            selectStep();
+            return;
+        }
         if(control>=SelectFirst) {
-            selected_=unsigned(control-SelectFirst);
+            selected_=(edit_?(selected_/8)*8:0)+unsigned(control-SelectFirst);
             const auto& step=pattern->steps[selected_];
             if(step.enabled) octave_=step.note/12;
             saveSelection();
@@ -720,6 +827,7 @@ private:
     void showFeedback(UiCommandResult result,const seq::Status* status) {
         const char* message=result.notice;
         char drops[54];
+        if(confirm_==Live) message="ANY CHANNEL: TAP LIVE AGAIN TO CONFIRM";
         if(confirm_==Demo) message="TAP LOAD DEMO AGAIN";
         if(confirm_==Clear) message="TAP CLEAR AGAIN";
         if(!message && status && status->playing && status->voice_drops) {
@@ -736,12 +844,19 @@ private:
         text(feedback_,message?message:"");
     }
 
-    void saveSelection() { nav_->setSubTab(id(),uint8_t(octave_*seq::kSteps+selected_+1)); }
+    void saveSelection() { nav_->setSubTab(ScreenId::Sequencer,uint8_t(octave_*seq::kSteps+selected_+1)); }
 
+    lv_obj_t* play_live_=nullptr;
+    bool library_only_=false,edit_=false;
     lv_obj_t *parent_=nullptr,*panel_=nullptr,*midi_=nullptr,*settings_info_=nullptr,
              *editor_note_=nullptr,*live_=nullptr,*thru_=nullptr,*source_=nullptr;
     lv_obj_t *browser_=nullptr,*browser_mode_=nullptr,*browser_name_=nullptr,*browser_keyboard_=nullptr,
              *browser_info_=nullptr,*pattern_summary_=nullptr;
+    lv_obj_t* browser_actions_[9]{};
+    bool storage_confirmed_=false;
+    ConfirmDialog dialog_;
+    BrowserAction pending_browser_action_=BrowserAction::Close;
+    lv_obj_t* browser_detail_=nullptr;
     lv_obj_t* browser_slots_[seq::kPatternSlots]{};
     uint8_t browser_slot_=0,browser_shown_slot_=seq::kNoSlot;
     seq::SwitchMode browser_switch_=seq::SwitchMode::Immediate;
@@ -771,5 +886,7 @@ private:
 ScreenView* createSequencerScreen() {
     return new SequencerScreen();
 }
+
+ScreenView* createPatternsScreen() { return new SequencerScreen(true); }
 
 } // namespace smk::p4::ui
