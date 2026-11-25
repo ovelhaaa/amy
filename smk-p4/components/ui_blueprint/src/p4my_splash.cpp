@@ -1,19 +1,28 @@
 #include "p4my_splash.h"
 #include "ui_theme.h"
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 
 namespace smk::p4::ui {
 namespace {
 constexpr uint32_t kBg=0x080F17, kGrid=0x15222B, kSecondary=0x648496;
 constexpr uint32_t kAmber=0xEAB65B, kBright=0xFFBD5A, kText=0xE6EDF2;
+constexpr float kTwoPi=6.2831853f;
+constexpr float kHalfPiScale=2.0f/3.14159265f;
+
 float ramp(float t, float a, float b) {
     float x=(t-a)/(b-a);
     if(x<0) x=0;
     if(x>1) x=1;
     return x*x*(3-2*x);
 }
-void opacity(lv_obj_t* obj, float value) {
-    lv_obj_set_style_opa(obj, static_cast<lv_opa_t>(value*255), 0);
+void setOpaIfChanged(lv_obj_t* obj, float value) {
+    if(!obj) return;
+    const lv_opa_t next=static_cast<lv_opa_t>(value*255.0f);
+    if(lv_obj_get_style_opa(obj,LV_PART_MAIN)!=next) {
+        lv_obj_set_style_opa(obj,next,0);
+    }
 }
 lv_obj_t* group(lv_obj_t* parent) {
     auto* obj=lv_obj_create(parent);
@@ -135,27 +144,36 @@ void drawTechnical(lv_event_t* event) {
     for(int y=0;y<kScreenHeight;y+=40) segment(0,y,kScreenWidth,y,kGrid,170);
     for(const auto& mark:kMarks) segment(mark.x1,mark.y1,mark.x2,mark.y2,mark.color,mark.opacity);
 }
-}
+} // namespace
+
 bool P4mySplash::begin(lv_obj_t* parent,uint32_t now_ms,Config config) {
     close();
     if(!parent || config.duration_ms==0 || (config.fps!=20 && config.fps!=30) || config.exit_ms>1000) return false;
 #if LV_USE_STDLIB_MALLOC == LV_STDLIB_BUILTIN
     // Refuse the optional overlay before LVGL assertions on a depleted pool.
-    // Keep conservative initialization/fragmentation headroom for this optional UI.
     lv_mem_monitor_t memory{};
     lv_mem_monitor(&memory);
     if(memory.free_size<20u*1024u || memory.free_biggest_size<2048u) return false;
 #endif
     config_=config;
-    start_ms_=last_ms_=now_ms;
-    exiting_=false;
+    metrics_=Metrics{};
+    start_ms_=last_ms_=current_now_ms_=now_ms;
+    hold_start_ms_=wait_start_ms_=exit_start_ms_=now_ms;
+    engine_ready_=false;
+    engine_error_=false;
+    final_rendered_=false;
+    state_=State::Animating;
+
     root_=group(parent);
-    if(!root_) return false;
+    if(!root_) { state_=State::Inactive; return false; }
     lv_obj_add_event_cb(root_,deleted,LV_EVENT_DELETE,this);
+    lv_obj_add_event_cb(root_,touched,LV_EVENT_PRESSED,this);
     lv_obj_set_style_bg_color(root_,lv_color_hex(kBg),0);
     lv_obj_set_style_bg_opa(root_,LV_OPA_COVER,0);
-    // Modal while visible; the existing Performance tree remains underneath.
+    // Modal while visible; stop touch bubbling so underlying Performance controls are never hit.
     lv_obj_add_flag(root_,LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(root_,LV_OBJ_FLAG_EVENT_BUBBLE);
+
     technical_=group(root_);
     lv_obj_set_style_line_width(technical_,1,0);
     lv_obj_add_event_cb(technical_,drawTechnical,LV_EVENT_DRAW_MAIN,nullptr);
@@ -175,52 +193,166 @@ bool P4mySplash::begin(lv_obj_t* parent,uint32_t now_ms,Config config) {
     render(0);
     return true;
 }
+
 void P4mySplash::render(uint32_t elapsed_ms) {
     if(!root_) return;
-    const float t=static_cast<float>(elapsed_ms)*2700.0f/config_.duration_ms;
-    opacity(technical_,ramp(t,0,400));
+    const uint32_t clamped=std::min(elapsed_ms,config_.duration_ms);
+    const bool is_final=(clamped>=config_.duration_ms);
+    if(is_final && final_rendered_) return;
+
+    const auto t0=std::chrono::steady_clock::now();
+    const float t=static_cast<float>(clamped)*2700.0f/static_cast<float>(config_.duration_ms);
+    setOpaIfChanged(technical_,ramp(t,0,400));
+
+    // Smoothly slowing phase, aligned to the operator reference at 2700 ms.
+    const float phase=1.8f*(std::exp(-t/1000.0f)-std::exp(-2.7f));
     for(unsigned w=0;w<3;++w) {
-        // Smoothly slowing phase, aligned to the operator reference at 2700 ms.
-        const float phase=1.8f*(std::exp(-t/1000)-std::exp(-2.7f));
         for(unsigned i=0;i<kPoints;++i) {
             const float x=static_cast<float>(i)*kScreenWidth/static_cast<float>(kPoints-1);
             float y;
-            if(w==0) y=240-55*std::cos((x-40)*6.2831853f/430+phase);
-            else if(w==1) y=240+86*(2.0f/3.14159265f)*std::asin(std::cos((x-8)*6.2831853f/286+phase));
-            else y=240+52*std::sin(x*6.2831853f/640-0.82f+phase);
+            if(w==0) y=240.0f-55.0f*std::cos((x-40.0f)*kTwoPi/430.0f+phase);
+            else if(w==1) y=240.0f+86.0f*kHalfPiScale*std::asin(std::cos((x-8.0f)*kTwoPi/286.0f+phase));
+            else y=240.0f+52.0f*std::sin(x*kTwoPi/640.0f-0.82f+phase);
             points_[w][i]={lv_value_precise_t(x),lv_value_precise_t(y)};
         }
     }
+    ++metrics_.wave_updates;
+
     for(unsigned i=0;i<5;++i) {
         lv_obj_invalidate(waves_[i]);
-        opacity(waves_[i],i<2?ramp(t,200,900):ramp(t,400,1200));
+        setOpaIfChanged(waves_[i],i<2?ramp(t,200,900):ramp(t,400,1200));
     }
-    opacity(logo_,ramp(t,900,1800));
-    opacity(subtitle_,ramp(t,1800,2300));
-    opacity(credit_,ramp(t,2300,2700));
+    setOpaIfChanged(logo_,ramp(t,900,1800));
+    setOpaIfChanged(subtitle_,ramp(t,1800,2300));
+    setOpaIfChanged(credit_,ramp(t,2300,2700));
+    final_rendered_=is_final;
+
+    const auto us=static_cast<uint32_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-t0).count());
+    ++metrics_.frames_rendered;
+    metrics_.render_total_us+=us;
+    if(us>metrics_.render_max_us) metrics_.render_max_us=us;
 }
-void P4mySplash::seek(uint32_t elapsed_ms) { render(elapsed_ms); }
+
+void P4mySplash::seek(uint32_t elapsed_ms) {
+    if(elapsed_ms<config_.duration_ms) final_rendered_=false;
+    render(elapsed_ms);
+}
+
+void P4mySplash::setEngineReady(bool ready, uint32_t now_ms) {
+    if(!root_ || engine_ready_ || !ready) return;
+    engine_ready_=true;
+    metrics_.engine_ready_recorded=true;
+    metrics_.engine_ready_ms=now_ms-start_ms_;
+}
+
+void P4mySplash::setEngineError(bool error, uint32_t now_ms) {
+    if(!root_ || !error || engine_error_) return;
+    engine_error_=true;
+    beginExit(DismissReason::EngineError,now_ms);
+}
+
+void P4mySplash::requestDismiss(DismissReason reason, uint32_t now_ms) {
+    if(!root_) return;
+    beginExit(reason,now_ms);
+}
+
 void P4mySplash::finish(uint32_t now_ms) {
-    if(!root_ || exiting_) return;
-    exiting_=true; exit_start_ms_=now_ms;
+    requestDismiss(DismissReason::ExplicitCommand,now_ms);
 }
+
+void P4mySplash::beginExit(DismissReason reason, uint32_t now_ms) {
+    if(!root_ || state_==State::Exiting || state_==State::Closed) return;
+    metrics_.dismiss_reason=reason;
+    exit_start_ms_=now_ms;
+    last_ms_=now_ms;
+    if(config_.exit_ms==0) {
+        metrics_.effective_duration_ms=now_ms-start_ms_;
+        close();
+        return;
+    }
+    state_=State::Exiting;
+}
+
 void P4mySplash::service(uint32_t now_ms) {
     if(!root_) return;
-    if(exiting_ && (config_.exit_ms==0 || now_ms-exit_start_ms_>=config_.exit_ms)) { close(); return; }
-    const uint32_t period_ms=1000u/config_.fps;
-    if(now_ms-last_ms_<period_ms) return;
-    last_ms_=now_ms-((now_ms-last_ms_)%period_ms);
-    render(now_ms-start_ms_);
-    if(exiting_) opacity(root_,1-ramp(static_cast<float>(now_ms-exit_start_ms_),0,static_cast<float>(config_.exit_ms)));
+    current_now_ms_=now_ms;
+
+    if(state_==State::Exiting) {
+        if(config_.exit_ms==0 || (now_ms-exit_start_ms_)>=config_.exit_ms) {
+            metrics_.effective_duration_ms=now_ms-start_ms_;
+            close();
+            return;
+        }
+        const uint32_t period_ms=1000u/config_.fps;
+        if((now_ms-last_ms_)<period_ms) return;
+        last_ms_=now_ms-((now_ms-last_ms_)%period_ms);
+        setOpaIfChanged(root_,1.0f-ramp(static_cast<float>(now_ms-exit_start_ms_),0.0f,static_cast<float>(config_.exit_ms)));
+        return;
+    }
+
+    if(state_==State::Animating) {
+        const uint32_t elapsed=now_ms-start_ms_;
+        if(elapsed>=config_.duration_ms) {
+            render(config_.duration_ms);
+            hold_start_ms_=now_ms;
+            state_=State::FinalHold;
+            if(config_.final_hold_ms==0) {
+                if(engine_ready_) beginExit(DismissReason::AnimationComplete,now_ms);
+                else { wait_start_ms_=now_ms; state_=State::WaitingForEngine; }
+            }
+            return;
+        }
+        const uint32_t period_ms=1000u/config_.fps;
+        if((now_ms-last_ms_)<period_ms) return;
+        last_ms_=now_ms-((now_ms-last_ms_)%period_ms);
+        render(elapsed);
+        return;
+    }
+
+    if(state_==State::FinalHold) {
+        if((now_ms-hold_start_ms_)>=config_.final_hold_ms) {
+            if(engine_ready_) {
+                beginExit(DismissReason::AnimationComplete,now_ms);
+            } else {
+                wait_start_ms_=now_ms;
+                state_=State::WaitingForEngine;
+            }
+        }
+        return;
+    }
+
+    if(state_==State::WaitingForEngine) {
+        if(engine_ready_ || (config_.wait_timeout_ms>0 && (now_ms-wait_start_ms_)>=config_.wait_timeout_ms)) {
+            beginExit(DismissReason::AnimationComplete,now_ms);
+        }
+    }
 }
+
 void P4mySplash::deleted(lv_event_t* event) {
     auto* self=static_cast<P4mySplash*>(lv_event_get_user_data(event));
-    self->root_=nullptr; // Parent deletion also cancels the lifecycle safely.
+    if(!self) return;
+    self->root_=self->technical_=self->logo_=self->subtitle_=self->credit_=nullptr;
+    for(auto& wave:self->waves_) wave=nullptr;
+    if(self->metrics_.dismiss_reason==DismissReason::None) {
+        self->metrics_.dismiss_reason=DismissReason::ParentDeleted;
+    }
+    self->state_=State::Closed;
 }
+
+void P4mySplash::touched(lv_event_t* event) {
+    lv_event_stop_bubbling(event);
+    auto* self=static_cast<P4mySplash*>(lv_event_get_user_data(event));
+    if(!self) return;
+    self->requestDismiss(DismissReason::Touch,self->current_now_ms_);
+}
+
 void P4mySplash::close() {
-    if(root_) lv_obj_delete(root_);
+    if(root_) {
+        lv_obj_delete(root_);
+    }
     root_=technical_=logo_=subtitle_=credit_=nullptr;
     for(auto& wave:waves_) wave=nullptr;
-    exiting_=false;
+    if(state_!=State::Inactive) state_=State::Closed;
 }
 } // namespace smk::p4::ui

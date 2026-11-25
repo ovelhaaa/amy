@@ -464,6 +464,8 @@ extern "C" void app_main() {
     const bool ui_ready=display_ready && !diagnostic && ui.begin();
 #ifdef CONFIG_SMKP4_BOOT_SPLASH
     static smk::p4::ui::P4mySplash splash;
+    const uint32_t boot_note_on_baseline=runtime.usbInput().note_on_events.load(std::memory_order_relaxed);
+    bool splash_metrics_logged=false;
     if(ui_ready) {
         smk::p4::ui::P4mySplash::Config splash_config;
         splash_config.fps=CONFIG_SMKP4_SPLASH_FPS<=20 ? 20 : 30;
@@ -483,10 +485,25 @@ extern "C" void app_main() {
         backend.publishMidi(usb_host.state()==smk::p4::usb::Host::State::Connected,
             usb_host.state()==smk::p4::usb::Host::State::Error,runtime.usbInput().events.load());
 #ifdef CONFIG_SMKP4_BOOT_SPLASH
-        const uint32_t splash_now_ms=uint32_t(esp_timer_get_time()/1000);
-        // Only the control/LVGL owner touches the overlay. Readiness is real.
-        if(current.engine.ready || current.error!=ESP_OK) splash.finish(splash_now_ms);
-        splash.service(splash_now_ms);
+        if(splash.active()) {
+            const uint32_t splash_now_ms=uint32_t(esp_timer_get_time()/1000);
+            // Only the control/LVGL owner touches the overlay. Readiness is real.
+            splash.setEngineReady(current.engine.ready,splash_now_ms);
+            if(current.error!=ESP_OK) splash.setEngineError(true,splash_now_ms);
+            if(runtime.usbInput().note_on_events.load(std::memory_order_relaxed)!=boot_note_on_baseline) {
+                splash.requestDismiss(smk::p4::ui::P4mySplash::DismissReason::MidiNoteOn,splash_now_ms);
+            }
+            splash.service(splash_now_ms);
+            if(!splash.active() && !splash_metrics_logged) {
+                splash_metrics_logged=true;
+                const auto& m=splash.metrics();
+                ESP_LOGI(kTag,"SPLASH_DONE dur_ms=%lu ready_ms=%lu reason=%u frames=%lu waves=%lu render_avg_us=%lu render_max_us=%lu",
+                    (unsigned long)m.effective_duration_ms,(unsigned long)m.engine_ready_ms,
+                    unsigned(m.dismiss_reason),(unsigned long)m.frames_rendered,(unsigned long)m.wave_updates,
+                    (unsigned long)(m.frames_rendered?m.render_total_us/m.frames_rendered:0),
+                    (unsigned long)m.render_max_us);
+            }
+        }
 #endif
         if (display_ready) smk::p4::serviceDisplayTest();
         if(ui_ready) ui.service(static_cast<uint32_t>(esp_timer_get_time()/1000));

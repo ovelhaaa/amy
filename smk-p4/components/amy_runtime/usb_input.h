@@ -102,6 +102,7 @@ public:
         // On a lost release/pedal edge invalidate the USB source, including
         // older queued gates, without affecting Touch. Continuous controls
         // and new gates may be dropped safely without canceling held notes.
+        if(c.type==CommandType::NoteOn) note_on_events.fetch_add(1,std::memory_order_relaxed);
         if(!commands.push(c)) {
             if(c.type==CommandType::NoteOff || (c.type==CommandType::NoteOn && !c.value) ||
                (c.type==CommandType::Control && (c.id==64 || c.id==120 || c.id==123))) commands.panic();
@@ -149,6 +150,7 @@ public:
         commands.panic();
     }
     std::atomic<uint32_t> events{0},dropped{0},parse_errors{0},ignored_cable_packets{0};
+    std::atomic<uint32_t> note_on_events{0};
     std::atomic<uint32_t> trace_dropped{0};
 private:
 #ifdef SMKP4_SOUND_EDITOR
