@@ -169,6 +169,8 @@ int main(int argc, char** argv) {
     capture("13_velocity_gate");
     click("PLAY MODE"); click("PLAY");
     assert(adapter.sequencerStatus()->playing);
+    for(unsigned i=0;i<64;++i) sync_runtime();
+    assert(adapter.sequencerStatus()->current_step<seq::kSteps);
     capture("07_seq_running");
     request(seq::Action::SetLiveChannel,0);
     click("LIVE TRANSPOSE OFF");
@@ -248,7 +250,7 @@ int main(int argc, char** argv) {
     assert(nav.navigateTo(ScreenId::Patterns)); sync_runtime(); click("CANCEL QUEUE");
     request(seq::Action::Stop); assert(adapter.requestArpTransport(false).accepted()); sync_runtime();
     for(unsigned i=0;i<30;++i) sync_runtime();
-    click("SAVE"); capture("23_save_confirmation"); click("CONFIRM");
+    click("SAVE"); capture("23_save_confirmation"); click("CONFIRM"); capture("23b_storage_requested");
     for(unsigned i=0;i<12;++i) sync_runtime();
     assert(std::strstr(adapter.patternNotice(),"CONFIRMED"));
     PatternOperation invalid;
