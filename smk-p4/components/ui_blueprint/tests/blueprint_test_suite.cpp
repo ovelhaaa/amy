@@ -30,7 +30,7 @@ void verifyObjectTreeBounds(lv_obj_t* obj, ScreenId screen, uint8_t tab,
     if (lv_obj_check_type(obj, &lv_label_class)) {
         const char* txt = lv_label_get_text(obj);
         if (txt) {
-            if (std::strcmp(txt, "UI DEMO") == 0) {
+            if (std::strcmp(txt, "P4my SIM") == 0 || std::strcmp(txt, "UI DEMO") == 0) {
                 found_demo_badge = true;
             }
             if (std::strcmp(txt, "AVAIL") == 0 || std::strcmp(txt, "PLAN") == 0 ||
@@ -360,7 +360,7 @@ void testNavigation(UiBlueprint& app) {
     assert(nav.currentScreen() == ScreenId::Performance);
     assert(nav.currentPresentationLevel() == PresentationLevel::StageMinimal);
 
-    // Visit every single screen 01..14
+    // Visit every single screen 01..16 (Performance .. Scenes .. Patterns)
     for (uint8_t s = 0; s < static_cast<uint8_t>(ScreenId::Count); ++s) {
         const auto sid = static_cast<ScreenId>(s);
         assert(nav.navigateTo(sid));
@@ -374,7 +374,10 @@ void testNavigation(UiBlueprint& app) {
         }
     }
 
-    // Verify back() unwinds navigation history
+    // Verify back() unwinds navigation history (Patterns -> Scenes -> Diagnostics)
+    assert(nav.currentScreen() == ScreenId::Patterns);
+    assert(nav.back());
+    pumpFrame(app);
     assert(nav.currentScreen() == ScreenId::Scenes);
     assert(nav.back());
     pumpFrame(app);
