@@ -28,6 +28,7 @@ UiArea screenArea(ScreenId id) {
         case ScreenId::Sequencer:
         case ScreenId::Arpeggiator:
         case ScreenId::Drums:
+        case ScreenId::Patterns:
             return UiArea::Ritmo;
         case ScreenId::Effects:
             return UiArea::Fx;
@@ -67,6 +68,7 @@ const char* screenTitle(ScreenId id) {
         case ScreenId::MidiSettings:   return "12 MIDI & MAPPING";
         case ScreenId::GlobalSettings: return "13 GLOBAL SETTINGS";
         case ScreenId::Diagnostics:    return "14 SYSTEM DIAGNOSTICS";
+        case ScreenId::Patterns:       return "PATTERNS";
         case ScreenId::Scenes:         return "SCENES";
         default:                       return "UNKNOWN SCREEN";
     }
@@ -88,6 +90,7 @@ const char* screenShortName(ScreenId id) {
         case ScreenId::MidiSettings:   return "MIDI";
         case ScreenId::GlobalSettings: return "SETTINGS";
         case ScreenId::Diagnostics:    return "DIAG";
+        case ScreenId::Patterns:       return "PATTERNS";
         case ScreenId::Scenes:         return "SCENES";
         default:                       return "---";
     }
@@ -113,6 +116,7 @@ ScreenView* createScreenById(ScreenId id) {
         case ScreenId::Arpeggiator:    return createArpeggiatorScreen();
         case ScreenId::Sequencer:      return createSequencerScreen();
         case ScreenId::Drums:          return createDrumsScreen();
+        case ScreenId::Patterns:       return createPatternsScreen();
         case ScreenId::Harmony:        return createHarmonyScreen();
         case ScreenId::MidiSettings:   return createMidiScreen();
         case ScreenId::GlobalSettings: return createSettingsScreen();

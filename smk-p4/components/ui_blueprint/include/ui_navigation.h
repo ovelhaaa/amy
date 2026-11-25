@@ -22,7 +22,8 @@ enum class ScreenId : uint8_t {
     GlobalSettings= 12, // TELA 13 — GLOBAL SETTINGS
     Diagnostics   = 13, // TELA 14 — DIAGNOSTICS
     Scenes        = 14,
-    Count         = 15
+    Patterns      = 15,
+    Count         = 16
 };
 
 enum class UiArea : uint8_t {
@@ -95,6 +96,10 @@ public:
     uint8_t subTab(ScreenId screen) const;
     void setSubTab(ScreenId screen, uint8_t tab);
 
+    bool sequencerEdit() const { return sequencer_edit_; }
+    void setSequencerEdit(bool edit) { sequencer_edit_=edit; }
+    uint8_t patternSelection() const { return pattern_selection_; }
+    void setPatternSelection(uint8_t slot) { if(slot<seq::kPatternSlots) pattern_selection_=slot; }
     size_t historyDepth() const { return history_depth_; }
     uint32_t transitionCount() const { return transitions_; }
     ScreenView* activeView() const { return active_view_; }
@@ -128,6 +133,8 @@ private:
     size_t             history_depth_    = 0;
     uint8_t            sub_tabs_[kScreenCount]{};
     uint32_t           transitions_      = 0;
+    bool sequencer_edit_=false;
+    uint8_t pattern_selection_=0;
     bool               mounted_          = false;
     bool               pending_nav_      = false;
     bool               pending_home_     = false;

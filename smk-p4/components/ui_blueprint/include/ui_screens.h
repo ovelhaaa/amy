@@ -14,6 +14,7 @@ ScreenView* createEffectsScreen();
 ScreenView* createArpeggiatorScreen();
 ScreenView* createSequencerScreen();
 ScreenView* createDrumsScreen();
+ScreenView* createPatternsScreen();
 ScreenView* createHarmonyScreen();
 ScreenView* createMidiScreen();
 ScreenView* createSettingsScreen();

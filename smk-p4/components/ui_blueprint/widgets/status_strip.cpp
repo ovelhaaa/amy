@@ -804,11 +804,12 @@ void StatusStrip::openAreaModules(UiArea area, IUiBackend& backend, UiNavigation
         entries[4] = {"MIXER", "Niveis e balanco [PLANNED]", ScreenId::Mixer, 0, true};
         count = 5;
     } else if (area == UiArea::Ritmo) {
-        heading = "RITMO > SELECIONE O MODULO (LARGURA INTEGRAL 800 PX)";
-        entries[0] = {"SEQUENCIADOR", "16 passos, Play/Edit e Padroes", ScreenId::Sequencer, 0, false};
+        heading = "RITMO > MODULOS";
+        entries[0] = {"SEQUENCIADOR", "16 passos, Play/Edit e Padroes", ScreenId::Sequencer, 0xFF, false};
         entries[1] = {"ARPEJADOR", "Transporte independente e Latch", ScreenId::Arpeggiator, 0, false};
-        entries[2] = {"BATERIA", "Drum tracks [PLANNED]", ScreenId::Drums, 0, true};
-        count = 3;
+        entries[2] = {"PATTERNS", "16 slots persistentes", ScreenId::Patterns, 0xFF, false};
+        entries[3] = {"BATERIA", "Drum tracks [PLANNED]", ScreenId::Drums, 0, true};
+        count = 4;
     } else {
         heading = "MAIS > SELECIONE O MODULO (LARGURA INTEGRAL 800 PX)";
         entries[0] = {"MIDI / SMK25", "USB Host, mapeamento e Learn", ScreenId::MidiSettings, 0, false};
