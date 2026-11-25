@@ -136,6 +136,13 @@ void UiBlueprint::onNavigate(void* user_data, ScreenId) {
 void UiBlueprint::onAreaClick(void* user_data, UiArea area) {
     auto* self = static_cast<UiBlueprint*>(user_data);
     if (!self) return;
+    if (area == UiArea::Tocar) {
+        self->status_strip_.closeOverlays();
+        if (self->nav_.currentScreen() != ScreenId::Performance) {
+            self->nav_.requestReturnToPerformance();
+        }
+        return;
+    }
     if (area != self->nav_.currentArea()) {
         self->status_strip_.closeOverlays();
         self->nav_.requestNavigateToArea(area);
@@ -146,9 +153,6 @@ void UiBlueprint::onAreaClick(void* user_data, UiArea area) {
         return;
     }
     self->status_strip_.closeOverlays();
-    if (area == UiArea::Tocar && self->nav_.currentScreen() != ScreenId::Performance) {
-        self->nav_.requestReturnToPerformance();
-    }
 }
 
 } // namespace smk::p4::ui
