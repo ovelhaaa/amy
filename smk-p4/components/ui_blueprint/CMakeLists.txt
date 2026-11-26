@@ -13,6 +13,7 @@ set(blueprint_sources
         "widgets/parameter_card.cpp"
         "widgets/patch_selector.cpp"
         "widgets/virtual_keyboard.cpp"
+        "widgets/harmonic_pads_view.cpp"
         "widgets/step_grid.cpp"
         "widgets/envelope_editor.cpp"
         "widgets/modulation_matrix.cpp"

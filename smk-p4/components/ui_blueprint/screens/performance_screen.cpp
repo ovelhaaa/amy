@@ -1,6 +1,7 @@
 #include "ui_screens.h"
 #include "ui_widgets.h"
 #include "routing_editor.h"
+#include "harmonic_pads_view.h"
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -197,7 +198,7 @@ public:
             {"MACROS 5-8",     4, false},
             {"CENAS 1-8",      5, false},
             {"TECLADO",        1, false},
-            {"ENCADEAR [PLAN]",6, true}
+            {"PADS",7, false}
         };
         struct ModeCtx { UiNavigationManager* nav; uint8_t tab; };
         for (uint8_t i = 0; i < 5; ++i) {
@@ -219,6 +220,9 @@ public:
             buildScenesStage(parent, backend, nav);
         } else if (view_mode == 1) {
             buildKeyboardStage(parent, backend, nav);
+        } else if (view_mode == 7) {
+            pads_view_=std::make_unique<HarmonicPadsView>();
+            if(!pads_view_->build(parent,backend))return false;
         } else if (view_mode == 6) {
             buildChainProposalStage(parent);
         } else {
@@ -230,6 +234,7 @@ public:
     }
 
     void onDestroy() override {
+        pads_view_.reset();
         confirm_dialog_.close(false);
         if (routing_root_) lv_obj_delete(routing_root_);
         routing_root_ = nullptr;
@@ -238,6 +243,7 @@ public:
 
     void refresh(IUiBackend& backend) override {
         backend_ = &backend;
+        if(pads_view_)pads_view_->refresh();
         if (routing_) { routing_->refresh(); return; }
         if (legacy_) {
             refreshLegacy(backend);
@@ -947,6 +953,7 @@ private:
     uint8_t pending_scene_slot_ = 0;
     uint32_t last_demo_panic_count_ = 0;
     bool panic_active_ = false;
+    std::unique_ptr<HarmonicPadsView> pads_view_;
     std::unique_ptr<RoutingEditor> routing_;
     lv_obj_t* routing_root_ = nullptr;
     IUiBackend::LegacyOffsets expected_{};
