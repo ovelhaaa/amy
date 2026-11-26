@@ -104,6 +104,7 @@ public:
         #ifdef SMKP4_SOUND_EDITOR
         if(user_name_[0])std::snprintf(state_.patch_name,sizeof(state_.patch_name),"%s",user_name_);
 #endif
+        pads_=snapshot.pads;pads_.voices=uint8_t(snapshot.active_notes);pads_.available=snapshot.ready;
         state_.master=snapshot.master; state_.active_notes=snapshot.active_notes;
         sustain_active_=snapshot.sustain_active;
         state_.sample_rate_hz=amy::kSampleRateHz; state_.block_frames=amy::kBlockFrames;
@@ -533,6 +534,20 @@ public:
         if(connected) state_.flags|=link::kUsbConnected;
         else state_.flags&=~link::kUsbConnected;
     }
+    uint32_t startPad(unsigned pad,pads::Intent intent,uint32_t now_ms) override {
+#ifdef SMKP4_HARMONY
+        if(pad>=pads::kCount || !intent.valid || !ready_ || busy()) return 0;
+        amy::Command c{};c.type=amy::CommandType::PadOn;c.id=intent.input;c.channel=uint8_t(pad);
+        c.value=100;c.token=commands_.nextToken();c.timestamp_ms=now_ms;c.pad_config=harmony::pack(intent.configuration);
+        if(!c.token || !commands_.push(c))return 0;
+        return c.token;
+#else
+        (void)pad;(void)intent;(void)now_ms;return 0;
+#endif
+    }
+    void stopPad(unsigned pad,uint32_t token) override {commands_.releasePad(pad,token);}
+    void padHeartbeat(uint32_t now_ms) override {commands_.pad_heartbeat_ms.store(now_ms,std::memory_order_release);}
+    const pads::State* padState() const override {return &pads_;}
     const harmony::State* harmonyState() const override {
 #ifdef SMKP4_HARMONY
         return &harmony_;
@@ -907,6 +922,7 @@ private:
 #endif
     void clearTokens() { for(auto& token:tokens_) token=0; }
     amy::Commands& commands_; PerformanceState state_;
+    pads::State pads_;
     harmony::State harmony_;
     uint32_t tokens_[128]{},revision_=0,generation_=0;
     bool ready_=false;

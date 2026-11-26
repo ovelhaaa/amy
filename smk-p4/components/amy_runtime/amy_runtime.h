@@ -19,6 +19,7 @@ struct Snapshot {
     uint32_t arp_service_max_us=0;
     bool storage_quiet=false;
 #endif
+    pads::State pads;
     fx::FxState fx;
     harmony::Config harmony;
     uint32_t harmony_revision=0,harmony_errors=0,groups_admitted=0,groups_rejected=0;
@@ -120,7 +121,7 @@ private:
     void note(unsigned slot,uint8_t velocity);
     void release(unsigned slot);
     void cancelUsb();
-    enum class NoteOrigin : uint8_t { Touch, UsbDirect, Arpeggiator, Sequencer };
+    enum class NoteOrigin : uint8_t { Touch, UsbDirect, Arpeggiator, Sequencer, HarmonicPad };
     unsigned findGroup(NoteOrigin origin,uint8_t channel,uint8_t input) const;
     void releaseGroup(unsigned group);
     unsigned startGroup(NoteOrigin origin,const Command& c,uint32_t now_ms);
@@ -148,7 +149,8 @@ private:
         uint32_t identity=0,token=0,generation=0,started_ms=0;
         harmony::Config configuration;
     } groups_[kVoices]{};
-    uint32_t next_group_=0;
+    uint32_t next_group_=0,pad_expired_before_ms_=0;
+    bool pad_expiry_seen_=false;
     uint32_t usb_generation_=0;
     bool sustain_[16]{};
     int16_t bend_[16]{};

@@ -46,5 +46,5 @@ struct Status {
     Result result=Result::None;
     uint8_t notes[4]{},count=0;
 };
-struct State { Status pads[kCount]{}; uint8_t voices=0; bool available=false; };
+struct State { uint32_t generation=0; Status pads[kCount]{}; uint8_t voices=0; bool available=false; };
 }

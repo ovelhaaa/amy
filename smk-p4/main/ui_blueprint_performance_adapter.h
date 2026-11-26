@@ -55,6 +55,12 @@ public:
     ui::UiCommandResult patchLoadResult() const override { return patch_result_; }
     ui::UiCommandResult requestNoteOn(uint8_t, uint8_t) override;
     ui::UiCommandResult requestNoteOff(uint8_t, uint32_t token=0) override;
+    uint32_t requestPadOn(unsigned pad,pads::Config config) override {
+        return backend_.startPad(pad,pads::resolve(pad,config),now_ms_);
+    }
+    void requestPadOff(unsigned pad,uint32_t token) override {backend_.stopPad(pad,token);}
+    void refreshPadLease() override {backend_.padHeartbeat(now_ms_);}
+    const pads::State* padState() const override {return backend_.padState();}
     void releaseAllUiNotes() override;
     ui::UiCommandResult requestPanic() override;
     void service(uint32_t now_ms) override;

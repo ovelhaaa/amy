@@ -1,5 +1,6 @@
 #pragma once
 #include "smk_state.h"
+#include "../components/amy_runtime/harmonic_pads.h"
 #include "../components/amy_runtime/arpeggiator.h"
 #include "../components/amy_runtime/step_sequencer_protocol.h"
 #include "../components/amy_runtime/sound_edit.h"
@@ -78,6 +79,10 @@ public:
     virtual scene::Reject validateScene(const scene::RecallRequest&) const { return scene::Reject::InvalidScene; }
     virtual void cancelScene(uint32_t) {}
     virtual bool sceneCaptureReady() const { return false; }
+    virtual uint32_t startPad(unsigned,pads::Intent,uint32_t) { return 0; }
+    virtual void stopPad(unsigned,uint32_t) {}
+    virtual void padHeartbeat(uint32_t) {}
+    virtual const pads::State* padState() const { return nullptr; }
     virtual const harmony::State* harmonyState() const { return nullptr; }
     virtual bool setHarmony(harmony::Config,uint32_t) { return false; }
     virtual const fx::FxState* fxState() const { return nullptr; }

@@ -1,5 +1,6 @@
 #pragma once
 #include "ui_model.h"
+#include "../../amy_runtime/harmonic_pads.h"
 #include <cstdint>
 #include "../../amy_runtime/arpeggiator.h"
 #include "../../amy_runtime/step_sequencer_protocol.h"
@@ -253,6 +254,10 @@ public:
     // 5. Note lifecycle with explicit token/pitch pairing (prevents stuck notes on octave shift)
     virtual UiCommandResult requestNoteOn(uint8_t note, uint8_t velocity) = 0;
     virtual UiCommandResult requestNoteOff(uint8_t note, uint32_t token = 0) = 0;
+    virtual uint32_t requestPadOn(unsigned,pads::Config) { return 0; }
+    virtual void requestPadOff(unsigned,uint32_t) {}
+    virtual void refreshPadLease() {}
+    virtual const pads::State* padState() const { return nullptr; }
     virtual void releaseAllUiNotes() = 0;
     virtual UiCommandResult requestPanic() = 0;
 

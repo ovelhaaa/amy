@@ -61,6 +61,7 @@ bool Runtime::begin(uint32_t sample_rate_hz) {
     last_sync_ms_=0.0f;echo_sync_=false;
 #endif
     for(auto& v:voices_) v=Voice{};
+    state_.pads=pads::State{};
     for(auto& g:groups_) g=Group{};
     commands_.panic(OutputReason::Boot); state_.generation=commands_.generation();
     publishOutput(OutputReason::Boot);
@@ -135,6 +136,7 @@ void Runtime::end() {
     if(started_) { silence(); amy_stop(); started_=false; }
     state_.ready=false; state_.active_notes=0;
     for(auto& v:voices_) v=Voice{};
+    state_.pads=pads::State{};
     for(auto& g:groups_) g=Group{};
     commands_.panic();
 }
@@ -161,6 +163,7 @@ void Runtime::silence() {
 #endif
     std::memset(bend_,0,sizeof(bend_)); std::memset(modulation_,0,sizeof(modulation_));
     for(auto& v:voices_) v=Voice{};
+    state_.pads=pads::State{};
     for(auto& g:groups_) g=Group{};
     state_.active_notes=0;state_.last_count=0;state_.last_admitted=false;state_.last_result=0;
 #ifdef SMKP4_SOUND_EDITOR
@@ -223,9 +226,13 @@ void Runtime::release(unsigned slot) {
             arp_identity_=0;arp_.sounding(false);
         }
 #endif
+        if(g.origin==NoteOrigin::HarmonicPad) {
+            auto& pad=state_.pads.pads[g.input];
+            if(pad.active_token==g.token) {pad.active_token=0;pad.result=pads::Result::Released;}
+        }
         g=Group{};
     }
-    voices_[slot]=Voice{}; --state_.active_notes;
+    voices_[slot]=Voice{}; --state_.active_notes;state_.pads.voices=uint8_t(state_.active_notes);
 }
 unsigned Runtime::findGroup(NoteOrigin origin,uint8_t channel,uint8_t input) const {
     for(unsigned i=0;i<kVoices;++i)if(groups_[i].used && groups_[i].origin==origin &&
@@ -242,6 +249,8 @@ unsigned Runtime::startGroup(NoteOrigin origin,const Command& c,uint32_t now_ms)
     const uint32_t transform_start=musicalTimeUs();
 #endif
     auto config=state_.harmony;
+    if(origin==NoteOrigin::HarmonicPad) config=harmony::unpack(c.pad_config);
+    else
 #ifdef SMKP4_SOUND_EDITOR
     if(origin==NoteOrigin::Sequencer) {
         config.scale_on=sequencer_.status().quantize;
@@ -267,7 +276,7 @@ unsigned Runtime::startGroup(NoteOrigin origin,const Command& c,uint32_t now_ms)
         return kVoices;
     }
     auto& g=groups_[group];g=Group{};
-    g.used=true;g.origin=origin;g.held=true;g.channel=usb?c.channel:0;g.input=uint8_t(c.id);
+    g.used=true;g.origin=origin;g.held=true;g.channel=usb?c.channel:0;g.input=origin==NoteOrigin::HarmonicPad?c.channel:uint8_t(c.id);
     g.token=c.token;g.identity=++next_group_;g.generation=usb?usb_generation_:state_.generation;
     g.started_ms=now_ms;g.configuration=config;g.count=notes.count;
     unsigned n=0;
@@ -277,7 +286,7 @@ unsigned Runtime::startGroup(NoteOrigin origin,const Command& c,uint32_t now_ms)
         auto& v=voices_[i];v.used=v.held=true;v.usb=usb;v.pitch=notes.notes[n];v.channel=g.channel;
         v.input=g.input;v.group=uint8_t(group);v.token=c.token;v.started_ms=now_ms;++n;
     }
-    state_.active_notes+=notes.count;
+    state_.active_notes+=notes.count;state_.pads.voices=uint8_t(state_.active_notes);
     for(unsigned i=0;i<notes.count;++i){note(g.slots[i],c.value);state_.last_notes[i]=notes.notes[i];}
     state_.last_result=1;state_.last_group=g.identity;state_.last_count=notes.count;state_.last_admitted=true;++state_.groups_admitted;
     return group;
@@ -999,6 +1008,17 @@ void Runtime::apply(uint32_t now_ms) {
             }
         }
     }
+    state_.pads.available=true;state_.pads.generation=state_.generation;
+    for(unsigned i=0;i<kVoices;++i) {
+        const auto& g=groups_[i];
+        if(!g.used || g.origin!=NoteOrigin::HarmonicPad)continue;
+        const unsigned pad=g.input;
+        const bool expired=eventAgeMs(now_ms,commands_.pad_heartbeat_ms.load(std::memory_order_acquire))>=pads::kLeaseMs;
+        if(expired || atOrAfter(commands_.releasedPad(pad),g.token)) {
+            releaseGroup(i);
+            if(expired){state_.pads.pads[pad].result=pads::Result::Expired;pad_expired_before_ms_=now_ms;pad_expiry_seen_=true;}
+        }
+    }
     Command c;
     for(unsigned i=0;i<kCommandCapacity && commands_.pop(c);++i) {
         if(c.generation!=state_.generation || c.generation!=commands_.generation()) continue;
@@ -1014,6 +1034,25 @@ void Runtime::apply(uint32_t now_ms) {
 #ifdef SMKP4_SOUND_EDITOR
         if(c.type==CommandType::Arp) { applyArp(c,false,now_ms);continue; }
 #endif
+        if(c.type==CommandType::PadOn) {
+            if(c.channel>=pads::kCount || c.id>=128 || !c.value || c.value>127 || !c.token) {++state_.invalid_commands;continue;}
+            auto& pad=state_.pads.pads[c.channel];
+            const auto config=harmony::unpack(c.pad_config);
+            if((c.pad_config>>27) || !harmony::valid(config) || !config.chord_on || config.chord<12 ||
+               latency>=pads::kLeaseMs || (pad_expiry_seen_ && uint32_t(now_ms-pad_expired_before_ms_)<pads::kLeaseMs && !atOrAfter(c.timestamp_ms,pad_expired_before_ms_)) ||
+               eventAgeMs(now_ms,commands_.pad_heartbeat_ms.load(std::memory_order_acquire))>=pads::kLeaseMs ||
+               atOrAfter(commands_.releasedPad(c.channel),c.token)) continue;
+            const unsigned found=findGroup(NoteOrigin::HarmonicPad,0,c.channel);
+            if(found<kVoices && groups_[found].token>=c.token)continue;
+            if(found<kVoices)releaseGroup(found);
+            pad.token=c.token;pad.generation=c.generation;pad.active_token=0;pad.count=0;
+            const unsigned group=startGroup(NoteOrigin::HarmonicPad,c,now_ms);
+            if(group<kVoices) {
+                pad.result=pads::Result::Admitted;pad.active_token=c.token;pad.count=groups_[group].count;
+                for(unsigned n=0;n<pad.count;++n)pad.notes[n]=groups_[group].notes[n];
+            } else pad.result=state_.last_result==3?pads::Result::Capacity:pads::Result::Invalid;
+            continue;
+        }
         if(c.type==CommandType::NoteOn) {
             if(c.id>=128 || c.value>127 || !c.token) { ++state_.invalid_commands; continue; }
             const unsigned found=findGroup(NoteOrigin::Touch,0,uint8_t(c.id));
@@ -1160,6 +1199,7 @@ void Runtime::failRendering() {
     stopSequencer();
 #endif
     for(auto& voice:voices_)voice=Voice{};
+    state_.pads=pads::State{};
     for(auto& g:groups_)g=Group{};
     std::memset(sustain_,0,sizeof(sustain_));
     std::memset(bend_,0,sizeof(bend_));std::memset(modulation_,0,sizeof(modulation_));

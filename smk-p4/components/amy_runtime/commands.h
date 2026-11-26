@@ -1,5 +1,6 @@
 #pragma once
 #include "runtime_config.h"
+#include "harmonic_pads.h"
 #include "output_context.h"
 #include "sound_edit.h"
 #include "fx_state.h"
@@ -10,7 +11,7 @@
 #include "scene_recall.h"
 #endif
 namespace smk::p4::amy {
-enum class CommandType : uint8_t { NoteOn, Patch, Master, NoteOff, Control, Bend, Harmony, Arp };
+enum class CommandType : uint8_t { NoteOn, Patch, Master, NoteOff, Control, Bend, Harmony, Arp, PadOn };
 struct Command {
     CommandType type{};
     uint16_t id=0;
@@ -20,6 +21,7 @@ struct Command {
     bool preset_recall=false;
     uint8_t version=0;
     uint8_t preserve_mask=perf_lock::kDefaultLockMask;
+    uint32_t pad_config=0;
 };
 // Exactly one producer per queue (UI or USB client), and one AMY owner.
 // Touch Off and every Panic use independent atomic latches.
@@ -90,6 +92,12 @@ public:
         return true;
     }
 #endif
+    void releasePad(unsigned pad,uint32_t token) {
+        if(pad<pads::kCount && token>pad_released_[pad].load(std::memory_order_relaxed))
+            pad_released_[pad].store(token,std::memory_order_release);
+    }
+    uint32_t releasedPad(unsigned pad) const { return pad_released_[pad].load(std::memory_order_acquire); }
+    std::atomic<uint32_t> pad_heartbeat_ms{0};
     fx::Mailbox fx;
     uint32_t panic(OutputReason reason=OutputReason::Panic) {
         const auto generation=CommandQueue<kCommandCapacity>::panic(reason);
@@ -101,6 +109,7 @@ public:
         return generation;
     }
 private:
+    std::atomic<uint32_t> pad_released_[pads::kCount]{};
 #ifdef SMKP4_SOUND_EDITOR
     Command arp_stop_{};
     std::atomic<bool> arp_stop_pending_{false};
