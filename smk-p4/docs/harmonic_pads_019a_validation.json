@@ -1,0 +1,201 @@
+{
+  "branch": "feature/smk-p4-harmonic-pads-019a",
+  "tested_code_sha": "b7a6f91a40085102036bec9a705b963752285210",
+  "result": "CONDITIONAL GO",
+  "host_result": "PASS",
+  "clean": true,
+  "regressions": true,
+  "compiler": "gcc.exe (MinGW-W64 x86_64-ucrt-posix-seh, built by Brecht Sanders, r2) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\ng++.exe (MinGW-W64 x86_64-ucrt-posix-seh, built by Brecht Sanders, r2) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\nGNU ar (Binutils for MinGW-W64 x86_64, built by Brecht Sanders, r2) 2.43.1\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis program is free software; you may redistribute it under the terms of\nthe GNU General Public License version 3 or (at your option) any later version.\nThis program has absolutely no warranty.",
+  "flags": [
+    "-DSMKP4_VOICES=8",
+    "-DSMKP4_SOUND_LIBRARY=1",
+    "-DSMKP4_UNIFIED_ENGINE=1",
+    "-DSMKP4_HARMONY=1",
+    "-DSMKP4_FULL_FACTORY_LIBRARY=1",
+    "-DSMKP4_SOUND_EDITOR=1",
+    "-DSMKP4_LIVE_PERFORMANCE=1",
+    "-DSMKP4_MACRO_ROUTING=1",
+    "-DSMKP4_SMK25_0142=1",
+    "-DSMKP4_ARP_015=1",
+    "-DSMKP4_DELAY_SYNC_0151=1",
+    "-DSMKP4_PERF_LOCK_0152=1",
+    "-DSMKP4_STEP_SEQUENCER=1",
+    "-DSMKP4_PATTERN_LIBRARY=1",
+    "-DSMKP4_PERFORMANCE_SCENES=1",
+    "-DLV_CONF_INCLUDE_SIMPLE=1",
+    "-DAMY_NO_MINIAUDIO",
+    "-DAMY_SAMPLE_RATE=48000",
+    "-DAMY_BLOCK_SIZE=256",
+    "-DBLOCK_SIZE_BITS=8",
+    "-DAMY_PATCH_CHECKED_RESOURCE_ADMISSION=1",
+    "-DAMY_EXCLUSIVE_FM_PHASE_RESTART=1",
+    "-fno-strict-aliasing"
+  ],
+  "source_input_count": 1288,
+  "source_hashes_rechecked": "PASS",
+  "manifest_sha256": "211a0e27c5d2ac6b71ca73aa42982dce9cda87e6e16dde6f71a2c775360ef841",
+  "source_hashes_digest_sha256": "074609445a5758d2bd2e419b502db0dc352c478c2aeadaeefb2cfb36c3e309ba",
+  "firmware": {
+    "guition-editor-8": {
+      "status": "PASS",
+      "audit": "PASS",
+      "ram_static_bytes": 71084,
+      "ram_delta_bytes": 756,
+      "flash_bytes": 1533036,
+      "flash_delta_bytes": 9120,
+      "image_bytes": 1533760,
+      "image_delta_bytes": 9128,
+      "runtime_bytes": 15480,
+      "sha256": "9bb502f80900f1a59fa0be91a8e0ed3700aa5ebcb9f4a714223ae3a1c5e6c53d"
+    },
+    "guition-editor-8-bench": {
+      "status": "PASS",
+      "audit": "PASS",
+      "ram_static_bytes": 71636,
+      "ram_delta_bytes": 760,
+      "flash_bytes": 1638428,
+      "flash_delta_bytes": 9022,
+      "image_bytes": 1639152,
+      "image_delta_bytes": 9030,
+      "runtime_bytes": 15520,
+      "sha256": "a25415f8fa95f1a049aec32ba3f37e3737bb2560c0c61404820df72fa8588ea3"
+    }
+  },
+  "shots": [
+    {
+      "file": "01_perf_stage_refined.png",
+      "sha256": "f86fe454b2251f01371f8c17dec68d7579940a61de0b4c1be6a758836a0953fc"
+    },
+    {
+      "file": "02_harmony_off.png",
+      "sha256": "43a4472f3b0cbeaef310cdd9b4beeee1e3b8cf102a908cde31278eb85ef0f5f1"
+    },
+    {
+      "file": "03_quantize_on_chord_off.png",
+      "sha256": "2f38146518f497f9a4c0d82888545b117122e1c2b2d9a8be6ac8c9ca62f5cfb4"
+    },
+    {
+      "file": "04_quantize_off_chord_on.png",
+      "sha256": "30444a95933cb4fe77e136d63e1d1cabec76a24aa209bdee6aa782e6e21d87f4"
+    },
+    {
+      "file": "05_quantize_chord_on.png",
+      "sha256": "a8b4cae6f87dee16056de15459a11005ac8b14daae3c3e2a71bc7a530159debe"
+    },
+    {
+      "file": "06_pattern_active_pending.png",
+      "sha256": "b76aea3b33f66ced96c03401dd6132882ee22771957985fcd2a46699c52743e5"
+    },
+    {
+      "file": "07_active_scene_recall_failed.png",
+      "sha256": "f623233522b4142a2778e8dd2206b26e094bb12c8fe0bb23c0b467cfd579b063"
+    },
+    {
+      "file": "08_scene_recall_total_no_locks.png",
+      "sha256": "4f7289ffdc170c85930b2792f4b7b296efc27c08715b2c81b64d0a294d6130f8"
+    },
+    {
+      "file": "09_scene_recall_total_with_locks.png",
+      "sha256": "020cf8eeec27456b6af7ea1720aa443ac73d2a4a387b3eee4d11073ab79ce759"
+    },
+    {
+      "file": "10_scene_recall_selective.png",
+      "sha256": "1165f16adf55ccb7d9d1c7db64006f9b312f2ce058cb7a8edc3f9cc4d7a9da76"
+    },
+    {
+      "file": "11_return_scenes_to_macros_tocar.png",
+      "sha256": "41e2d92277c0af27c4ef2608f3d8d35ca3c70fa12e7dcf5647148fb27f95516a"
+    },
+    {
+      "file": "12_return_touch_kb_to_macros.png",
+      "sha256": "41e2d92277c0af27c4ef2608f3d8d35ca3c70fa12e7dcf5647148fb27f95516a"
+    },
+    {
+      "file": "13_quick_actions_hitboxes.png",
+      "sha256": "09bd28fd90a0e90117c46334de298115396b3eaefb95f9af944a90e69b05c039"
+    },
+    {
+      "file": "14_module_selector_updated.png",
+      "sha256": "78d772806e44bdb201cd9fbdf08acac4af321586e18e6805ed564f0f30d59d39"
+    },
+    {
+      "file": "15_long_patch_simultaneous_states.png",
+      "sha256": "a06f14fe5a23a3733df355684d8534da75bd142926ec67d51fc2fafab8ffafe3"
+    },
+    {
+      "file": "pads_01_c_major.png",
+      "sha256": "7321b00c4bcc27e993106415342cc5e9e56384931b72c5f7cdc12781b93c75b6"
+    },
+    {
+      "file": "pads_02_a_minor.png",
+      "sha256": "f6f34a2805bb0a361c1220840e2beeaf1454d6083f0bb8f051f4a5f62ce9051a"
+    },
+    {
+      "file": "pads_03_d_dorian.png",
+      "sha256": "9862d6e4c76f6f0272b303b1d071883e4f49b160db2bd40305cfe10f5b15beb7"
+    },
+    {
+      "file": "pads_04_g_mixolydian.png",
+      "sha256": "aaf3ca8d1295ec87501ba4b03936912f86d4b09c52de9afa3def3eaf1bbba120"
+    },
+    {
+      "file": "pads_05_pressed.png",
+      "sha256": "dd8ca18aeacdf3aeb47981d5f12dcf9f943c478461851d2330a68e29da412641"
+    },
+    {
+      "file": "pads_06_two_chords.png",
+      "sha256": "b6bdaf7dc07b895e25a6a68895df571235489b132691befdc7b27dae14f466ea"
+    },
+    {
+      "file": "pads_07_hold.png",
+      "sha256": "80ec7bd26d230dda2b1ea85eade0bce53a601665f5494f8cb35ffce3bc1c4457"
+    },
+    {
+      "file": "pads_08_released.png",
+      "sha256": "f9da68ed7ca0bb6dde29bd55998efb38488b5eda1aceb6aa8515d7864b47f815"
+    },
+    {
+      "file": "pads_09_octave.png",
+      "sha256": "1578616d637b5afdf95ab1db76cb5e59480e118b291fede20f76bc39518a0db4"
+    },
+    {
+      "file": "pads_10_scale.png",
+      "sha256": "63782aeb8784ffc0e002f16076280351e2be905e6c9a8218982f60f502d716fc"
+    },
+    {
+      "file": "pads_11_incompatible.png",
+      "sha256": "40ed6f3da25f148080ba960bb35058e9a6d236b1c5108b966e4522a671765d70"
+    },
+    {
+      "file": "pads_12_capacity.png",
+      "sha256": "d688d225b949df20ce77c0db52ce9e5dd8299ef6e274f7b9b8e63e5f2a3b4096"
+    },
+    {
+      "file": "pads_13_arp.png",
+      "sha256": "ddf466c02e951ad572e1f35bf80326c4fcbc815ce29068160739b4add5dea823"
+    },
+    {
+      "file": "pads_14_sequencer.png",
+      "sha256": "26d2d9669dbb627661d6331b5e74b5381eb2c6650939f5d16cbf7a46e8c3d878"
+    },
+    {
+      "file": "pads_15_macros.png",
+      "sha256": "f72968c7f84ef9709b23f0d9c2ec85faf1f0f1699aea922b3cab1625d1446210"
+    },
+    {
+      "file": "pads_16_panic.png",
+      "sha256": "c1d31650bb565a1ca9ca90e5d0a3a04a3eb359090e487c0a1ec72de77e40cc64"
+    },
+    {
+      "file": "pads_17_confirmation.png",
+      "sha256": "223e8efacd79faf9ac2d120243fddb69e19a700e85c41dcb6423b6c4a30dc50e"
+    }
+  ],
+  "soundlibrary": {
+    "status": "FAIL",
+    "baseline_status": "FAIL",
+    "baseline_sha": "ff2f098d0d6417273198e4faed782fe6ad6a4b32",
+    "assertion": "polyphony_test.cpp:82 engine heap budget"
+  },
+  "hardware": "MANUAL / deferred by user"
+}

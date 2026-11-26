@@ -29,3 +29,7 @@ Navigation protection is committed independently first. Pure musical cases cover
 ## Future 0.19-B (planning only)
 
 Transport-neutral pad intent can later accept confirmed SMK25 mappings, optional Arp routing and configurable chord banks. Scene persistence, physical-pad mappings and progression playback are outside 0.19-A.
+
+## Implemented resource measurements
+
+The host full-editor ABI is Command 28 B (+4), UI Commands 5448 B (+168), Runtime 15480 B (+600), Snapshot 2752 B (+168) relative to the reference. The ESP32-P4 editor ELF also reports the global Runtime symbol as 0x3c78 = 15480 B. UI32/USB64 capacity, task stacks and 128 KiB LVGL pool are unchanged. Detailed test evidence and physical limits are in the implementation report.

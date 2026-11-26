@@ -1,3 +1,21 @@
+# SMK-P4 0.19-A - Harmonic Pads
+
+TOCAR > PADS provides eight diatonic chord pads through the existing Harmony
+and eight-voice Audio Owner. Local key/scale/octave selection is independent of
+global Harmony. MOMENTARY and HOLD use pad-specific tokens; leaving PADS releases
+only their groups. HOLD has a two-second owner safety lease renewed by the live
+pad view. Non-heptatonic scales are explicitly unavailable in this MVP.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_harmonic_pads_019a.ps1 -Clean -Regressions
+```
+
+See the [architecture](docs/harmonic_pads_019a_architecture.md),
+[implementation and validation report](docs/harmonic_pads_019a_implementation_report.md)
+and [real LVGL HOST SIM captures](docs/harmonic_pads_019a_shots/README.md).
+Physical qualification remains deferred; no flash or serial monitoring is part
+of this stage. ENCADEAR remains planned in secondary help text.
+
 # SMK-P4 UI 0.18-C.3 — Rhythm Performance
 
 RITMO provides a contextual sidebar (SEQUENCER, ARP, PATTERNS, DRUMS), separate
