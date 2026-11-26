@@ -470,6 +470,7 @@ public:
         lv_free(options);
     }
 public:
+    static bool presetPanelOpen() { return s_active_preset_modal_ != nullptr; }
     static void showPresets(lv_obj_t* button,IUiBackend& backend){
         lv_obj_t* screen = button ? lv_obj_get_screen(button) : lv_screen_active();
         if(!screen) screen = lv_screen_active();
@@ -618,6 +619,7 @@ public:
 
 } // namespace
 
+bool userPresetPanelOpen(){return SoundEditorScreen::presetPanelOpen();}
 void showUserPresetPanel(lv_obj_t* anchor,IUiBackend& backend){SoundEditorScreen::showPresets(anchor,backend);}
 void closeUserPresetPanel(bool async){SoundEditorScreen::closePresetModal(async);}
 

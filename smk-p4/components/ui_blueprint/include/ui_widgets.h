@@ -171,6 +171,7 @@ lv_obj_t* createSubTabBar(lv_obj_t* parent, const char* const* tab_names, uint8_
                           int32_t x = 8, int32_t y = 4, int32_t w = 784, int32_t h = 36);
 
 // ── Parameter Widgets (bound to IUiBackend by canonical parameter ID) ────
+bool userPresetPanelOpen();
 void showUserPresetPanel(lv_obj_t* anchor,IUiBackend& backend);
 void closeUserPresetPanel(bool async = true);
 void showFmAlgorithmPicker(lv_obj_t* anchor,IUiBackend& backend);

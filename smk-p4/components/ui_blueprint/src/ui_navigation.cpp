@@ -1,5 +1,6 @@
 #include "ui_navigation.h"
 #include "ui_screens.h"
+#include "ui_widgets.h"
 
 namespace smk::p4::ui {
 
@@ -160,8 +161,13 @@ void UiNavigationManager::shutdown() {
     pending_home_ = false;
 }
 
+bool UiNavigationManager::hasBlockingConfirmation() const {
+    return userPresetPanelOpen() ||
+        (mounted_ && active_view_ && active_view_->hasBlockingConfirmation());
+}
+
 bool UiNavigationManager::navigateTo(ScreenId target, uint8_t sub_tab) {
-    if (!content_root_ || !backend_) return false;
+    if (!content_root_ || !backend_ || hasBlockingConfirmation()) return false;
     if (static_cast<size_t>(target) >= kScreenCount) return false;
 
     pending_nav_ = false;
@@ -214,7 +220,7 @@ ScreenId UiNavigationManager::areaScreen(UiArea area) const {
 }
 
 bool UiNavigationManager::back() {
-    if (!content_root_ || !backend_) return false;
+    if (!content_root_ || !backend_ || hasBlockingConfirmation()) return false;
     pending_nav_ = false;
     pending_home_ = false;
     if (history_depth_ == 0) {
@@ -236,7 +242,7 @@ bool UiNavigationManager::back() {
 bool UiNavigationManager::returnToPerformance() {
     pending_nav_ = false;
     pending_home_ = false;
-    if (mounted_ && active_view_ && active_view_->hasBlockingConfirmation()) {
+    if (hasBlockingConfirmation()) {
         return false;
     }
     history_depth_ = 0;
@@ -262,6 +268,7 @@ bool UiNavigationManager::returnToPerformance() {
 }
 
 void UiNavigationManager::requestNavigateTo(ScreenId target, uint8_t sub_tab) {
+    if (hasBlockingConfirmation()) return;
     pending_nav_ = true;
     pending_home_ = false;
     pending_target_ = target;
@@ -274,6 +281,7 @@ void UiNavigationManager::requestNavigateToArea(UiArea area) {
 }
 
 void UiNavigationManager::requestReturnToPerformance() {
+    if (hasBlockingConfirmation()) return;
     pending_nav_ = true;
     pending_home_ = true;
     pending_target_ = ScreenId::Performance;

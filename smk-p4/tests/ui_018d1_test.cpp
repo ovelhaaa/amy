@@ -475,6 +475,74 @@ int main(int argc, char** argv) {
     for (unsigned i = 0; i < 8; ++i) sync_runtime();
     capture("15_long_patch_simultaneous_states");
 
+    // Independent navigation safety fixture after transport assertions.
+    assert(nav.returnToPerformance());
+    sync_runtime();
+    // 5. Destructive confirmation open -> TOCAR does NOT silently close it
+    click("CENAS 1-8");
+    nav.requestNavigateTo(ScreenId::Effects);
+    lv_obj_send_event(findButton(root, "LIMPAR"), LV_EVENT_CLICKED, nullptr);
+    assert(!nav.processPendingNavigation());
+    assert(nav.activeView()->hasBlockingConfirmation());
+    const auto protected_depth = nav.historyDepth();
+    const auto protected_transitions = nav.transitionCount();
+    for (const char* area : {"TIMBRES", "RITMO", "FX", "MAIS"}) {
+        clickRoot(area);
+        assert(nav.activeView()->hasBlockingConfirmation());
+    }
+    assert(!nav.navigateTo(ScreenId::Effects));
+    assert(!nav.navigateTo(ScreenId::Performance, 0));
+    assert(!nav.back());
+    nav.requestNavigateTo(ScreenId::MidiSettings, 1);
+    assert(!nav.processPendingNavigation());
+    runtime.usbInput().enableControls();
+    runtime.usbInput().identifyDevice(0x4353, 0x4b4d);
+    adapter.setMidiInput(runtime.usbInput());
+    runtime.usbInput().setLegacyProfile(true);
+    for (uint8_t note : {uint8_t(46), uint8_t(49), uint8_t(50)}) {
+        const uint8_t packet[4] = {0x09, 0x99, note, 100};
+        assert(runtime.usbInput().packet(packet, preview::g_sim_tick_ms));
+        sync_runtime();
+        assert(nav.activeView()->hasBlockingConfirmation());
+        const uint8_t off[4] = {0x08, 0x89, note, 0};
+        assert(runtime.usbInput().packet(off, preview::g_sim_tick_ms));
+        sync_runtime();
+    }
+    assert(nav.historyDepth() == protected_depth);
+    assert(nav.transitionCount() == protected_transitions);
+    clickRoot("PANIC");
+    assert(!nav.activeView()->hasBlockingConfirmation());
+    click("LIMPAR");
+    assert(nav.activeView()->hasBlockingConfirmation());
+    clickRoot("TOCAR");
+    assert(nav.activeView()->hasBlockingConfirmation());
+    assert(nav.subTab(ScreenId::Performance) == 5);
+    clickRoot("CANCELAR");
+    assert(!nav.activeView()->hasBlockingConfirmation());
+    clickRoot("TOCAR");
+    assert(nav.subTab(ScreenId::Performance) == 0);
+
+    // Save Pattern and externally mounted User Presets obey the same policy.
+    assert(nav.navigateTo(ScreenId::Patterns));
+    sync_runtime();
+    click("SAVE");
+    assert(nav.hasBlockingConfirmation());
+    assert(!nav.navigateTo(ScreenId::Effects));
+    assert(!nav.back());
+    click("CANCEL");
+    assert(!nav.hasBlockingConfirmation());
+    assert(nav.navigateTo(ScreenId::SoundEditor));
+    sync_runtime();
+    showUserPresetPanel(root, adapter);
+    assert(nav.hasBlockingConfirmation());
+    assert(!nav.navigateTo(ScreenId::Effects));
+    nav.requestNavigateTo(ScreenId::MidiSettings, 1);
+    assert(!nav.processPendingNavigation());
+    clickBtn(lv_screen_active(), "CLOSE", app);
+    assert(!nav.hasBlockingConfirmation());
+    assert(nav.navigateTo(ScreenId::Effects));
+
+
     // ── Stress Test (Section 10 minimums) ────────────────────────────────────
     // 1000 TOCAR returns, 500 overlays, 500 module transitions,
     // 200 scene recalls, 200 pattern switches, 100 harmony toggles, 100 touch kb cycles

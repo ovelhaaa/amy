@@ -86,6 +86,7 @@ public:
     void requestNavigateTo(ScreenId target, uint8_t sub_tab = 0xFF);
     void requestNavigateToArea(UiArea area);
     void requestReturnToPerformance();
+    bool hasBlockingConfirmation() const;
     bool hasPendingNavigation() const { return pending_nav_; }
     bool processPendingNavigation();
 

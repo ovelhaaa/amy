@@ -140,7 +140,7 @@ void UiBlueprint::onNavigate(void* user_data, ScreenId) {
 
 void UiBlueprint::onAreaClick(void* user_data, UiArea area) {
     auto* self = static_cast<UiBlueprint*>(user_data);
-    if (!self) return;
+    if (!self || self->nav_.hasBlockingConfirmation()) return;
     if (area == UiArea::Tocar) {
         if (self->nav_.activeView() && self->nav_.activeView()->hasBlockingConfirmation()) {
             return;
