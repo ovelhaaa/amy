@@ -350,6 +350,13 @@ int main(int argc, char** argv) {
     lv_obj_t* footer = lv_obj_get_child(app.rootObject(), 2);
     clickBtn(footer, "FX", app);
     sync_runtime();
+    assert(app.navigation().currentScreen() == ScreenId::Performance);
+    assert(findLabel(app.contentObject(), "CONFIRMAR EXCLUSAO") != nullptr);
+    assert(adapter.sceneSlot(1)->state == seq::SlotState::Valid);
+    clickBtn(app.contentObject(), "CANCELAR", app);
+    sync_runtime();
+    clickBtn(footer, "FX", app);
+    sync_runtime();
     assert(app.navigation().currentScreen() == ScreenId::Effects);
     assert(adapter.sceneSlot(1)->state == seq::SlotState::Valid);
     clickBtn(footer, "TOCAR", app);

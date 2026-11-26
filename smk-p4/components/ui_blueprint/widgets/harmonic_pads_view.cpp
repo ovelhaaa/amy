@@ -93,16 +93,17 @@ void HarmonicPadsView::refresh() {
         const auto* degree=(*quality=='m' || *quality=='d')?minorDegrees[p.id]:degrees[p.id];
         if(intent.valid)lv_obj_remove_state(p.button,LV_STATE_DISABLED);else lv_obj_add_state(p.button,LV_STATE_DISABLED);
         if(active)std::snprintf(chord,sizeof(chord),"%s",p.chord);
-        std::snprintf(text,sizeof(text),"%s%s\n%s | %s",chord,p.id==7?"'":"",degree,active?"ACTIVE":p.rejected?"REJECTED":p.token?"PENDING":"READY");
+        if(!intent.valid)std::snprintf(text,sizeof(text),"SEM GRAUS\n7 NOTAS");
+        else std::snprintf(text,sizeof(text),"%s%s\n%s | %s",chord,p.id==7?"'":"",degree,active?"ACTIVE":p.rejected?"REJECTED":p.token?"PENDING":"READY");
         lv_label_set_text(lv_obj_get_child(p.button,0),text);
-        lv_obj_set_style_bg_color(p.button,lv_color_hex(active?palette::kActive:p.rejected?palette::kErrorPanic:palette::kPanelHighlight),0);
+        lv_obj_set_style_bg_color(p.button,lv_color_hex(!intent.valid?palette::kUnavailableBadge:active?palette::kActive:p.rejected?palette::kErrorPanic:palette::kPanelHighlight),0);
 
     }
     if(!unsupported && last_pad_<8) {
         const auto& pad=pads_[last_pad_];
         const auto* status=state?&state->pads[last_pad_]:nullptr;
         if(pad.rejected)std::snprintf(summary,sizeof(summary),"VOZES INSUFICIENTES / INDISPONIVEL | VOZES %u/8",state?state->voices:0);
-        else if(status && status->count)std::snprintf(summary,sizeof(summary),"LAST: %u %u %u | VOZES %u/8 | %s",status->notes[0],status->notes[1],status->notes[2],state->voices,status->active_token?"OWNER OK":"RELEASED");
+        else if(status && status->count)std::snprintf(summary,sizeof(summary),"LAST: %s%d %s%d %s%d | VOZES %u/8 | %s",pads::kPitchNames[status->notes[0]%12],int(status->notes[0]/12)-1,pads::kPitchNames[status->notes[1]%12],int(status->notes[1]/12)-1,pads::kPitchNames[status->notes[2]%12],int(status->notes[2]/12)-1,state->voices,status->active_token?"OWNER OK":"RELEASED");
     }
     lv_label_set_text(info_,summary);
 }
