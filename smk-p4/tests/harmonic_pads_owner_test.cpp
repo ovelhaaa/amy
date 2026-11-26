@@ -15,7 +15,9 @@ void testHarmonicPadOwner() {
         assert(r.commands().push(c));beat();return c.token;
     };
     auto off=[&](unsigned pad,uint32_t token){r.commands().releasePad(pad,token);beat();};
-    auto a=on(0);auto b=on(1,{},60);assert(r.snapshot().active_notes==6);off(0,a);assert(r.snapshot().active_notes==3);off(1,b);
+    pads::Config seventh;seventh.seventh=true;
+    auto a=on(0,seventh);auto b=on(1,seventh);assert(r.snapshot().active_notes==8);on(2);assert(r.snapshot().active_notes==8);off(0,a);off(1,b);
+    a=on(0);b=on(1,{},60);assert(r.snapshot().active_notes==6);off(0,a);assert(r.snapshot().active_notes==3);off(1,b);
     a=on(0);b=on(2);assert(r.snapshot().active_notes==6);
     auto rejected=on(4);assert(r.snapshot().active_notes==6);
     assert(r.snapshot().pads.pads[4].token==rejected);

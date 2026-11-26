@@ -11,6 +11,11 @@ int main() {
         char text[24];pads::name(intent,text,sizeof(text));assert(!std::strcmp(text,names[i]));
         const auto notes=harmony::transform(intent.input,intent.configuration);assert(notes.count==3);
     }
+    c.seventh=true;
+    char extended[24];pads::name(pads::resolve(0,c),extended,sizeof(extended));assert(!std::strcmp(extended,"Cmaj7"));
+    pads::name(pads::resolve(6,c),extended,sizeof(extended));assert(!std::strcmp(extended,"Bm7b5"));
+    c.root=9;c.scale=3;pads::name(pads::resolve(0,c),extended,sizeof(extended));assert(!std::strcmp(extended,"AmMaj7"));
+    c.seventh=false;
     c.root=9;c.scale=2;
     const char* minor[]={"Am","Bdim","C","Dm","Em","F","G","Am"};
     for(unsigned i=0;i<8;++i){char text[24];pads::name(pads::resolve(i,c),text,sizeof(text));assert(!std::strcmp(text,minor[i]));}

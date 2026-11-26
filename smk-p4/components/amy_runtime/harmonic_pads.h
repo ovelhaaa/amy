@@ -29,6 +29,12 @@ inline const char* quality(const harmony::Notes& notes) {
     // Pitch-class intervals identify the quality independently of voicing.
     unsigned mask=0;
     for(unsigned i=0;i<notes.count;++i) mask|=1u<<((notes.notes[i]+12-notes.quantized%12)%12);
+    if(notes.count==4) {
+        if(mask&(1u<<6))return mask&(1u<<10)?"m7b5":"dim7";
+        if(mask&(1u<<8))return mask&(1u<<11)?"augMaj7":"aug7";
+        if(mask&(1u<<3))return mask&(1u<<11)?"mMaj7":"m7";
+        return mask&(1u<<11)?"maj7":"7";
+    }
     if((mask&((1u<<3)|(1u<<6)))==((1u<<3)|(1u<<6)))return "dim";
     if((mask&((1u<<4)|(1u<<8)))==((1u<<4)|(1u<<8)))return "aug";
     if(mask&(1u<<3))return "m";

@@ -594,6 +594,12 @@ int main(int argc, char** argv) {
     clickBtn(root,"OCT ",app,true);capture("pads_09_octave");
     for(unsigned i=0;i<8;++i)clickBtn(root,"OCT ",app,true);
     click("HOLD");
+    for(unsigned i=0;i<11;++i)clickBtn(root,"ROOT ",app,true);
+    for(unsigned i=0;i<4;++i)clickBtn(root,"OCT ",app,true);
+    auto* range_pad=findButton(root,"FORA DA FAIXA\nMIDI",true);assert(range_pad);
+    press(range_pad);lift(range_pad);assert(!runtime.snapshot().active_notes);
+    clickBtn(root,"ROOT ",app,true);
+    for(unsigned i=0;i<5;++i)clickBtn(root,"OCT ",app,true);
     click("MACROS 1-4");click("PADS");sync_runtime(500);
     lv_mem_monitor_t pad_mem_before{};lv_mem_monitor(&pad_mem_before);
     const auto pad_objects=countObjects(lv_screen_active());
@@ -640,6 +646,9 @@ int main(int argc, char** argv) {
     const auto stale_pad_snapshot=runtime.snapshot();clickRoot("PANIC");
     perf.publish(stale_pad_snapshot,true,120,0);
     assert(adapter.padState()->generation!=stale_pad_snapshot.pads.generation);
+    auto ready_snapshot=runtime.snapshot();ready_snapshot.pads.generation=0;
+    perf.publish(ready_snapshot,true,120,0);
+    assert(adapter.padState()->generation==ready_snapshot.generation);
     sync_runtime();clickRoot("TOCAR");capture("pads_15_macros");
 
     // ── Stress Test (Section 10 minimums) ────────────────────────────────────

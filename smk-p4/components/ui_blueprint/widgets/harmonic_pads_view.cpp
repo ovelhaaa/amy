@@ -34,6 +34,7 @@ bool HarmonicPadsView::build(lv_obj_t* parent,IUiBackend& backend) {
             case 1:v.config_.scale=uint8_t((v.config_.scale+1)%11);break;
             case 2:v.config_.octave=uint8_t((v.config_.octave+1)%9);break;
             case 3:v.releaseAll();v.hold_=!v.hold_;break;}
+            if(c->id<3)for(auto& p:v.pads_)if(!p.token)p.rejected=false;
             v.labels();v.refresh();
         },LV_EVENT_CLICKED);
     }
@@ -65,7 +66,11 @@ void HarmonicPadsView::event(lv_event_t* e) {
         if(p->down)return;
         p->down=true;p->rejected=false;v.last_pad_=p->id;
         if(v.hold_ && p->token){v.release(*p);p->down=true;}
-        else {pads::name(pads::resolve(p->id,config_),p->chord,sizeof(p->chord));p->token=v.backend_->requestPadOn(p->id,config_);p->requested_ms=lv_tick_get();p->rejected=!p->token;}
+        else {
+            const auto intent=pads::resolve(p->id,config_);
+            const auto notes=intent.valid?harmony::transform(intent.input,intent.configuration):harmony::Notes{};
+            const auto* q=pads::quality(notes);p->minor=*q=='m' || *q=='d';
+            pads::name(intent,p->chord,sizeof(p->chord));p->token=v.backend_->requestPadOn(p->id,config_);p->requested_ms=lv_tick_get();p->rejected=!p->token;}
     } else if(code==LV_EVENT_RELEASED || code==LV_EVENT_PRESS_LOST) {
         p->down=false;if(!v.hold_)v.release(*p);
     } else return;
@@ -92,8 +97,8 @@ void HarmonicPadsView::refresh() {
         const auto* quality=pads::quality(preview);
         const auto* degree=(*quality=='m' || *quality=='d')?minorDegrees[p.id]:degrees[p.id];
         if(intent.valid)lv_obj_remove_state(p.button,LV_STATE_DISABLED);else lv_obj_add_state(p.button,LV_STATE_DISABLED);
-        if(active)std::snprintf(chord,sizeof(chord),"%s",p.chord);
-        if(!intent.valid)std::snprintf(text,sizeof(text),"SEM GRAUS\n7 NOTAS");
+        if(active){std::snprintf(chord,sizeof(chord),"%s",p.chord);degree=p.minor?minorDegrees[p.id]:degrees[p.id];}
+        if(!intent.valid)std::snprintf(text,sizeof(text),"%s",unsupported?"SEM GRAUS\n7 NOTAS":"FORA DA FAIXA\nMIDI");
         else std::snprintf(text,sizeof(text),"%s%s\n%s | %s",chord,p.id==7?"'":"",degree,active?"ACTIVE":p.rejected?"REJECTED":p.token?"PENDING":"READY");
         lv_label_set_text(lv_obj_get_child(p.button,0),text);
         lv_obj_set_style_bg_color(p.button,lv_color_hex(!intent.valid?palette::kUnavailableBadge:active?palette::kActive:p.rejected?palette::kErrorPanic:palette::kPanelHighlight),0);

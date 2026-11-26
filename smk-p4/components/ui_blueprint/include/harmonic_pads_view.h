@@ -8,7 +8,7 @@ public:
     void refresh();
     void releaseAll();
 private:
-    struct Pad { HarmonicPadsView* owner=nullptr; unsigned id=0; lv_obj_t* button=nullptr; uint32_t token=0,requested_ms=0; bool down=false,rejected=false; char chord[24]{}; };
+    struct Pad { HarmonicPadsView* owner=nullptr; unsigned id=0; lv_obj_t* button=nullptr; uint32_t token=0,requested_ms=0; bool down=false,rejected=false,minor=false; char chord[24]{}; };
     static void event(lv_event_t* e);
     void release(Pad& pad);
     void labels();

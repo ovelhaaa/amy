@@ -104,7 +104,7 @@ public:
         #ifdef SMKP4_SOUND_EDITOR
         if(user_name_[0])std::snprintf(state_.patch_name,sizeof(state_.patch_name),"%s",user_name_);
 #endif
-        pads_=snapshot.pads;pads_.voices=uint8_t(snapshot.active_notes);pads_.available=snapshot.ready;
+        pads_=snapshot.pads;pads_.generation=snapshot.generation;pads_.voices=uint8_t(snapshot.active_notes);pads_.available=snapshot.ready;
         state_.master=snapshot.master; state_.active_notes=snapshot.active_notes;
         sustain_active_=snapshot.sustain_active;
         state_.sample_rate_hz=amy::kSampleRateHz; state_.block_frames=amy::kBlockFrames;
