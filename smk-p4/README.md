@@ -1,3 +1,17 @@
+# SMK-P4 0.19-A.1 - Harmonic Pads UX Hardening
+
+Owner-confirmed feedback distinguishes Capacity, Invalid, Released and HOLD
+Expired. ROOT/SCALE/OCT use direct selectors; the header identifies GLOBAL and
+the body identifies PADS LOCAL. The eight 190x80 pads, eight-voice owner and
+2000 ms HOLD lease are preserved. Stable refresh avoids redundant LVGL setters
+while renewing the heartbeat. No physical qualification or MIDI pad mapping is
+included. See the [report](docs/harmonic_pads_019a1_ux_hardening_report.md) and
+[19 HOST SIM captures](docs/harmonic_pads_019a1_shots/README.md).
+
+```powershell
+powershell -ExecutionPolicy Bypass -File smk-p4/tests/run_harmonic_pads_019a1.ps1 -Clean -Regressions
+```
+
 # SMK-P4 0.19-A - Harmonic Pads
 
 TOCAR > PADS provides eight diatonic chord pads through the existing Harmony
