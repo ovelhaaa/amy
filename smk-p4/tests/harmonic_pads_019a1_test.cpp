@@ -579,6 +579,18 @@ int main(int argc, char** argv) {
     click("ROOT ",true);capture("pads_03_root_selector");click("FECHAR");
     click("SCALE ",true);capture("pads_04_scale_selector");click("FECHAR");
     click("OCT ",true);capture("pads_05_oct_selector");click("FECHAR");
+    // C8 fits all triads through MIDI 127. C#8 would fold the upper tonic;
+    // expose it as invalid rather than silently advertising the wrong octave.
+    choose("OCT ","OCT 8");choose("ROOT ","C#");
+    auto* range_pad=findButton(root,"FORA DA FAIXA\nMIDI");
+    assert(range_pad && lv_obj_has_state(range_pad,LV_STATE_DISABLED));
+    click("OCT ",true);
+    auto* invalid_oct=findButton(root,"OCT 8 - MIDI");
+    assert(invalid_oct && lv_obj_has_state(invalid_oct,LV_STATE_DISABLED));
+    auto* too_high=findButton(root,"OCT 9 - MIDI");
+    assert(too_high && lv_obj_has_state(too_high,LV_STATE_DISABLED));
+    clickObj(too_high,app);assert(findButton(root,"OCT 8"));
+    click("FECHAR");choose("OCT ","OCT 4");choose("ROOT ","C");
     auto* tonic=padButton("C\n");
     // A requested pad stays pending until owner admission, including local key changes.
     lv_obj_send_event(tonic,LV_EVENT_PRESSED,nullptr);
@@ -754,6 +766,6 @@ int main(int argc, char** argv) {
     assert(mem_after.max_used <= 128u * 1024u);
 
     nav.shutdown();
-    std::puts("PASS 0.18-D.1 performance polish / host simulation");
+    std::puts("PASS 0.19-A.1 harmonic pads / owner feedback / HOLD / selective LVGL");
     return 0;
 }

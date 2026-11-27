@@ -85,7 +85,11 @@ bool HarmonicPadsView::octaveValid(unsigned octave) const {
     auto c=config_;c.octave=uint8_t(octave);
     for(unsigned i=0;i<8;++i) {
         const auto intent=pads::resolve(i,c);
-        if(!intent.valid || harmony::transform(intent.input,intent.configuration).error!=harmony::Error::None)return false;
+        if(!intent.valid)return false;
+        const auto notes=harmony::transform(intent.input,intent.configuration);
+        // Pads only raise chord tones before Harmony's whole-group folding.
+        // A tone below the requested input means this octave was folded down.
+        if(notes.error!=harmony::Error::None || !notes.count || notes.notes[0]<intent.input)return false;
     }
     return true;
 }
@@ -151,7 +155,7 @@ void HarmonicPadsView::refresh() {
         const auto* degree=(*quality=='m' || *quality=='d')?minorDegrees[p.id]:degrees[p.id];
         // Active and pending intents retain their captured identity, even if the next configuration is invalid.
         const bool frozen=active || p.token;
-        const bool disabled=!frozen && (!intent.valid || preview.error!=harmony::Error::None);
+        const bool disabled=!frozen && (!intent.valid || preview.error!=harmony::Error::None || !preview.count || preview.notes[0]<intent.input);
         if(lv_obj_has_state(p.button,LV_STATE_DISABLED)!=disabled){
             if(disabled)lv_obj_add_state(p.button,LV_STATE_DISABLED);else lv_obj_remove_state(p.button,LV_STATE_DISABLED);
 #ifndef ESP_PLATFORM
