@@ -562,8 +562,19 @@ int main(int argc, char** argv) {
     auto lift=[&](lv_obj_t* p,lv_event_code_t e=LV_EVENT_RELEASED){lv_obj_send_event(p,e,nullptr);sync_runtime();};
     auto choose=[&](const char* control,const char* option){click(control,true);click(option);};
     capture("pads_01_c_major");
-    for(const char* control:{"ROOT ","SCALE ","OCT "}) {
-        auto* btn=findButton(root,control,true);assert(btn && getCoords(btn).height()>=44);
+    std::vector<Box> pad_boxes;
+    for(const char* chord:{"C\n","Dm\n","Em\n","F\n","G\n","Am\n","Bdim\n","C'\n"}) {
+        auto* btn=padButton(chord);assert(btn);const auto box=getCoords(btn);
+        assert(box.width()==190 && box.height()==80);
+        for(const auto& prior:pad_boxes)assert(!overlaps(prior,box));
+        assert(!overlaps(box,getCoords(findButton(app.rootObject(),"PANIC"))));pad_boxes.push_back(box);
+    }
+    std::vector<Box> control_boxes;
+    for(const char* control:{"ROOT ","SCALE ","OCT ","MOMENTARY"}) {
+        auto* btn=findButton(root,control,true);assert(btn);const auto box=getCoords(btn);assert(box.height()>=44);
+        for(const auto& prior:control_boxes)assert(!overlaps(prior,box));
+        for(const auto& pad:pad_boxes)assert(!overlaps(pad,box));
+        control_boxes.push_back(box);
     }
     click("ROOT ",true);capture("pads_03_root_selector");click("FECHAR");
     click("SCALE ",true);capture("pads_04_scale_selector");click("FECHAR");
@@ -636,7 +647,8 @@ int main(int argc, char** argv) {
     request(seq::Action::Play);capture("pads_16_sequencer");request(seq::Action::Stop);
     assert(adapter.requestArpTransport(false).accepted());sync_runtime();
     const uint8_t arp_usb_off[]={0x08,0x80,60,0};assert(runtime.usbInput().transfer(arp_usb_off,4,preview::g_sim_tick_ms));sync_runtime();
-    clickRoot("PANIC");capture("pads_17_panic");
+    click("ROOT ",true);clickRoot("PANIC");assert(!runtime.snapshot().active_notes);
+    click("FECHAR");capture("pads_17_panic");
     click("HOLD");
     // Warm up selector allocation and return to the same complete widget topology.
     choose("ROOT ","C");sync_runtime(500);
