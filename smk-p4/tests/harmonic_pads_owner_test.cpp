@@ -22,6 +22,10 @@ void testHarmonicPadOwner() {
     auto rejected=on(4);assert(r.snapshot().active_notes==6);
     assert(r.snapshot().pads.pads[4].token==rejected);
     assert(r.snapshot().pads.pads[4].result==pads::Result::Capacity);
+    const auto newer_rejection=on(4);
+    amy::Command replay{};replay.type=amy::CommandType::PadOn;replay.channel=4;replay.id=pads::resolve(4,{}).input;
+    replay.value=100;replay.token=rejected;replay.timestamp_ms=now;replay.pad_config=harmony::pack(pads::resolve(4,{}).configuration);
+    assert(r.commands().push(replay));beat();assert(r.snapshot().pads.pads[4].token==newer_rejection);
     off(0,a);assert(r.snapshot().active_notes==3);off(2,b);assert(!r.snapshot().active_notes);
     // Shared pitches never imply shared ownership. Old Off cannot release a new token.
     a=on(0);off(0,a);b=on(0);off(0,a);assert(r.snapshot().active_notes==3);
@@ -65,6 +69,33 @@ void testHarmonicPadOwner() {
     assert(r.commands().push({amy::CommandType::Patch,135}));beat();r.loadPendingPatch();
     assert(r.snapshot().patch_state==amy::PatchState::Ready && !r.snapshot().active_notes);
     b=on(0);off(0,a);assert(r.snapshot().active_notes==3);off(0,b);
+    // Session loss cannot be repaired by replaying a command queued before expiry.
+    now+=1000;a=on(0);
+    c.channel=1;c.id=62;c.token=r.commands().nextToken();c.timestamp_ms=now+1;
+    assert(r.commands().push(c));
+    now+=pads::kLeaseMs;r.apply(now);assert(!r.snapshot().active_notes);
+    beat();assert(!r.snapshot().active_notes); // new heartbeat alone does not resurrect
+    b=on(0);assert(r.snapshot().active_notes==3);off(0,a);assert(r.snapshot().active_notes==3);off(0,b);
+    // Older/replayed operations cannot replace the last result after a group was released.
+    c.channel=0;c.id=60;c.token=a;c.timestamp_ms=now;
+    assert(r.commands().push(c));beat();assert(!r.snapshot().active_notes);
+    assert(r.snapshot().pads.pads[0].token==b);
+    // Malformed musical configuration must return Invalid for its own token, without any gates.
+    c.token=r.commands().nextToken();c.pad_config=0;c.timestamp_ms=now;
+    assert(r.commands().push(c));beat();assert(!r.snapshot().active_notes);
+    assert(r.snapshot().pads.pads[0].token==c.token);
+    assert(r.snapshot().pads.pads[0].result==pads::Result::Invalid);
+    a=on(0);const auto active_status=r.snapshot().pads.pads[0];
+    c.token=r.commands().nextToken();assert(r.commands().push(c));beat();
+    assert(r.snapshot().active_notes==3 && r.snapshot().pads.pads[0].active_token==active_status.active_token);
+    off(0,a);
+    now=UINT32_MAX-100;a=on(0);now+=pads::kLeaseMs;r.apply(now);
+    assert(!r.snapshot().active_notes && r.snapshot().pads.pads[0].result==pads::Result::Expired);
+    beat();assert(!r.snapshot().active_notes);
+    c.pad_config=harmony::pack(pads::resolve(0,{}).configuration);c.token=r.commands().nextToken();c.timestamp_ms=now;
+    const auto old_generation=r.commands().generation();assert(r.commands().push(c));
+    r.commands().panic();beat();assert(!r.snapshot().active_notes);
+    assert(r.commands().pushForGeneration(c,old_generation));beat();assert(!r.snapshot().active_notes);
     std::printf("PAD TIMING transform_max_us=%u admission_max_us=%u musical_heap_delta=0\n",r.snapshot().transform_max_us,r.snapshot().admission_max_us);
     std::printf("PASS pads owner; command=%zu commands=%zu runtime=%zu snapshot=%zu\n",sizeof(amy::Command),sizeof(amy::Commands),sizeof(r),sizeof(amy::Snapshot));
     r.end();

@@ -1038,12 +1038,21 @@ void Runtime::apply(uint32_t now_ms) {
             if(c.channel>=pads::kCount || c.id>=128 || !c.value || c.value>127 || !c.token) {++state_.invalid_commands;continue;}
             auto& pad=state_.pads.pads[c.channel];
             const auto config=harmony::unpack(c.pad_config);
-            if((c.pad_config>>27) || !harmony::valid(config) || !config.chord_on || config.chord<12 ||
-               latency>=pads::kLeaseMs || (pad_expiry_seen_ && uint32_t(now_ms-pad_expired_before_ms_)<pads::kLeaseMs && !atOrAfter(c.timestamp_ms,pad_expired_before_ms_)) ||
+            if(latency>=pads::kLeaseMs || (pad_expiry_seen_ && uint32_t(now_ms-pad_expired_before_ms_)<pads::kLeaseMs && !atOrAfter(c.timestamp_ms,pad_expired_before_ms_)) ||
                eventAgeMs(now_ms,commands_.pad_heartbeat_ms.load(std::memory_order_acquire))>=pads::kLeaseMs ||
                atOrAfter(commands_.releasedPad(c.channel),c.token)) continue;
             const unsigned found=findGroup(NoteOrigin::HarmonicPad,0,c.channel);
+            if(pad.token>=c.token)continue;
             if(found<kVoices && groups_[found].token>=c.token)continue;
+            if((c.pad_config>>27) || !harmony::valid(config) || !config.chord_on || config.chord<12) {
+                ++state_.invalid_commands;
+                // Invalid input must not replace an admitted group or its identity.
+                if(found>=kVoices) {
+                    pad.token=c.token;pad.generation=c.generation;pad.active_token=0;pad.count=0;
+                    pad.result=pads::Result::Invalid;
+                }
+                continue;
+            }
             if(found<kVoices)releaseGroup(found);
             pad.token=c.token;pad.generation=c.generation;pad.active_token=0;pad.count=0;
             const unsigned group=startGroup(NoteOrigin::HarmonicPad,c,now_ms);
