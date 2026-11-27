@@ -201,7 +201,11 @@ bool StatusStrip::build(lv_obj_t* parent, IUiBackend& backend, UiNavigationManag
     std::snprintf(harm_buf_, sizeof(harm_buf_), "C MAJ");
     harm_btn_ = ToggleButtonStyleHelper::create(root_, harm_buf_, 410, 4, 118, 36, false, false);
     if (harm_btn_) {
+        lv_obj_set_style_pad_all(harm_btn_, 0, 0);
         harm_lbl_ = lv_obj_get_child(harm_btn_, 0);
+        lv_obj_align(harm_lbl_, LV_ALIGN_BOTTOM_MID, 0, -1);
+        auto* global = createLabel(harm_btn_, "GLOBAL", 0, 1, 118, &lv_font_montserrat_14, palette::kTextSecondary);
+        lv_obj_set_style_text_align(global, LV_TEXT_ALIGN_CENTER, 0);
         attachLvContext<StripCtx>(
             harm_btn_, StripCtx{this, &backend, &nav},
             [](lv_event_t* e) {
